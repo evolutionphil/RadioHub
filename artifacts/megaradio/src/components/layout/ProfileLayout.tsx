@@ -52,7 +52,7 @@ export default function ProfileLayout({ children }: ProfileLayoutProps) {
     queryClient.prefetchQuery({
       queryKey: ["/api/stations/global-100"],
       queryFn: async () => {
-        const res = await fetch("/api/stations/precomputed?countryName=global&page=1&limit=100", {
+        const res = await fetch("/api/stations/precomputed?countryName=global&page=1&limit=100&slim=1", {
           credentials: "include",
         });
         if (!res.ok) return [];

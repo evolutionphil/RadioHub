@@ -90,6 +90,28 @@ describe('Native PostgreSQL public catalog', { skip: !process.env.PG_TEST_DATABA
     assert.equal(response.status, 200); const body = await response.json() as any;
     assert.equal(body.total, 2); assert.equal(body.totalPages, 2); assert.equal(body.stations[0]._id, 'accepted-b');
   });
+  it('compact list opt-in preserves ordering, filters and player fields without full translated articles', async () => {
+    await catalog.insertMany([station('compact', { slug:'compact',votes:20,lastCheckOk:true,
+      urlResolved:'https://stream.invalid/resolved',logoAssets:{status:'completed',webp256:'https://s3.invalid/logo.webp'},
+      descriptions:{de:{full:'Long article '.repeat(3000)}},genre:'Jazz',sslError:true,customSecret:'unneeded',
+    })]);
+    const full=await read.listStationsFromPostgres({page:1,limit:10});
+    const compact=await read.listStationsFromPostgres({page:1,limit:10,compact:true});
+    assert.deepEqual(compact.pagination,full.pagination);
+    for (const field of ['_id','stationuuid','slug','name','votes','url','urlResolved','logoAssets','genre','sslError']) {
+      assert.deepEqual(compact.stations[0][field],full.stations[0][field],field);
+    }
+    assert.deepEqual(compact.stations[0].descriptions,{});
+    assert.equal(compact.stations[0].customSecret,undefined);
+    assert.ok(JSON.stringify(compact).length<JSON.stringify(full).length/10);
+    const response=await fetch(base+'/api/stations/precomputed?slim=1&limit=10');
+    assert.equal(response.status,200);
+    const body=await response.json() as any;
+    assert.deepEqual(body.stations,JSON.parse(JSON.stringify(compact.stations)));
+    assert.deepEqual(body.data,body.stations);
+    const detail=await read.getStationByIdentifier('compact');
+    assert.ok(detail.descriptions.de.full.length>30000);
+  });
   it('concurrent PostgreSQL counters never lose increments and retain click timestamps', async () => {
     await catalog.insertMany([station('counter')]);
     await Promise.all(Array.from({ length: 24 }, () => write.incrementStationClick('counter')));
@@ -116,6 +138,25 @@ describe('Native PostgreSQL public catalog', { skip: !process.env.PG_TEST_DATABA
     await assert.rejects(taxonomy.pgCreateGenre({ name: 'Duplicate', slug: 'rock' }), (e: any) => e.code === '23505');
     assert.equal((await taxonomy.pgDiscoverableGenres(undefined, 10))[0].displayOrder, 0);
     assert.equal((await taxonomy.pgDeleteGenre(created._id))._id, created._id); assert.equal(await taxonomy.pgStoredGenreBySlug('rock'), null);
+  });
+  it('nearby compact reads preserve distance and cache keys separate limit, shape and country preference', async () => {
+    await catalog.insertMany([
+      station('near-a',{geoLat:0.1,geoLong:0.1,country:'Austria',descriptions:{de:{full:'Nearby article'}}}),
+      station('near-b',{geoLat:0.2,geoLong:0.2,country:'Germany'}),
+    ]);
+    const request=async (suffix:string) => {
+      const response=await fetch(base+'/api/stations/nearby?lat=0&lng=0&radius=100'+suffix);
+      assert.equal(response.status,200);return await response.json() as any[];
+    };
+    const full=await request('&limit=1');
+    const compact=await request('&limit=1&slim=1');
+    assert.equal(full[0]._id,compact[0]._id);
+    assert.equal(full[0].distance,compact[0].distance);
+    assert.deepEqual(full[0].descriptions,{de:{full:'Nearby article'}});
+    assert.deepEqual(compact[0].descriptions,{});
+    assert.equal((await request('&limit=2&slim=1')).length,2);
+    assert.equal((await request('&limit=1&slim=1&userCountry=Germany'))[0]._id,'near-b');
+    assert.equal((await request('&limit=1&slim=1'))[0]._id,'near-a');
   });
   it('protects genre mutations and returns real dynamic genre lookups and country counts', async () => {
     await catalog.insertMany([station('jazz-a', { tags: 'jazz' }),station('jazz-b', { tags: 'jazz' })]);

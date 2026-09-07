@@ -175,11 +175,20 @@ export class PostgresCatalogStore {
       // Keep catalogShape + nested JS selection semantics, but do not decode
       // every station's large source/descriptions for a small scalar read.
       const columns = new Set(['id']);
+      const sourceKeys = new Set<string>();
       for (const field of options.fields) {
         const root = pathParts(field)[0];
-        columns.add(fields[root]?.[0] || 'source');
+        if (fields[root]) columns.add(fields[root][0]);
+        else sourceKeys.add(root);
       }
       selection = [...columns].map(column => `s.${column}`).join(',');
+      if (sourceKeys.size) {
+        // A single legacy extra must not fetch every translated description
+        // again via source. Preserve absent vs JSON-null and nested semantics.
+        values.push([...sourceKeys]);
+        selection += `,COALESCE((SELECT jsonb_object_agg(k,s.source->k)
+          FROM unnest($${values.length}::text[]) AS k WHERE s.source ? k),'{}'::jsonb) AS source`;
+      }
     }
     const result = await this.pool.query(`SELECT ${selection} FROM stations s WHERE ${sql} ORDER BY ${sort}${suffix}`,values);
     return result.rows.map((row) => {
@@ -194,6 +203,29 @@ export class PostgresCatalogStore {
       }
       return selected;
     });
+  }
+  /** Native, bounded global ranking. Keep the existing 200-per-country cap,
+   * but rank IDs in PostgreSQL instead of ~200 serial network round trips.
+   * Fetch the compact payload only after the top candidates are selected.
+   */
+  async globalStationCards(limit = 2000, perCountryLimit = 200): Promise<CatalogDocument[]> {
+    const result = await this.pool.query(`WITH ranked AS (
+        SELECT id,has_logo,votes,row_number() OVER (
+          PARTITION BY country ORDER BY has_logo DESC NULLS LAST,votes DESC NULLS LAST,id ASC
+        ) AS country_rank FROM stations
+        WHERE last_check_ok=true AND no_index IS DISTINCT FROM true
+          AND NULLIF(btrim(country),'') IS NOT NULL
+      ), winners AS (
+        SELECT id,has_logo,votes FROM ranked WHERE country_rank<=$1
+        ORDER BY has_logo DESC NULLS LAST,votes DESC NULLS LAST,id ASC LIMIT $2
+      ) SELECT s.id,s.slug,s.name,s.url,s.url_resolved,s.favicon,s.country,s.state,
+        s.votes,s.has_logo,s.tags_raw,s.codec,s.bitrate,s.logo_assets,s.no_index,
+        CASE WHEN s.source ? 'logo' THEN jsonb_build_object('logo',s.source->'logo')
+          ELSE '{}'::jsonb END AS source
+      FROM winners w JOIN stations s ON s.id=w.id
+      ORDER BY w.has_logo DESC NULLS LAST,w.votes DESC NULLS LAST,w.id ASC`,
+      [Math.max(1,Math.min(200,Math.trunc(perCountryLimit))), Math.max(1,Math.min(2000,Math.trunc(limit)))]);
+    return result.rows.map(row => ({ ...catalogShape(row), url_resolved: row.url_resolved }));
   }
   async findById(id: string): Promise<CatalogDocument | null> { return (await this.find({ _id: id }, { limit: 1 }))[0] || null; }
   async findOne(filter: CatalogFilter, options: { sort?: Record<string,number>; fields?: string[] } = {}): Promise<CatalogDocument | null> {

@@ -106,7 +106,7 @@ export default function GenreDetail({
         limit: '100' // Fetch more to filter by tags
       });
       
-      const response = await fetch(`/api/stations/precomputed?${params}`);
+      const response = await fetch(`/api/stations/precomputed?${params}&slim=1`);
       if (!response.ok) throw new Error('Failed to fetch stations');
       const result = await response.json();
       

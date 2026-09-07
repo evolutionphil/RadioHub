@@ -94,7 +94,7 @@ export default function SearchPage() {
     enabled,
     queryFn: async () => {
       const params = new URLSearchParams({ search: debounced, limit: "20" });
-      const res = await fetch(`/api/stations/precomputed?${params}`);
+      const res = await fetch(`/api/stations/precomputed?${params}&slim=1`);
       if (!res.ok) throw new Error("Station search failed");
       return res.json();
     },

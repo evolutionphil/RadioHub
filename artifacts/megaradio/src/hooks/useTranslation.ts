@@ -1,9 +1,10 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { getExplicitLanguageFromPath, getSupportedLanguage } from "@workspace/seo-shared/language-preference";
 import { CRITICAL_TRANSLATION_KEYS } from "@workspace/seo-shared/critical-translation-keys";
 import { getBrowserLanguage, saveBrowserLanguage } from '@/lib/browser-language';
 import { logger } from '@/lib/logger';
+import { getMergedTranslationDictionary } from '@/lib/translation-dictionary-cache';
 
 // TypeScript declarations for server-preloaded translations
 declare global {
@@ -75,11 +76,11 @@ export function useTranslation() {
   // Merge critical + full translations (critical loaded first, full merges in)
   // SSR contains only the critical subset, not the complete dictionary. Keep
   // its first-paint strings, then allow the current full/admin dictionary to win.
-  const translations = {
-    ...(hasPreloadedTranslations ? window.__INITIAL_TRANSLATIONS__ : undefined),
-    ...criticalTranslations,
-    ...fullTranslations,
-  };
+  const translations = getMergedTranslationDictionary(
+    hasPreloadedTranslations ? window.__INITIAL_TRANSLATIONS__ : undefined,
+    criticalTranslations,
+    fullTranslations,
+  );
 
   // Loading indicator: true if using server-preloaded OR if critical translations not yet loaded
   const isLoading = !hasPreloadedTranslations && !criticalTranslations;
@@ -124,7 +125,7 @@ export function useTranslation() {
   });
 
   // Global auth translation fallbacks - always available
-  const GLOBAL_AUTH_FALLBACKS: Record<string, string> = {
+  const GLOBAL_AUTH_FALLBACKS = useMemo<Record<string, string>>(() => ({
     // Modal headers and descriptions
     'auth_welcome_back': 'Welcome Back',
     'auth_welcome_back_description': 'Sign in to your account to access favorites and more',
@@ -351,7 +352,7 @@ export function useTranslation() {
     'tv_login_qr_or_code': 'Scan the QR code with your phone, or enter this code manually:',
     'tv_login_scan_qr': 'Scan with your phone',
     'or': 'OR',
-  };
+  }), []);
 
   // Translation function with proper priority handling
   const t = useCallback((key: string, fallback?: string, params?: Record<string, string>): string => {
@@ -400,7 +401,7 @@ export function useTranslation() {
     }
 
     return translatedText;
-  }, [translations, englishTranslations, translationKeys, language]);
+  }, [translations, englishTranslations, translationKeys, language, GLOBAL_AUTH_FALLBACKS]);
 
   // Change language function with instant switching (use cache first, then background update)
   const setLanguage = useCallback(async (newLanguage: string) => {

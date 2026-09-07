@@ -104,7 +104,7 @@ export default function RadiosPage({ selectedCountry = 'all', onCountryChange }:
         params.append('countryName', selectedCountry === 'all' ? 'global' : selectedCountry);
         params.append('page', page.toString());
         params.append('limit', '33');
-        const url = `/api/stations/precomputed?${params}`;
+        const url = `/api/stations/precomputed?${params}&slim=1`;
         const response = await fetch(url);
         if (response.ok) {
           const result = await response.json();

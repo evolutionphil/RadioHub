@@ -10,6 +10,8 @@ export class PushNotificationManager {
   private static instance: PushNotificationManager | null = null;
   private registration: ServiceWorkerRegistration | null = null;
   private subscription: PushSubscription | null = null;
+  private initialization: Promise<boolean> | null = null;
+  private messageListenerAttached = false;
 
   private constructor() {}
 
@@ -23,7 +25,16 @@ export class PushNotificationManager {
   /**
    * Initialize the push notification system
    */
-  async initialize(): Promise<boolean> {
+  initialize(): Promise<boolean> {
+    if (this.initialization) return this.initialization;
+    if (this.registration && this.messageListenerAttached) return Promise.resolve(true);
+    this.initialization = this.initializeOnce().finally(() => {
+      this.initialization = null;
+    });
+    return this.initialization;
+  }
+
+  private async initializeOnce(): Promise<boolean> {
     try {
       // Check if service workers are supported
       if (!('serviceWorker' in navigator)) {
@@ -298,6 +309,8 @@ export class PushNotificationManager {
    * Setup message listener for service worker communication
    */
   private setupMessageListener(): void {
+    if (this.messageListenerAttached) return;
+    this.messageListenerAttached = true;
     navigator.serviceWorker.addEventListener('message', (event) => {
       if (event.data && event.data.type === 'NOTIFICATION_ACTION') {
         this.handleNotificationAction(event.data.action, event.data.data);

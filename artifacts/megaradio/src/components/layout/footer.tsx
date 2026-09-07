@@ -180,7 +180,7 @@ export default function Footer() {
                 loading="lazy"
                 width="97"
                 height="97"
-                className="w-10 h-10 sm:w-12 sm:h-12 md:w-16 md:h-16 lg:w-20 lg:h-20 xl:w-[97px] xl:h-[97px] flex-shrink-0" 
+                  className="w-10 h-10 sm:w-12 sm:h-12 md:w-16 md:h-16 lg:w-20 lg:h-20 xl:w-[97px] xl:h-[97px] object-contain flex-shrink-0"
                 src="/images/logo-icon.webp" 
                 alt="Mega Radio music streaming logo" 
                 title="Mega Radio - Listen to live stations worldwide"

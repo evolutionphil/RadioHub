@@ -295,7 +295,7 @@ export default function StationDetails() {
           params.append('page', '1');
           params.append('limit', '30');
           
-          const response = await fetch(`/api/stations/precomputed?${params}`);
+          const response = await fetch(`/api/stations/precomputed?${params}&slim=1`);
           if (response.ok) {
             const result = await response.json();
             const stations = result.data || [];
@@ -315,7 +315,7 @@ export default function StationDetails() {
           globalParams.append('page', '1');
           globalParams.append('limit', '200'); // Fetch more for better tag matching
           
-          const globalResponse = await fetch(`/api/stations/precomputed?${globalParams}`);
+          const globalResponse = await fetch(`/api/stations/precomputed?${globalParams}&slim=1`);
           if (globalResponse.ok) {
             const globalResult = await globalResponse.json();
             const globalStations = globalResult.data || [];
@@ -356,7 +356,7 @@ export default function StationDetails() {
         params.append('page', '1');
         params.append('limit', '60'); // Fetch top 60 for "See More" expand (12→24)
         
-        const response = await fetch(`/api/stations/precomputed?${params}`);
+        const response = await fetch(`/api/stations/precomputed?${params}&slim=1`);
         if (!response.ok) throw new Error('Failed to fetch country stations');
         const result = await response.json();
         

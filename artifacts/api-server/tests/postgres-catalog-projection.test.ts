@@ -36,7 +36,9 @@ test('unknown fields/provider aliases alone require source while unprojected fin
   const queries: string[] = [];
   const catalog = new PostgresCatalogStore({ query: async (sql: string) => { queries.push(sql); return { rows: [] }; } } as any);
   await catalog.find({}, { fields: ['custom.nested','countrycode','name.length'] });
-  assert.match(queries[0], /^SELECT s.id,s.source,s.name FROM/);
+  assert.match(queries[0], /^SELECT s.id,s.name,COALESCE\(\(SELECT jsonb_object_agg/);
+  assert.match(queries[0], /unnest\(\$1::text\[\]\)/);
+  assert.doesNotMatch(queries[0], /SELECT s.id,s.source/);
   await catalog.find({}, { limit: 5 });
   assert.match(queries[1], /^SELECT s\.\* FROM/);
 });
@@ -106,6 +108,7 @@ describe('projected PostgreSQL catalog matches the former full-row result exactl
     assert.deepEqual(responses[0].fields.map(field => field.name), ['id','name']);
     await captured.find({}, { fields: ['custom.nested.value'] });
     assert.deepEqual(responses[1].fields.map(field => field.name), ['id','source']);
+    assert.deepEqual(Object.keys(responses[1].rows[0].source), ['custom']);
   });
   test('null native JSON does not fall back to stale source JSON', async () => {
     await pool.query(`UPDATE stations SET logo_assets=NULL,source=source || '{"logoAssets":{"status":"stale"}}'::jsonb WHERE id='projection-fixture'`);
@@ -113,5 +116,21 @@ describe('projected PostgreSQL catalog matches the former full-row result exactl
     for (const requested of [['logoAssets'], ['logoAssets.status']]) {
       assert.deepEqual(await catalog.find({}, { fields: requested }), [originalProjection(original, requested)]);
     }
+  });
+  test('native global cards preserve country cap, live/index filters and deterministic ranking', async () => {
+    await catalog.insertMany([
+      { _id:'rank-a1',name:'A1',country:'A',lastCheckOk:true,hasLogo:true,votes:100,url:'https://example.invalid/a1' },
+      { _id:'rank-a2',name:'A2',country:'A',lastCheckOk:true,hasLogo:true,votes:99,url:'https://example.invalid/a2' },
+      { _id:'rank-b1',name:'B1',country:'B',lastCheckOk:true,hasLogo:true,votes:20,url:'https://example.invalid/b1',logo:'https://example.invalid/logo' },
+      { _id:'rank-dead',name:'Dead',country:'B',lastCheckOk:false,votes:999,url:'https://example.invalid/dead' },
+      { _id:'rank-noindex',name:'NoIndex',country:'B',lastCheckOk:true,noIndex:true,votes:999,url:'https://example.invalid/noindex' },
+      { _id:'rank-empty',name:'Empty',country:' ',lastCheckOk:true,votes:999,url:'https://example.invalid/empty' },
+    ].map(station => ({ ...station, stationuuid: `uuid-${station._id}` })));
+    const cards = await catalog.globalStationCards(2,1);
+    assert.deepEqual(cards.map(card => card._id), ['rank-a1','rank-b1']);
+    assert.equal(cards[1].logo,'https://example.invalid/logo');
+    assert.equal(cards[0].url_resolved,cards[0].urlResolved);
+    assert.equal(cards[0].descriptions,undefined);
+    await pool.query("DELETE FROM stations WHERE id LIKE 'rank-%'");
   });
 });

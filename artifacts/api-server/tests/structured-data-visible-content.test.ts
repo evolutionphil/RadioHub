@@ -271,7 +271,7 @@ test('SSR and SPA share identical structured-data objects across all 14 indexabl
   assert.equal(SITEMAP_PRIORITY_LANGUAGES.universal14.length, 14);
   for (const language of SITEMAP_PRIORITY_LANGUAGES.universal14) {
     const station = {
-      _id: 'schema-fixture', slug: 'fixture-radio', name: 'Fixture Radio', country: 'Germany', countryCode: 'DE',
+      _id: 'schema-fixture', slug: 'fixture-radio', name: 'Fixture Radio', country: 'Germany', countryCode: 'DE', languageCodes: 'tr',
       tags: 'pop, FM 102.5', bitrate: 128, codec: 'mp3', descriptions: { [language]: { full: `${language}: Station description`, meta: `${language}: Station summary` } },
     };
     const translatedSegment = language === 'tr' ? 'istasyon' : language === 'de' ? 'sender' : 'station';
@@ -287,7 +287,7 @@ test('SSR and SPA share identical structured-data objects across all 14 indexabl
     }
     const stationSchema = data.page.find(schema => schema['@type'] === 'RadioBroadcastService');
     assert.equal(stationSchema.url, canonical);
-    assert.equal(stationSchema.inLanguage, language);
+    assert.equal(stationSchema.inLanguage, 'tr', 'translating a page must not change the station broadcast language');
     assert.equal(stationSchema.description, `${language}: Station description`);
     assert.equal(stationSchema.aggregateRating, undefined, 'no synthetic ratings introduced by SPA payload');
     assert.deepEqual(stationSchema.category, ['pop', 'FM 102.5']);
@@ -299,7 +299,19 @@ test('SSR and SPA share identical structured-data objects across all 14 indexabl
     });
     assert.equal('frequencyUnit' in stationSchema.broadcastFrequency, false);
     assert.equal(data.page.find(schema => schema['@type'] === 'WebPage')?.isAccessibleForFree, true);
+    assert.equal(data.page.find(schema => schema['@type'] === 'WebPage')?.inLanguage, language);
     assert.doesNotThrow(() => JSON.stringify(data), 'payload must be JSON serializable');
+  }
+});
+
+test('missing broadcast language is never inferred from the page locale or station country', () => {
+  const renderer = new SeoRenderer();
+  for (const language of ['en', 'tr', 'ja', 'ar']) {
+    const station = { name: 'KRAL FM', slug: 'kral-fm', country: 'Türkiye', countryCode: 'TR', language: null, languageCodes: null };
+    const tags = { title: 'KRAL FM', canonical: `${DOMAIN}/${language}/station/kral-fm`, domain: DOMAIN };
+    const data = renderer.generateStructuredData(tags, language, {}, '/station/kral-fm', station, new Map(), { pageType: 'station' });
+    assert.equal(data.page.find(schema => schema['@type'] === 'RadioBroadcastService')?.inLanguage, undefined);
+    assert.equal(data.page.find(schema => schema['@type'] === 'WebPage')?.inLanguage, language);
   }
 });
 

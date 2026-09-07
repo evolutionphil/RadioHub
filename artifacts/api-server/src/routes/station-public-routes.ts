@@ -34,6 +34,15 @@ function escapeRegex(input: any, maxLen: number = 80): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+function nearbyCacheKey(query: Record<string, any>): string | null {
+  if (!query.lat || !query.lng) return null;
+  return `nearby:v2:${JSON.stringify([
+    Math.round(parseFloat(query.lat)*100)/100,Math.round(parseFloat(query.lng)*100)/100,
+    parseFloat(query.radius ?? '100'),query.country && query.country!=='all' ? String(query.country) : 'global',
+    query.excludeBroken ?? 'false',Number(query.limit ?? 12),String(query.userCountry || ''),query.slim==='1',
+  ])}`;
+}
+
 // Synonym map: common non-English station/city names → English equivalents.
 // Keys are lower-case. Allows "Viyana FM" → finds "Vienna FM", etc.
 const SEARCH_SYNONYMS: Record<string, string> = {
@@ -246,16 +255,11 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
     try {
       const { lat, lng, radius = 100, limit = 12, country, excludeBroken = 'false', userCountry } = req.query;
       
-      if (lat && lng) {
-        const snappedLat = Math.round(parseFloat(lat as string) * 100) / 100;
-        const snappedLng = Math.round(parseFloat(lng as string) * 100) / 100;
-        const countryKey = country && country !== 'all' ? (country as string) : 'global';
-        const cacheKey = `nearby:${snappedLat}_${snappedLng}_${parseFloat(radius as string)}_${countryKey}_${excludeBroken}`;
-        
+      const cacheKey = nearbyCacheKey(req.query);
+      if (cacheKey) {
         const cachedResult = await CacheManager.get(cacheKey);
         if (cachedResult) {
-          logger.log(`📦 Serving nearby stations from cache (${countryKey})`);
-          return void res.json(cachedResult);
+          return void res.json(stripPlaceholders(cachedResult));
         }
       }
       
@@ -272,12 +276,10 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
             ? (resolveToDbName(country as string) || String(country)) : undefined,
           excludeBroken: excludeBroken === 'true',
           userCountry: userCountry ? String(userCountry) : undefined,
+          compact: req.query.slim === '1',
         });
-        if (lat && lng && stations.length > 0) {
-          const snappedLat = Math.round(parseFloat(lat as string) * 100) / 100;
-          const snappedLng = Math.round(parseFloat(lng as string) * 100) / 100;
-          const countryKey = country && country !== 'all' ? String(country) : 'global';
-          await CacheManager.set(`nearby:${snappedLat}_${snappedLng}_${parseFloat(radius as string)}_${countryKey}_${excludeBroken}`, stations, { ttl: 1800 });
+        if (cacheKey && stations.length > 0) {
+          await CacheManager.set(cacheKey, stations, { ttl: 1800 });
         }
         return void res.json(stripPlaceholders(stations));
       }
@@ -287,13 +289,8 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
       logger.error(`❌ /api/stations/nearby failed: code=${error?.code || 'unknown'} msg=${error?.message || error}`);
       let stale: any = null;
       try {
-        const { lat, lng, radius = 100, country, excludeBroken = 'false' } = req.query;
-        if (lat && lng) {
-          const snappedLat = Math.round(parseFloat(lat as string) * 100) / 100;
-          const snappedLng = Math.round(parseFloat(lng as string) * 100) / 100;
-          const countryKey = country && country !== 'all' ? (country as string) : 'global';
-          stale = await CacheManager.get(`nearby:${snappedLat}_${snappedLng}_${parseFloat(radius as string)}_${countryKey}_${excludeBroken}`);
-        }
+        const key = nearbyCacheKey(req.query);
+        if (key) stale = await CacheManager.get(key);
       } catch {}
       res.set('Cache-Control', 'no-store');
       if (stale != null) { res.set('X-Data-Stale', 'true'); return void res.json(stale); }
@@ -381,7 +378,8 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
     }
   });
 
-  // PRECOMPUTED STATIONS API - 7-day cache, ultra-fast station browsing
+  // PostgreSQL station browsing. Compact cards have a bounded 60-second cache;
+  // full responses keep their existing live contract for external clients.
   app.get("/api/stations/precomputed", async (req, res) => {
     try {
       const { countryCode, countryName, page = '1', limit = '33', genre, language, search, hasLogo, codec, bitrate, sort } = req.query;
@@ -390,9 +388,10 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
 
       const identifier = (countryName as string) || (countryCode as string);
       const isGlobal = !identifier || identifier === 'global' || identifier === 'all';
+      const compact = req.query.slim === '1';
 
       {
-        const pgResult = await listStationsFromPostgres({
+        const listOptions = {
           country: isGlobal ? undefined : (
             resolveToDbName(((countryName as string) || (countryCode as string))) ||
             (countryName as string) || (countryCode as string)
@@ -406,7 +405,15 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
           hasLogo: hasLogo === 'true' ? true : hasLogo === 'false' ? false : undefined,
           codec: typeof codec === 'string' ? codec : undefined,
           minBitrate: bitrate ? parseInt(String(bitrate)) : undefined,
-        });
+          compact,
+        };
+        // Public card pages only: coalesce concurrent visitors and retain the
+        // small read for one minute. Details/full API responses remain live.
+        const pgResult = compact
+          ? await CacheManager.getOrSetSingleFlight(
+            `stations:cards:v1:${JSON.stringify(listOptions)}`,
+            () => listStationsFromPostgres(listOptions), { ttl: 60 })
+          : await listStationsFromPostgres(listOptions);
         const stations = pgResult.stations;
         return void res.json({
           success: true, data: stations, stations, total: pgResult.totalCount,
@@ -415,22 +422,6 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
           pagination: pgResult.pagination,
         });
       }
-
-      // INCIDENT 2026-05-15 v10.2 round 9 — REMOVED the `hasGlobalCache()`
-      // cold-fallback branch. Previously, when the SWR envelope was
-      // empty, the route ran an uncoalesced direct `Station.find()` on
-      // every cold request: NOT singleflight-coalesced (so 100 cold SSR
-      // requests = 100 200k-doc scans), and the result was NEVER
-      // written into the SWR envelope (so the cache could never warm
-      // up — every request stayed cold forever).
-      //
-      // Fix: always route through `PrecomputedStationsService.getGlobalStations()`,
-      // which is wrapped in `getOrSetSWR` with singleflight. The first
-      // organic visitor pays one bounded compute (15s `maxTimeMS`), the
-      // result is written into the SWR envelope, and every concurrent
-      // miss coalesces onto that same in-flight promise. After the
-      // envelope is populated, subsequent traffic gets fresh-or-stale
-      // hits with background refresh — no more cold fallback ever.
 
     } catch (error: any) {
       // INCIDENT 2026-05-14 round 8: this catch was emitting `logger.error`

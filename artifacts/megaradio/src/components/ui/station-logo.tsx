@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect, type SyntheticEvent } from 'react';
 import { cn, normalizeFaviconUrl } from '@/lib/utils';
 import { useTranslation } from '@/hooks/useTranslation';
+import { hasRecentStationLogoFailure, rememberStationLogoFailure, clearStationLogoFailure } from '@/lib/station-logo-failure-cache';
 
 interface LogoAssets {
   folder: string;
@@ -105,7 +106,7 @@ function getLogoUrl(station: Station, preferredSize: 48 | 96 | 256 = 96): string
   const assets = station.logoAssets;
   if (assets && logoAssetsUsable(assets) && assets.folder) {
     const sizeKey = `webp${preferredSize}` as keyof typeof assets;
-    const value = (assets[sizeKey] || assets.webp96 || assets.webp256) as string | undefined;
+    const value = (assets[sizeKey] || assets.webp96 || assets.webp256 || assets.webp48) as string | undefined;
     if (value) {
       return resolveLogoUrl(assets.folder, value);
     }
@@ -192,14 +193,16 @@ export function StationLogo({
     setResponsiveSourceFailed(false);
   }, [stationKey, sourceKey]);
   
-  const logoUrl = sources[Math.min(sourceIndex, sources.length - 1)];
+  let activeSourceIndex = Math.min(sourceIndex, sources.length - 1);
+  while (activeSourceIndex < sources.length - 1 && hasRecentStationLogoFailure(sources[activeSourceIndex])) activeSourceIndex++;
+  const logoUrl = sources[activeSourceIndex];
 
   // Build a responsive srcSet from the available logoAssets resolutions so
   // browsers can pick the optimal logo for high-DPI screens. Falls back to
   // undefined when only the legacy/external favicon path is available.
   const srcSet = useMemo(() => {
     if (
-      sourceIndex !== 0 ||
+      activeSourceIndex !== 0 ||
       responsiveSourceFailed ||
       !logoAssetsUsable(station.logoAssets) ||
       !station.logoAssets?.folder
@@ -208,20 +211,22 @@ export function StationLogo({
     }
     const parts: string[] = [];
     const folder = station.logoAssets.folder;
-    if (station.logoAssets.webp48)
-      parts.push(`${resolveLogoUrl(folder, station.logoAssets.webp48)} 48w`);
-    if (station.logoAssets.webp96)
-      parts.push(`${resolveLogoUrl(folder, station.logoAssets.webp96)} 96w`);
-    if (station.logoAssets.webp256)
-      parts.push(`${resolveLogoUrl(folder, station.logoAssets.webp256)} 256w`);
+    for (const size of [48, 96, 256] as const) {
+      const value = station.logoAssets[`webp${size}`];
+      if (value) {
+        const url = resolveLogoUrl(folder, value);
+        if (!hasRecentStationLogoFailure(url)) parts.push(`${url} ${size}w`);
+      }
+    }
     return parts.length > 1 ? parts.join(', ') : undefined;
-  }, [station.logoAssets, sourceIndex, responsiveSourceFailed]);
+  }, [station.logoAssets, activeSourceIndex, responsiveSourceFailed]);
 
   const stationName = station.name || 'Radio Station';
   const altText = alt || t('station_logo_alt', `${stationName} logo`, { stationName });
 
   const handleError = (event: SyntheticEvent<HTMLImageElement>) => {
     const image = event.currentTarget;
+    rememberStationLogoFailure(image.currentSrc || image.src);
     if (srcSet && image.currentSrc && image.currentSrc !== image.src) {
       // Safari/high-DPI browsers may have failed a srcSet candidate rather
       // than src. Retry the preferred src without srcSet before advancing.
@@ -230,7 +235,7 @@ export function StationLogo({
     }
     setResponsiveSourceFailed(true);
     // Move to next source in the list
-    setSourceIndex(prev => Math.min(prev + 1, sources.length - 1));
+    setSourceIndex(Math.min(activeSourceIndex + 1, sources.length - 1));
   };
 
   // If className contains positioning (absolute/inset), use w-full h-full to fill container
@@ -263,6 +268,7 @@ export function StationLogo({
       fetchPriority={priority ? 'high' : undefined}
       decoding="async"
       onError={handleError}
+      onLoad={(event) => clearStationLogoFailure(event.currentTarget.currentSrc || event.currentTarget.src)}
       className={cn(
         useFillMode ? 'w-full h-full' : sizeConfig.className,
         'object-cover object-center',

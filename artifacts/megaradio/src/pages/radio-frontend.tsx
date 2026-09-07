@@ -71,7 +71,6 @@ import RecentlyPlayedSection from "@/components/RecentlyPlayedSection";
 const PageSocialShare = lazy(() => import("@/components/social/PageSocialShare").then(m => ({ default: m.PageSocialShare })));
 import { SeoHead } from "@/components/SeoHead";
 import { logger } from '@/lib/logger';
-import { getPrecomputedStationsSlice } from '@/lib/precomputed-pool';
 import { getLocalizedCountryDisplayName } from '@/utils/localized-country';
 import 'swiper/css';
 import 'swiper/css/free-mode';
@@ -472,7 +471,7 @@ export default function RadioFrontend({
       params.append('countryName', selectedCountry === 'all' ? 'global' : selectedCountry);
       params.append('page', loadMorePage.toString());
       params.append('limit', '18'); // Load 18 stations per page (3 columns x 6 rows)
-      const url = `/api/stations/precomputed?${params}`;
+      const url = `/api/stations/precomputed?${params}&slim=1`;
       const response = await fetch(url);
       if (!response.ok) throw new Error('Failed to fetch stations');
       const result = await response.json();
@@ -492,7 +491,7 @@ export default function RadioFrontend({
       params.append('countryName', selectedCountry === 'all' ? 'global' : selectedCountry);
       params.append('page', '1');
       params.append('limit', '36');
-      const url = `/api/stations/precomputed?${params}`;
+      const url = `/api/stations/precomputed?${params}&slim=1`;
       const response = await fetch(url);
       if (!response.ok) throw new Error('Failed to fetch extended stations');
       const result = await response.json();
@@ -658,7 +657,7 @@ export default function RadioFrontend({
         }
         
         logger.log('📍 Using GPS coordinates for nearby stations:', userCoordinates, 'userCountry:', userDetectedCountry);
-        const response = await fetch(`/api/stations/nearby?${params}`);
+        const response = await fetch(`/api/stations/nearby?${params}&slim=1`);
         if (response.ok) {
           const data = await response.json();
           logger.log('✅ GPS nearby stations found:', data.length);
@@ -681,7 +680,7 @@ export default function RadioFrontend({
         }
         
         logger.log('🌐 Using IP location coordinates:', (locationData as any).location, 'userCountry:', userDetectedCountry);
-        const response = await fetch(`/api/stations/nearby?${params}`);
+        const response = await fetch(`/api/stations/nearby?${params}&slim=1`);
         if (response.ok) {
           const data = await response.json();
           logger.log('✅ IP nearby stations found:', data.length);
@@ -700,7 +699,7 @@ export default function RadioFrontend({
         params.append('limit', '12');
         
         logger.log('🏳️ Using country fallback for nearby stations:', countryForNearby);
-        const response = await fetch(`/api/stations/nearby?${params}`);
+        const response = await fetch(`/api/stations/nearby?${params}&slim=1`);
         if (!response.ok) throw new Error('Failed to fetch country stations');
         const data = await response.json();
         logger.log('✅ Country nearby stations found:', data.length);
@@ -718,13 +717,13 @@ export default function RadioFrontend({
     queryKey: ['/api/stations/popular', selectedCountry, 'initial'],
     enabled: shouldLoadDiscoverableGenres, // DEFERRED
     queryFn: async () => {
-      // PageSpeed 2026-07-03: served from the shared page-1 pool
-      // (one limit=200 request per country) instead of a dedicated
-      // limit=12 request — identical rows, one fewer ~5s mobile fetch.
+      // The home page displays only twelve popular stations. Its former
+      // shared 200-row recommendation pool downloaded 188 unused rows.
       const countryName = selectedCountry === 'all' ? 'global' : selectedCountry;
-      const stations = (await getPrecomputedStationsSlice(countryName, 12)) as any[];
-      logger.log(`✅ Popular Stations (pooled): ${stations.length} stations`, stations.map((s: any) => s.name).slice(0, 5));
-      return stations;
+      const response = await fetch(`/api/stations/precomputed?countryName=${encodeURIComponent(countryName)}&page=1&limit=12&slim=1`);
+      if (!response.ok) throw new Error('Failed to fetch popular stations');
+      const result = await response.json();
+      return (result.data || []) as any[];
     },
     staleTime: 7 * 24 * 60 * 60 * 1000, // Cache for 7 days
     gcTime: 7 * 24 * 60 * 60 * 1000, // Keep in cache for 7 days

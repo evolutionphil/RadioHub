@@ -384,100 +384,15 @@ export class PrecomputedStationsService {
    * Stores top stations for pagination (limit: GLOBAL_STATIONS_LIMIT)
    */
   static async computeGlobalStations(): Promise<PrecomputedCountryData> {
-    logger.log('🌍 Computing global stations cache (batched per-country)...');
+    logger.log('🌍 Computing global stations cache (native PostgreSQL ranking)...');
     const startTime = Date.now();
 
-    // BATCH STRATEGY (2026-05-11): the previous single-pipeline aggregation
-    //   { $match: { lastCheckOk: true } } → $sort { hasLogo:-1, votes:-1 } → $limit 2000
-    // routinely tripped Mongo's 32MB in-memory sort cap on prod
-    // (`QueryExceededMemoryLimitNoDiskUseAllowed`, code 292) because the
-    // multi-planner sometimes picked an in-memory sort plan over the
-    // available `{ lastCheckOk:1, hasLogo:-1, votes:-1 }` index.
-    //
-    // Instead of opting into disk-spill (which the user explicitly rejected),
-    // we now collect the global top list COUNTRY BY COUNTRY: each per-country
-    // sort runs against the `{ country:1, lastCheckOk:1, votes:-1 }` index
-    // and processes ~hundreds-to-low-thousands of docs — well under the cap.
-    // We periodically trim the running candidate pool to keep its memory
-    // footprint bounded too.
-    const PER_COUNTRY_LIMIT = 200;             // top stations to take per country
-    const TRIM_THRESHOLD = GLOBAL_STATIONS_LIMIT * 4; // start trimming when pool grows
-
-    const PROJECT = {
-      _id: 1,
-      slug: 1,
-      name: 1,
-      url: 1,
-      url_resolved: 1,
-      favicon: 1,
-      logo: 1,
-      country: 1,
-      state: 1,
-      votes: 1,
-      hasLogo: 1,
-      tags: 1,
-      codec: 1,
-      bitrate: 1,
-      logoAssets: 1,
-      // Re-audit fix: project noIndex so downstream consumers (e.g. the
-      // /stations crawl hub) can exclude explicitly-noindexed stations. The
-      // $match below also drops them at source.
-      noIndex: 1,
-    } as const;
-
-    const trimPool = (pool: any[]): any[] => {
-      pool.sort((a, b) => {
-        const logoDiff = (b.hasLogo ? 1 : 0) - (a.hasLogo ? 1 : 0);
-        if (logoDiff !== 0) return logoDiff;
-        return (b.votes ?? 0) - (a.votes ?? 0);
-      });
-      if (pool.length > GLOBAL_STATIONS_LIMIT) {
-        pool.length = GLOBAL_STATIONS_LIMIT;
-      }
-      return pool;
-    };
-
-    const countries = (await pgCatalog().groupCount('country', { lastCheckOk: true })).map(row => row._id);
-    const validCountries = countries
-      .filter((c: any) => c && typeof c === 'string' && c.trim().length > 0)
-      .map((c: any) => c.trim());
-
-    let pool: any[] = [];
-    let processed = 0;
-    let perCountryFailures = 0;
-
-    for (const country of validCountries) {
-      try {
-        const batch = await pgCatalog().find({ country, lastCheckOk: true, noIndex: { $ne: true } },
-          { sort: { hasLogo: -1, votes: -1 }, limit: PER_COUNTRY_LIMIT, fields: [...Object.keys(PROJECT), 'urlResolved'] });
-        for (const station of batch) station.url_resolved = station.urlResolved;
-        if (batch.length > 0) pool.push(...batch);
-      } catch (err) {
-        perCountryFailures++;
-        logger.warn(`⚠️ global-batch: ${country} failed — ${(err as Error).message}`);
-      }
-
-      processed++;
-      if (pool.length > TRIM_THRESHOLD) {
-        pool = trimPool(pool);
-      }
-
-      // tiny yield to avoid hogging the event loop on large country lists
-      if (processed % 25 === 0) {
-        await sleep(20);
-      }
-    }
-
-    pool = trimPool(pool);
-    const stations = pool;
-
-    // Get total count for pagination info
-    const totalCount = await pgCatalog().count({ lastCheckOk: true });
-    if (perCountryFailures > 0) {
-      logger.warn(
-        `⚠️ global-batch: ${perCountryFailures}/${validCountries.length} per-country batches failed — using best-effort merged top ${stations.length}`,
-      );
-    }
+    // Rank compact IDs once, retain country diversity, then fetch only the
+    // winning cards. Never cache a partial country merge after a DB failure.
+    const [stations, totalCount] = await Promise.all([
+      pgCatalog().globalStationCards(GLOBAL_STATIONS_LIMIT, 200),
+      pgCatalog().count({ lastCheckOk: true }),
+    ]);
 
     const data: PrecomputedCountryData = {
       stations: stations as PrecomputedStation[],

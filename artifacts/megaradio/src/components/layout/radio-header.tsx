@@ -14,6 +14,7 @@ import { useSeoRouting } from "@/hooks/useSeoRouting";
 import { URL_TRANSLATIONS } from "@workspace/seo-shared/url-translations";
 import { getImageUrl, getUserDisplayName } from "@/lib/utils";
 import { getStationUrl } from "@/utils/slugs";
+import { getStationLogoUrl } from "@/components/ui/station-logo";
 import { HighlightMatch } from "@/components/HighlightMatch";
 import { getCountryCodeFromApiName, getLanguageForCountry } from "@workspace/seo-shared/seo-config";
 import {
@@ -836,7 +837,7 @@ export default function RadioHeader({
               <Link href={getLocalizedUrl("/")} className="not-active flex flex-shrink-0 items-center">
                 <div className="relative flex-shrink-0">
                   <img
-                    className="w-8 h-8 md:w-10 md:h-10 lg:w-[50px] lg:h-[50px] flex-shrink-0 rounded-[6px] relative z-10"
+                    className="w-8 h-8 md:w-10 md:h-10 lg:w-[50px] lg:h-[50px] object-contain flex-shrink-0 rounded-[6px] relative z-10"
                     src="/header-logo-80w.webp"
                     width="50"
                     height="50"
@@ -1475,10 +1476,10 @@ export default function RadioHeader({
                           }}
                         >
                           <img
-                            src={station.localImagePath ? `/station-images/${station.localImagePath}` : 
-                                 (station.favicon && station.favicon.trim() !== '' && station.favicon !== 'null' && station.favicon !== 'undefined') ? 
-                                 getImageUrl(station.favicon) : '/images/no-image.webp'}
+                            src={getStationLogoUrl(station, 48)}
                             alt={station.name}
+                            width={40}
+                            height={40}
                             className="w-10 h-10 rounded-lg object-cover mr-3 flex-shrink-0"
                             onError={(e) => {
                               (e.target as HTMLImageElement).src = '/images/no-image.webp';

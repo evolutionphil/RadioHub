@@ -39,7 +39,7 @@ async function fetchPool(countryName: string): Promise<PoolResponse> {
   let p = poolInflight.get(countryName);
   if (!p) {
     p = fetch(
-      `/api/stations/precomputed?countryName=${encodeURIComponent(countryName)}&page=1&limit=${POOL_LIMIT}`,
+      `/api/stations/precomputed?countryName=${encodeURIComponent(countryName)}&page=1&limit=${POOL_LIMIT}&slim=1`,
     )
       .then((r) => {
         if (!r.ok) throw new Error(`precomputed pool fetch failed (${r.status})`);

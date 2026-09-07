@@ -79,7 +79,7 @@ export default function RecommendationsPage({
   const { data: allGlobalStationsForMoods = [] } = useQuery<any[]>({
     queryKey: ['/api/stations/precomputed', 'global', 200, 'mood-pool'],
     queryFn: async () => {
-      const response = await fetch('/api/stations/precomputed?countryName=global&page=1&limit=200');
+      const response = await fetch('/api/stations/precomputed?countryName=global&page=1&limit=200&slim=1');
       if (!response.ok) throw new Error('Failed to fetch mood pool');
       const result = await response.json();
       return result.data || [];
@@ -159,7 +159,7 @@ export default function RecommendationsPage({
       
       // Final fallback to precomputed cache (high-quality stations)
       const countryParam = selectedCountry === 'all' ? 'global' : selectedCountry;
-      const response = await fetch(`/api/stations/precomputed?countryName=${countryParam}&page=1&limit=12`);
+      const response = await fetch(`/api/stations/precomputed?countryName=${countryParam}&page=1&limit=12&slim=1`);
       if (!response.ok) throw new Error(t('error_fetch_personalized_stations', 'Failed to fetch personalized stations'));
       const result = await response.json();
       return result.data || [];
@@ -174,7 +174,7 @@ export default function RecommendationsPage({
     queryKey: ['/api/stations/trending', selectedCountry],
     queryFn: async () => {
       const countryParam = selectedCountry === 'all' ? 'global' : selectedCountry;
-      const response = await fetch(`/api/stations/precomputed?countryName=${countryParam}&page=1&limit=50`);
+      const response = await fetch(`/api/stations/precomputed?countryName=${countryParam}&page=1&limit=50&slim=1`);
       if (!response.ok) throw new Error('Failed to fetch trending stations');
       const result = await response.json();
       return result.data || [];
@@ -187,7 +187,7 @@ export default function RecommendationsPage({
     queryKey: ['/api/stations/discovery', selectedCountry],
     queryFn: async () => {
       const countryParam = selectedCountry === 'all' ? 'global' : selectedCountry;
-      const response = await fetch(`/api/stations/precomputed?countryName=${countryParam}&page=1&limit=100`);
+      const response = await fetch(`/api/stations/precomputed?countryName=${countryParam}&page=1&limit=100&slim=1`);
       if (!response.ok) throw new Error('Failed to fetch discovery stations');
       const result = await response.json();
       return result.data || [];
@@ -225,7 +225,7 @@ export default function RecommendationsPage({
     queryKey: ['/api/stations/default-recommendations', selectedCountry],
     queryFn: async () => {
       const countryParam = selectedCountry === 'all' ? 'global' : selectedCountry;
-      const response = await fetch(`/api/stations/precomputed?countryName=${countryParam}&page=1&limit=12`);
+      const response = await fetch(`/api/stations/precomputed?countryName=${countryParam}&page=1&limit=12&slim=1`);
       if (!response.ok) throw new Error('Failed to fetch default stations');
       const result = await response.json();
       return result.data || [];

@@ -2,6 +2,7 @@ import NodeCache from 'node-cache';
 import { createClient } from 'redis';
 import { logger } from './utils/logger';
 import { startOperation, endOperation } from './utils/operation-tracker';
+import { BoundedValueCache } from './utils/bounded-value-cache';
 
 // In-memory cache with TTL
 // INCIDENT 2026-05-14 round 8: post-failover RSS climbed to 745MB and
@@ -21,6 +22,9 @@ const memoryCache = new NodeCache({
   useClones: false,
   maxKeys: 500
 });
+// Redis is optional. Without this bounded tier, every >512KB catalog miss
+// rebuilt the same list because set() silently skipped the only active cache.
+const largeValueCache = new BoundedValueCache();
 
 // Redis client for production (optional)
 let redisClient: any = null;
@@ -57,6 +61,8 @@ export class CacheManager {
       if (memoryResult !== undefined) {
         return memoryResult;
       }
+      const largeResult = largeValueCache.get<T>(key);
+      if (largeResult !== undefined) return largeResult;
 
       if (redisClient && redisClient.isOpen) {
         const redisResult = await redisClient.get(key);
@@ -84,6 +90,8 @@ export class CacheManager {
           }
           if (redisResult.length < 256_000) {
             try { memoryCache.set(key, parsed, 300); } catch {}
+          } else {
+            largeValueCache.set(key, parsed, redisResult.length * 2, 300);
           }
           return parsed;
         }
@@ -99,7 +107,7 @@ export class CacheManager {
   // Check if cache needs refresh (TTL below threshold)
   static needsRefresh(key: string, threshold: number = 60): boolean {
     try {
-      const ttl = memoryCache.getTtl(key);
+      const ttl = memoryCache.getTtl(key) ?? largeValueCache.getTtl(key);
       if (ttl === undefined) return true; // No cache, needs refresh
       
       const remainingSeconds = Math.max(0, (ttl - Date.now()) / 1000);
@@ -137,6 +145,11 @@ export class CacheManager {
 
     const isLargeValue = payloadBytes > 512_000;
 
+    // Invalidate both tiers before replacing, including oversize replacements.
+    // Otherwise a formerly-small value can survive a later large write.
+    memoryCache.del(key);
+    largeValueCache.delete(key);
+
     // Memory write — independent failure path. NodeCache may throw ECACHEFULL
     // if maxKeys is exceeded; that must NOT prevent the Redis write.
     if (!isLargeValue) {
@@ -144,6 +157,8 @@ export class CacheManager {
         const memTtl = Math.min(ttl, 3600);
         memoryCache.set(key, value, memTtl);
       } catch {}
+    } else {
+      largeValueCache.set(key, value, payloadBytes, ttl);
     }
 
     // Redis write — independent failure path.
@@ -350,6 +365,7 @@ export class CacheManager {
 
   // Delete cached data
   static async del(key: string): Promise<void> {
+    largeValueCache.delete(key);
     try {
       memoryCache.del(key);
       
@@ -363,6 +379,7 @@ export class CacheManager {
 
   // Clear cache by pattern
   static async clearByPattern(pattern: string): Promise<void> {
+    largeValueCache.clearByPattern(pattern);
     try {
       // Clear memory cache
       const keys = memoryCache.keys();
@@ -413,7 +430,8 @@ export class CacheManager {
     return {
       memory: {
         keys: memoryCache.keys().length,
-        stats: memoryCache.getStats()
+        stats: memoryCache.getStats(),
+        largeValues: largeValueCache.stats(),
       },
       redis: {
         connected: redisClient && redisClient.isOpen,

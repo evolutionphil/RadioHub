@@ -1,13 +1,15 @@
-import { useState, useEffect, memo } from "react";
+import { useState, useEffect, memo, lazy, Suspense } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { useNotificationService } from "@/services/NotificationService";
 import { apiRequest } from "@/lib/queryClient";
-import AuthModal from "@/components/auth/auth-modal";
 import { useTranslation } from "@/hooks/useTranslation";
-import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { trackStationFavorite } from "@/lib/analytics";
 import fav60Icon from "@assets/fav60.png";
+
+// A closed auth dialog must not download/initialize forms for every station
+// card. After the first open keep it mounted, preserving form state on close.
+const AuthModal = lazy(() => import("@/components/auth/auth-modal"));
 
 interface FavoriteButtonProps {
   stationId: string;
@@ -22,10 +24,10 @@ const FavoriteButton = memo(function FavoriteButton({ stationId, className = "",
   // Figma: mobile icon 18.74x18.74, default icon 24x24
   const iconSize = iconSizeOverride || (size === 'mobile' ? '18.74px' : '24px');
   const [showAuthModal, setShowAuthModal] = useState(false);
+  const [hasOpenedAuthModal, setHasOpenedAuthModal] = useState(false);
   const [pendingFavorite, setPendingFavorite] = useState<string | null>(null);
   const { toast } = useToast();
   const notificationService = useNotificationService();
-  const { sendTestNotification } = usePushNotifications();
   const queryClient = useQueryClient();
   const { t } = useTranslation();
 
@@ -214,6 +216,7 @@ const FavoriteButton = memo(function FavoriteButton({ stationId, className = "",
     if (!user) {
       // Store which station should be favorited after login
       setPendingFavorite(stationId);
+      setHasOpenedAuthModal(true);
       setShowAuthModal(true);
       return;
     }
@@ -259,7 +262,7 @@ const FavoriteButton = memo(function FavoriteButton({ stationId, className = "",
         )}
       </button>
 
-      <AuthModal
+      {hasOpenedAuthModal && <Suspense fallback={null}><AuthModal
         isOpen={showAuthModal}
         onClose={() => {
           setShowAuthModal(false);
@@ -270,7 +273,7 @@ const FavoriteButton = memo(function FavoriteButton({ stationId, className = "",
           // Don't close modal here - the auth modal will handle it
           // The useEffect will trigger the favorite addition after login
         }}
-      />
+      /></Suspense>}
     </>
   );
 });

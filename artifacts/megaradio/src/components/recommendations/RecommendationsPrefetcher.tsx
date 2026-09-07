@@ -13,10 +13,9 @@ import { getPrecomputedStationsSlice } from '@/lib/precomputed-pool';
  * Why a separate component:
  *   - Mounted once at the top of <App> (next to TranslationPreloader)
  *     so it does NOT re-run on every route change.
- *   - All work is gated behind `requestIdleCallback` AND the `load`
- *     event so it cannot regress LCP / TBT / PageSpeed scores. The
- *     fetches kick off only after the browser has finished painting,
- *     bundling, and the main thread has been idle for ≥1s.
+ *   - Speculative work waits for load and interaction (or an 8s grace
+ *     period), then idle. Window load alone can precede async page content
+ *     and is not proof that LCP has finished. Actual route queries never wait.
  *   - QueryKeys, URLs, limits and 7-day staleTimes mirror exactly
  *     what `pages/recommendations.tsx` registers, so the cache hit
  *     is byte-identical and TanStack Query reuses the data instead
@@ -86,25 +85,41 @@ export function RecommendationsPrefetcher() {
       });
     };
 
-    // Two-stage gate: wait for full window load, THEN for the main
-    // thread to be idle. Keeps PageSpeed metrics (LCP/FID/CLS/TBT)
-    // untouched.
+    let loaded = document.readyState === 'complete';
+    let interacted = false;
+    let scheduled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let idleId: number | undefined;
     const scheduleWhenIdle = () => {
+      if (scheduled) return;
+      scheduled = true;
+      clearTimeout(timer);
       const ric: any = (window as any).requestIdleCallback;
       if (typeof ric === 'function') {
-        ric(prefetchAll, { timeout: 4000 });
+        idleId = ric(prefetchAll, { timeout: 4000 });
       } else {
         // Safari: no requestIdleCallback. Defer to a low-priority
         // setTimeout AFTER the load event already fired.
-        setTimeout(prefetchAll, 1500);
+        timer = setTimeout(prefetchAll, 1500);
       }
     };
-
-    if (document.readyState === 'complete') {
-      scheduleWhenIdle();
-    } else {
-      window.addEventListener('load', scheduleWhenIdle, { once: true });
-    }
+    const handleInteraction = () => { interacted = true; if (loaded) scheduleWhenIdle(); };
+    const handleLoad = () => {
+      loaded = true;
+      if (interacted) scheduleWhenIdle();
+      else timer = setTimeout(scheduleWhenIdle, 8000);
+    };
+    window.addEventListener('pointerdown', handleInteraction, { once: true, passive: true });
+    window.addEventListener('keydown', handleInteraction, { once: true });
+    if (loaded) handleLoad();
+    else window.addEventListener('load', handleLoad, { once: true });
+    return () => {
+      clearTimeout(timer);
+      if (idleId !== undefined) window.cancelIdleCallback(idleId);
+      window.removeEventListener('load', handleLoad);
+      window.removeEventListener('pointerdown', handleInteraction);
+      window.removeEventListener('keydown', handleInteraction);
+    };
   }, [queryClient]);
 
   return null;

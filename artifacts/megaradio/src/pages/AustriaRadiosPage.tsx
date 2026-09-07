@@ -87,7 +87,7 @@ export default function AustriaRadiosPage() {
         params.append('countryName', 'Austria');
         params.append('page', currentPage.toString());
         params.append('limit', '24');
-        const response = await fetch(`/api/stations/precomputed?${params}`);
+        const response = await fetch(`/api/stations/precomputed?${params}&slim=1`);
         if (response.ok) {
           const result = await response.json();
           if (result.success && result.data.length > 0) {

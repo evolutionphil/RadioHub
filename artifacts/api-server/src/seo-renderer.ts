@@ -1,5 +1,6 @@
 import { generateSeoTags, getLanguageFromPath, DEFAULT_LANGUAGE, generateLanguageUrls, COUNTRY_TO_LANGUAGE, SEO_LANGUAGES, generateLocalizedStationTitle, truncateAtWordBoundary, LOCALIZED_LOGO_WORD, LOCALIZED_FLAG_WORD } from '@workspace/seo-shared/seo-config';
 import { getStationImageAlt } from '@workspace/seo-shared/station-image-alt';
+import { getStationBroadcastLanguages } from '@workspace/seo-shared/structured-data';
 import { pgSeoCatalog } from './data/postgres-seo-read-store';
 import { pgStoredGenreBySlug } from './data/postgres-taxonomy-store';
 import { pgSeoMetadata } from './data/postgres-content-store';
@@ -32,6 +33,7 @@ type LeanSeoMetadataDoc = Record<string, any>;
 import { performanceCache } from './performance-cache';
 import { logger } from './utils/logger';
 import { URL_TRANSLATIONS } from '@workspace/seo-shared/url-translations';
+import { renderLegalPageHtml } from '@workspace/seo-shared/legal-content-html';
 import { trackOperation } from './utils/operation-tracker';
 import { isJunkStation } from './seo/junk-station-rules';
 import { buildGenreSeo } from '@workspace/seo-shared/genre-seo-templates';
@@ -356,10 +358,10 @@ export class SeoRenderer {
       return cachedPageData;
     }
     
-    const translations = await this.getTranslationsForLanguage(language, signal);
-    if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
-    
-    const urlTranslations = await performanceCache.getUrlTranslations();
+    const [translations, urlTranslations] = await Promise.all([
+      this.getTranslationsForLanguage(language, signal),
+      performanceCache.getUrlTranslations(),
+    ]);
     if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
     
     // Detect if this is a country-specific URL (e.g., /al/zhanret)
@@ -1108,6 +1110,8 @@ export class SeoRenderer {
       pageType = 'faq';
     } else if (cleanPath === '/' || cleanPath === '') {
       pageType = 'home';
+      // Independent reads: taxonomy must not wait behind the station query.
+      await Promise.all([(async () => {
       try {
         const popularStations = await withSignal<LeanStationCard[]>(
           pgSeoCatalog().find({
@@ -1125,6 +1129,7 @@ export class SeoRenderer {
       } catch (error: any) {
         if (error?.name === 'AbortError' || signal?.aborted) throw error;
       }
+      })(), (async () => {
       // Inject top genres so Googlebot sees real genre content in SSR HTML
       // Uses the precomputed cache (no live DB hit on cache hit).
       try {
@@ -1135,6 +1140,7 @@ export class SeoRenderer {
           count: g.total_stations || g.stationCount || 0,
         }));
       } catch (_) { /* non-blocking — falls back to hardcoded genre list below */ }
+      })()]);
     }
     
     // Generate enhanced SEO tags with additional context
@@ -2872,6 +2878,11 @@ export class SeoRenderer {
         }
         break;
 
+      case 'terms':
+      case 'privacy':
+        content = renderLegalPageHtml(pageType, language);
+        break;
+
       case 'search':
         {
           const langPrefix = `/${language}`;
@@ -3540,6 +3551,7 @@ export class SeoRenderer {
             }
           : null;
 
+      const broadcastLanguages = getStationBroadcastLanguages(stationData);
       radioStationSchema = {
         "@context": "https://schema.org",
         "@type": "RadioBroadcastService",
@@ -3569,12 +3581,9 @@ export class SeoRenderer {
           }
         },
         "category": stationKeywords,
-        // Item 3 (re-audit 2026-06-20): inLanguage must describe the language of
-        // the RENDERED content, i.e. the PAGE language (varies per /xx/ variant).
-        // stationData.language is a per-station value identical across all 14
-        // variants and frequently a full English name ("english") or garbage —
-        // invalid for BCP-47. Emit the clean page language code instead.
-        "inLanguage": language,
+        // BroadcastService describes the actual stream. The translated page's
+        // language belongs on WebPage below; unknown broadcast language is omitted.
+        ...(broadcastLanguages && { "inLanguage": broadcastLanguages }),
         // aggregateRating IS schema.org-valid on Service (RadioBroadcastService
         // extends Service). The rich-result-eligible copy lives on the
         // LocalBusiness entity below; this one keeps the primary entity

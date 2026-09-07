@@ -152,7 +152,7 @@ export default function ProfileDiscover() {
       // matched country:'TR', found nothing, and "Popular Radio Stations"
       // rendered permanently empty. The endpoint has a countryCode param
       // that resolves codes properly; use it.
-      const response = await fetch(`/api/stations/precomputed?countryCode=${countryCode}&page=1&limit=50`, {
+      const response = await fetch(`/api/stations/precomputed?countryCode=${countryCode}&page=1&limit=50&slim=1`, {
         credentials: "include",
       });
       if (!response.ok) throw new Error("Failed to fetch country stations");

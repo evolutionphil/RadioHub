@@ -1,8 +1,45 @@
+import { SEO_LANGUAGES } from './seo-config';
+
 // Structured data schemas for SEO rich snippets
 export interface StructuredDataConfig {
   "@context"?: string;
   "@type"?: string;
   [key: string]: any;
+}
+
+const knownLanguageNames = new Map<string, string>();
+let englishLanguageNames: Intl.DisplayNames | undefined;
+try { englishLanguageNames = new Intl.DisplayNames(['en'], { type: 'language', fallback: 'none' }); } catch { /* Older browsers may lack DisplayNames. */ }
+for (const language of SEO_LANGUAGES) {
+  knownLanguageNames.set(language.name.toLowerCase(), language.code);
+  const englishName = englishLanguageNames?.of(language.code);
+  if (englishName) knownLanguageNames.set(englishName.toLowerCase(), language.code);
+}
+
+/** The broadcast's language is station data, not the language of its translated webpage. */
+export function getStationBroadcastLanguages(station: { languageCodes?: unknown; languagecodes?: unknown; language?: unknown }): string | string[] | undefined {
+  const normalize = (raw: unknown): string[] => {
+    const values = typeof raw === 'string' ? raw.split(',') : Array.isArray(raw) ? raw : [];
+    const languages = new Set<string>();
+    for (const value of values.slice(0, 32)) {
+      if (typeof value !== 'string' || value.length > 64) continue;
+      const text = value.trim();
+      const named = knownLanguageNames.get(text.toLowerCase());
+      if (named) { languages.add(named); continue; }
+      // Accept actual ISO language codes/BCP-47 regional or script variants,
+      // not arbitrary prose, country names, HTML, or unknown placeholders.
+      if (!/^[a-z]{2,3}(?:-[a-z0-9]{2,8})*$/i.test(text)) continue;
+      try {
+        const code = Intl.getCanonicalLocales(text)[0];
+        if (!code || code === 'und' || (englishLanguageNames && !englishLanguageNames.of(code))) continue;
+        languages.add(code);
+      } catch { /* Invalid source language: omit rather than infer from country/UI. */ }
+    }
+    return [...languages];
+  };
+  const codes = normalize(station.languageCodes ?? station.languagecodes);
+  const languages = codes.length ? codes : normalize(station.language);
+  return languages.length === 1 ? languages[0] : languages.length ? languages : undefined;
 }
 
 // Organization schema for Mega Radio brand - with full multilingual support
@@ -73,6 +110,7 @@ export function generateRadioStationSchema(
   currentUrl?: string,
   metaDescription?: string
 ): StructuredDataConfig {
+  const broadcastLanguages = getStationBroadcastLanguages(station);
   // Priority 1: Use the pre-computed meta description (already translated and optimized for the language)
   // Priority 2: Use AI-generated custom description if available
   // Priority 3: Use station's about/description field if available
@@ -163,7 +201,7 @@ export function generateRadioStationSchema(
     "image": station.favicon || `https://${domain}/images/no-image.webp`,
     "broadcaster": broadcaster,
     "category": keywords,
-    "inLanguage": language, // BCP-47 page language (en, tr, …)
+    ...(broadcastLanguages && { "inLanguage": broadcastLanguages }),
     "potentialAction": {
       "@type": "ListenAction",
       "target": {

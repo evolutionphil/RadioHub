@@ -91,4 +91,16 @@ describe('shared Turkish translation query lifecycle', () => {
     await act(async () => { result.refetch(); });
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['/api/translations', 'tr'] });
   });
+
+  it('keeps the translator stable across unrelated rerenders and updates on dictionary refresh', async () => {
+    client.setQueryData(['/api/translations', 'tr', 'critical'], { hello: 'merhaba' });
+    client.setQueryData(['/api/translations', 'tr'], { hello: 'merhaba' });
+    const { rerender } = renderConsumers(1);
+    const firstTranslate = result.t;
+    rerender(<QueryClientProvider client={client}>{[<Consumer key={0} />]}</QueryClientProvider>);
+    expect(result.t).toBe(firstTranslate);
+    await act(async () => { client.setQueryData(['/api/translations', 'tr'], { hello: 'Güncel metin' }); });
+    await waitFor(() => expect(result.t('hello')).toBe('Güncel metin'));
+    expect(result.t).not.toBe(firstTranslate);
+  });
 });

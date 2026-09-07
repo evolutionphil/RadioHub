@@ -19,7 +19,9 @@ sharp.concurrency(1);
 const gunzip = promisify(zlib.gunzip);
 const inflate = promisify(zlib.inflate);
 
-const LOGO_SIZES = [256] as const;
+// Publish only successfully uploaded resolutions. Existing 256-only records
+// stay valid; future UUID-scoped jobs also serve small cards without upscaling.
+const LOGO_SIZES = [48, 96, 256] as const;
 const LOGOS_DIR = path.join(process.cwd(), 'public', 'station-logos');
 
 // Optional external egress proxy for logo fetching (2026-07-01). Many favicon
@@ -545,7 +547,7 @@ export class LogoProcessor {
       if (useS3) {
         // Upload to S3 — store full URLs directly in logoAssets
         const s3Key = (filename: string) => `station-logos/${folderName}/${filename}`;
-        logoAssets.original = await uploadToS3(s3Key(originalFilename), downloadResult.buffer, 'image/webp');
+        logoAssets.original = await uploadToS3(s3Key(originalFilename), downloadResult.buffer, this.getContentTypeFromFormat(validation.format));
         for (const size of LOGO_SIZES) {
           const filename = `logo-${size}.webp`;
           const buf = await this.safeProcessImage(downloadResult.buffer, size);
@@ -641,13 +643,14 @@ export class LogoProcessor {
       if (!claim) return { success: false, error: 'Station missing or logo already claimed by another worker' };
       claimedFavicon = claim.favicon;
 
-      const ext = path.extname(originalFilename) || '.png';
+      // Trust validated bytes, not a user-supplied extension (e.g. PNG named .jpg).
+      const ext = this.getExtensionFromFormat(validation.format) || path.extname(originalFilename) || '.png';
       const originalFile = `original${ext}`;
       const logoAssets: Record<string, string> = { folder: folderName };
 
       if (useS3) {
         const s3Key = (filename: string) => `station-logos/${folderName}/${filename}`;
-        logoAssets.original = await uploadToS3(s3Key(originalFile), buffer, 'image/webp');
+        logoAssets.original = await uploadToS3(s3Key(originalFile), buffer, this.getContentTypeFromFormat(validation.format));
         for (const size of LOGO_SIZES) {
           const filename = `logo-${size}.webp`;
           const buf = await this.safeProcessImage(buffer, size);
@@ -982,9 +985,18 @@ export class LogoProcessor {
       'gif': '.gif',
       'tiff': '.tiff',
       'avif': '.avif',
-      'heif': '.heif'
+      'heif': '.heif',
+      'ico': '.ico'
     };
     return formatMap[format] || null;
+  }
+
+  private getContentTypeFromFormat(format?: string): string {
+    const contentTypes: Record<string, string> = {
+      jpeg: 'image/jpeg', jpg: 'image/jpeg', png: 'image/png', webp: 'image/webp',
+      gif: 'image/gif', tiff: 'image/tiff', avif: 'image/avif', heif: 'image/heif', ico: 'image/x-icon',
+    };
+    return contentTypes[format || ''] || 'application/octet-stream';
   }
 
   private getExtension(url: string): string {

@@ -1,7 +1,7 @@
 import CacheManager from '../cache';
 import { pgCatalog } from '../data/postgres-catalog-store';
+import { POPULAR_RANK_FIELDS, PostgresPopularGlobalCandidates } from '../data/postgres-popular-global-candidates';
 import { logger } from '../utils/logger';
-import { sleep } from '../utils/event-loop-yield';
 import { trackOperation } from '../utils/operation-tracker';
 import { isJunkStation } from '../seo/junk-station-rules';
 
@@ -14,7 +14,6 @@ const POPULAR_PROJECTION = {
 } as const;
 
 const PER_COUNTRY_LIMIT = 40;
-const POOL_TRIM_THRESHOLD = 800;
 // Task spec: 7d fresh / 28d stale. The cron refresh runs every 4h, so
 // the envelope is virtually always within the fresh window in practice;
 // the long stale window is a safety net for sustained cluster outages.
@@ -53,14 +52,12 @@ export class PrecomputedPopularGlobalService {
       // Featured global pool — small (~hundreds), one cheap aggregate.
       let featured: any[] = [];
       try {
-        featured = await pgCatalog().find({ lastCheckOk: true, isFeatured: true, showInGlobalPopular: true, noIndex: { $ne: true }, slug: { $exists: true, $ne: '' } }, { sort: { votes: -1, clickCount: -1 }, limit: maxLimit * 4, fields: Object.keys(POPULAR_PROJECTION) });
+        featured = await pgCatalog().find({ lastCheckOk: true, isFeatured: true, showInGlobalPopular: true, noIndex: { $ne: true }, slug: { $exists: true, $ne: '' } }, { sort: { votes: -1, clickCount: -1 }, limit: maxLimit * 4, fields: POPULAR_RANK_FIELDS });
       } catch (err: any) {
         logger.warn(`[popular-global] featured aggregate failed: ${err?.message || 'unknown'}`);
       }
 
-      // Regular pool — collect per country to use the country-prefixed index
-      // and avoid the global $sort hot path that the M10 multiplanner
-      // routinely times out on (code 50, 15s budget).
+      // Preserve the existing country-key normalization and iteration order.
       let countries: string[] = [];
       try {
         const raw = (await pgCatalog().groupCount('country', { lastCheckOk: true })).map(row => row._id);
@@ -73,31 +70,27 @@ export class PrecomputedPopularGlobalService {
 
       let pool: any[] = [];
       let perCountryFailures = 0;
-      let processed = 0;
       const targetPoolSize = maxLimit * 4;
 
-      for (const country of countries) {
-        try {
-          const batch = await pgCatalog().find({ country, lastCheckOk: true, isFeatured: { $ne: true }, noIndex: { $ne: true }, slug: { $exists: true, $ne: '' } }, { sort: { votes: -1, clickCount: -1 }, limit: PER_COUNTRY_LIMIT, fields: Object.keys(POPULAR_PROJECTION) });
-          if (batch.length > 0) pool.push(...batch);
-        } catch (err: any) {
-          perCountryFailures++;
-        }
-
-        processed++;
-        if (pool.length > POOL_TRIM_THRESHOLD) {
-          pool = trimPool([...featured, ...pool], targetPoolSize);
-          // Re-separate so featured doesn't get re-merged repeatedly
-          featured = pool.filter(s => s.isFeatured && s.showInGlobalPopular);
-          pool = pool.filter(s => !(s.isFeatured && s.showInGlobalPopular));
-        }
-        if (processed % 25 === 0) await sleep(20);
+      try {
+        pool = await new PostgresPopularGlobalCandidates().regular(countries, PER_COUNTRY_LIMIT);
+      } catch (err: any) {
+        perCountryFailures = countries.length;
+        logger.warn(`[popular-global] regular ranking failed: ${err?.message || 'unknown'}`);
       }
 
+      // Top-k pruning is equivalent to the former incremental trims, but only
+      // these bounded winners need their full response fields/descriptions.
+      const ranked = trimPool([...featured, ...pool], targetPoolSize);
+      const hydrated = ranked.length ? await pgCatalog().find(
+        { _id: { $in: [...new Set(ranked.map(s => s._id))] } },
+        { fields: Object.keys(POPULAR_PROJECTION), limit: ranked.length },
+      ) : [];
+      const byId = new Map(hydrated.map(station => [station._id, station]));
       // Drop codec-suffix / test-feed / song-name junk that the DB-level
       // noIndex filter can't catch (these stations resolve to 410 Gone on
       // their station pages, so linking to them creates broken internal links).
-      const gated = trimPool([...featured, ...pool], targetPoolSize)
+      const gated = ranked.map(station => byId.get(station._id)).filter(Boolean)
         .filter((s) => !isJunkStation(s));
       const merged = gated;
 

@@ -4,6 +4,18 @@ export type StationReadMode = "postgres";
 export const stationReadMode: StationReadMode = "postgres";
 export const isPostgresStationReadMode = (): boolean => true;
 
+// List cards/player need these fields, not every station's 14-language SEO
+// article or duplicated archival source. Detailed station reads stay full.
+const CARD_COLUMNS = `id,station_uuid,name,slug,redirect_to_slug,url,url_resolved,
+  homepage,favicon,country,country_code,state,language,language_codes,tags_raw,codec,
+  bitrate,hls,votes,click_count,click_trend,average_rating,total_ratings,last_check_ok,
+  last_check_time,latitude,longitude,has_logo,logo_assets,is_featured,
+  show_in_global_popular,no_index,created_at,updated_at`;
+const CARD_SOURCE_KEYS = ['localImagePath','logo','genre','genres','sslError','mood','countrycode'];
+const CARD_SELECTION = `${CARD_COLUMNS},COALESCE((SELECT jsonb_object_agg(k,source->k)
+  FROM unnest(ARRAY[${CARD_SOURCE_KEYS.map(key => `'${key}'`).join(',')}]::text[]) AS k
+  WHERE source ? k),'{}'::jsonb) AS source`;
+
 const boundedInteger = (value: number, fallback: number, max: number): number =>
   Number.isFinite(value) ? Math.max(1, Math.min(Math.trunc(value), max)) : fallback;
 const containsPattern = (value: string): string => `%${value.replace(/[\\%_]/g, '\\$&')}%`;
@@ -88,6 +100,7 @@ export async function getGeoStationsFromPostgres(limit: number): Promise<any[]> 
 export async function getNearbyStationsFromPostgres(options: {
   latitude?: number; longitude?: number; radiusKm: number; limit: number;
   country?: string; excludeBroken?: boolean; userCountry?: string;
+  compact?: boolean;
 }): Promise<any[]> {
   const hasCoordinates = options.latitude !== undefined || options.longitude !== undefined;
   if (!hasCoordinates) {
@@ -95,6 +108,7 @@ export async function getNearbyStationsFromPostgres(options: {
     return (await listStationsFromPostgres({
       country: options.country, excludeBroken: options.excludeBroken,
       page: 1, limit: boundedInteger(options.limit,12,50),sort: 'votes',
+      compact: options.compact,
     })).stations.map((station) => ({ ...station,distance: null }));
   }
   const lat = options.latitude!, lng = options.longitude!;
@@ -106,7 +120,7 @@ export async function getNearbyStationsFromPostgres(options: {
   const deltaLng = Math.min(180,radius/Math.max(0.01,111*Math.cos(lat*Math.PI/180)));
   const result = await getPostgresPool().query(
     `WITH candidates AS (
-       SELECT *,6371*2*asin(sqrt(LEAST(1.0,GREATEST(0.0,
+       SELECT ${options.compact ? CARD_SELECTION : '*'},6371*2*asin(sqrt(LEAST(1.0,GREATEST(0.0,
          power(sin(radians(latitude-$1)/2),2)+cos(radians($1))*cos(radians(latitude))*
          power(sin(radians(longitude-$2)/2),2))))) AS distance
        FROM stations
@@ -169,6 +183,7 @@ export interface PostgresStationListOptions {
   search?: string; sort?: string; excludeBroken?: boolean; excludeIds?: string[];
   minVotes?: number; createdAfter?: Date; page: number; limit: number;
   hasLogo?: boolean; codec?: string; minBitrate?: number;
+  compact?: boolean;
 }
 
 export async function listStationsFromPostgres(options: PostgresStationListOptions): Promise<{
@@ -228,7 +243,7 @@ export async function listStationsFromPostgres(options: PostgresStationListOptio
   const limit = boundedInteger(options.limit, 25, 500);
   // One statement gives count and page the same MVCC snapshot, including empty pages.
   const result = await getPostgresPool().query(
-    `WITH selected AS (SELECT *,row_number() OVER (ORDER BY ${order}) AS _position
+    `WITH selected AS (SELECT ${options.compact ? CARD_SELECTION : '*'},row_number() OVER (ORDER BY ${order}) AS _position
        FROM stations ${where} ORDER BY ${order} LIMIT ${bind(limit)} OFFSET ${bind((page-1)*limit)})
      SELECT selected.*,(SELECT count(*)::integer FROM stations ${where}) AS _total
      FROM (SELECT 1) anchor LEFT JOIN selected ON true ORDER BY selected._position`, values,
