@@ -981,13 +981,10 @@ app.use('/api/stream', streamServiceProxy);
          scanner. Preload it with high priority. Matches the asset used by
          radio-header.tsx (/header-logo-80w.webp, 2.6KB). -->
     <link rel="preload" as="image" href="/header-logo-80w.webp" fetchpriority="high">
-    <!-- Preload the above-the-fold Ubuntu weights the SSR body actually renders:
-         400 (body), 600 (station-grid / sub-headings), 700 (H1/H2). Previously
-         only 600 was preloaded here, so headings and body text on the SSR path
-         (100% of SEO traffic) were discovered late and swapped in after FCP. -->
+    <!-- Preload distinct above-the-fold Ubuntu files. The existing 600 and
+         700 faces have identical outlines/metrics and share the 700 URL. -->
     <link rel="preload" as="font" href="/fonts/ubuntu-400.woff2" type="font/woff2" crossorigin>
     <link rel="preload" as="font" href="/fonts/ubuntu-500.woff2" type="font/woff2" crossorigin>
-    <link rel="preload" as="font" href="/fonts/ubuntu-600.woff2" type="font/woff2" crossorigin>
     <link rel="preload" as="font" href="/fonts/ubuntu-700.woff2" type="font/woff2" crossorigin>
     ${pageType === 'home' ? '<link rel="preload" as="image" href="/images/hero-bg-430w.webp" type="image/webp" media="(max-width: 767px)" fetchpriority="high"><link rel="preload" as="image" href="/images/hero-bg.webp" type="image/webp" media="(min-width: 768px)" fetchpriority="high">' : ''}
     ${prodTags.styles}

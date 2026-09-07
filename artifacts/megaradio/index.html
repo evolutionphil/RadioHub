@@ -53,14 +53,12 @@
     <link rel="preload" href="/images/hero-bg-430w.webp" as="image" type="image/webp" media="(max-width: 767px)" fetchpriority="high">
     <link rel="preload" href="/images/hero-bg.webp" as="image" type="image/webp" media="(min-width: 768px)" fetchpriority="high">
     
-    <!-- 🚀 Preload local Ubuntu fonts for the above-the-fold weights: 400 (body),
-         600 (grid / sub-headings — was declared but preloaded nowhere), 700 (headings).
-         500 still loads via @font-face on demand; it is rarely above the fold. -->
+    <!-- Preload the three distinct local Ubuntu files. The existing 600/700
+         faces share identical outlines and metrics, and both use the 700 URL. -->
     <link rel="preload" href="/fonts/ubuntu-400.woff2" as="font" type="font/woff2" crossorigin>
     <!-- 500 is above-the-fold too: station-card titles render font-medium
          (station-card.tsx), the primary grid on home/genre/region views. -->
     <link rel="preload" href="/fonts/ubuntu-500.woff2" as="font" type="font/woff2" crossorigin>
-    <link rel="preload" href="/fonts/ubuntu-600.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="preload" href="/fonts/ubuntu-700.woff2" as="font" type="font/woff2" crossorigin>
     
     <!-- Critical above-the-fold CSS - INLINED -->

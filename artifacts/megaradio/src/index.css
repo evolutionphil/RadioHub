@@ -27,7 +27,7 @@
 @font-face {
   font-family: 'Ubuntu';
   src: local('Ubuntu SemiBold'),
-       url('/fonts/ubuntu-600.woff2') format('woff2');
+       url('/fonts/ubuntu-700.woff2') format('woff2');
   font-weight: 600;
   font-display: swap;
 }

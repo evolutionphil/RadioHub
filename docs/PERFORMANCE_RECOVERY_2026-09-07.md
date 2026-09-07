@@ -46,6 +46,13 @@ about 4.6 seconds to its first byte; warm HTML took about 0.2 seconds.
 - Image fallback failures have a short, bounded per-page negative cache.
   S3 remains preferred; new jobs publish actual 48/96/256 variants and truthful
   original MIME/extensions. Existing objects were neither deleted nor rewritten.
+- The existing 600/700 Ubuntu font files have identical rendering tables. Both
+  CSS faces now share the 700 URL and preload once, avoiding 97,072 duplicate
+  bytes without changing weights, metrics, Unicode coverage or original files.
+- Public genre navigation now uses the existing admin-managed whitelist and
+  discoverability flags. Popularity ordering happens before pagination; raw
+  taxonomy remains unchanged. Cache keys fingerprint whitelist contents so
+  edits cannot leave stale navigation. Footer labels reuse translated keys.
 
 ## Content and SEO invariants
 
@@ -61,8 +68,8 @@ below the 50MB uncompressed limit. This is not a crawl of every station URL.
 
 ## Validation and limits
 
-- Frontend full suite: 294 tests passed, including 14-locale legal SSR/SPA parity.
-- Backend focused suites: 151 tests passed, including actual PostgreSQL ranking,
+- Frontend full suite: 299 tests passed, including 14-locale legal SSR/SPA parity.
+- Backend focused suites: 157 tests passed, including actual PostgreSQL ranking,
   public response/filter/counter tests, projection parity, memory-cache limits,
   schema/SSR, static-asset cache behavior and mocked image uploads.
 - API/frontend typechecks and isolated production builds passed. Production

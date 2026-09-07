@@ -8,7 +8,7 @@ export const CRITICAL_TRANSLATION_KEYS = [
   'home', 'about', 'contact', 'login', 'register', 'logout',
   // Navigation and header
   'nav_home', 'nav_stations', 'nav_countries', 'nav_genres', 'nav_trending',
-  'nav_about', 'nav_contact', 'nav_search', 'nav_logout', 'nav_login',
+  'nav_about', 'nav_contact', 'nav_search', 'nav_logout', 'nav_login', 'nav_for_you', 'users',
   'nav_menu', 'nav_close', 'nav_language', 'nav_view_all_notifications',
   
   // Common UI buttons and labels

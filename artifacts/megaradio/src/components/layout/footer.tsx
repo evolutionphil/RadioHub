@@ -249,10 +249,10 @@ export default function Footer() {
                           standalone views), which should clear the warning
                           on the next crawl. */}
                       <Link to={getLocalizedUrl("/recommendations")} className="inline-flex items-center min-h-[44px] md:min-h-[30px] text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
-                        {ft('footer_recommendations', 'Recommendations')}
+                        {ft('footer_recommendations', t('nav_for_you', 'Recommendations'))}
                       </Link>
                       <Link to={getLocalizedUrl("/users")} className="inline-flex items-center min-h-[44px] md:min-h-[30px] text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
-                        {ft('footer_users', 'Listeners')}
+                        {ft('footer_users', t('users', 'Listeners'))}
                       </Link>
                       {/* Link to the CANONICAL legal URLs (not the /pages/*
                           duplicates). Both /terms-and-conditions and

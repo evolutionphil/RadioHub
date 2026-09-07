@@ -1,6 +1,7 @@
 import { getPostgresPool } from "../postgres-runtime";
 import { randomBytes } from 'node:crypto';
 import { SAFE_GENRE_SLUG_RE } from '../seo/genre-slug';
+import { isWhitelistedGenreSlug } from '../seo/genre-whitelist';
 
 function genreShape(row: Record<string, any>): any {
   return {
@@ -47,8 +48,16 @@ export async function pgGenres(country?: string, includeDynamic = false): Promis
   return result.rows.map(genreShape);
 }
 
+/** Public navigation must obey the same admin-managed whitelist as canonical
+ * genre pages. Raw station tags remain available to internal taxonomy work. */
+export async function pgPublicGenres(country?: string, includeDynamic = false): Promise<any[]> {
+  return (await pgGenres(country, includeDynamic)).filter(genre =>
+    genre.isDiscoverable !== false && isWhitelistedGenreSlug(genre.slug),
+  );
+}
+
 export async function pgDiscoverableGenres(country: string | undefined, limit: number): Promise<any[]> {
-  const genres = await pgGenres(country);
+  const genres = await pgPublicGenres(country);
   return genres
     .filter((genre) => genre.isDiscoverable !== false)
     .sort((a, b) => (a.displayOrder ?? 9999) - (b.displayOrder ?? 9999) || b.stationCount - a.stationCount)

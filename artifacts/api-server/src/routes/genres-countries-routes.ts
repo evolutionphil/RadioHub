@@ -1,4 +1,6 @@
 import type { Express } from "express";
+import { createHash } from 'node:crypto';
+import { getMergedWhitelist } from '../seo/genre-whitelist-store';
 import { pgRecommendationProfile, pgRecentSessionListening } from '../data/postgres-recommendation-store';
 import { SAFE_GENRE_SLUG_RE } from '../seo/genre-slug';
 import { pgCatalog } from '../data/postgres-catalog-store';
@@ -9,7 +11,12 @@ import { resolveToDbName, getAllCountryInfoFromDb } from '../utils/normalize-cou
 import { tvValidateParams, tvSlimGenre } from './shared-utils';
 import { logger } from '../utils/logger';
 import { listStationsFromPostgres } from '../data/station-read-store';
-import { pgCountryCounts, pgDiscoverableGenres, pgGenreBySlug, pgGenres, pgStoredGenreBySlug, pgCreateGenre, pgUpdateGenre, pgDeleteGenre } from '../data/postgres-taxonomy-store';
+import { pgCountryCounts, pgDiscoverableGenres, pgGenreBySlug, pgPublicGenres, pgStoredGenreBySlug, pgCreateGenre, pgUpdateGenre, pgDeleteGenre } from '../data/postgres-taxonomy-store';
+
+// Keep cached navigation aligned with admin whitelist edits without shortening
+// the existing taxonomy TTL or invalidating it on an unchanged periodic refresh.
+const publicGenreWhitelistVersion = () => createHash('sha256')
+  .update([...getMergedWhitelist()].sort().join('\0')).digest('hex').slice(0, 16);
 
 export function registerGenresCountriesRoutes(app: Express, deps: any) {
   const { requireAdmin } = deps;
@@ -212,7 +219,7 @@ export function registerGenresCountriesRoutes(app: Express, deps: any) {
         searchQuery = (req.query.search as string) || (req.query.searchQuery as string) || null;
       }
       
-      const cacheKey = CacheKeys.genres(page, limit, { searchQuery, countrycode, sortColumn, sortBy });
+      const cacheKey = CacheKeys.genres(page, limit, { searchQuery, countrycode, sortColumn, sortBy, publicWhitelist: publicGenreWhitelistVersion() });
       const disableCache = countrycode === 'Austria';
       const cachedResult = !disableCache ? await CacheManager.get(cacheKey) : null;
       
@@ -233,7 +240,7 @@ export function registerGenresCountriesRoutes(app: Express, deps: any) {
       {
         const scopedCountry = countrycode && !['global', 'null', 'all'].includes(String(countrycode))
           ? (resolveToDbName(String(countrycode)) || String(countrycode)) : undefined;
-        let allGenres = await pgGenres(scopedCountry);
+        let allGenres = await pgPublicGenres(scopedCountry);
         if (searchQuery) {
           const needle = String(searchQuery).toLowerCase();
           allGenres = allGenres.filter((genre: any) =>
@@ -275,8 +282,9 @@ export function registerGenresCountriesRoutes(app: Express, deps: any) {
 
       const identifier = (!countryName || countryName === 'all') ? 'global' : countryName;
       {
-        let genres = await pgGenres(identifier === 'global' ? undefined : (resolveToDbName(identifier) || identifier), true);
+        let genres = await pgPublicGenres(identifier === 'global' ? undefined : (resolveToDbName(identifier) || identifier), true);
         if (search) genres = genres.filter((genre: any) => genre.name?.toLowerCase().includes(search) || genre.slug?.toLowerCase().includes(search));
+        genres.sort((a, b) => b.stationCount - a.stationCount || a.slug.localeCompare(b.slug));
         const total = genres.length;
         const paginated = genres.slice((page - 1) * limit, page * limit);
         return void res.json({
@@ -298,7 +306,7 @@ export function registerGenresCountriesRoutes(app: Express, deps: any) {
     try {
       const country = req.query.country as string | undefined;
       const limit = Math.min(parseInt(req.query.limit as string) || 13, 50);
-      const cacheKey = `genres:discoverable:${country || 'all'}:${limit}`;
+      const cacheKey = `genres:discoverable:whitelist-${publicGenreWhitelistVersion()}:${country || 'all'}:${limit}`;
       const cached = await CacheManager.get(cacheKey);
       if (cached) return void res.json(cached);
 
