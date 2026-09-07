@@ -19,6 +19,7 @@ type AuthState = {
 const authState: { current: AuthState } = {
   current: { user: null, isAuthenticated: false, isLoading: false },
 };
+const routingState = { language: 'en' };
 
 vi.mock("@/hooks/useAuth", () => ({
   useAuth: () => authState.current,
@@ -40,7 +41,7 @@ vi.mock("@/hooks/useSeoRouting", () => ({
     getLocalizedUrl: (p: string) => p,
     cleanPath: "/",
     navigateTranslated: vi.fn(),
-    currentLanguage: "en",
+    currentLanguage: routingState.language,
   }),
 }));
 
@@ -68,13 +69,15 @@ vi.mock("@/utils/slugs", () => ({
   getStationUrl: (s: { slug?: string }) => `/station/${s?.slug ?? "x"}`,
 }));
 
-vi.mock("@workspace/seo-shared/seo-config", () => ({
+vi.mock("@workspace/seo-shared/seo-config", async (importOriginal) => ({
+  ...await importOriginal<typeof import('@workspace/seo-shared/seo-config')>(),
   getCountryCodeFromApiName: (name: string) => {
     const map: Record<string, string> = {
       Turkey: "tr",
       Germany: "de",
       France: "fr",
       Spain: "es",
+      Austria: "at",
     };
     return map[name] ?? "";
   },
@@ -123,10 +126,12 @@ function makeQueryClient() {
     "Germany",
     "France",
     "Spain",
+    "Austria",
   ]);
   qc.setQueryData(["/api/countries", "rich"], [
     { name: "Turkey", stationCount: 100 },
     { name: "Germany", stationCount: 80 },
+    { name: "Austria", stationCount: 60 },
   ]);
   qc.setQueryData(["/api/user/notifications"], {
     notifications: [],
@@ -135,12 +140,12 @@ function makeQueryClient() {
   return qc;
 }
 
-function renderHeader() {
+function renderHeader(selectedCountry = 'all') {
   const qc = makeQueryClient();
   const onCountryChange = vi.fn();
   const utils = render(
     <QueryClientProvider client={qc}>
-      <RadioHeader onCountryChange={onCountryChange} />
+      <RadioHeader selectedCountry={selectedCountry} onCountryChange={onCountryChange} />
     </QueryClientProvider>
   );
   return { ...utils, onCountryChange };
@@ -157,8 +162,10 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
   // Always reset auth state so one describe block can't leak into another.
   authState.current = { user: null, isAuthenticated: false, isLoading: false };
+  routingState.language = 'en';
 });
 
 function getTriggers(): HTMLButtonElement[] {
@@ -274,6 +281,61 @@ describe.each(VARIANTS)(
       expect(mobile).toHaveAttribute("aria-expanded", "true");
       expect(desktop).toHaveAttribute("aria-expanded", "true");
       expect(getDropdown()).not.toBeNull();
+    });
+
+    it.each([['de', 'Österreich'], ['tr', 'Avusturya']])(
+      'localizes %s country display and searches original/localized/code without changing canonical selection',
+      async (language, displayName) => {
+        routingState.language = language;
+        const user = userEvent.setup();
+        const { onCountryChange } = renderHeader('Austria');
+        expect(getDesktopTrigger()).toHaveTextContent(displayName);
+        expect(getDesktopTrigger()).toHaveAttribute('title', displayName);
+        for (const trigger of getTriggers()) {
+          expect(trigger).toHaveAttribute('title', displayName);
+          expect(within(trigger).getByRole('img')).toHaveAttribute('alt', displayName);
+        }
+        const { search } = await openAndFocus(user);
+        const dropdown = getDropdown()!;
+        const option = Array.from(dropdown.querySelectorAll('[role="option"]')).find(item => item.getAttribute('title') === displayName)!;
+        expect(option).toHaveTextContent(displayName);
+        expect(within(option as HTMLElement).getByRole('img')).toHaveAttribute('alt', displayName);
+        for (const query of [displayName, 'Austria', 'AT', language === 'de' ? 'Osterreich' : 'avusturya']) {
+          fireEvent.change(search, { target: { value: query } });
+          const choices = within(dropdown).getAllByRole('option');
+          expect(choices.some(item => item.getAttribute('title') === displayName)).toBe(true);
+        }
+        const selected = Array.from(dropdown.querySelectorAll<HTMLElement>('[role="option"]')).find(item => item.getAttribute('title') === displayName)!;
+        await user.click(selected);
+        expect(onCountryChange).toHaveBeenLastCalledWith('Austria', true);
+        expect(localStorage.getItem('selectedCountry')).toBe('Austria');
+        expect(localStorage.getItem('countryPreference')).toBe('manual');
+      },
+    );
+
+    it('keeps canonical values and keyboard selection after localized country filtering', async () => {
+      routingState.language = 'de';
+      const user = userEvent.setup();
+      const { onCountryChange } = renderHeader();
+      const { search, trigger } = await openAndFocus(user);
+      fireEvent.change(search, { target: { value: 'Österreich' } });
+      await user.keyboard('{ArrowDown}{ArrowDown}{Enter}');
+      expect(onCountryChange).toHaveBeenLastCalledWith('Austria', true);
+      expect(localStorage.getItem('selectedCountry')).toBe('Austria');
+      expect(getDropdown()).toBeNull();
+      expect(trigger).toHaveFocus();
+    });
+
+    it('finds localized countries in the main header search but keeps canonical country links', async () => {
+      routingState.language = 'de';
+      vi.stubGlobal('fetch', vi.fn(async () => Response.json({ stations: [], genres: [] })));
+      const user = userEvent.setup();
+      renderHeader('Austria');
+      await user.click(screen.getByTestId(variantAuth.isAuthenticated ? 'button-search-mobile' : 'button-search-mobile-guest'));
+      await user.type(screen.getByRole('combobox'), 'Österreich');
+      const country = await screen.findByTestId('header-search-country-austria');
+      expect(country).toHaveTextContent('Österreich');
+      expect(country.getAttribute('href')).toMatch(/^\/de\/[^/]+\/europe\/austria$/);
     });
 
     it("Pressing Enter on a focused trigger opens the dropdown (no manual click)", async () => {

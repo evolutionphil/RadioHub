@@ -1,10 +1,13 @@
 import React, { Suspense, useEffect, useState } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
+import { URL_TRANSLATIONS } from '@workspace/seo-shared/url-translations';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { mountWithInitialHomeHandover } from '../src/lib/initial-home-handover';
 import { createPreloadableComponent } from '../src/lib/preloadable-component';
+import { readStationBootstrap } from '../src/lib/station-bootstrap';
 
 const roots: Root[] = [];
 afterEach(() => {
@@ -25,6 +28,16 @@ function ssrRoot() {
   root.id = 'root';
   root.innerHTML = '<div id="ssr-content"><main><div class="hero-container"><picture><img src="/images/hero-bg-430w.webp" alt=""></picture><h1>Radio hören</h1></div><a href="/de/radios">Sender</a></main></div>';
   document.body.append(root);
+  return root;
+}
+
+function stationSsrRoot(language = 'de', slug = 'kral-fm') {
+  const root = ssrRoot();
+  root.innerHTML = '<div id="ssr-content"><main><h1>Kral FM</h1><div class="station-info"><p>Readable station description</p></div></main></div>';
+  const script = document.createElement('script');
+  script.id = 'station-bootstrap'; script.type = 'application/json';
+  script.textContent = JSON.stringify({ language, station: { _id: 'one', slug, name: 'Kral FM', url: 'https://radio.invalid/live' } });
+  document.body.append(script);
   return root;
 }
 
@@ -90,6 +103,95 @@ it('preserves readable SSR and reports a failed preload without mounting an inco
   expect(onError).toHaveBeenCalledWith(error);
   expect(hero?.isConnected).toBe(true);
   expect(root.querySelector('a')?.getAttribute('href')).toBe('/de/radios');
+});
+
+it('keeps station SSR pending, then mounts once without Loading and enriches the same query subtree', async () => {
+  const root = stationSsrRoot();
+  const originalDescription = root.querySelector('.station-info');
+  const stationMount = vi.fn();
+  const api = deferred<any>();
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const queryKey = ['/api/station/kral-fm'];
+  function Station() {
+    const { data } = useQuery({ queryKey, queryFn: () => api.promise,
+      placeholderData: () => readStationBootstrap('kral-fm', 'de') });
+    useEffect(() => { stationMount(); }, []);
+    return <article><h1>{data.name}</h1><p>{data.homepage || 'Initial station data'}</p></article>;
+  }
+  const stationLoad = deferred<{ default: typeof Station }>();
+  const headerLoad = deferred<{ default: () => React.JSX.Element }>();
+  const station = createPreloadableComponent(() => stationLoad.promise);
+  const header = createPreloadableComponent(() => headerLoad.promise);
+  const fallback = vi.fn(() => <p>Loading...</p>);
+  const preload = vi.fn(() => Promise.all([station.preload(), header.preload()]));
+  const mount = vi.fn(() => {
+    const app = createRoot(root); roots.push(app);
+    app.render(<QueryClientProvider client={client}><Suspense fallback={React.createElement(fallback)}>
+      <header.Component /><station.Component />
+    </Suspense></QueryClientProvider>);
+  });
+  let handover!: Promise<void>;
+  await act(async () => {
+    handover = mountWithInitialHomeHandover({ root, pathname: '/de/sender/kral-fm', production: true,
+      preload, mount, onError: error => { throw error; } });
+  });
+  expect(preload).toHaveBeenCalledWith('station');
+  expect(originalDescription?.isConnected).toBe(true);
+  await act(async () => { stationLoad.resolve({ default: Station }); });
+  expect(originalDescription?.isConnected).toBe(true); expect(mount).not.toHaveBeenCalled();
+  await act(async () => { headerLoad.resolve({ default: () => <nav>Header</nav> }); await handover; });
+  expect(fallback).not.toHaveBeenCalled(); expect(stationMount).toHaveBeenCalledTimes(1);
+  expect(mount).toHaveBeenCalledTimes(1); expect(root.textContent).toContain('Kral FM');
+  expect(client.getQueryData(queryKey)).toBeUndefined();
+  const article = root.querySelector('article');
+  await act(async () => { api.resolve({ _id: 'one', name: 'Kral FM', homepage: 'https://radio.invalid' }); });
+  await waitFor(() => expect(root.textContent).toContain('https://radio.invalid'));
+  expect(root.querySelector('article')).toBe(article);
+  expect(stationMount).toHaveBeenCalledTimes(1); expect(fallback).not.toHaveBeenCalled();
+  client.clear();
+});
+
+it.each(['en', 'es', 'fr', 'de', 'pt', 'it', 'ru', 'ar', 'zh', 'tr', 'ja', 'ko', 'hi', 'he'])(
+  'recognizes canonical encoded station segments and matching bootstrap in /%s', async language => {
+    const root = stationSsrRoot(language);
+    const pathname = `/${language}/${encodeURIComponent(URL_TRANSLATIONS[language]?.station || 'station')}/kral-fm`;
+    const pending = deferred<void>();
+    const preload = vi.fn(() => pending.promise), mount = vi.fn();
+    const handover = mountWithInitialHomeHandover({ root, pathname, production: true, preload, mount, onError: vi.fn() });
+    await Promise.resolve();
+    expect(preload).toHaveBeenCalledWith('station'); expect(mount).not.toHaveBeenCalled();
+    pending.resolve(); await handover; expect(mount).toHaveBeenCalledTimes(1);
+  },
+);
+
+it.each(['missing-bootstrap', 'corrupt-bootstrap', 'wrong-language', 'wrong-station', '404-body', 'development', 'extra-segment', 'wrong-segment', 'unsupported-language', 'malformed-encoding'])(
+  'leaves station %s on the previous immediate mount path', async kind => {
+    const root = stationSsrRoot();
+    const script = document.getElementById('station-bootstrap')!;
+    let pathname = '/de/sender/kral-fm';
+    if (kind === 'missing-bootstrap') script.remove();
+    if (kind === 'corrupt-bootstrap') script.textContent = '{bad';
+    if (kind === 'wrong-language') pathname = '/tr/istasyon/kral-fm';
+    if (kind === 'wrong-station') pathname = '/de/sender/other';
+    if (kind === '404-body') root.innerHTML = '<div id="ssr-content"><main><h1>Not found</h1></main></div>';
+    if (kind === 'extra-segment') pathname += '/extra';
+    if (kind === 'wrong-segment') pathname = '/de/genres/kral-fm';
+    if (kind === 'unsupported-language') pathname = '/af/station/kral-fm';
+    if (kind === 'malformed-encoding') pathname = '/de/sender/%E0%A4';
+    const preload = vi.fn(), mount = vi.fn();
+    await mountWithInitialHomeHandover({ root, pathname, production: kind !== 'development', preload, mount, onError: vi.fn() });
+    expect(preload).not.toHaveBeenCalled(); expect(mount).toHaveBeenCalledTimes(1);
+  },
+);
+
+it('keeps valid station SSR visible if a station/header chunk fails', async () => {
+  const root = stationSsrRoot();
+  const description = root.querySelector('.station-info');
+  const error = new Error('Station chunk failed'), onError = vi.fn(), mount = vi.fn();
+  await mountWithInitialHomeHandover({ root, pathname: '/de/sender/kral-fm', production: true,
+    preload: () => Promise.reject(error), mount, onError });
+  expect(description?.isConnected).toBe(true); expect(mount).not.toHaveBeenCalled();
+  expect(onError).toHaveBeenCalledWith(error);
 });
 
 it.each(['en', 'es', 'fr', 'de', 'pt', 'it', 'ru', 'ar', 'zh', 'tr', 'ja', 'ko', 'hi', 'he'])(
@@ -164,4 +266,7 @@ it('wires the same cached modules into App and leaves OAuth initialization befor
   expect(main).toContain('production: import.meta.env.PROD');
   expect(app).toContain("import { RadioHeader } from '@/lib/initial-home-components'");
   expect(routes).toContain("export { InitialHome as RadioFrontend } from '@/lib/initial-home-components'");
+  expect(routes).toContain("export { InitialStation as StationDetails } from '@/lib/initial-home-components'");
+  const components = readFileSync('src/lib/initial-home-components.ts', 'utf8');
+  expect(components).toContain("(page === 'station' ? station : home).preload()");
 });

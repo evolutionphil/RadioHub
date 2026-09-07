@@ -69,7 +69,8 @@ vi.mock("@/utils/slugs", () => ({
   getStationUrl: (s: { slug?: string }) => `/station/${s?.slug ?? "x"}`,
 }));
 
-vi.mock("@workspace/seo-shared/seo-config", () => ({
+vi.mock("@workspace/seo-shared/seo-config", async (importOriginal) => ({
+  ...await importOriginal<typeof import('@workspace/seo-shared/seo-config')>(),
   getCountryCodeFromApiName: () => "",
   getLanguageForCountry: () => "en",
 }));

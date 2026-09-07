@@ -5,7 +5,7 @@ import { lazy } from "react";
 
 // Core radio/frontend pages - most visited
 export { InitialHome as RadioFrontend } from '@/lib/initial-home-components';
-export const StationDetails = lazy(() => import("@/pages/stations/[id]"));
+export { InitialStation as StationDetails } from '@/lib/initial-home-components';
 export const GenreDetail = lazy(() => import("@/pages/genres/[slug]"));
 export const GenreLanding = lazy(() => import("@/pages/genres/genre-landing"));
 

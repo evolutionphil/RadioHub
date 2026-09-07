@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback, Suspense, lazy } from "react";
 import { createPortal } from "react-dom";
 import { fetchStationCardList } from '@/lib/station-card-list-request';
+import { getLocalizedCountryDisplayName } from '@/utils/localized-country';
 import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
 import { User } from "lucide-react";
@@ -327,21 +328,27 @@ export default function RadioHeader({
   // name) and use index-scoped keys below.
   const countries = useMemo(() => {
     const seen = new Set<string>();
-    const out: Array<{ name: string; code: string }> = [];
+    const out: Array<{ name: string; code: string; displayName: string }> = [];
     for (const raw of countriesRaw) {
       const name = String(raw ?? '').trim();
       if (!name || seen.has(name)) continue;
       seen.add(name);
-      out.push({ name, code: getCountryCode(name) });
+      out.push({ name, code: getCountryCode(name), displayName: getLocalizedCountryDisplayName(name, currentLanguage) });
     }
     return out;
-  }, [countriesRaw]);
+  }, [countriesRaw, currentLanguage]);
   
   // Get selected country code directly from seo-config (no need to wait for countries API)
   const selectedCountryCode = useMemo(() => {
     if (selectedCountry === "all" || selectedCountry === "Global") return null;
     return getCountryCodeFromApiName(selectedCountry);
   }, [selectedCountry]);
+
+  const selectedCountryDisplayName = useMemo(() =>
+    selectedCountry === 'all' || selectedCountry === 'Global'
+      ? t('nav_global', 'Global')
+      : getLocalizedCountryDisplayName(selectedCountry, currentLanguage),
+  [selectedCountry, currentLanguage, t]);
 
   // Filter countries based on search.
   // SEARCH FOLD (2026-07-04): diacritic-insensitive matching so 'turk' finds
@@ -363,7 +370,7 @@ export default function RadioHeader({
 
     const q = foldForSearch(countrySearchQuery.trim());
     return countries.filter((country) =>
-      foldForSearch(country.name || '').includes(q)
+      [country.name, country.displayName, country.code].some(value => foldForSearch(value || '').includes(q))
     );
   }, [countries, countrySearchQuery]);
 
@@ -412,23 +419,24 @@ export default function RadioHeader({
   );
 
   const matchingCountries = useMemo(() => {
-    const term = debouncedSearchQuery.trim().toLowerCase();
+    const term = foldForSearch(debouncedSearchQuery.trim());
     if (term.length < 2 || !richCountries.length) return [];
     const seen = new Set<string>();
-    const hits: Array<{ name: string; canonical: string; regionSlug: string; stationCount?: number }> = [];
+    const hits: Array<{ name: string; displayName: string; canonical: string; regionSlug: string; stationCount?: number }> = [];
     for (const c of richCountries) {
       if (!c?.name) continue;
-      if (!c.name.toLowerCase().includes(term)) continue;
+      const displayName = getLocalizedCountryDisplayName(c.name, currentLanguage);
+      if (![c.name, displayName, getCountryCode(c.name)].some(value => foldForSearch(value || '').includes(term))) continue;
       const canonical = canonicalizeCountry(c.name);
       if (seen.has(canonical)) continue;
       const regionSlug = getRegionSlugForCountry(canonical);
       if (!regionSlug) continue;
       seen.add(canonical);
-      hits.push({ name: c.name, canonical, regionSlug, stationCount: c.stationCount });
+      hits.push({ name: c.name, displayName, canonical, regionSlug, stationCount: c.stationCount });
       if (hits.length >= 5) break;
     }
     return hits;
-  }, [debouncedSearchQuery, richCountries]);
+  }, [debouncedSearchQuery, richCountries, currentLanguage]);
 
   // Station search — AbortController cancels any in-flight request when the
   // debounced term changes, preventing stale responses from overwriting fresh ones.
@@ -916,6 +924,7 @@ export default function RadioHeader({
                     aria-haspopup="listbox"
                     aria-expanded={isCountryDropdownOpen}
                     data-country-button
+                    title={selectedCountryDisplayName}
                   >
                     {(selectedCountry === "all" || selectedCountry === "Global") ? (
                       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="fill-[#FF4199]" style={{ width: '24px', height: '24px' }}>
@@ -924,7 +933,7 @@ export default function RadioHeader({
                     ) : selectedCountryCode ? (
                       <img
                         src={`https://flagcdn.com/w80/${selectedCountryCode.toLowerCase()}.png`}
-                        alt={selectedCountry}
+                        alt={selectedCountryDisplayName}
                         width={24}
                         height={24}
                         loading="lazy"
@@ -985,6 +994,7 @@ export default function RadioHeader({
                     aria-haspopup="listbox"
                     aria-expanded={isCountryDropdownOpen}
                     data-country-button
+                    title={selectedCountryDisplayName}
                   >
                     {(selectedCountry === "all" || selectedCountry === "Global") ? (
                       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="fill-[#FF4199]" style={{ width: '24px', height: '24px' }}>
@@ -993,7 +1003,7 @@ export default function RadioHeader({
                     ) : selectedCountryCode ? (
                       <img
                         src={`https://flagcdn.com/w80/${selectedCountryCode.toLowerCase()}.png`}
-                        alt={selectedCountry}
+                        alt={selectedCountryDisplayName}
                         width={24}
                         height={24}
                         loading="lazy"
@@ -1055,7 +1065,7 @@ export default function RadioHeader({
                       aria-label={t('general_select_country', 'Select country')}
                       aria-haspopup="listbox"
                       aria-expanded={isCountryDropdownOpen}
-                      title={(selectedCountry === "all" || selectedCountry === "Global") ? 'Global' : selectedCountry}
+                      title={selectedCountryDisplayName}
                     >
                       {/* Flag - Figma: 24x24px, left 9px - Uses selectedCountryCode directly (no API wait) */}
                       <div className="flex-shrink-0 flex items-center justify-center" style={{ width: '24px', height: '24px', marginLeft: '9px' }}>
@@ -1066,7 +1076,7 @@ export default function RadioHeader({
                         ) : selectedCountryCode ? (
                           <img
                             src={`https://flagcdn.com/w40/${selectedCountryCode.toLowerCase()}.png`}
-                            alt={selectedCountry}
+                            alt={selectedCountryDisplayName}
                             width={24}
                             height={24}
                             loading="lazy"
@@ -1080,7 +1090,7 @@ export default function RadioHeader({
                       </div>
                       {/* Country text - Figma: Ubuntu Bold 15px, line-height 100%, left aligned */}
                       <span className="font-ubuntu font-bold text-white truncate flex-1 text-left" style={{ fontSize: '15px', lineHeight: '100%', marginLeft: '9px' }}>
-                        {(selectedCountry === "all" || selectedCountry === "Global") ? t('nav_global', 'Global') : selectedCountry}
+                        {selectedCountryDisplayName}
                       </span>
                       {/* Arrow - Figma: 20x20px, pointing down */}
                       <svg className="text-white flex-shrink-0" style={{ width: '20px', height: '20px', marginRight: '10px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1142,7 +1152,7 @@ export default function RadioHeader({
                       aria-label={t('general_select_country', 'Select country')}
                       aria-haspopup="listbox"
                       aria-expanded={isCountryDropdownOpen}
-                      title={(selectedCountry === "all" || selectedCountry === "Global") ? 'Global' : selectedCountry}
+                      title={selectedCountryDisplayName}
                     >
                       {/* Flag - Figma: 24x24px, left 9px - Uses selectedCountryCode directly (no API wait) */}
                       <div className="flex-shrink-0 flex items-center justify-center" style={{ width: '24px', height: '24px', marginLeft: '9px' }}>
@@ -1153,7 +1163,7 @@ export default function RadioHeader({
                         ) : selectedCountryCode ? (
                           <img
                             src={`https://flagcdn.com/w40/${selectedCountryCode.toLowerCase()}.png`}
-                            alt={selectedCountry}
+                            alt={selectedCountryDisplayName}
                             width={24}
                             height={24}
                             loading="lazy"
@@ -1167,7 +1177,7 @@ export default function RadioHeader({
                       </div>
                       {/* Country text - Figma: Ubuntu Bold 15px, line-height 100%, left aligned */}
                       <span className="font-ubuntu font-bold text-white truncate flex-1 text-left" style={{ fontSize: '15px', lineHeight: '100%', marginLeft: '9px' }}>
-                        {(selectedCountry === "all" || selectedCountry === "Global") ? t('nav_global', 'Global') : selectedCountry}
+                        {selectedCountryDisplayName}
                       </span>
                       {/* Arrow - Figma: 20x20px, pointing down */}
                       <svg className="text-white flex-shrink-0" style={{ width: '20px', height: '20px', marginRight: '10px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1433,7 +1443,7 @@ export default function RadioHeader({
                               </div>
                               <div className="flex-1 min-w-0">
                                 <div className="text-white font-medium truncate">
-                                  <HighlightMatch text={c.name} query={debouncedSearchQuery} />
+                                  <HighlightMatch text={c.displayName} query={debouncedSearchQuery} />
                                 </div>
                                 {typeof c.stationCount === 'number' && (
                                   <div className="text-gray-400 text-sm">
@@ -1634,13 +1644,13 @@ export default function RadioHeader({
                     // NOTE: No URL navigation - country is just a content filter, not a URL change
                     // User's language preference (URL slug) stays unchanged
                   }}
-                  title={country.name}
+                  title={country.displayName}
                 >
                   <span className="pr-3 flex items-center justify-center w-10 flex-shrink-0">
                     {country.code ? (
                       <img
                         src={`/flags/${country.code?.toLowerCase()}-40.webp`}
-                        alt={country.name}
+                        alt={country.displayName}
                         className="w-7 h-5 object-cover rounded border border-gray-500 shadow-sm"
                         onError={(e) => {
                           const img = e.target as HTMLImageElement;
@@ -1649,11 +1659,11 @@ export default function RadioHeader({
                       />
                     ) : (
                       <span className="text-xs font-bold text-white bg-gray-600 px-1.5 py-0.5 rounded shadow-sm">
-                        {country.name.split(' ').map(word => word.charAt(0)).join('').substring(0, 2).toUpperCase()}
+                        {country.displayName.split(' ').map(word => word.charAt(0)).join('').substring(0, 2).toUpperCase()}
                       </span>
                     )}
                   </span>
-                  <span className="flex-1 min-w-0 truncate text-white">{country.name}</span>
+                  <span className="flex-1 min-w-0 truncate text-white">{country.displayName}</span>
                 </div>
                 );
               })}
@@ -1758,13 +1768,13 @@ export default function RadioHeader({
                     // NOTE: No URL navigation - country is just a content filter, not a URL change
                     // User's language preference (URL slug) stays unchanged
                   }}
-                  title={country.name}
+                  title={country.displayName}
                 >
                   <span className="pr-3 flex items-center justify-center w-10 flex-shrink-0">
                     {country.code ? (
                       <img
                         src={`/flags/${country.code?.toLowerCase()}-40.webp`}
-                        alt={country.name}
+                        alt={country.displayName}
                         className="w-7 h-5 object-cover rounded border border-gray-500 shadow-sm"
                         onError={(e) => {
                           const img = e.target as HTMLImageElement;
@@ -1773,11 +1783,11 @@ export default function RadioHeader({
                       />
                     ) : (
                       <span className="text-xs font-bold text-white bg-gray-600 px-1.5 py-0.5 rounded shadow-sm">
-                        {country.name.split(' ').map(word => word.charAt(0)).join('').substring(0, 2).toUpperCase()}
+                        {country.displayName.split(' ').map(word => word.charAt(0)).join('').substring(0, 2).toUpperCase()}
                       </span>
                     )}
                   </span>
-                  <span className="flex-1 min-w-0 truncate text-white">{country.name}</span>
+                  <span className="flex-1 min-w-0 truncate text-white">{country.displayName}</span>
                 </div>
                 );
               })}

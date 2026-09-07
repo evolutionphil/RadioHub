@@ -2241,8 +2241,10 @@ export class SeoRenderer {
         // Rendering the SAME <picture> markup the SPA hero uses (identical
         // URLs, classes and intrinsic size, styled by the same .hero-container
         // rules in the render-blocking stylesheet) makes the hero paint with
-        // first contentful paint; when React repaints an identical-size image
-        // from cache it produces no larger paint, so the early LCP stands.
+        // first contentful paint and allows reuse of the downloaded resource.
+        // This is not hydration: createRoot replaces the server DOM, and the
+        // replacement image can still register a later LCP. Preserving that
+        // first node requires a matching shared server/client rendering tree.
         content = `
           <main class="pt-[70px] md:pt-[80px] lg:pt-[90px] xl:pt-[105px]">
             <div class="hero-container overflow-visible">

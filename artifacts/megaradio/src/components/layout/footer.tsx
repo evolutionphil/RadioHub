@@ -4,7 +4,7 @@ import { useGlobalPlayer } from "@/hooks/useGlobalPlayer";
 import { useTranslation } from "@/hooks/useTranslation";
 import { useSeoRouting } from "@/hooks/useSeoRouting";
 import { useQuery } from "@tanstack/react-query";
-import { SEO_LANGUAGES } from "@workspace/seo-shared/seo-config";
+import { SEO_LANGUAGES, ACTIVE_SITEMAP_LANGUAGES } from "@workspace/seo-shared/seo-config";
 // 🚀 LAZY: modals only load on first open — keeps Radix Select/Input
 // out of the footer chunk until the user clicks the action.
 const AddYourStationModal = lazy(() => import("@/components/modals/AddYourStationModal"));
@@ -74,8 +74,9 @@ export default function Footer() {
   const [languageSearchQuery, setLanguageSearchQuery] = useState("");
   const languageDropdownRef = useRef<HTMLDivElement>(null);
   
-  // Get enabled languages
-  const enabledLanguages = SEO_LANGUAGES.filter(lang => lang.enabled);
+  // The metadata catalog also contains legacy locales that public routing
+  // does not support. Offer only actual UI locales, not redirect-to-English choices.
+  const enabledLanguages = SEO_LANGUAGES.filter(lang => lang.enabled && ACTIVE_SITEMAP_LANGUAGES.some(code => code === lang.code));
   const currentLangInfo = enabledLanguages.find(l => l.code === currentLanguage) || enabledLanguages[0];
   
   // Filter languages by search query (name is already in native format like Türkçe, Español)
