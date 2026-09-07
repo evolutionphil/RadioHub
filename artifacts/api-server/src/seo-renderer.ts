@@ -2394,7 +2394,9 @@ export class SeoRenderer {
                     .replace(/\{STATION_NAME\}/g, stationData.name)
                     .trim();
                   if (fullText && fullText.length > 300) {
-                    const sentences = fullText.match(/[^.!?]+[.!?]+/g) || [fullText];
+                    // Preserve leading punctuation and a final fragment without
+                    // ASCII sentence punctuation (including mixed CJK text).
+                    const sentences = fullText.match(/[^.!?]*[.!?]+|[^.!?]+$/g) || [fullText];
                     const paragraphs = [];
                     let currentParagraph = '';
                     for (const sentence of sentences) {

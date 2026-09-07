@@ -131,7 +131,7 @@ yönlendirmek veya noindex kurallarını topluca kaldırmak doğru değildir.
 
 ## Öncelikli kod bulguları
 
-Aşağıdaki 13 başlığın kod düzeltmeleri uygulandı; üretimde yeniden tarama
+Aşağıdaki 14 başlığın kod düzeltmeleri uygulandı; üretimde yeniden tarama
 ve gerçek içerik doğrulaması aşağıdaki açık kontrollerde ayrı tutuldu.
 
 1. **P0 — Geçici veri hatasının kalıcı sayfa kaldırma sinyaline dönüşmesi.**
@@ -220,6 +220,15 @@ ve gerçek içerik doğrulaması aşağıdaki açık kontrollerde ayrı tutuldu.
     kaldırılıyor. Geçici 503/Retry-After ve daha katı no-store yanıtları
     korunuyor. Bu bağımsız yayın güvenliği düzeltmesi, taşıma sırasındaki
     mevcut 502'lerin nedeni olarak sunulmuyor.
+
+14. **P1 — SSR uzun açıklamanın son kısmını kaybetmesi.**
+    300 karakterden uzun istasyon açıklamasını paragraf yapan regex, son
+    ASCII noktalama işaretinden sonraki metni ve baştaki noktalama işaretlerini
+    atabiliyordu. Kayıpsız parçalama son kısmı da koruyor; 400 karakterlik
+    mevcut gruplama, HTML escaping, kısa metin ve tasarım değişmedi. Yeni
+    Türkçe, Almanca, Japonca/karma CJK, Arapça, noktalama ve HTML-özel karakter
+    örneklerinde hata yeniden üretildi; düzeltmeden sonra ilgili dosyada
+    **32/32 test geçti**. Veritabanındaki açıklamalar yeniden yazılmadı.
 
 ## Gerçek kaynak verisi — 14 dil kapsamı ve içerik kalitesi
 
@@ -328,7 +337,8 @@ git diff --check
 ## Açık kontroller / yayın sonrası
 
 - **Son yayın ve production çalışma zamanı doğrulaması hâlâ bekliyor.**
-  Önceki SEO/taşıma düzeltmeleri mevcut `main` commit'i `609903c27` içinde;
+  Önceki SEO/taşıma düzeltmeleri kullanıcının gönderdiği `main` commit'i
+  `1a2126c96` içinde; yeni doğrulama/SSR düzeltmeleri bunun üzerine hazırlanıyor;
   bu rapor son eklenen düzeltmelerin push/deploy edildiğine veya Railway'de
   doğrulandığına dair bir tamamlanma kaydı değildir.
 - Taşıma tamamlandıktan sonra native istasyonlar, sitemap manifestleri ve

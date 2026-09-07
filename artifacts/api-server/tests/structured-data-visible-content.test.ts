@@ -808,3 +808,33 @@ test('home page must NOT emit BreadcrumbList JSON-LD', () => {
     `home page emitted ${breadcrumbs.length} BreadcrumbList block(s) — homepage has no crumbs to show`,
   );
 });
+
+// Paragraph formatting must never discard a station's final sentence or
+// punctuation. Compare every escaped non-whitespace character, not a prefix.
+for (const fixture of [
+  { language: 'tr', full: 'İlk cümle. ' + 'Özgün Türkçe radyo açıklaması ve yayın bilgileri '.repeat(9) + 'son cümle noktasız' },
+  { language: 'de', full: 'Der erste Satz. ' + 'Informationen zum Programm und zur Musik '.repeat(10) + 'das vollständige Ende bleibt erhalten' },
+  { language: 'ja', full: 'MegaRadio FM. ' + '音楽と地域のニュースを放送しています。'.repeat(22) + '最後の説明も残ります' },
+  { language: 'en', full: '...!? First sentence. ' + 'The original station description continues '.repeat(12) + 'unpunctuated ending' },
+  { language: 'ar', full: 'وصف المحطة والموسيقى والأخبار المحلية '.repeat(14) },
+  { language: 'tr', full: 'İlk cümle.\n' + 'Müzik & haber <program> "canlı" yayın '.repeat(12) + "<script>alert('text only')</script> son bölüm" },
+  { language: 'en', full: 'A short description without trailing punctuation' },
+]) {
+  test(`station SSR preserves the entire description: ${fixture.language} / ${fixture.full.slice(0, 24)}`, () => {
+    const renderer = new SeoRenderer();
+    const station = { _id: 'lossless-body-fixture', name: 'Test Radio', slug: 'test-radio',
+      country: 'Germany', tags: 'music', url: 'https://example.invalid/stream',
+      descriptions: { [fixture.language]: { full: fixture.full, meta: 'Test station metadata' } } };
+    const body = renderer.generateHtmlBody({ pageType: 'station', language: fixture.language,
+      translations: {}, stationData: station, additionalData: { pageType: 'station' },
+      urlTranslations: new Map<string, string>(), cleanPath: '/station/test-radio',
+      seoTags: { title: station.name, description: 'Test station metadata', domain: DOMAIN,
+        canonical: `${DOMAIN}/${fixture.language}/station/test-radio` } });
+    const section = body.match(/<p class="station-intro">[\s\S]*?<\/p>([\s\S]*?)<!-- DALGA 4: Station-specific outro/);
+    assert.ok(section, 'station description section must be present');
+    const paragraphs = [...section[1].matchAll(/<p>([\s\S]*?)<\/p>/g)].map(match => match[1]);
+    assert.ok(paragraphs.length > 0);
+    assert.equal(paragraphs.join('').replace(/\s+/g, ''), escapeHtml(fixture.full.trim()).replace(/\s+/g, ''));
+    assert.doesNotMatch(section[1], /<script>|<program>/, 'description text must remain HTML escaped');
+  });
+}

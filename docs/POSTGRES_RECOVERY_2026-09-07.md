@@ -62,7 +62,7 @@ Do not commit archives, credentials, or source documents.
 - Temporary operator SSH access and container-only backup tools must be cleaned
   up after verification. Backups and the old database remain retained.
 
-### Storage preflight — production import remains held
+### Storage preflight and approved expansion
 
 - PostgreSQL's persistent volume is 5.00 GB in Railway. `df` reports
   4,725,096 KiB total and 3,323,292 KiB available; the original database and WAL
@@ -73,23 +73,31 @@ Do not commit archives, credentials, or source documents.
 - Therefore the current volume cannot hold the complete import. Do not start
   it, delete old data, discard capture history, or disable integrity safeguards
   to fit the limit. Sufficient persistent capacity must be available first.
-- The authenticated workspace Plans page confirms **Hobby**, explicitly
+- The initial authenticated workspace Plans page confirmed **Hobby**, explicitly
   **up to 5 GB storage**. The volume UI exposes no Live Resize control. Pro is
   offered at **$20 minimum usage per month**, including $20 usage; excess
   resource usage is billed separately. Its stated storage ceiling is 1 TB.
-  A subscription upgrade is a new recurring financial commitment and requires
-  explicit user approval. **No plan upgrade or volume mutation was performed.**
-- Production import/cutover and GitHub auto-deployment are paused at this
-  capacity/approval gate. The initializer remains deliberately held, its
+  A subscription upgrade required explicit user approval; no upgrade was made
+  before it was received.
+- The user approved the upgrade and then performed it themselves. The active
+  **Pro** plan was verified in the authenticated UI. The operator then resized
+  only `postgres-volume` from **5 GB to 20 GB** via Live Resize. Read-only `df`
+  confirmed **19,138,976 KiB total / 17,737,172 KiB available**, while `radiohub`
+  still had zero public tables. No data, old database, volume or backups were
+  removed. Capacity is no longer a blocker.
+- Production import/cutover still awaits the verification gates below. The
+  initializer remains deliberately held, its
   auto-deploy stays disabled, old `railway` is preserved, and `radiohub` has not
   received the production import. API/web region changes remain staged only.
-- During this pause, source TTL retention remains temporarily extended and
-  the read-only source change watcher remains active. Restore original TTLs
+- During the approval pause, source TTL retention remained temporarily extended.
+  The original watcher last recorded zero changes/errors at 08:57:39 UTC, then
+  its SSH session ended. A new watcher was established at **13:45:49.565 UTC**.
+  Do not claim continuous coverage across that gap; a fresh raw-BSON source
+  fingerprint comparison is running before production import. Restore original TTLs
   after verified cutover, or use a separately reviewed abort/backup-refresh
   procedure if the migration is cancelled; do not falsely assert cutover to
   bypass the restore helper's guard.
-- Resume by confirming sufficient persistent capacity (with WAL/old-database
-  headroom), completing the pristine bundled-bootstrap rehearsal and local
+- Continue by completing the pristine bundled-bootstrap rehearsal and local
   application smoke, then committing/pushing and releasing in the gated order
   below. No production-ready or live SEO completion claim is made.
 
@@ -132,10 +140,11 @@ Do not commit archives, credentials, or source documents.
   `IS NOT DISTINCT FROM` prevents an indexed point lookup in the observed GSC
   query plan. Repeated checks accumulated 3,152 sequential scans and over
   706 million tuple reads; bounded EXPLAIN shows `id=$1` can use the index.
-  Pending fix: strict equality for proven non-null identity fields, retaining
-  null-safe comparisons for nullable content, with query-plan/parity tests.
-  Diagnostic verification was deliberately stopped; it is **not a verified
-  import snapshot**. The pristine bundled-bootstrap rehearsal has not started.
+  The fix now uses strict equality for proven non-null unique identity fields,
+  retaining null-safe comparisons for other content. Seven actual-PostgreSQL
+  query-plan/parity tests and independent review passed. The stopped diagnostic
+  was **not a verified import snapshot**; corrected verification is being rerun
+  before a pristine bundled-bootstrap rehearsal.
 - Rehearsal/diagnostic failures remain in isolated local databases for evidence.
   They are not approved release snapshots; production `radiohub` remains empty.
 

@@ -1299,6 +1299,24 @@ const identifier = (value: string) => {
   if (!/^[a-z_][a-z0-9_]*$/.test(value)) throw new Error("Invalid internal migration identifier");
   return '"' + value + '"';
 };
+
+/** Native mapping conflict keys are NOT NULL primary/unique keys in the schema. */
+export function nativeVerificationQuery(
+  table: string, row: JsonDocument, keyColumns: readonly string[] = ["id"], ignoreVerify: readonly string[] = [],
+): { text: string; values: unknown[] } {
+  const columns = Object.keys(row).filter(column => !ignoreVerify.includes(column));
+  if (!keyColumns.length || keyColumns.some(column => !columns.includes(column) || row[column] == null)) {
+    throw new Error("Native verification requires every non-null lookup key; refusing an unbounded content scan");
+  }
+  // IS NOT DISTINCT FROM does not supply a PostgreSQL B-tree Index Cond for
+  // these keys. Keep null-safe content equality, but locate exactly one native
+  // row through the same non-null unique key used by its normalization upsert.
+  return {
+    text: `SELECT 1 FROM ${identifier(table)} WHERE ${columns.map((column, index) =>
+      identifier(column) + (keyColumns.includes(column) ? " = $" : " IS NOT DISTINCT FROM $") + (index + 1)).join(" AND ")}`,
+    values: columns.map(column => row[column]),
+  };
+}
 async function mappedNativeDocument(mapping: NativeMapping, item: JsonDocument, client: pg.PoolClient): Promise<JsonDocument> {
   try {
     if (!id(item._id)) throw new Error("Missing document ID");
@@ -1376,9 +1394,8 @@ export async function verifyNativeDomains(postgres: MigrationDatabase): Promise<
           await verifyQuarantinedUserDevice(client, item);
           continue;
         }
-        const columns = Object.keys(row).filter(column => !mapping.ignoreVerify?.includes(column));
-        const result = await client.query(`SELECT 1 FROM ${identifier(mapping.table)} WHERE ${columns
-          .map((column, index) => identifier(column) + " IS NOT DISTINCT FROM $" + (index + 1)).join(" AND ")}`, columns.map(column => row[column]));
+        const query = nativeVerificationQuery(mapping.table, row, mapping.conflict || ["id"], mapping.ignoreVerify);
+        const result = await client.query(query.text, query.values);
         if (!result.rowCount) throw new Error(`Native normalized content mismatch: ${mapping.table}/${id(item._id)}`);
       }
     });
