@@ -7,7 +7,7 @@ import path from "node:path";
 import { test } from "node:test";
 import { pathToFileURL } from "node:url";
 import pg from "pg";
-import { BSON, bsonSafe, checksum } from "@workspace/legacy-migration/legacy-document-codec";
+import { BSON, bsonSafe, checksum, jsonSafe } from "@workspace/legacy-migration/legacy-document-codec";
 import { recordPostgresWriteAuthority } from "../src/data/postgres-migration-safety";
 import { sanitizedBootstrapError } from "../../../lib/legacy-migration/src/auto-bootstrap-postgres";
 
@@ -189,6 +189,185 @@ test("real one-time MongoDB import installs PostgreSQL, preserves BSON/content a
     assert.match(authoritative.output, /PostgreSQL already owns application writes/);
     assert.equal((await destination.query("SELECT count(*)::int count FROM migration_runs")).rows[0].count, 1);
     assert.equal((await destination.query("SELECT name FROM stations WHERE id='bootstrap-station'")).rows[0].name, "New PostgreSQL-only name");
+  } finally {
+    try {
+      if (sourceCreated) {
+        assert.match(mongoDatabase, mongoPattern);
+        assert.equal(sourceUrl.pathname, "/" + mongoDatabase);
+        localTestUrl(sourceUrl.toString(), "mongo");
+        await source.db(mongoDatabase).dropDatabase();
+      }
+    } finally {
+      await source.close();
+      await destination.end();
+      try {
+        if (schemaCreated) {
+          assert.match(schema, schemaPattern);
+          localTestUrl(pgUrl.toString(), "postgres");
+          await admin.query(`DROP SCHEMA "${schema}" CASCADE`);
+        }
+      } finally { await admin.end(); }
+    }
+  }
+});
+
+test("interrupted initial capture resumes its original run only after unchanged typed source validation", {
+  skip: !postgresTestUrl || !mongoTestUrl,
+  timeout: 90_000,
+}, async () => {
+  const pgUrl = localTestUrl(postgresTestUrl!, "postgres");
+  const sourceUrl = localTestUrl(mongoTestUrl!, "mongo");
+  const suffix = `${process.pid}_${randomBytes(6).toString("hex")}`;
+  const schema = `bootstrap_test_${suffix}`;
+  const mongoDatabase = `radiohub_bootstrap_test_${suffix}`;
+  const schemaPattern = /^bootstrap_test_\d+_[a-f0-9]{12}$/;
+  const mongoPattern = /^radiohub_bootstrap_test_\d+_[a-f0-9]{12}$/;
+  assert.match(schema, schemaPattern);
+  assert.match(mongoDatabase, mongoPattern);
+  sourceUrl.pathname = "/" + mongoDatabase;
+  sourceUrl.searchParams.set("directConnection", "true");
+  const scopedPgUrl = new URL(pgUrl);
+  scopedPgUrl.searchParams.set("options", `-c search_path=${schema},public`);
+  const ssl = process.env.PG_TEST_SSL === "require" ? { rejectUnauthorized: true } : false;
+  const admin = new pg.Pool({ connectionString: pgUrl.toString(), ssl, max: 1 });
+  const destination = new pg.Pool({ connectionString: scopedPgUrl.toString(), ssl, max: 2 });
+  const { MongoClient } = legacyRequire("mongodb");
+  const source = new MongoClient(sourceUrl.toString(), { directConnection: true, serverSelectionTimeoutMS: 5_000 });
+  let schemaCreated = false;
+  let sourceCreated = false;
+  try {
+    await admin.query(`CREATE SCHEMA "${schema}"`);
+    schemaCreated = true;
+    const baseEnvironment = operatorEnvironment(scopedPgUrl.toString());
+    const unconfigured = await invokeInitializer(baseEnvironment);
+    assert.equal(unconfigured.code, 1, unconfigured.output);
+    assert.match(unconfigured.output, /MONGODB_URI/);
+    await source.connect();
+    const database = source.db(mongoDatabase);
+    assert.equal(database.databaseName, mongoDatabase);
+    const stations = [1, 2, 3].map((number) => ({
+      _id: `resume-station-${number}`,
+      stationuuid: `resume-uuid-${number}`,
+      name: `Son güncel radyo ${number}`,
+      url: "https://example.invalid/stream",
+      tags: "Jazz,Türkçe Pop",
+    }));
+    const unknown = {
+      _id: new BSON.Int32(42),
+      exactCounter: BSON.Long.fromString("9223372036854775807"),
+      amount: BSON.Decimal128.fromString("123456789.0123456789"),
+      bytes: new BSON.Binary(Buffer.from([0, 1, 127, 255])),
+      observedAt: new Date("2026-09-07T00:00:00.000Z"),
+      nested: { enabled: true, values: ["original", "Türkçe"] },
+    };
+    // Entirely synthetic, reconstructible source fixtures; replacing _id below
+    // must never address anything outside this uniquely named loopback DB.
+    sourceCreated = true;
+    await database.collection("stations").insertMany(stations);
+    await database.collection("unknown_resume_collection").insertMany([
+      unknown, { _id: "resume-tail", message: "Not captured before interruption" },
+    ]);
+    const runId = `interrupted-initial-capture-${suffix}`;
+    const originalTimestamp = new Date("2026-09-07T01:02:03.456Z");
+    await destination.query(`INSERT INTO migration_runs
+      (id,mode,status,started_at,finished_at,source_database,error)
+      VALUES ($1,'all','running',$2,NULL,$3,NULL)`, [runId, originalTimestamp, mongoDatabase]);
+    const capturedDocuments = [
+      { name: "stations", document: stations[0] },
+      { name: "stations", document: stations[1] },
+      { name: "unknown_resume_collection", document: unknown },
+    ];
+    for (const { name, document } of capturedDocuments) {
+      // Use the exact no-promotion read mode used by the importer; ordinary
+      // numeric IDs must retain their BSON identity for the resume preflight.
+      const raw = await database.collection(name).findOne({ _id: document._id }, { promoteValues: false });
+      assert.ok(raw);
+      const payload = jsonSafe(raw);
+      const bson = bsonSafe(raw);
+      await destination.query(`INSERT INTO legacy_documents
+        (collection_name,document_id,payload,checksum,last_seen_run_id,bson_payload,bson_checksum,migrated_at)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`, [
+        name, String(raw._id), JSON.stringify(payload), checksum(payload), runId,
+        JSON.stringify(bson), checksum(bson), originalTimestamp,
+      ]);
+    }
+    // Simulate termination after one batch committed but before its checkpoint
+    // update. The resume must validate the captures, not trust only the cursor.
+    await destination.query(`INSERT INTO migration_checkpoints
+      (collection_name,last_document_id,documents_processed,source_count,target_count,status,updated_at)
+      VALUES ('stations','resume-station-1',1,3,0,'running',$1),
+        ('unknown_resume_collection',NULL,0,2,0,'running',$1)`, [originalTimestamp]);
+    const importEnvironment = {
+      ...baseEnvironment,
+      MONGODB_URI: sourceUrl.toString(),
+      MIGRATION_SOURCE_WRITERS_STOPPED: "true",
+      MIGRATION_TARGET_WRITERS_STOPPED: "true",
+      MIGRATION_SOURCE_BACKUP_CONFIRMED: "true",
+    };
+    const snapshotDestination = async () => {
+      const tables = await destination.query<{ name: string }>(`SELECT c.relname AS name
+        FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+        WHERE n.nspname=$1 AND c.relkind IN ('r','p') ORDER BY c.relname`, [schema]);
+      const snapshot: Record<string, unknown[]> = {};
+      for (const { name } of tables.rows) {
+        const quotedName = '"' + name.replace(/"/g, '""') + '"';
+        snapshot[name] = (await destination.query(`SELECT to_jsonb(t) AS row
+          FROM "${schema}".${quotedName} t ORDER BY to_jsonb(t)::text COLLATE "C"`)).rows;
+      }
+      return snapshot;
+    };
+    const untouched = await snapshotDestination();
+    const originalCaptures = (await destination.query(`SELECT * FROM legacy_documents
+      ORDER BY collection_name,document_id`)).rows;
+
+    await database.collection("stations").updateOne(
+      { _id: stations[0]._id }, { $set: { name: "Changed after the captured snapshot" } },
+    );
+    const changed = await invokeInitializer(importEnvironment);
+    assert.equal(changed.code, 1, changed.output);
+    assert.match(changed.output, /resume refused changed source content/i);
+    assert.deepEqual(await snapshotDestination(), untouched,
+      "Rejected changed-source resume must not mutate any PostgreSQL row, checkpoint, run or schema metadata");
+    await database.collection("stations").updateOne({ _id: stations[0]._id }, { $set: { name: stations[0].name } });
+
+    // Text "42" is NOT the BSON numeric identity 42. Preserve collection count
+    // so a superficial count/text-ID comparison cannot authorize this resume.
+    assert.equal((await database.collection("unknown_resume_collection").deleteOne({ _id: unknown._id })).deletedCount, 1);
+    await database.collection("unknown_resume_collection").insertOne({ ...unknown, _id: "42" });
+    const missingTypedIdentity = await invokeInitializer(importEnvironment);
+    assert.equal(missingTypedIdentity.code, 1, missingTypedIdentity.output);
+    assert.match(missingTypedIdentity.output, /resume refused (?:missing source documents|a changed or colliding source identity)/i);
+    assert.deepEqual(await snapshotDestination(), untouched,
+      "Rejected missing or type-changed source identity must leave all PostgreSQL rows and metadata untouched");
+    assert.equal((await database.collection("unknown_resume_collection").deleteOne({ _id: "42" })).deletedCount, 1);
+    await database.collection("unknown_resume_collection").insertOne(unknown);
+
+    const resumed = await invokeInitializer(importEnvironment);
+    assert.equal(resumed.code, 0, resumed.output);
+    assert.match(resumed.output, /import and verification completed successfully/);
+    const runs = (await destination.query("SELECT * FROM migration_runs")).rows;
+    assert.equal(runs.length, 1, "Resume must not create a replacement migration run");
+    assert.equal(runs[0].id, runId);
+    assert.equal(runs[0].status, "complete");
+    assert.equal(runs[0].mode, "all");
+    assert.equal(runs[0].error, null);
+    assert.equal(runs[0].started_at.toISOString(), originalTimestamp.toISOString());
+    assert.ok(runs[0].finished_at instanceof Date);
+    for (const capture of originalCaptures) {
+      const actual = (await destination.query(`SELECT * FROM legacy_documents
+        WHERE collection_name=$1 AND document_id=$2`, [capture.collection_name, capture.document_id])).rows[0];
+      assert.deepEqual(actual, capture, "An existing verified capture must not be updated or have migrated_at rewritten");
+    }
+    assert.equal((await destination.query("SELECT count(*)::int count FROM legacy_documents")).rows[0].count, 5);
+    assert.deepEqual((await destination.query("SELECT id,name FROM stations ORDER BY id")).rows,
+      stations.map((station) => ({ id: station._id, name: station.name })));
+    const capturedUnknown = (await destination.query(`SELECT bson_payload,bson_checksum FROM legacy_documents
+      WHERE collection_name='unknown_resume_collection' AND document_id='42'`)).rows[0];
+    assert.deepEqual(capturedUnknown.bson_payload, bsonSafe(unknown));
+    assert.equal(capturedUnknown.bson_checksum, checksum(bsonSafe(unknown)));
+    assert.equal((await destination.query(`SELECT count(*)::int count FROM migration_checkpoints
+      WHERE status='complete' AND documents_processed=source_count AND target_count=source_count`)).rows[0].count, 2);
+    assert.equal((await destination.query("SELECT count(*)::int count FROM database_write_authority")).rows[0].count, 0);
   } finally {
     try {
       if (sourceCreated) {

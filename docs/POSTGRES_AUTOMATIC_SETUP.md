@@ -81,10 +81,26 @@ kullanılabilir; bu akış veritabanını public ağa açmayı gerektirmez.
   hiçbir verinin aktarılmadığı anlamına gelmez.
 - Eksik bağlantı/onay veya doğrulama hatasında boş sistem başarıyla açılmış gibi
   davranılmaz; API/web'in ilk PostgreSQL yazma yetkisi verilmez.
-- Yarım kalmış aktarım veya önceden var olan satırlar otomatik silinmez. Böyle
+- İlk kopyalama kesildiyse sınırlı, **silmesiz otomatik devam** vardır: yalnız tek
+  `all` çalışması, aynı kaynak veritabanı, aynı çalışmaya ait `legacy_documents`,
+  boş uygulama tabloları ve etkinleşmemiş PostgreSQL yazma yetkisi kabul edilir.
+  Eski `running` / hatasız yarım kayıt veya yeni kodun yalnız kopyalama sırasında
+  kaydettiği tanımlı `interrupted` işareti gerekir. Sıradan `failed` kayıtlar,
+  normalizasyon sonrası kesintiler ve belirsiz durumlar otomatik oynatılmaz.
+- Devam etmeden önce **bütün mevcut kopyalar** MongoDB primary üzerindeki kaynakla
+  BSON türü, kimlik, içerik ve checksum açısından salt okunur doğrulanır. Kayıp veya
+  değişmiş kayıt, bilinen kaynak sayısındaki değişiklik ya da yeni hedef verisi
+  varsa durur. Daha önce okunmamış kaynak kayıtlarının geçmiş hâli doğrulanamaz;
+  kaynak yazıcıları kapalı tutma ve bağımsız yedek koşulları geçerliliğini korur.
+- Doğrulama geçerse aynı çalışma baştan okunur: mevcut kayıtlar yeniden yazılmaz,
+  yalnız eksikler eklenir. Kayıtlar ve checkpoint aynı transaction içinde yazılır.
+  `[resume:progress]`, `[mirror:progress]` ve aşama logları ilerlemeyi gösterir.
+  İşlem tamamlanana kadar yeni deployment başlatmayın; aktarım servisinin HTTP
+  healthcheck'i kapalı ve config dosyası `/railway.migration.json` olmalıdır.
+- Diğer yarım aktarımlar veya önceden var olan satırlar otomatik silinmez. Böyle
   bir durumda güvenli yeniden uzlaştırma runbook'u gerekir. `MIGRATION_PRUNE`
-  normal ilk kurulumda açılmaz; yalnız durdurulmuş kaynak/hedef ve tam kaynak
-  kimliğiyle incelenmiş uzlaştırmada kullanılabilir.
+  normal ilk kurulumda veya silmesiz devamda açılmaz; yalnız durdurulmuş
+  kaynak/hedef ve tam kaynak kimliğiyle incelenmiş uzlaştırmada kullanılabilir.
 - `PostgreSQL already owns application writes` mesajı **Mongo aktarımının yapıldığına
   kanıt değildir**; artık geçmiş veriyi tekrar yazmanın güvenli olmadığını söyler.
   Erken başlatılmış boş bir hedefte yazma-yetkisi işaretlerini silmeyin.
@@ -95,6 +111,21 @@ kullanılabilir; bu akış veritabanını public ağa açmayı gerektirmez.
 Şema bekleme / sorgu sınırları: `POSTGRES_INIT_WAIT_MS` (0–3600000, varsayılan
 240000), `POSTGRES_MIGRATION_LOCK_TIMEOUT_MS` (varsayılan 60000),
 `POSTGRES_MIGRATION_STATEMENT_TIMEOUT_MS` (varsayılan 300000).
+
+Aktarım paketi varsayılan olarak 250 belge ve 4 MiB serileştirilmiş JSON+BSON
+bütçesiyle sınırlıdır. Yeni değişken eklemek gerekmez. İsteğe bağlı
+`MIGRATION_BATCH_SIZE` (10–1000) ve `MIGRATION_BATCH_MAX_BYTES` (65536–16777216)
+tam sayı olmalıdır; geçersiz değer bağlantı açılmadan reddedilir. Tek büyük belge
+ayrı işlenir, atılmaz. Devam doğrulamasında tek belgenin birleşik JSON+BSON
+sınırı 16 MiB'dir; daha büyüğü sessizce atlanmadan inceleme için durdurulur.
+
+PostgreSQL havuzu ve kilit bağlantısı hataları, SIGTERM/SIGINT ve koordinatör
+bağlantı kaybı kontrollü kesinti sayılır. Tüm aktarım SQL'i aynı veri kilidini
+tutan fiziksel bağlantıyı kullanır. Kesintiden sonra yeni yazı başlatılmaz;
+uzayan SQL için 5 saniyelik kapanış toleransından sonra bağlantı sonlandırılır.
+Railway'in zorla kapatması veya işletim sistemi bellek sınırı kodla engellenemez;
+bu durumda hata işareti yazılamayabilir. Yukarıdaki doğrulamalar güvenli devam
+için tekrar uygulanır; bu korumalar production kesintisinin nedenini kanıtlamaz.
 
 Operatör ortamında eşdeğer giriş: `pnpm --filter @workspace/legacy-migration bootstrap`.
 Bu komut ve tek seferlik imaj aynı akışı kullanır. Üretim API/web imajları bu

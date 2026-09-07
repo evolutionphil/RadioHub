@@ -52,7 +52,7 @@ function fixture(initial = fresh()) {
             }
             return { rows: [] };
           }) as any,
-          release() { releases++; },
+          release(error?: Error) { releases++; if (error) locks = 0; },
           on: ((_event: string, listener: () => void) => { errors.add(listener); }) as any,
           off: ((_event: string, listener: () => void) => { errors.delete(listener); }) as any,
         },
@@ -207,6 +207,75 @@ test("loss of coordinator lock fences the importer and never reports false succe
   assert.equal(f.counts().imports, 0);
 });
 
+test("eligible interrupted capture resumes only after the same candidate is rechecked under the importer lock", async () => {
+  const f = fixture({ ...fresh(), latestRun: { mode: "all", status: "running", finished_at: null }, checkpointCount: 1 });
+  const inspected: unknown[] = [];
+  f.dependencies.inspectResume = async (client, database) => {
+    inspected.push(client);
+    assert.equal(database, "radiohub_source");
+    return { runId: "same-initial-run" };
+  };
+  const runImport = f.dependencies.runImport;
+  f.dependencies.runImport = async (env, beforeWrite, options) => {
+    assert.equal(options?.resumeInitialCapture, true);
+    assert.equal(options?.signal?.aborted, false);
+    await runImport(env, beforeWrite, options);
+  };
+  assert.equal(await runAutomaticBootstrap(environment(), f.dependencies), "imported");
+  assert.equal(inspected.length, 2);
+  assert.notEqual(inspected[0], inspected[1]);
+  assert.equal(f.counts().imports, 1);
+});
+
+test("initial-capture resume never bypasses writer/backup acknowledgements or partial-import restrictions", async () => {
+  const interrupted = { ...fresh(), latestRun: { mode: "all", status: "running", finished_at: null }, checkpointCount: 1 };
+  for (const [name, value] of [
+    ["MIGRATION_SOURCE_WRITERS_STOPPED", undefined], ["MIGRATION_TARGET_WRITERS_STOPPED", undefined],
+    ["MIGRATION_SOURCE_BACKUP_CONFIRMED", undefined], ["MIGRATION_COLLECTIONS", "stations"],
+    ["MIGRATION_PHASE", "mirror"], ["MIGRATION_ALLOW_EMPTY_SOURCE", "true"],
+  ] as const) {
+    const f = fixture(interrupted);
+    f.dependencies.inspectResume = async () => ({ runId: "same-initial-run" });
+    await assert.rejects(runAutomaticBootstrap({ ...environment(), [name]: value }, f.dependencies));
+    assert.equal(f.counts().imports, 0);
+  }
+});
+
+test("a candidate that becomes ineligible or changes run identity under the data lock is never resumed", async () => {
+  for (const second of [null, { runId: "different-run" }]) {
+    const f = fixture({ ...fresh(), latestRun: { mode: "all", status: "running", finished_at: null }, checkpointCount: 1 });
+    let inspections = 0;
+    f.dependencies.inspectResume = async () => ++inspections === 1 ? { runId: "same-initial-run" } : second;
+    await assert.rejects(runAutomaticBootstrap(environment(), f.dependencies), /incomplete\/failed import/);
+    assert.equal(inspections, 2);
+    assert.equal(f.counts().imports, 0);
+  }
+});
+
+test("approved prune keeps its existing separately acknowledged path rather than enabling automatic resume", async () => {
+  const f = fixture({ ...fresh(), latestRun: { mode: "all", status: "failed", finished_at: new Date() }, checkpointCount: 1 });
+  f.dependencies.inspectResume = async () => { throw new Error("Automatic resume inspection must not run for prune"); };
+  const runImport = f.dependencies.runImport;
+  f.dependencies.runImport = async (env, beforeWrite, options) => {
+    assert.equal(options?.resumeInitialCapture, false);
+    await runImport(env, beforeWrite, options);
+  };
+  assert.equal(await runAutomaticBootstrap({ ...environment(), MIGRATION_PRUNE: "true", DATABASE_MAINTENANCE_READ_ONLY: "true", MIGRATION_EXPECT_SOURCE_DATABASE: "radiohub_source" }, f.dependencies), "imported");
+});
+
+test("coordinator disconnect immediately aborts an already-running importer without retaining its raw failure", async () => {
+  const f = fixture();
+  f.dependencies.runImport = async (_environment, _beforeWrite, options) => {
+    assert.equal(options?.signal?.aborted, false);
+    f.disconnect();
+    assert.equal(options?.signal?.aborted, true);
+    assert.match(options?.signal?.reason.message, /coordinator connection was lost/);
+  };
+  await assert.rejects(runAutomaticBootstrap(environment(), f.dependencies), /coordinator connection was lost/);
+  assert.equal(f.counts().imports, 0);
+  assert.equal(f.counts().closes, 1);
+});
+
 test("pristine detection quotes catalog identifiers and checks all application tables", async () => {
   const queries: string[] = [];
   const client = { query: async (sql: string) => {
@@ -230,7 +299,7 @@ test("the one-time importer explicitly forces primary reads and remains isolated
   const bootstrap = readFileSync(new URL("../../../lib/legacy-migration/src/auto-bootstrap-postgres.ts", import.meta.url), "utf8");
   assert.match(importer, /options\.forcePrimary === true \|\|/);
   assert.match(importer, /readPreference: finalReconciliation \? "primary" : "secondaryPreferred"/);
-  assert.match(bootstrap, /runMigration\(\{ phase: "all", forcePrimary: true, beforeWrite \}\)/);
+  assert.match(bootstrap, /runMigration\(\{ phase: "all", forcePrimary: true, beforeWrite, signal: options\?\.signal, resumeInitialCapture: options\?\.resumeInitialCapture \}\)/);
   assert.ok(importer.indexOf("options.beforeWrite(migrationLockClient)") < importer.indexOf("if (mongoUrl) {"));
   assert.doesNotMatch(bootstrap, /fsync|fsyncUnlock|deleteMany|dropDatabase/);
 });

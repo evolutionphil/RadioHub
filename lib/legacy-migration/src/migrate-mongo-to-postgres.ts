@@ -5,6 +5,9 @@ import pg from "pg";
 import { assertNoPostgresWriteAuthority, validateMigrationWriteSafety } from "../../../artifacts/api-server/src/data/postgres-migration-safety";
 import { bsonSafe, checksum, jsonSafe } from "./legacy-document-codec";
 import { iapAuditEventId, iapAuditProvider } from "../../../artifacts/api-server/src/data/iap-audit-identity";
+import { createMigrationLifecycle, lockedMigrationDatabase, MigrationLifecycleError, type MigrationDatabase, type MigrationLifecycle } from "./migration-lifecycle";
+import { migrationBatchLimits, shouldFlushMigrationBatch, type MigrationBatchLimits } from "./migration-batching";
+import { inspectInitialCaptureResume, validateCapturedSource } from "./initial-capture-resume";
 export { bsonSafe, checksum, jsonSafe } from "./legacy-document-codec";
 
 const { Pool } = pg;
@@ -14,10 +17,7 @@ let sourceDatabase: Db | null = null;
 type JsonDocument = Record<string, any>;
 type MigrationStats = Record<string, { source: number; target: number }>;
 
-const batchSize = Math.max(
-  10,
-  Math.min(1_000, Number.parseInt(process.env.MIGRATION_BATCH_SIZE || "250", 10)),
-);
+let batchSize = 250;
 const phaseArgument = process.argv.find((value) => value.startsWith("--phase="))?.split("=", 2)[1];
 const allowedPhases = new Set(["mirror", "normalize", "verify", "all"]);
 
@@ -87,68 +87,109 @@ export function placeholders(rows: number, columns: number): string {
 }
 
 async function mirrorCollection(
-  postgres: pg.Pool,
+  postgres: MigrationDatabase,
   collectionName: string,
   runId: string,
+  lifecycle: MigrationLifecycle,
+  limits: MigrationBatchLimits,
+  resume = false,
 ): Promise<{ source: number; target: number }> {
   const mongo = sourceDatabase!;
   const collection = mongo.collection(collectionName);
-  const source = await collection.countDocuments();
+  const source = await collection.countDocuments({}, { signal: lifecycle.signal });
   let processed = 0;
-  let batch: JsonDocument[] = [];
+  // Store serialized data once; both document count AND bytes bound each write.
+  type Captured = { documentId: string; payload: string; checksum: string; bson: string; bsonChecksum: string; updatedAt: Date | null };
+  let batch: Captured[] = [];
+  let batchBytes = 0;
+  let lastProgress = Date.now();
 
   const writeBatch = async () => {
     if (!batch.length) return;
+    lifecycle.assertHealthy();
     const values: unknown[] = [];
-    for (const raw of batch) {
-      const payload = jsonSafe(raw);
-      const bson = bsonSafe(raw);
+    for (const row of batch) {
       values.push(
-        collectionName,
-        id(raw._id),
-        JSON.stringify(payload),
-        checksum(payload),
-        runId,
-        date(raw.updatedAt),
-        JSON.stringify(bson),
-        checksum(bson),
+        collectionName, row.documentId, row.payload, row.checksum, runId,
+        row.updatedAt, row.bson, row.bsonChecksum,
       );
     }
-    await postgres.query(
-      `INSERT INTO legacy_documents
-        (collection_name, document_id, payload, checksum, last_seen_run_id, mongo_updated_at, bson_payload, bson_checksum)
-       VALUES ${placeholders(batch.length, 8)}
-       ON CONFLICT (collection_name, document_id) DO UPDATE SET
-         payload = EXCLUDED.payload,
-         checksum = EXCLUDED.checksum,
-         bson_payload = EXCLUDED.bson_payload,
-         bson_checksum = EXCLUDED.bson_checksum,
-         last_seen_run_id = EXCLUDED.last_seen_run_id,
-         mongo_updated_at = EXCLUDED.mongo_updated_at,
-         migrated_at = now()`,
-      values,
-    );
+    // A checkpoint must never describe a batch that was rolled back (or vice versa).
+    await postgres.query("BEGIN");
+    try {
+      await postgres.query(
+        `INSERT INTO legacy_documents
+          (collection_name, document_id, payload, checksum, last_seen_run_id, mongo_updated_at, bson_payload, bson_checksum)
+         VALUES ${placeholders(batch.length, 8)}
+         ON CONFLICT (collection_name, document_id) ${resume ? "DO NOTHING" : `DO UPDATE SET
+           payload = EXCLUDED.payload,
+           checksum = EXCLUDED.checksum,
+           bson_payload = EXCLUDED.bson_payload,
+           bson_checksum = EXCLUDED.bson_checksum,
+           last_seen_run_id = EXCLUDED.last_seen_run_id,
+           mongo_updated_at = EXCLUDED.mongo_updated_at,
+           migrated_at = now()`}`,
+        values,
+      );
+      if (resume) {
+        const existing = await postgres.query(
+          `SELECT document_id,payload,checksum,bson_payload,bson_checksum,last_seen_run_id
+           FROM legacy_documents WHERE collection_name=$1 AND document_id=ANY($2::text[])`,
+          [collectionName, batch.map((row) => row.documentId)],
+        );
+        const byId = new Map(existing.rows.map((row) => [row.document_id, row]));
+        for (const expected of batch) {
+          const row = byId.get(expected.documentId);
+          if (!row || row.last_seen_run_id !== runId || row.checksum !== expected.checksum ||
+              row.bson_checksum !== expected.bsonChecksum || checksum(row.payload) !== expected.checksum ||
+              checksum(row.bson_payload) !== expected.bsonChecksum) {
+            throw new Error("Initial capture resume refused changed content or conflicting BSON identity; existing data was not overwritten.");
+          }
+        }
+      }
+      await postgres.query(
+        `INSERT INTO migration_checkpoints
+          (collection_name, last_document_id, documents_processed, source_count, status)
+         VALUES ($1, $2, $3, $4, 'running')
+         ON CONFLICT (collection_name) DO UPDATE SET
+           last_document_id=EXCLUDED.last_document_id,
+           documents_processed=EXCLUDED.documents_processed,
+           source_count=EXCLUDED.source_count,
+           status='running', updated_at=now()`,
+        [collectionName, batch[batch.length - 1].documentId, processed + batch.length, source],
+      );
+      await postgres.query("COMMIT");
+    } catch (error) {
+      await postgres.query("ROLLBACK").catch(() => undefined);
+      throw error;
+    }
     processed += batch.length;
-    await postgres.query(
-      `INSERT INTO migration_checkpoints
-        (collection_name, last_document_id, documents_processed, source_count, status)
-       VALUES ($1, $2, $3, $4, 'running')
-       ON CONFLICT (collection_name) DO UPDATE SET
-         last_document_id=EXCLUDED.last_document_id,
-         documents_processed=EXCLUDED.documents_processed,
-         source_count=EXCLUDED.source_count,
-         status='running', updated_at=now()`,
-      [collectionName, id(batch[batch.length - 1]?._id), processed, source],
-    );
     batch = [];
+    batchBytes = 0;
+    if (Date.now() - lastProgress >= 15_000) {
+      console.log(`[mirror:progress] ${collectionName}: ${processed}/${source} checked and committed`);
+      lastProgress = Date.now();
+    }
   };
 
-  const cursor = collection.find({}, { promoteValues: false }).sort({ _id: 1 }).batchSize(batchSize);
-  for await (const document of cursor) {
-    batch.push(document);
-    if (batch.length >= batchSize) await writeBatch();
+  const cursor = collection.find({}, { promoteValues: false, signal: lifecycle.signal }).sort({ _id: 1 }).batchSize(batchSize);
+  try {
+    for await (const document of cursor) {
+      lifecycle.assertHealthy();
+      const payload = jsonSafe(document);
+      const bson = bsonSafe(document);
+      const row = { documentId: id(document._id), payload: JSON.stringify(payload), checksum: checksum(payload),
+        bson: JSON.stringify(bson), bsonChecksum: checksum(bson), updatedAt: date(document.updatedAt) };
+      const bytes = Buffer.byteLength(row.payload) + Buffer.byteLength(row.bson) + Buffer.byteLength(row.documentId) + 256;
+      if (shouldFlushMigrationBatch(batch.length, batchBytes, bytes, limits)) await writeBatch();
+      batch.push(row);
+      batchBytes += bytes;
+      if (shouldFlushMigrationBatch(batch.length, batchBytes, 0, limits)) await writeBatch();
+    }
+    await writeBatch();
+  } finally {
+    await cursor.close().catch(() => undefined);
   }
-  await writeBatch();
 
   if (process.env.MIGRATION_PRUNE === "true") {
     if (process.env.DATABASE_MAINTENANCE_READ_ONLY !== "true") {
@@ -179,7 +220,7 @@ async function mirrorCollection(
 }
 
 async function forEachLegacyBatch(
-  postgres: pg.Pool,
+  postgres: MigrationDatabase,
   collectionName: string,
   callback: (rows: JsonDocument[], client: pg.PoolClient) => Promise<void>,
 ): Promise<void> {
@@ -207,7 +248,7 @@ async function forEachLegacyBatch(
 }
 
 async function existingLegacyCollections(
-  postgres: pg.Pool,
+  postgres: MigrationDatabase,
   candidates: string[],
 ): Promise<string[]> {
   const result = await postgres.query<{ collection_name: string }>(
@@ -218,7 +259,7 @@ async function existingLegacyCollections(
   return result.rows.map((row) => row.collection_name);
 }
 
-async function normalizeTaxonomy(postgres: pg.Pool): Promise<void> {
+async function normalizeTaxonomy(postgres: MigrationDatabase): Promise<void> {
   for (const collection of await existingLegacyCollections(postgres, ["countries"])) {
     await forEachLegacyBatch(postgres, collection, async (documents, client) => {
       for (const item of documents) {
@@ -259,7 +300,7 @@ async function normalizeTaxonomy(postgres: pg.Pool): Promise<void> {
 
 // Stage only one bounded batch in JS. PostgreSQL ranks all duplicate candidates
 // without discarding documents or relying on import order.
-async function withGenreCandidates(postgres: pg.Pool, work: (client: pg.PoolClient) => Promise<void>): Promise<void> {
+async function withGenreCandidates(postgres: MigrationDatabase, work: (client: pg.PoolClient) => Promise<void>): Promise<void> {
   const client = await postgres.connect();
   try {
     await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ');
@@ -286,7 +327,7 @@ async function withGenreCandidates(postgres: pg.Pool, work: (client: pg.PoolClie
     await client.query('COMMIT');
   } catch(error) { await client.query('ROLLBACK').catch(()=>{}); throw error; } finally { client.release(); }
 }
-async function normalizeGenres(postgres: pg.Pool): Promise<void> {
+async function normalizeGenres(postgres: MigrationDatabase): Promise<void> {
   await withGenreCandidates(postgres,async client=>{
     // Release only captured source IDs before assigning winners, so a replay
     // cannot depend on which loser happened to be imported first.
@@ -304,7 +345,7 @@ async function normalizeGenres(postgres: pg.Pool): Promise<void> {
         station_count=EXCLUDED.station_count,source=EXCLUDED.source,updated_at=EXCLUDED.updated_at`);
   });
 }
-export async function verifyGenreParity(postgres: pg.Pool): Promise<void> {
+export async function verifyGenreParity(postgres: MigrationDatabase): Promise<void> {
   await withGenreCandidates(postgres,async client=>{
     const bad=await client.query(`SELECT r.id FROM migration_genre_ranked r LEFT JOIN genres g ON g.id=r.id
       WHERE g.id IS NULL OR g.name IS DISTINCT FROM r.name OR g.station_count IS DISTINCT FROM r.station_count
@@ -320,7 +361,7 @@ export async function verifyGenreParity(postgres: pg.Pool): Promise<void> {
   });
 }
 
-async function normalizeTranslations(postgres: pg.Pool): Promise<void> {
+async function normalizeTranslations(postgres: MigrationDatabase): Promise<void> {
   for (const collection of await existingLegacyCollections(postgres, ["clearedoverridesauditlogs"])) {
     await forEachLegacyBatch(postgres, collection, async (documents, client) => {
       for (const item of documents) {
@@ -440,7 +481,7 @@ async function normalizeTranslations(postgres: pg.Pool): Promise<void> {
   }
 }
 
-async function normalizeListeningHistory(postgres: pg.Pool): Promise<void> {
+async function normalizeListeningHistory(postgres: MigrationDatabase): Promise<void> {
   const names = await existingLegacyCollections(postgres, [
     "userlisteninghistories", "user_listening_histories", "userlisteninghistory",
   ]);
@@ -485,7 +526,7 @@ const legacyPaymentEventKeys = `
   WHERE collection_name IN ('iapevents','iap_events','stripe_sale_events','stripesaleevents','applewebhookevents','apple_webhook_events')
 `;
 
-export async function normalizePaymentEvents(postgres: pg.Pool): Promise<void> {
+export async function normalizePaymentEvents(postgres: MigrationDatabase): Promise<void> {
   const collections = await existingLegacyCollections(postgres, [
     "iapevents", "iap_events", "stripe_sale_events", "stripesaleevents",
     "applewebhookevents", "apple_webhook_events",
@@ -568,7 +609,7 @@ export async function paymentEventParity(client: Pick<pg.PoolClient, "query">): 
   return { expected: Number(row.expected), matched: Number(row.matched), unexpectedMigrated: Number(row.unexpected_migrated) };
 }
 
-async function normalizeAuthTokens(postgres: pg.Pool): Promise<void> {
+async function normalizeAuthTokens(postgres: MigrationDatabase): Promise<void> {
   for (const collection of await existingLegacyCollections(postgres, ["authtokens", "auth_tokens"])) {
     await forEachLegacyBatch(postgres, collection, async (documents, client) => {
       for (const item of documents) {
@@ -603,7 +644,7 @@ async function normalizeAuthTokens(postgres: pg.Pool): Promise<void> {
   }
 }
 
-async function normalizeStations(postgres: pg.Pool): Promise<void> {
+async function normalizeStations(postgres: MigrationDatabase): Promise<void> {
   await forEachLegacyBatch(postgres, "stations", async (documents, client) => {
     for (const station of documents) {
       const stationId = id(station._id);
@@ -690,7 +731,7 @@ async function normalizeStations(postgres: pg.Pool): Promise<void> {
   });
 }
 
-async function normalizeUsers(postgres: pg.Pool): Promise<void> {
+async function normalizeUsers(postgres: MigrationDatabase): Promise<void> {
   await forEachLegacyBatch(postgres, "users", async (documents, client) => {
     for (const user of documents) {
       const userId = id(user._id);
@@ -788,7 +829,7 @@ async function normalizeUsers(postgres: pg.Pool): Promise<void> {
   });
 }
 
-async function normalizeRelations(postgres: pg.Pool): Promise<void> {
+async function normalizeRelations(postgres: MigrationDatabase): Promise<void> {
   await postgres.query(`
     INSERT INTO user_favorites(user_id, station_id, created_at)
     SELECT f.payload->>'userId', f.payload->>'stationId',
@@ -829,7 +870,7 @@ async function normalizeRelations(postgres: pg.Pool): Promise<void> {
   `);
 }
 
-async function normalizeNotifications(postgres: pg.Pool): Promise<void> {
+async function normalizeNotifications(postgres: MigrationDatabase): Promise<void> {
   for (const collection of await existingLegacyCollections(postgres, ["usernotifications", "user_notifications"])) {
     await forEachLegacyBatch(postgres, collection, async (documents, client) => {
       for (const item of documents) {
@@ -855,7 +896,7 @@ async function normalizeNotifications(postgres: pg.Pool): Promise<void> {
   }
 }
 
-async function normalizeDirectMessages(postgres: pg.Pool): Promise<void> {
+async function normalizeDirectMessages(postgres: MigrationDatabase): Promise<void> {
   for (const collection of await existingLegacyCollections(postgres, ["directmessages", "direct_messages"])) {
     await forEachLegacyBatch(postgres, collection, async (documents, client) => {
       for (const item of documents) {
@@ -1262,7 +1303,7 @@ async function mappedNativeDocument(mapping: NativeMapping, item: JsonDocument, 
   }
 }
 
-export async function normalizeNativeDomains(postgres: pg.Pool): Promise<void> {
+export async function normalizeNativeDomains(postgres: MigrationDatabase): Promise<void> {
   for (const mapping of nativeMappings) {
     if (mapping.table === "sitemap_manifests") {
       // Demote only source-backed rows first; source-active overlap was legal
@@ -1290,7 +1331,7 @@ export async function normalizeNativeDomains(postgres: pg.Pool): Promise<void> {
   }
 }
 
-export async function verifyNativeDomains(postgres: pg.Pool): Promise<void> {
+export async function verifyNativeDomains(postgres: MigrationDatabase): Promise<void> {
   const tables = [...new Set(nativeMappings.map(mapping => mapping.table))];
   for (const table of tables) {
     const mappings = nativeMappings.filter(mapping => mapping.table === table);
@@ -1338,7 +1379,7 @@ export async function pruneNativeDomains(client: Pick<pg.PoolClient, "query">): 
   }
 }
 
-export async function normalize(postgres: pg.Pool): Promise<void> {
+export async function normalize(postgres: MigrationDatabase): Promise<void> {
   console.log("[normalize] countries, languages and genres");
   await normalizeTaxonomy(postgres);
   console.log("[normalize] stations");
@@ -1364,7 +1405,7 @@ export async function normalize(postgres: pg.Pool): Promise<void> {
   if (process.env.MIGRATION_PRUNE === "true") await pruneNormalizedData(postgres);
 }
 
-export async function pruneNormalizedData(postgres: pg.Pool): Promise<void> {
+export async function pruneNormalizedData(postgres: MigrationDatabase): Promise<void> {
   if (process.env.DATABASE_MAINTENANCE_READ_ONLY !== "true") {
     throw new Error("Normalized pruning requires DATABASE_MAINTENANCE_READ_ONLY=true");
   }
@@ -1466,7 +1507,7 @@ export async function pruneNormalizedData(postgres: pg.Pool): Promise<void> {
   }
 }
 
-export async function verifyLegacyChecksums(postgres: pg.Pool): Promise<void> {
+export async function verifyLegacyChecksums(postgres: MigrationDatabase): Promise<void> {
   let collection = "";
   let documentId = "";
   while (true) {
@@ -1489,7 +1530,7 @@ export async function verifyLegacyChecksums(postgres: pg.Pool): Promise<void> {
   }
 }
 
-export async function verify(postgres: pg.Pool): Promise<void> {
+export async function verify(postgres: MigrationDatabase): Promise<void> {
   await verifyLegacyChecksums(postgres);
   await verifyRelationParity(postgres);
   await verifyGenreParity(postgres);
@@ -1630,7 +1671,7 @@ export async function verify(postgres: pg.Pool): Promise<void> {
   console.log("[verify] mirror, normalized parity, checksums and foreign keys are valid");
 }
 
-export async function verifyRelationParity(postgres: pg.Pool): Promise<void> {
+export async function verifyRelationParity(postgres: MigrationDatabase): Promise<void> {
   const difference = await postgres.query<{ name: string; count: string }>(`
     WITH expected_favorites AS (
       SELECT DISTINCT d.payload->>'userId' user_id,d.payload->>'stationId' station_id FROM legacy_documents d
@@ -1703,7 +1744,12 @@ export async function runMigration(options: {
   phase?: string;
   forcePrimary?: boolean;
   beforeWrite?: (client: pg.PoolClient) => Promise<boolean>;
+  signal?: AbortSignal;
+  resumeInitialCapture?: boolean;
 } = {}): Promise<void> {
+  // Invalid values must fail before opening any connection, not disable flushing.
+  const limits = migrationBatchLimits(process.env);
+  batchSize = limits.batchSize;
   const mode = (options.phase || phaseArgument || process.env.MIGRATION_PHASE || "all").toLowerCase();
   if (!allowedPhases.has(mode)) {
     throw new Error(`MIGRATION_PHASE must be one of ${[...allowedPhases].join(", ")}`);
@@ -1724,25 +1770,56 @@ export async function runMigration(options: {
     ? requiredUrl("MONGODB_URI", /^mongodb(?:\+srv)?:\/\//i)
     : null;
   const postgresUrl = requiredUrl("DATABASE_URL", /^postgres(?:ql)?:\/\//i);
-  const postgres = new Pool({
+  const pool = new Pool({
     connectionString: postgresUrl,
     max: Math.max(2, Number.parseInt(process.env.MIGRATION_POSTGRES_POOL_MAX || "5", 10) || 5),
     ssl: migrationPostgresSsl(),
     application_name: "megaradio-migration",
+    connectionTimeoutMillis: 15_000,
+    statement_timeout: 300_000,
+    keepAlive: true,
   });
+  const lifecycle = createMigrationLifecycle({ pool, parentSignal: options.signal, log: console.log });
   let migrationLockClient: pg.PoolClient | null = null;
-  const runId = crypto.randomUUID();
+  let lockClientReleased = false;
+  let drainDeadline: ReturnType<typeof setTimeout> | undefined;
+  const boundInterruptedDrain = () => {
+    // Allow a short cooperative rollback/marker write, then close this physical
+    // session so a long SQL statement cannot keep writing after interruption.
+    drainDeadline = setTimeout(() => {
+      if (migrationLockClient && !lockClientReleased) {
+        lockClientReleased = true;
+        migrationLockClient.release(true);
+      }
+    }, 5_000);
+    drainDeadline.unref();
+  };
+  lifecycle.signal.addEventListener("abort", boundInterruptedDrain, { once: true });
+  let runId: string = crypto.randomUUID();
+  let runStarted = false;
+  let capturing = false;
   const stats: MigrationStats = {};
   try {
-    migrationLockClient = await postgres.connect();
-    await migrationLockClient.query("SELECT pg_advisory_lock(hashtext('radiohub-data-migration'))");
+    lifecycle.assertHealthy();
+    migrationLockClient = await pool.connect();
+    lifecycle.watchClient(migrationLockClient);
+    const postgres = lockedMigrationDatabase(migrationLockClient, lifecycle);
+    await postgres.query("SELECT pg_advisory_lock(hashtext('radiohub-data-migration'))");
     // Automatic bootstrap must re-check durable completion under the SAME lock
     // as imports/runtime authority, not only under its outer coordinator lock.
     if (mode !== "verify" && options.beforeWrite && !await options.beforeWrite(migrationLockClient)) return;
+    lifecycle.assertHealthy();
     if (mode !== "verify") await assertNoPostgresWriteAuthority(migrationLockClient);
+    if (options.resumeInitialCapture && (mode !== "all" || process.env.MIGRATION_PRUNE === "true" ||
+        process.env.MIGRATION_COLLECTIONS?.trim() || process.env.MIGRATION_ALLOW_EMPTY_SOURCE === "true" ||
+        process.env.DATABASE_MAINTENANCE_READ_ONLY === "true" ||
+        ["MIGRATION_SOURCE_WRITERS_STOPPED", "MIGRATION_TARGET_WRITERS_STOPPED", "MIGRATION_SOURCE_BACKUP_CONFIRMED"]
+          .some((name) => process.env[name] !== "true"))) {
+      throw new Error("Initial capture resume requires a full frozen-source import with backup confirmation, no pruning, and no collection filters.");
+    }
     if (mongoUrl) {
       const finalReconciliation =
-        options.forcePrimary === true ||
+        options.forcePrimary === true || options.resumeInitialCapture === true ||
         process.env.MIGRATION_PRUNE === "true" ||
         process.env.DATABASE_MAINTENANCE_READ_ONLY === "true";
       mongoClient = new MongoClient(mongoUrl, {
@@ -1750,16 +1827,32 @@ export async function runMigration(options: {
         // The final delta must read the primary. A lagging secondary can make
         // the source appear older and would turn pruning into data loss.
         readPreference: finalReconciliation ? "primary" : "secondaryPreferred",
+        serverSelectionTimeoutMS: 30_000,
+        connectTimeoutMS: 15_000,
       });
       await mongoClient.connect();
       sourceDatabase = mongoClient.db();
     }
-    await postgres.query("SELECT 1 FROM migration_runs LIMIT 1");
-    await postgres.query(
-      `INSERT INTO migration_runs(id, mode, status, started_at, source_database)
-       VALUES ($1,$2,'running',now(),$3)`,
-      [runId, mode, sourceDatabase?.databaseName || null],
-    );
+    lifecycle.assertHealthy();
+    if (options.resumeInitialCapture) {
+      const candidate = await inspectInitialCaptureResume(postgres, sourceDatabase!.databaseName);
+      if (!candidate) throw new Error("Initial capture resume is no longer safe; destination was not changed.");
+      console.log("[resume] Checking every captured document against the stopped source before any write; existing data will not be overwritten.");
+      await validateCapturedSource(postgres, sourceDatabase!, candidate.runId, {
+        batchSize, signal: lifecycle.signal, assertHealthy: lifecycle.assertHealthy, log: console.log,
+      });
+      runId = candidate.runId;
+      console.log("[resume] Existing capture validated. Resuming the same run with insert-only batches.");
+    }
+    const startRun = async () => {
+      if (options.resumeInitialCapture) {
+        await postgres.query("UPDATE migration_runs SET status='running',error=NULL,finished_at=NULL WHERE id=$1", [runId]);
+      } else {
+        await postgres.query(`INSERT INTO migration_runs(id, mode, status, started_at, source_database)
+          VALUES ($1,$2,'running',now(),$3)`, [runId, mode, sourceDatabase?.databaseName || null]);
+      }
+      runStarted = true;
+    };
     if (mode === "mirror" || mode === "all") {
       const only = new Set(
         (process.env.MIGRATION_COLLECTIONS || "")
@@ -1770,7 +1863,7 @@ export async function runMigration(options: {
       if (process.env.MIGRATION_PRUNE === "true" && only.size) {
         throw new Error("MIGRATION_PRUNE cannot be combined with MIGRATION_COLLECTIONS");
       }
-      const collections = (await sourceDatabase!.listCollections().toArray())
+      const collections = (await sourceDatabase!.listCollections({}, { nameOnly: true, signal: lifecycle.signal }).toArray())
         .map((item) => item.name)
         .filter((name) => !name.startsWith("system."))
         .filter((name) => !only.size || only.has(name))
@@ -1779,11 +1872,14 @@ export async function runMigration(options: {
       // the old mirror and normalized rows have already been deleted.
       const sourceCounts: Record<string, number> = {};
       for (const collection of collections) {
-        sourceCounts[collection] = await sourceDatabase!.collection(collection).countDocuments();
+        lifecycle.assertHealthy();
+        sourceCounts[collection] = await sourceDatabase!.collection(collection).countDocuments({}, { signal: lifecycle.signal });
       }
       validateMigrationSourcePreflight(sourceDatabase!.databaseName, sourceCounts);
+      await startRun();
+      capturing = true;
       for (const collection of collections) {
-        stats[collection] = await mirrorCollection(postgres, collection, runId);
+        stats[collection] = await mirrorCollection(postgres, collection, runId, lifecycle, limits, options.resumeInitialCapture);
       }
       if (process.env.MIGRATION_PRUNE === "true") {
         await postgres.query(
@@ -1797,31 +1893,55 @@ export async function runMigration(options: {
           [collections],
         );
       }
+    } else {
+      await startRun();
     }
-    if (mode === "normalize" || mode === "all") await normalize(postgres);
-    if (mode === "verify" || mode === "all") await verify(postgres);
+    capturing = false;
+    if (mode === "normalize" || mode === "all") {
+      console.log("[migration] Capture complete; normalizing native PostgreSQL tables.");
+      await normalize(postgres);
+    }
+    if (mode === "verify" || mode === "all") {
+      console.log("[migration] Verifying captured data and native PostgreSQL parity.");
+      await verify(postgres);
+    }
     await postgres.query(
       `UPDATE migration_runs SET status='complete', finished_at=now(), stats=$2 WHERE id=$1`,
       [runId, JSON.stringify(stats)],
     );
   } catch (error) {
-    await postgres
-      .query(
-        `UPDATE migration_runs SET status='failed', finished_at=now(), stats=$2, error=$3
-         WHERE id=$1`,
-        [runId, JSON.stringify(stats), error instanceof Error ? error.stack : String(error)],
-      )
-      .catch(() => undefined);
-    throw error;
+    let failure = error;
+    try { lifecycle.assertHealthy(); } catch (interruption) { failure = interruption; }
+    if (runStarted && migrationLockClient) {
+      // Never acquire a fresh bookkeeping connection after losing the data lock:
+      // a replacement importer may already own it. Only this locked session can
+      // record a controlled stop. Transport loss leaves the old run resumable.
+      await migrationLockClient.query("ROLLBACK").catch(() => undefined);
+      const retryCapture = capturing && failure instanceof MigrationLifecycleError;
+      await migrationLockClient.query(
+        `UPDATE migration_runs SET status=$2,finished_at=CASE WHEN $2='interrupted' THEN NULL ELSE now() END,
+          stats=$3,error=$4 WHERE id=$1`,
+        [runId, retryCapture ? "interrupted" : "failed",
+          JSON.stringify(retryCapture ? { ...stats, initialCaptureRetry: true } : stats),
+          retryCapture && failure instanceof MigrationLifecycleError ? `MIGRATION_CAPTURE_INTERRUPTED:${failure.kind}` : failure instanceof Error ? failure.stack : String(failure)],
+      ).catch(() => undefined);
+    }
+    throw failure;
   } finally {
     await mongoClient?.close().catch(() => undefined);
     mongoClient = null;
     sourceDatabase = null;
-    if (migrationLockClient) {
+    if (migrationLockClient && !lockClientReleased) {
       await migrationLockClient.query("SELECT pg_advisory_unlock(hashtext('radiohub-data-migration'))").catch(() => undefined);
-      migrationLockClient.release();
+      if (!lockClientReleased) {
+        lockClientReleased = true;
+        migrationLockClient.release(true);
+      }
     }
-    await postgres.end().catch(() => undefined);
+    await pool.end().catch(() => undefined);
+    clearTimeout(drainDeadline);
+    lifecycle.signal.removeEventListener("abort", boundInterruptedDrain);
+    lifecycle.cleanupAfterConnectionsClosed();
   }
 }
 

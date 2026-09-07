@@ -1,5 +1,6 @@
 import { pathToFileURL } from "node:url";
 import pg from "pg";
+import { inspectInitialCaptureResume } from "./initial-capture-resume";
 
 type Environment = NodeJS.ProcessEnv;
 type Connection = Pick<pg.PoolClient, "query" | "release"> & Partial<Pick<pg.PoolClient, "on" | "off">>;
@@ -12,12 +13,15 @@ export interface BootstrapState {
 }
 
 export interface BootstrapDependencies {
-  connect(environment: Environment): Promise<{ client: Connection; close(): Promise<void> }>;
+  connect(environment: Environment): Promise<{ client: Connection; signal?: AbortSignal; close(): Promise<void> }>;
   applySchema(environment: Environment): Promise<void>;
   readState(client: Connection): Promise<BootstrapState>;
   isPristine(client: Connection): Promise<boolean>;
   diagnostics?(client: Connection, log: (message: string) => void): Promise<void>;
-  runImport(environment: Environment, beforeWrite: (client: Connection) => Promise<boolean>): Promise<void>;
+  inspectResume?(client: Connection, expectedSourceDb: string): Promise<{ runId: string } | null>;
+  runImport(environment: Environment, beforeWrite: (client: Connection) => Promise<boolean>, options?: {
+    signal?: AbortSignal; resumeInitialCapture?: boolean;
+  }): Promise<void>;
   log(message: string): void;
 }
 
@@ -100,6 +104,7 @@ export function classifyBootstrapFailure(error: unknown, unfinished = false): { 
   }
   const text = error.slice(0, 8192);
   const categories: Array<[string, RegExp, string]> = [
+    ["interruption", /^MIGRATION_CAPTURE_INTERRUPTED:(?:SIGTERM|SIGINT|postgres-pool|postgres-client|coordinator)$/, "A controlled capture interruption was recorded; safe resume still requires source validation and an untouched native destination."],
     ["tls", /\bTLS\b|\bSSL\b|certificate|self[- ]signed/i, "Stored text suggests a TLS/certificate problem; verify trusted connection configuration."],
     ["memory", /out of memory|heap out of memory|heap limit|allocation failed|\bENOMEM\b/i, "Stored text mentions memory exhaustion; confirm with deployment memory and exit events."],
     ["verification", /verification (?:failed|refused)|parity|invalidChecksums|countMismatches/i, "Stored text suggests verification did not succeed; inspect the original failure privately."],
@@ -153,7 +158,7 @@ export async function readBootstrapDiagnostics(client: Connection) {
   return {
     latestRun: run ? {
       mode: diagnosticLabel(run.mode, ["all", "mirror", "normalize", "verify"]),
-      status: diagnosticLabel(run.status, ["running", "complete", "failed"]),
+      status: diagnosticLabel(run.status, ["running", "interrupted", "complete", "failed"]),
       startedAt: diagnosticTime(run.started_at), finishedAt: diagnosticTime(run.finished_at),
       failure: classifyBootstrapFailure(run.recorded_error, !diagnosticTime(run.finished_at)),
     } : null,
@@ -193,6 +198,7 @@ export async function isPristineDestination(client: Connection): Promise<boolean
 
 const defaults: BootstrapDependencies = {
   async connect(environment) {
+    const failures = new AbortController();
     const pool = new pg.Pool({
       connectionString: environment.DATABASE_URL,
       max: 1,
@@ -205,11 +211,16 @@ const defaults: BootstrapDependencies = {
       },
       application_name: "radiohub-initial-bootstrap",
     });
+    const onPoolError = () => failures.abort(new Error("Bootstrap coordinator pool connection failed"));
+    pool.on("error", onPoolError);
     try {
       const client = await pool.connect();
-      return { client, close: () => pool.end() };
+      return { client, signal: failures.signal, async close() {
+        try { await pool.end(); } finally { pool.off("error", onPoolError); }
+      } };
     } catch (error) {
       await pool.end().catch(() => undefined);
+      pool.off("error", onPoolError);
       throw error;
     }
   },
@@ -219,12 +230,12 @@ const defaults: BootstrapDependencies = {
   },
   readState: readBootstrapState,
   isPristine: isPristineDestination,
-  async runImport(environment, beforeWrite) {
+  async runImport(environment, beforeWrite, options) {
     // The offline importer reads process.env. Never mutate global environment to
     // inject test configuration or run multiple importers in one process.
     if (environment !== process.env) throw new Error("The real offline importer must run in its own process environment");
     const { runMigration } = await import("./migrate-mongo-to-postgres");
-    await runMigration({ phase: "all", forcePrimary: true, beforeWrite });
+    await runMigration({ phase: "all", forcePrimary: true, beforeWrite, signal: options?.signal, resumeInitialCapture: options?.resumeInitialCapture });
   },
   log: (message) => console.log(message),
 };
@@ -238,21 +249,29 @@ export async function runAutomaticBootstrap(
     throw new Error("DATABASE_URL must be the destination PostgreSQL URL");
   }
   const connection = await dependencies.connect(environment);
+  const coordinatorAbort = new AbortController();
   let locked = false;
   let connectionFailure: Error | undefined;
   const onConnectionError = () => {
-    connectionFailure = new Error("Bootstrap coordinator connection was lost; initialization must be checked before retrying");
+    connectionFailure ||= new Error("Bootstrap coordinator connection was lost; initialization must be checked before retrying");
+    coordinatorAbort.abort(connectionFailure);
   };
   connection.client.on?.("error", onConnectionError);
+  connection.signal?.addEventListener("abort", onConnectionError, { once: true });
+  if (connection.signal?.aborted) onConnectionError();
   const assertCoordinator = () => { if (connectionFailure) throw connectionFailure; };
   const diagnose = async (client: Connection) => {
     try { await (dependencies.diagnostics || reportBootstrapDiagnostics)(client, dependencies.log); } catch { /* never replace the original safety guard */ }
   };
   try {
+    assertCoordinator();
     await connection.client.query("SELECT pg_advisory_lock(hashtext('radiohub-initial-bootstrap'))");
     locked = true;
+    assertCoordinator();
     await dependencies.applySchema(environment);
+    assertCoordinator();
     const state = await dependencies.readState(connection.client);
+    assertCoordinator();
     if (state.postgresOwned) {
       dependencies.log("[bootstrap] PostgreSQL already owns application writes; MongoDB will not be contacted or replayed");
       return "already-postgres";
@@ -264,24 +283,39 @@ export async function runAutomaticBootstrap(
     const pristine = !state.latestRun && state.checkpointCount === 0 &&
       await dependencies.isPristine(connection.client);
     if (!pristine) await diagnose(connection.client);
-    validateAutomaticImport(environment, pristine);
+    // This first SELECT-only inspection is advisory. Eligibility is checked
+    // again under the SAME session lock used for every import write.
+    let initialCapture: { runId: string } | null = null;
+    if (!pristine && environment.MIGRATION_PRUNE !== "true") {
+      validateAutomaticImport(environment, true);
+      initialCapture = await (dependencies.inspectResume || inspectInitialCaptureResume)(connection.client, sourceDatabaseName(environment.MONGODB_URI));
+    }
+    validateAutomaticImport(environment, pristine || !!initialCapture);
     assertCoordinator();
-    dependencies.log("[bootstrap] Capturing all source collections from the primary, normalizing and verifying PostgreSQL");
+    dependencies.log(initialCapture
+      ? "[bootstrap] Interrupted initial capture is eligible for source revalidation; existing captures will not be overwritten or pruned."
+      : "[bootstrap] Capturing all source collections from the primary, normalizing and verifying PostgreSQL");
     await dependencies.runImport(environment, async (migrationClient) => {
       assertCoordinator();
       // Called after acquiring the importer/runtime authority lock. This fences
       // completion races even if another coordinator's session disappeared.
       const current = await dependencies.readState(migrationClient);
+      assertCoordinator();
       if (current.postgresOwned || isVerifiedImport(current)) return false;
       const stillPristine = !current.latestRun && current.checkpointCount === 0 &&
         await dependencies.isPristine(migrationClient);
       if (!stillPristine) await diagnose(migrationClient);
-      validateAutomaticImport(environment, stillPristine);
+      const stillEligible = !stillPristine && initialCapture
+        ? await (dependencies.inspectResume || inspectInitialCaptureResume)(migrationClient, sourceDatabaseName(environment.MONGODB_URI))
+        : null;
+      const sameInitialCapture = !!initialCapture && stillEligible?.runId === initialCapture.runId;
+      validateAutomaticImport(environment, stillPristine || sameInitialCapture);
       assertCoordinator();
       return true;
-    });
+    }, { signal: coordinatorAbort.signal, resumeInitialCapture: !!initialCapture });
     assertCoordinator();
     const finalState = await dependencies.readState(connection.client);
+    assertCoordinator();
     if (!isVerifiedImport(finalState)) {
       if (finalState.postgresOwned) {
         dependencies.log("[bootstrap] PostgreSQL write authority was established while waiting; MongoDB was not replayed");
@@ -292,12 +326,17 @@ export async function runAutomaticBootstrap(
     dependencies.log("[bootstrap] One-time import and verification completed successfully");
     return "imported";
   } finally {
-    if (locked) {
+    if (locked && !connectionFailure) {
       await connection.client.query("SELECT pg_advisory_unlock(hashtext('radiohub-initial-bootstrap'))").catch(() => undefined);
     }
-    connection.client.off?.("error", onConnectionError);
-    connection.client.release();
-    await connection.close();
+    try { connection.client.release(connectionFailure); }
+    finally {
+      try { await connection.close(); }
+      finally {
+        connection.client.off?.("error", onConnectionError);
+        connection.signal?.removeEventListener("abort", onConnectionError);
+      }
+    }
   }
 }
 
