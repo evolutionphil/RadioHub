@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 
 export type NotificationType = 'success' | 'error' | 'warning' | 'info' | 'loading';
 export type NotificationPosition = 'top-right' | 'top-left' | 'bottom-right' | 'bottom-left' | 'top-center' | 'bottom-center';
@@ -113,11 +113,14 @@ export function useNotifications() {
   const [notifications, setNotifications] = useState<Notification[]>(globalNotifications);
   const timeoutRefs = useRef<Map<string, NodeJS.Timeout>>(new Map());
 
-  // Subscribe to global notifications
-  useState(() => {
+  // Subscribe only after commit and release the listener on unmount. A state
+  // initializer's return value is stored as state, never run as cleanup.
+  useEffect(() => {
     const unsubscribe = notificationManager.subscribe(setNotifications);
+    // Include updates delivered between render and this subscription's setup.
+    setNotifications(notificationManager.getAll());
     return unsubscribe;
-  });
+  }, []);
 
   const notify = useCallback((options: NotificationOptions): string => {
     return notificationManager.add(options);
