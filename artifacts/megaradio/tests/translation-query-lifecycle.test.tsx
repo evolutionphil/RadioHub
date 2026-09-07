@@ -3,6 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, render, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useTranslation } from '../src/hooks/useTranslation';
+import { SeoHead } from '../src/components/SeoHead';
+import { ServerSeoHeadContext } from '../src/utils/ssr-seo-head';
 
 let client: QueryClient;
 let result: ReturnType<typeof useTranslation>;
@@ -47,6 +49,27 @@ function renderConsumers(count = 30) {
 }
 
 describe('shared Turkish translation query lifecycle', () => {
+  it('SEO and 30 UI consumers cannot cache the SSR subset as a complete dictionary', async () => {
+    window.__INITIAL_LANGUAGE__ = 'tr';
+    window.__INITIAL_TRANSLATIONS__ = { hello: 'SSR merhaba' };
+    let finish!: (value: Record<string, string>) => void;
+    const response = new Promise<Record<string, string>>(resolve => { finish = resolve; });
+    client.setQueryDefaults(['/api/translations', 'tr'], { queryFn: async () => {
+      requests.push('/api/translations/tr');
+      return response;
+    } });
+    render(<QueryClientProvider client={client}><ServerSeoHeadContext.Provider value={true}>
+      <SeoHead pageType="home" />
+      {Array.from({ length: 30 }, (_, index) => <Consumer key={index} />)}
+    </ServerSeoHeadContext.Provider></QueryClientProvider>);
+    expect(result.t('hello')).toBe('SSR merhaba');
+    expect(client.getQueryData(['/api/translations', 'tr'])).toBeUndefined();
+    await waitFor(() => expect(requests).toEqual(['/api/translations/tr']));
+    await act(async () => { finish({ hello: 'Tam sözlük', footer_company: 'Şirket' }); });
+    await waitFor(() => expect(result.t('footer_company')).toBe('Şirket'));
+    expect(client.getQueryData(['/api/translations', 'tr'])).toEqual({ hello: 'Tam sözlük', footer_company: 'Şirket' });
+    expect(requests).toEqual(['/api/translations/tr']);
+  });
   it('partial SSR dictionary renders immediately, then fetches and merges the full dictionary once', async () => {
     window.__INITIAL_LANGUAGE__ = 'tr';
     window.__INITIAL_TRANSLATIONS__ = { hello: 'SSR merhaba', ssr_only: 'Korunan metin' };

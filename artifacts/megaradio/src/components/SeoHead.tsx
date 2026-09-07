@@ -42,9 +42,8 @@ export function SeoHead({ stationData, pageType = 'home', genreName }: SeoHeadPr
   const { language } = useTranslation();
 
   // Get translations for SEO
-  // CRITICAL FIX: Use server-preloaded translations as initialData so the correct language
-  // title is set IMMEDIATELY on first render — no more race condition where Flowalive/bots
-  // capture the English placeholder title before the API call resolves.
+  // SSR contains only critical keys. Use observer-only placeholder data: seeding
+  // the complete dictionary cache here makes all other consumers skip its fetch.
   const preloadedForThisLang =
     typeof window !== 'undefined' &&
     window.__INITIAL_LANGUAGE__ === language &&
@@ -56,8 +55,7 @@ export function SeoHead({ stationData, pageType = 'home', genreName }: SeoHeadPr
   const { data: translations } = useQuery<Record<string, string>>({
     queryKey: ["/api/translations", language],
     staleTime: 5 * 60 * 1000,
-    initialData: preloadedForThisLang,
-    initialDataUpdatedAt: preloadedForThisLang ? Date.now() : undefined,
+    placeholderData: preloadedForThisLang,
   });
 
   useEffect(() => {

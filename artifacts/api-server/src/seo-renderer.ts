@@ -2259,18 +2259,18 @@ export class SeoRenderer {
 
             <!-- SEO Opening Paragraph - Uses H1 Keywords -->
             <section class="intro-section">
-              <p>${this.escapeHtml(getLocalizedText('seo_opening_paragraph', `${h1Text} - your gateway to unlimited radio streaming worldwide. Discover and listen to free live radio stations, music, news, sports, and entertainment from every corner of the globe. With thousands of online radio broadcasts available 24/7, you can enjoy crystal-clear audio streaming on any device, completely free of charge.`).replace('{h1}', h1Text))}</p>
+              <p>${this.escapeHtml(getLocalizedText('seo_opening_paragraph', buildHomeSeo(language, translations).description).replace('{h1}', h1Text))}</p>
             </section>
             
             <!-- SEO Navigation Links -->
             <nav class="main-navigation">
-              <h2>${this.escapeHtml(getLocalizedText('explore_mega_radio', 'Explore Mega Radio'))}</h2>
+              <h2>${this.escapeHtml(getLocalizedText('explore_mega_radio', LOCALIZED_RADIO_STATIONS[language] || 'Radio Stations'))}</h2>
               <ul>
                 <li><a href="/${language}/${urlTranslations?.get(`${language}:genres`) || 'genres'}">${this.escapeHtml(getLocalizedText('nav_genres', 'Radio Genres'))}</a></li>
                 <li><a href="/${language}/${urlTranslations?.get(`${language}:regions`) || 'regions'}">${this.escapeHtml(getLocalizedText('nav_regions', 'Radio by Country'))}</a></li>
                 <li><a href="/${language}/${urlTranslations?.get(`${language}:stations`) || 'stations'}">${this.escapeHtml(getLocalizedText('nav_stations', 'All Stations'))}</a></li>
-                <li><a href="/${language}/recommendations">${this.escapeHtml(getLocalizedText('nav_for_you', 'For You'))}</a></li>
-                <li><a href="/${language}/users">${this.escapeHtml(getLocalizedText('nav_users', 'Community'))}</a></li>
+                <li><a href="/${language}/${urlTranslations?.get(`${language}:recommendations`) || 'recommendations'}">${this.escapeHtml(getLocalizedText('nav_for_you', 'For You'))}</a></li>
+                <li><a href="/${language}/${urlTranslations?.get(`${language}:users`) || 'users'}">${this.escapeHtml(getLocalizedText('nav_users', 'Community'))}</a></li>
               </ul>
             </nav>
             

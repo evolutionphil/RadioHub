@@ -14,7 +14,7 @@ export function About() {
         </div>
         <div className="absolute bottom-0 left-0 w-full">
           <img 
-            loading="lazy" 
+            loading="eager"
             className="w-full max-w-7xl h-auto" 
             src="/images/about-frame.png"
             width={1512}

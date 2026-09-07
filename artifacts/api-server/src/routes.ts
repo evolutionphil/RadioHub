@@ -62,6 +62,7 @@ import { registerSeoSitemapRoutes } from './routes/seo-sitemap-routes';
 import { registerStreamProxyRoutes } from './routes/stream-proxy-routes';
 import { registerRegionsRecommendationsRoutes } from './routes/regions-recommendations-routes';
 import { registerMiscRoutes } from './routes/misc-routes';
+import { registerPublicFeedbackRoutes } from './routes/public-feedback-routes';
 import { registerWebPushRoutes } from './routes/web-push-routes';
 import { registerIapValidationRoutes } from './routes/iap-validation-routes';
 import { registerAdminIapRoutes } from './routes/admin-iap-routes';
@@ -820,6 +821,7 @@ export async function registerRoutes(app: Express, options?: RegisterRoutesOptio
   registerRegionsRecommendationsRoutes(app, deps);
   registerWebPushRoutes(app, deps);
   registerMiscRoutes(app, deps, { apiOnly: isApiOnly });
+  registerPublicFeedbackRoutes(app);
   registerIapValidationRoutes(app);
   registerAdminIapRoutes(app, deps);
   registerAppleWebhookRoutes(app);

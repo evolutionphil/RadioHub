@@ -47,3 +47,12 @@ it('can switch alt ownership without resetting image recovery or violating hook 
   expect(screen.getByRole('img')).toHaveAttribute('src', recoveredSource);
   expect(translationHook).not.toHaveBeenCalled();
 });
+
+it('substitutes the imported underscore-separated station placeholder', () => {
+  translationHook.mockImplementation(() => ({
+    t: (_key: string, _fallback: string, params: Record<string, string>) =>
+      '{STATION_NAME} Logo'.replace(/\{([^}]+)\}/g, (match, key) => params[key] ?? match),
+  }));
+  render(<StationLogo station={station} />);
+  expect(screen.getByRole('img')).toHaveAttribute('alt', 'Radio Eins Logo');
+});

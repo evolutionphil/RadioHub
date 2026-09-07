@@ -141,7 +141,8 @@ type StationLogoImageProps = ImgHTMLAttributes<HTMLImageElement> & { stationName
 
 function LocalizedStationLogoImage({ stationName, ...props }: StationLogoImageProps) {
   const { t } = useTranslation();
-  return <img {...props} alt={t('station_logo_alt', `${stationName} logo`, { stationName })} />;
+  // Imported dictionaries use both {stationName} and {STATION_NAME}.
+  return <img {...props} alt={t('station_logo_alt', `${stationName} logo`, { stationName, STATION_NAME: stationName })} />;
 }
 
 // Cards already provide a localized alt. Keep their image path free of the
