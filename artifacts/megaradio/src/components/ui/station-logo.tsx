@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, type SyntheticEvent } from 'react';
+import { useState, useMemo, useEffect, type SyntheticEvent, type ImgHTMLAttributes } from 'react';
 import { cn, normalizeFaviconUrl } from '@/lib/utils';
 import { useTranslation } from '@/hooks/useTranslation';
 import { hasRecentStationLogoFailure, rememberStationLogoFailure, clearStationLogoFailure } from '@/lib/station-logo-failure-cache';
@@ -137,6 +137,19 @@ function getSizes(size: keyof typeof SIZES): string {
   return `${px}px`;
 }
 
+type StationLogoImageProps = ImgHTMLAttributes<HTMLImageElement> & { stationName: string };
+
+function LocalizedStationLogoImage({ stationName, ...props }: StationLogoImageProps) {
+  const { t } = useTranslation();
+  return <img {...props} alt={t('station_logo_alt', `${stationName} logo`, { stationName })} />;
+}
+
+// Cards already provide a localized alt. Keep their image path free of the
+// translation hook's query subscriptions; only the default needs translation.
+function StationLogoImage({ stationName, alt, ...props }: StationLogoImageProps) {
+  return alt ? <img {...props} alt={alt} /> : <LocalizedStationLogoImage {...props} stationName={stationName} />;
+}
+
 export function StationLogo({ 
   station, 
   size = 'md', 
@@ -144,7 +157,6 @@ export function StationLogo({
   alt,
   priority = false
 }: StationLogoProps) {
-  const { t } = useTranslation();
   const sizeConfig = SIZES[size];
 
   const preferredAssetSize = sizeConfig.px > 96 ? 'webp256' : 'webp96';
@@ -222,7 +234,6 @@ export function StationLogo({
   }, [station.logoAssets, activeSourceIndex, responsiveSourceFailed]);
 
   const stationName = station.name || 'Radio Station';
-  const altText = alt || t('station_logo_alt', `${stationName} logo`, { stationName });
 
   const handleError = (event: SyntheticEvent<HTMLImageElement>) => {
     const image = event.currentTarget;
@@ -257,11 +268,12 @@ export function StationLogo({
   }
 
   return (
-    <img
+    <StationLogoImage
+      stationName={stationName}
       src={logoUrl}
       srcSet={srcSet}
       sizes={srcSet ? getSizes(size) : undefined}
-      alt={altText}
+      alt={alt}
       width={sizeConfig.px}
       height={sizeConfig.px}
       loading={priority ? 'eager' : 'lazy'}

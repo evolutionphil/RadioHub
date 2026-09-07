@@ -43,6 +43,10 @@ about 4.6 seconds to its first byte; warm HTML took about 0.2 seconds.
   by ~115KB. Removed unused per-card notification polling/listeners, preserving
   one application notification bridge. Translation merges are shared by weak
   reference, avoiding dictionary copies on every card render.
+- Logo instances with an already translated alt no longer mount five unused
+  translation query observers. The default-alt path remains localized; image
+  recovery state is preserved. Country display formatters are reused with a
+  bounded 64-locale cache.
 - Image fallback failures have a short, bounded per-page negative cache.
   S3 remains preferred; new jobs publish actual 48/96/256 variants and truthful
   original MIME/extensions. Existing objects were neither deleted nor rewritten.
@@ -61,6 +65,14 @@ must come from actual station language data, never the visitor's UI language.
 Unknown broadcast language is omitted. Localized legal bodies now share one
 source between raw SSR and React; see the separate legal verification note.
 
+The wider 100-page re-audit found a separate defect that station checks alone
+did not cover: genre/region index pages still used English metadata and nearly
+empty initial HTML. Index metadata/H1 now share 14-locale templates across
+SSR/React, retaining custom copy. Bounded crawlable directory links use native
+reference tables, not station scans. About/Contact now emit their existing
+localized public body/labels before React boots (602 translation-key checks
+across 14 languages passed). The client form and design remain intact.
+
 Kral FM's 14 locale pages passed canonical/hreflang/H1/indexability checks.
 Fourteen first station sitemap chunks contained it exactly once per locale;
 140,000 sampled entries were valid XML. The largest sampled chunk was 31.9MB,
@@ -68,10 +80,13 @@ below the 50MB uncompressed limit. This is not a crawl of every station URL.
 
 ## Validation and limits
 
-- Frontend full suite: 299 tests passed, including 14-locale legal SSR/SPA parity.
-- Backend focused suites: 157 tests passed, including actual PostgreSQL ranking,
+- Frontend full suite: 335 tests passed, including 14-locale legal SSR/SPA parity.
+- Initial backend focused suites: 157 tests passed, including actual PostgreSQL ranking,
   public response/filter/counter tests, projection parity, memory-cache limits,
   schema/SSR, static-asset cache behavior and mocked image uploads.
+- Final backend SSR/navigation regression batch: 168 tests passed (overlaps the
+  initial batch; counts must not be added). Includes 14-locale directory and
+  static-body checks, cache recovery, and existing legal/station schema guards.
 - API/frontend typechecks and isolated production builds passed. Production
   dependency boundary: 387 packages, zero Mongo dependencies.
 - All database verification used disposable fixtures or a read-only verified

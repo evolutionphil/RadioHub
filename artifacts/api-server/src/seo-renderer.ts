@@ -1,4 +1,5 @@
 import { generateSeoTags, getLanguageFromPath, DEFAULT_LANGUAGE, generateLanguageUrls, COUNTRY_TO_LANGUAGE, SEO_LANGUAGES, generateLocalizedStationTitle, truncateAtWordBoundary, LOCALIZED_LOGO_WORD, LOCALIZED_FLAG_WORD } from '@workspace/seo-shared/seo-config';
+import { buildDirectoryIndexSeo } from '@workspace/seo-shared/directory-index-seo';
 import { getStationImageAlt } from '@workspace/seo-shared/station-image-alt';
 import { getStationBroadcastLanguages } from '@workspace/seo-shared/structured-data';
 import { pgSeoCatalog } from './data/postgres-seo-read-store';
@@ -41,9 +42,10 @@ import { buildCountrySeo, buildRegionSeo } from '@workspace/seo-shared/region-se
 import { buildSearchSeo } from '@workspace/seo-shared/search-seo-templates';
 import { buildLegalSeo } from '@workspace/seo-shared/legal-seo-templates';
 import { buildStaticPageSeo } from '@workspace/seo-shared/static-page-seo-templates';
+import { renderStaticInformationBody } from './seo/static-information-body';
 import { buildHomeSeo } from '@workspace/seo-shared/home-seo-templates';
 import { buildCommunityPageSeo } from '@workspace/seo-shared/community-page-seo-templates';
-import { getLocalizedCountryName } from '@workspace/seo-shared/country-name-translations';
+import { getLocalizedCountryName, getLocalizedRegionName } from '@workspace/seo-shared/country-name-translations';
 import {
   getCanonicalGenreSlug,
   MIN_STATIONS_FOR_GENRE_INDEX,
@@ -350,7 +352,8 @@ export class SeoRenderer {
       const pg = pm ? Math.min(Math.max(parseInt(pm[1], 10) || 1, 1), 50) : 1;
       if (pg > 1) pageSuffix = `|page=${pg}`;
     }
-    const cacheKey = (normalizedLang ? `${cleanUrl}|lang=${normalizedLang}` : cleanUrl) + pageSuffix;
+    const cacheKey = (normalizedLang ? `${cleanUrl}|lang=${normalizedLang}` : cleanUrl) + pageSuffix
+      + (cleanPath === '/genres' ? `|genre-whitelist=${(await import('./seo/directory-hub-data')).genreDirectoryCacheRevision()}` : '');
     
     // Check cache for complete page data first
     const cachedPageData = performanceCache.getPageData(cacheKey);
@@ -589,6 +592,16 @@ export class SeoRenderer {
       }
     } else if (cleanPath.startsWith('/genres')) {
       pageType = 'genres';
+      if (cleanPath === '/genres') {
+        try {
+          const { loadGenreDirectoryHub } = await import('./seo/directory-hub-data');
+          additionalData.directoryGenres = await withSignal(loadGenreDirectoryHub(), signal);
+        } catch (error: any) {
+          if (error?.name === 'AbortError' || signal?.aborted) throw error;
+          additionalData.hubReadFailed = true;
+          logger.warn('Genre directory reference data temporarily unavailable');
+        }
+      }
       // Extract genre slug if present for more specific SEO
       const pathParts = cleanPath.split('/');
       if (pathParts.length > 2) {
@@ -890,6 +903,16 @@ export class SeoRenderer {
       pageType = 'recommendations';
     } else if (cleanPath.startsWith('/regions') || cleanPath.startsWith('/country')) {
       pageType = 'regions';
+      if (cleanPath === '/regions') {
+        try {
+          const { loadRegionDirectoryHub } = await import('./seo/directory-hub-data');
+          additionalData.directoryRegions = await withSignal(loadRegionDirectoryHub(), signal);
+        } catch (error: any) {
+          if (error?.name === 'AbortError' || signal?.aborted) throw error;
+          additionalData.hubReadFailed = true;
+          logger.warn('Region directory reference data temporarily unavailable');
+        }
+      }
       // Extract region/country information for more specific SEO
       const pathParts = cleanPath.split('/');
 
@@ -1584,7 +1607,7 @@ export class SeoRenderer {
     
     // A failed lookup must be retried on the very next request. Caching its
     // synthetic data kept healthy station URLs unavailable after PG recovered.
-    if (!stationDbErrorFlag) performanceCache.setPageData(cacheKey, pageData);
+    if (!stationDbErrorFlag && !additionalData.hubReadFailed) performanceCache.setPageData(cacheKey, pageData);
     
     return pageData;
     }, url);
@@ -2092,7 +2115,7 @@ export class SeoRenderer {
           // genre-seo-templates.ts already carries the brand suffix.
           return genreSeo.h1;
         }
-        return deriveH1FromTitle(getLocalizedText('genres_page_title'));
+        return buildDirectoryIndexSeo('genres', language, translations).h1;
       
       case 'regions':
         if (additionalData?.regionName) {
@@ -2114,7 +2137,7 @@ export class SeoRenderer {
           // Radio" tail (kept on <title>) so the visible heading differs.
           return `${localizedRegion} ${radioStationsText}`;
         }
-        return deriveH1FromTitle(getLocalizedText('regions_page_title'));
+        return buildDirectoryIndexSeo('regions', language, translations).h1;
       
       case 'stations':
         return deriveH1FromTitle(getLocalizedText('stations_page_title'));
@@ -2585,6 +2608,19 @@ export class SeoRenderer {
         {
           const genreName = additionalData?.genreName || '';
           const langPrefix = `/${language}`;
+          if (!genreName) {
+            const hub = buildDirectoryIndexSeo('genres', language, translations);
+            const genresPath = buildLocalizedUrl('/genres', language, undefined, urlTranslations || new Map());
+            content = `<main lang="${this.escapeHtml(language)}" dir="${language === 'ar' || language === 'he' ? 'rtl' : 'ltr'}">
+              <h1>${this.escapeHtml(h1Text)}</h1>
+              <p>${this.escapeHtml(hub.description)}</p>
+              <ul class="genre-directory">
+                ${(additionalData?.directoryGenres || []).map((genre: { slug: string; name: string }) =>
+                  `<li><a href="${this.escapeHtml(`${genresPath}/${encodeURIComponent(genre.slug)}`)}">${this.escapeHtml(genre.name)}</a></li>`).join('')}
+              </ul>
+            </main>`;
+            break;
+          }
           content = `
           <main>
             <h1>${this.escapeHtml(h1Text)}</h1>
@@ -2705,6 +2741,22 @@ export class SeoRenderer {
         {
           const regionName = additionalData?.regionName || additionalData?.country || additionalData?.region || '';
           const langPrefix = `/${language}`;
+          if (!regionName) {
+            const hub = buildDirectoryIndexSeo('regions', language, translations);
+            content = `<main lang="${this.escapeHtml(language)}" dir="${language === 'ar' || language === 'he' ? 'rtl' : 'ltr'}">
+              <h1>${this.escapeHtml(h1Text)}</h1>
+              <p>${this.escapeHtml(hub.description)}</p>
+              ${(additionalData?.directoryRegions || []).map((region: { slug: string; name: string; countries: Array<{ slug: string; name: string }> }) => {
+                const regionPath = buildLocalizedUrl(`/regions/${region.slug}`, language, undefined, urlTranslations || new Map());
+                return `<section><h2><a href="${this.escapeHtml(regionPath)}">${this.escapeHtml(getLocalizedRegionName(region.name, language))}</a></h2>
+                  <ul>${region.countries.map(country => {
+                    const countryPath = buildLocalizedUrl(`/regions/${region.slug}/${country.slug}`, language, undefined, urlTranslations || new Map());
+                    return `<li><a href="${this.escapeHtml(countryPath)}">${this.escapeHtml(getLocalizedCountryName(country.name, language))}</a></li>`;
+                  }).join('')}</ul></section>`;
+              }).join('')}
+            </main>`;
+            break;
+          }
           const cc = additionalData?.countryCode;
           const flagSrc = cc && /^[a-z]{2}$/i.test(cc) ? `https://flagcdn.com/w320/${cc.toLowerCase()}.png` : '';
           // Multilingual body intro/availability — see shared/region-seo-templates.ts.
@@ -2948,6 +3000,11 @@ export class SeoRenderer {
           </main>
         `;
         }
+        break;
+
+      case 'about':
+      case 'contact':
+        content = renderStaticInformationBody(pageType, language, translations);
         break;
 
       case 'users':

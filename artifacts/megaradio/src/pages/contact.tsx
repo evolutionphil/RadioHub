@@ -76,6 +76,7 @@ export function Contact() {
                 </div>
                 <input
                   type="email"
+                  aria-label={t('contact_email_placeholder')}
                   placeholder={t('contact_email_placeholder')}
                   value={contactForm.email}
                   onChange={(e) => setContactForm({ ...contactForm, email: e.target.value })}
@@ -87,6 +88,7 @@ export function Contact() {
             </div>
             <div>
               <textarea
+                aria-label={t('contact_message_placeholder')}
                 value={contactForm.message}
                 onChange={(e) => setContactForm({ ...contactForm, message: e.target.value })}
                 placeholder={t('contact_message_placeholder')}

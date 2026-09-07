@@ -1,5 +1,6 @@
 // SEO Configuration for multilingual support
 import { reverseTranslateUrl, URL_TRANSLATIONS } from './url-translations';
+import { buildDirectoryIndexSeo } from './directory-index-seo';
 
 /**
  * Word-boundary safe truncation for meta descriptions.
@@ -2082,12 +2083,8 @@ export function generateSeoTags(
   const SEO_FALLBACKS: Record<string, string> = {
     // Bing SEO: every fallback description is 150–160 chars to satisfy
     // "description too short" / "description missing" audits across all 57 langs.
-    genres_page_title: 'Radio Genres — Browse All Music Genres | Mega Radio',
-    genres_page_description: 'Explore every radio genre on Mega Radio: pop, rock, jazz, classical, hip hop, electronic, country, news, sports and talk. Listen to free live radio stations by genre.',
     stations_page_title: 'Radio Stations — Browse All Stations | Mega Radio',
     stations_page_description: 'Browse 60,000+ free online radio stations from 120+ countries on Mega Radio. Listen live to music, news, sports and talk radio anywhere on desktop and mobile.',
-    regions_page_title: 'Radio by Region — Browse Stations by Region | Mega Radio',
-    regions_page_description: 'Discover radio stations from every region and country. Listen to local and international radio from Europe, Asia, Africa, Americas, and Oceania for free on Mega Radio.',
     home_page_description: 'Listen to 60,000+ free live radio stations from 120+ countries on Mega Radio. Stream music, news, sports and talk radio online from any device, anywhere, anytime.',
     about_page_description: 'Learn about Mega Radio, the free online radio platform with 60,000+ stations from 120+ countries. Discover our mission, multilingual support, and global station network.',
     contact_page_description: 'Contact the Mega Radio team for support, feedback, partnership inquiries, or station submissions. We are here to help with your free radio streaming experience.',
@@ -2120,6 +2117,8 @@ export function generateSeoTags(
     ? homeRawTitle
     : `${homeRawTitle} | Mega Radio`;
 
+  const genreIndexSeo = buildDirectoryIndexSeo('genres', language, translations);
+  const regionIndexSeo = buildDirectoryIndexSeo('regions', language, translations);
   const seoData: Record<string, SeoMetaTags> = {
     home: {
       // Bing SEO: hero_over_100_countries is only ~45 chars (too short for Bing's 150-char floor).
@@ -2134,12 +2133,14 @@ export function generateSeoTags(
       twitterDescription: getTranslation('meta_description') || getTranslation('home_page_description')
     },
     genres: {
-      title: getTranslation('genres_page_title'),
-      description: getTranslation('genres_page_description'),
+      title: genreIndexSeo.title,
+      description: genreIndexSeo.description,
       keywords: 'radio genres, music genres, pop radio, rock radio, jazz radio, classical radio, news radio, talk radio',
       ogType: 'website',
-      twitterTitle: getTranslation('genres_page_title'),
-      twitterDescription: getTranslation('genres_page_description')
+      ogTitle: genreIndexSeo.title,
+      ogDescription: genreIndexSeo.description,
+      twitterTitle: genreIndexSeo.title,
+      twitterDescription: genreIndexSeo.description
     },
     stations: {
       title: getTranslation('stations_page_title'),
@@ -2150,12 +2151,14 @@ export function generateSeoTags(
       twitterDescription: getTranslation('stations_page_description')
     },
     regions: {
-      title: getTranslation('regions_page_title'),
-      description: getTranslation('regions_page_description'),
+      title: regionIndexSeo.title,
+      description: regionIndexSeo.description,
       keywords: 'regional radio, world radio stations, international broadcasting, regional stations',
       ogType: 'website',
-      twitterTitle: getTranslation('regions_page_title'),
-      twitterDescription: getTranslation('regions_page_description')
+      ogTitle: regionIndexSeo.title,
+      ogDescription: regionIndexSeo.description,
+      twitterTitle: regionIndexSeo.title,
+      twitterDescription: regionIndexSeo.description
     },
     search: {
       title: getTranslation('search_page_title'),

@@ -10,7 +10,7 @@ export function About() {
       
       <div className="relative flex h-[200px] items-center bg-[url('/assets/images/about-bg.webp')] bg-cover bg-center sm:h-[300px]">
         <div className="container mx-auto">
-          <h2 className="text-[26px] font-bold text-white sm:text-[36px]">{t('about_page_title')}</h2>
+          <p className="text-[26px] font-bold text-white sm:text-[36px]">{t('about_page_title')}</p>
         </div>
         <div className="absolute bottom-0 left-0 w-full">
           <img 
