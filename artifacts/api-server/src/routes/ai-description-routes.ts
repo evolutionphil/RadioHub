@@ -503,11 +503,19 @@ export async function registerAiDescriptionRoutes(app: Express, deps: any) {
                     await pgCatalog().update({ _id: station._id }, { $set: { [`descriptions.${lang}`]: translation } });
                   }
                   
-                  logger.log(`   ✅ Added ${translations.size} languages for "${stationName}"`);
-                  
-                  successful++;
-                  job.successful = successful;
-                  pushLimited(job.successfulStations, { name: stationName, languages: Array.from(translations.keys()) });
+                  const failedLanguages = missingLanguages.filter(lang => !translations.has(lang));
+                  if (failedLanguages.length > 0) {
+                    failed++;
+                    job.failed = failed;
+                    const error = `Translation failed for languages: ${failedLanguages.join(', ')}`;
+                    pushLimited(job.failedStations, { name: stationName, error });
+                    logger.warn(`⚠️ "${stationName}" — saved ${translations.size} translations; ${error}`);
+                  } else {
+                    successful++;
+                    job.successful = successful;
+                    pushLimited(job.successfulStations, { name: stationName, languages: Array.from(translations.keys()) });
+                    logger.log(`✅ "${stationName}" — added all ${translations.size} missing translations`);
+                  }
                 } else {
                   successful++;
                   job.successful = successful;
@@ -517,8 +525,6 @@ export async function registerAiDescriptionRoutes(app: Express, deps: any) {
                 processed++;
                 job.processed = processed;
                 descriptionJobs.set(jobId, job);
-                
-                logger.log(`✅ Fixed "${stationName}" - now has all ${targetLanguages.length} languages`);
                 
               } catch (stationError: any) {
                 logger.error(`❌ Error fixing "${station.name}":`, stationError.message);
@@ -710,8 +716,14 @@ export async function registerAiDescriptionRoutes(app: Express, deps: any) {
                         await pgCatalog().update({ _id: station._id }, { $set: { [`descriptions.${lang}`]: cleanedTranslation } });
                       }
                       
-                      successful++;
-                      pushLimited(job.successfulStations, { name: station.name, languages: missingLanguages });
+                      const failedLanguages = missingLanguages.filter((lang: string) => !translations.has(lang));
+                      if (failedLanguages.length > 0) {
+                        failed++;
+                        pushLimited(job.failedStations, { name: station.name, error: `Translation failed for languages: ${failedLanguages.join(', ')}` });
+                      } else {
+                        successful++;
+                        pushLimited(job.successfulStations, { name: station.name, languages: Array.from(translations.keys()) });
+                      }
                     } catch (translationError: any) {
                       failed++;
                       pushLimited(job.failedStations, { name: station.name, error: translationError.message });
@@ -800,8 +812,14 @@ export async function registerAiDescriptionRoutes(app: Express, deps: any) {
                       
                       await pgCatalog().update({ _id: station._id }, { $set: { [`descriptions.${lang}`]: cleanedTranslation } });
                     }
-                    successful++;
-                    pushLimited(job.successfulStations, { name: station.name, languages: [result.language, ...missingLangs] });
+                    const failedLanguages = missingLangs.filter((lang: string) => !translations.has(lang));
+                    if (failedLanguages.length > 0) {
+                      failed++;
+                      pushLimited(job.failedStations, { name: station.name, error: `Translation failed for languages: ${failedLanguages.join(', ')}` });
+                    } else {
+                      successful++;
+                      pushLimited(job.successfulStations, { name: station.name, languages: [result.language, ...translations.keys()] });
+                    }
                   } else {
                     successful++;
                     pushLimited(job.successfulStations, { name: station.name, languages: [result.language] });
@@ -836,6 +854,13 @@ export async function registerAiDescriptionRoutes(app: Express, deps: any) {
               } catch (error: any) {
                 failed++;
                 processed++;
+                const job = descriptionJobs.get(jobId);
+                if (job) {
+                  job.failed = failed;
+                  job.processed = processed;
+                  pushLimited(job.failedStations, { name: station.name, error: error.message || 'Description processing failed' });
+                  descriptionJobs.set(jobId, job);
+                }
               }
             }
             skip += batchSize;

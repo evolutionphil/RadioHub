@@ -129,6 +129,7 @@ mock.module(new URL('../src/performance-cache.ts', import.meta.url).href, {
 // ---------------------------------------------------------------------------
 
 let SeoRenderer: new () => {
+  applyCustomSeoMetadata: (baseSeoTags: any, customMetadata: any) => any;
   generateStructuredData: (
     seoTags: any, language?: string, translations?: Record<string, string>,
     cleanPath?: string, stationData?: any, urlTranslations?: Map<string, string>, additionalData?: any,
@@ -190,6 +191,31 @@ function extractSchemasOfType(head: string, type: string): any[] {
 }
 
 const DOMAIN = 'https://themegaradio.com';
+
+test('SSR head retains localized station meta selection and explicit admin override priority in all 14 locales', async () => {
+  const { generateSeoTags, getStationMetaDescription, SITEMAP_PRIORITY_LANGUAGES } = await import('@workspace/seo-shared/seo-config');
+  const renderer = new SeoRenderer();
+  for (const language of SITEMAP_PRIORITY_LANGUAGES.universal14) {
+    const englishMeta = 'Fixture Radio: music and local news.';
+    const station = {
+      name: 'Fixture Radio', slug: 'fixture-radio', country: 'Germany', countryCode: 'DE',
+      descriptions: {
+        en: { full: 'English fixture description.', meta: englishMeta },
+        ...(language === 'en' ? {} : { [language]: { full: `${language}: Localized fixture description.`, meta: englishMeta } }),
+      },
+    };
+    const tags = generateSeoTags('station', language, {}, '/station/fixture-radio', DOMAIN, station);
+    const expected = getStationMetaDescription(station, language, {});
+    const html = renderer.generateHtmlHead(tags, language, {}, '/station/fixture-radio', station);
+    assert.ok(html.includes(`<meta name="description" content="${escapeHtml(expected)}">`), language);
+    assert.ok(html.includes(`<meta name="twitter:description" content="${escapeHtml(expected)}">`), language);
+    const custom = { description: 'Admin-approved description.', twitterDescription: 'Admin-approved Twitter summary.' };
+    const overridden = renderer.applyCustomSeoMetadata({ ...tags }, custom);
+    const overriddenHtml = renderer.generateHtmlHead(overridden, language, {}, '/station/fixture-radio', station);
+    assert.ok(overriddenHtml.includes(`<meta name="description" content="${custom.description}">`), `${language}: admin description`);
+    assert.ok(overriddenHtml.includes(`<meta name="twitter:description" content="${custom.twitterDescription}">`), `${language}: admin Twitter description`);
+  }
+});
 
 test('SSR and SPA share identical structured-data objects across all 14 indexable locales', async () => {
   const { SITEMAP_PRIORITY_LANGUAGES } = await import('@workspace/seo-shared/seo-config');

@@ -47,9 +47,9 @@ export interface DescriptionFillResult {
   totalScanned: number;
   noDescCount: number;
   partialCount: number;
-  generated: number;
-  translated: number;
-  failed: number;
+  generated: number; // station native descriptions saved
+  translated: number; // language records actually saved (not station count)
+  failed: number; // failed processing attempts; a partial station may be retried in phase 2
   skipped: number;
   stoppedEarly: boolean;
   stopReason?: string;
@@ -214,9 +214,13 @@ class ScheduledDescriptionFill {
                 const lang = field.slice('descriptions.'.length);
                 translated += (await pgCatalog().update({ ...operation.updateOne.filter,[field]:station.descriptions?.[lang] ?? null,'manualEditFields.descriptions':{$ne:true} },operation.updateOne.update)).modifiedCount;
               }
-              logger.log(
-                `✅ [fill] "${station.name}" — generated ${nativeLang}; received ${translations.size} translations (concurrent edits preserved)`,
-              );
+              const failedLanguages = missingLangs.filter(lang => !translations.has(lang));
+              if (failedLanguages.length > 0) {
+                failed++;
+                logger.warn(`⚠️ [fill] "${station.name}" — generated ${nativeLang}; received ${translations.size} translations; failed languages: ${failedLanguages.join(', ')} (accepted translations and concurrent edits preserved)`);
+              } else {
+                logger.log(`✅ [fill] "${station.name}" — generated ${nativeLang}; received all ${translations.size} requested translations (concurrent edits preserved)`);
+              }
             } catch (transErr: any) {
               logger.warn(`⚠️ [fill] Translation failed for "${station.name}": ${transErr.message}`);
               failed++;
@@ -306,9 +310,13 @@ class ScheduledDescriptionFill {
               const lang = field.slice('descriptions.'.length);
               translated += (await pgCatalog().update({ ...operation.updateOne.filter,[field]:station.descriptions?.[lang] ?? null,'manualEditFields.descriptions':{$ne:true} },operation.updateOne.update)).modifiedCount;
             }
-            logger.log(
-              `✅ [fill] "${station.name}" — received ${translations.size} missing-language translations (concurrent edits preserved)`,
-            );
+            const failedLanguages = missingLangs.filter(lang => !translations.has(lang));
+            if (failedLanguages.length > 0) {
+              failed++;
+              logger.warn(`⚠️ [fill] "${station.name}" — received ${translations.size} translations; failed languages: ${failedLanguages.join(', ')} (accepted translations and concurrent edits preserved)`);
+            } else {
+              logger.log(`✅ [fill] "${station.name}" — received all ${translations.size} missing-language translations (concurrent edits preserved)`);
+            }
           } catch (err: any) {
             failed++;
             logger.error(`❌ [fill] Partial fill error "${station.name}": ${err.message}`);
@@ -353,7 +361,7 @@ class ScheduledDescriptionFill {
 
     logger.log(
       `📝 Description fill DONE (${trigger}) — scanned=${totalScanned} noDesc=${noDescCount} partial=${partialCount} ` +
-      `generated=${generated} translated=${translated} failed=${failed} skipped=${skipped} ` +
+      `generatedStations=${generated} translatedLanguageWrites=${translated} failedAttempts=${failed} skipped=${skipped} ` +
       `duration=${(result.durationMs / 1000).toFixed(0)}s${stoppedEarly ? ` STOPPED_EARLY: ${stopReason}` : ''}`,
     );
 

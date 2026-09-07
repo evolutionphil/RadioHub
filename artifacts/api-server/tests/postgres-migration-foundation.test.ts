@@ -166,6 +166,11 @@ describe("PostgreSQL production migration contract", () => {
     assert.deepEqual(files,journal.entries.map((entry: any)=>entry.tag+".sql"));
     assert.ok(files.length >= 13);
     assert.deepEqual(journal.entries.map((entry: any)=>entry.idx),journal.entries.map((_: any,index: number)=>index));
+    const cancelledSql = fs.readFileSync(path.join(migrationDirectory, '0025_description_job_cancelled_status.sql'), 'utf8');
+    assert.match(cancelledSql, /ALTER TABLE bulk_description_jobs\s+DROP CONSTRAINT bulk_description_jobs_status_check/);
+    assert.match(cancelledSql, /CHECK \(status IN \('running', 'paused', 'completed', 'failed', 'cancelled'\)\)/);
+    const runtimeSchema = fs.readFileSync(path.join(repositoryRoot, 'lib/db/src/schema/runtime-operations.ts'), 'utf8');
+    assert.match(runtimeSchema, /IN \('running','paused','completed','failed','cancelled'\)/);
     const cdcSql = fs.readFileSync(path.join(migrationDirectory, files[3]), "utf8");
     assert.match(cdcSql, /mongo_change_stream_checkpoints/);
     assert.match(cdcSql, /resume_token jsonb/);

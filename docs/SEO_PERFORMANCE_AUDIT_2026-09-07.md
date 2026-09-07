@@ -14,11 +14,13 @@ istasyon ve liste sayfaları; tasarım ve işlevler korunarak kod düzeltmeleri.
   Örneklerin son taramaları Ekim 2025–Eylül 2026 arasında değişiyor;
   eski kayıtlar mevcut kodun aynı hatayı hâlâ ürettiğini tek başına kanıtlamaz.
 - Sitemap/URL doğrulaması, indeksleme isteği ve güvenlik tokenı silme yapılmadı.
-- Squirrel CLI mevcut değil; uydurma kapsam/sağlık puanı yerine GSC kanıtları,
-  kaynak kodu, Google dokümanları ve regresyon testleri kullanıldı.
-- PostgreSQL'deki tüm istasyonların 14 dil çeviri doluluğu canlı veriden
-  doğrulanmadı. Kod testleri içerik kalitesini veya Google'ın indeksleme
-  kararını garanti etmez.
+- Squirrel CLI resmi sürüm özeti doğrulanarak görev için geçici dizine
+  hazırlandı; sağlıklı production taraması henüz yapılmadığından sağlık
+  puanı verilmiyor. GSC, kod ve regresyon testleri ayrı kanıtlardır.
+- Kaynağın bağımsız, tam ve checksum doğrulanmış yedeğinde bütün istasyonların
+  14 dil alan kapsamı incelendi; bulgular aşağıdadır. Bu, production aktarımının
+  tamamlandığını, dil alanının gerçekten kaliteli çevrildiğini veya Google'ın
+  bütün URL'leri indeksleyeceğini garanti etmez.
 
 ## Search Console envanteri
 
@@ -219,13 +221,52 @@ ve gerçek içerik doğrulaması aşağıdaki açık kontrollerde ayrı tutuldu.
     korunuyor. Bu bağımsız yayın güvenliği düzeltmesi, taşıma sırasındaki
     mevcut 502'lerin nedeni olarak sunulmuyor.
 
+## Gerçek kaynak verisi — 14 dil kapsamı ve içerik kalitesi
+
+Bu kontroller 100 collection / 940.071 kaydın tamamı raw BSON tipi ve bayt
+özetiyle doğrulanmış, TTL indeksleri olmayan yerel yedek üzerinde yapıldı.
+Kaynak dokümanları ve kimlik listeleri Git dışında özel yedek alanında tutulur.
+
+- 61.291 istasyonun 60.246'sında 14 dilin tamamında `full` ve `meta` alanı
+  dolu; 1.019'unda açıklama yok, açıklaması bulunan 26 kayıtta en az bir alan
+  eksik. Alan doluluğu semantik çeviri kalitesi değildir.
+- Mevcut sitemap/indekslenebilirlik kurallarıyla 48.003 istasyon en az bir
+  etkin dil için uygundur. Toplam 5.799 istasyonun mevcut `noIndex` kararı
+  korunuyor; yönetici tercihleri topluca kaldırılmadı.
+- Etkin SEO dilleri: `en, es, fr, de, pt, it, ru, ar, zh, tr, ja, ko, hi, he`.
+  `/at` ayrı 15. dil değildir; mevcut Avusturya alias'ı `/de`ye yönlenir.
+- İndekslenebilir dil/sayfa örneklerinin 11.549'unda meta İngilizceyle
+  aynıydı. Paylaşılan SSR/SPA seçici düzeltmesi bunların **11.206**'sında
+  eldeki farklı uzun açıklamadan kelime sınırında yerelleştirilmiş özet
+  kullanıyor. Veritabanı veya özel yönetici SEO metni yeniden yazılmadı.
+  343 eşleşme korunuyor; bunların tamamına otomatik dil kalitesi hükmü verilmedi.
+- 73 boş/şablon metası mevcut uzun açıklamadan güvenli özet alıyor (70 en,
+  3 de). Gerçek özel metalar ve yalnızca marka/istasyon adından oluşan
+  değerler korunuyor.
+- **1.393 indekslenebilir dil/sayfada uzun açıklama İngilizcenin aynısı.**
+  Bunların 1.172'si Latin dışı hedef dillerde. Bunlar tamamlanmış gerçek
+  çeviri sayılmıyor; bu çalışmada toplu ücretli AI çağrısı veya mevcut
+  açıklamaların otomatik yeniden yazımı yapılmadı.
+- Tekrarını önlemek için çeviri servisi normalize edilmiş kaynak metin
+  kopyasını artık başarısız sayıyor. Farklı uzun açıklama yanında kopya
+  meta varsa mevcut özet alternatifi kullanılıyor. Kısmi başarılı diller
+  korunuyor; üç route ve iki zamanlanmış işlem aşaması eksik dilleri
+  artık yanlışlıkla tamamen başarılı raporlamıyor. Dil tespiti iddiası yok.
+
 ## Doğrulama
 
-- Son API tam paket: **998 test başarılı, 0 başarısız, 0 atlanan**. Yerel ve
+- Güncel kurtarma kodunun API tam paketi: **1.077 başarılı, 0 başarısız,
+  0 atlanan**, 107 dosyanın tamamı. Her dosya ayrı işletim sistemi sürecinde
+  `--test-isolation=none` ile çalıştırıldı; dosyalar arasında modül/mock
+  izolasyonu korundu. Node 24.16.0'ın iç içe test IPC serileştirmesi eski
+  genres testinde iki kez hata verdi; aynı dosyanın bütün 15 testi doğrudan
+  süreçte geçti, ardından hiçbir test atlanmadan bütün paket bu yöntemle
+  yeniden çalıştırıldı. Uygulama/test assertion kodu bunu saklamak için
+  değiştirilmedi. Yerel ve
   tek kullanımlık test PostgreSQL/Mongo fixture'ları; production bağlantısı yok.
   Mongo yalnızca eski verinin tek seferlik aktarım testinde kullanıldı;
   uygulamaya Mongo bağımlılığı eklenmedi.
-- Son frontend tam paket: **131 test başarılı**, 13 dosya. Son eklenen
+- Son frontend tam paket: **132 test başarılı**, 13 dosya. Son eklenen
   schema kimlik/ilişki testleri de dahil. React DOM testleri `NODE_ENV=test`
   ile çalıştırıldı.
 - HTML/asset önbellek regresyonları: **14 yeni test başarılı**. Geçici hata
@@ -248,7 +289,7 @@ ve gerçek içerik doğrulaması aşağıdaki açık kontrollerde ayrı tutuldu.
 - İlk paralel API koşusunda Node test-runner IPC serileştirme hatası görüldü;
   ilgili iki dosyanın tekil tekrarı geçti, ardından **bütün paket seri olarak
   tekrar çalıştırıldı ve 979/979 geçti**. Bu önceki ara doğrulamadır;
-  sonraki düzeltmelerle güncel tam paket sonucu yukarıdaki **998/998**'dir.
+  sonraki yayımlanmış taban düzeltmeleriyle tam paket **998/998** olmuştu.
   Test-runner hatası production hatası sayılmadı.
 
 Tekrarlanabilir temel komutlar (kurulu bağımlılıklarla):
@@ -287,13 +328,14 @@ git diff --check
 ## Açık kontroller / yayın sonrası
 
 - **Son yayın ve production çalışma zamanı doğrulaması hâlâ bekliyor.**
-  Önceki SEO/taşıma düzeltmeleri mevcut `main` commit'i `b11a2ebf5` içinde;
+  Önceki SEO/taşıma düzeltmeleri mevcut `main` commit'i `609903c27` içinde;
   bu rapor son eklenen düzeltmelerin push/deploy edildiğine veya Railway'de
   doğrulandığına dair bir tamamlanma kaydı değildir.
 - Taşıma tamamlandıktan sonra native istasyonlar, sitemap manifestleri ve
-  14 dilde `full`+`meta` çevirileri gerçek veriden kontrol edilmeli. 14 dil
-  kodda korunuyor; eksik veya aynı dilde tekrar eden içerik otomatik olarak
-  kaliteli çeviri kabul edilmedi.
+  14 dilde `full`+`meta` çevirileri production'da yeniden kontrol edilmeli.
+  Tam kaynak yedeği bulguları yukarıdadır; eksik veya aynı dilde tekrar eden
+  içerik kaliteli çeviri kabul edilmedi. Ayrıntılı kurtarma adımları ve
+  veri güvenliği kanıtları `POSTGRES_RECOVERY_2026-09-07.md` içindedir.
 - Sitemap root/children 200 ve dolu, URL'ler self-canonical ve karşılıklı
   alternatifler tutarlı olunca GSC sitemap yeniden okunması / seçili URL
   denetimleri yapılmalı. GSC sayıları anında düzelmez; indeksleme garanti değil.

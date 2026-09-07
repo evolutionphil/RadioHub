@@ -327,6 +327,32 @@ Response format (separate with "==="):
   }
 }
 
+// Apply the same narrow template cleanup to source and model output before
+// comparing them. This is not language detection: only verbatim source copies
+// (ignoring case/whitespace) are rejected, without modifying any stored source.
+function cleanTranslationPart(value: unknown, part: 'full' | 'meta'): string {
+  if (typeof value !== 'string') return '';
+  const trimmed = value.trim();
+  return (part === 'full' ? trimmed
+    .replace(/^\[TRANSLATED FULL DESCRIPTION[^\]]*\]\s*/i, '')
+    .replace(/^\[FULL DESCRIPTION[^\]]*\]\s*/i, '')
+    .replace(/^\[[^\]]*preserve[^\]]*\]\s*/i, '')
+    : trimmed
+      .replace(/^\[TRANSLATED META[^\]]*\]\s*/i, '')
+      .replace(/^\[SEO META[^\]]*\]\s*/i, '')
+      .replace(/^\[META[^\]]*\]\s*/i, '')
+      .replace(/^\[[^\]]*preserve[^\]]*\]\s*/i, '')
+      .replace(/^\[[^\]]*character[^\]]*\]\s*/i, ''))
+    .trim();
+}
+
+function isTranslationIdentityOnly(value: string, stationName?: string): boolean {
+  const normalize = (text: string) => text.toLowerCase().replace(/[\p{P}\p{S}\s]/gu, '');
+  const normalized = normalize(value);
+  const name = normalize(stationName || '');
+  return Boolean(normalized) && [name, 'megaradio', name + 'megaradio', 'megaradio' + name].includes(normalized);
+}
+
 // Translate BOTH full description AND meta description to multiple target languages
 export async function translateDescription(
   fullDescription: string,
@@ -338,11 +364,14 @@ export async function translateDescription(
   const translations = new Map<string, {full: string, meta: string}>();
   
   const sourceLangName = LANGUAGE_NAMES[sourceLanguage] || sourceLanguage;
+  const comparableFull = (value: string) => value.replace(/\s+/g, ' ').toLowerCase();
+  const sourceFull = cleanTranslationPart(fullDescription, 'full');
+  const sourceMeta = cleanTranslationPart(metaDescription, 'meta');
   
   logger.log(`🌍 AI: Translating descriptions for "${stationName || 'Unknown Station'}" from ${sourceLangName} to ${targetLanguages.length} languages`);
   
   // Filter out same-language and create parallel translation promises
-  const languagesToTranslate = targetLanguages.filter(lang => lang !== sourceLanguage);
+  const languagesToTranslate = targetLanguages.filter(lang => lang.toLowerCase() !== sourceLanguage.toLowerCase());
   if (!languagesToTranslate.length) return translations;
   const openai = getOpenAIClient();
   
@@ -405,38 +434,36 @@ ${stationName}: [translated meta, 155-160 chars]`;
         
         // SIMPLIFIED CLEANUP: Only remove template brackets at the VERY start
         // Remove only leading bracket with template text pattern
-        translatedFull = translatedFull
-          .replace(/^\[TRANSLATED FULL DESCRIPTION[^\]]*\]\s*/i, '')
-          .replace(/^\[FULL DESCRIPTION[^\]]*\]\s*/i, '')
-          .replace(/^\[[^\]]*preserve[^\]]*\]\s*/gi, '')
-          .trim();
-        
-        translatedMeta = translatedMeta
-          .replace(/^\[TRANSLATED META[^\]]*\]\s*/i, '')
-          .replace(/^\[SEO META[^\]]*\]\s*/i, '')
-          .replace(/^\[META[^\]]*\]\s*/i, '')
-          .replace(/^\[[^\]]*preserve[^\]]*\]\s*/gi, '')
-          .replace(/^\[[^\]]*character[^\]]*\]\s*/gi, '')
-          .trim();
+        translatedFull = cleanTranslationPart(translatedFull, 'full');
+        translatedMeta = cleanTranslationPart(translatedMeta, 'meta');
         
         logger.log(`🔍 AFTER cleanup - Full: ${translatedFull.length} chars, Meta: ${translatedMeta.length} chars`);
       } else {
         // No === separator - try to use entire response as full and generate meta
         logger.log(`⚠️ No === separator found in ${targetLangName} response, using full response`);
-        translatedFull = translationResponse
-          .replace(/^\[TRANSLATED FULL DESCRIPTION[^\]]*\]\s*/i, '')
-          .replace(/^\[FULL DESCRIPTION[^\]]*\]\s*/i, '')
-          .trim();
+        translatedFull = cleanTranslationPart(translationResponse, 'full');
         // Meta will be generated from full later
       }
       
+      // Length alone cannot prove a translation happened. Reject an exact
+      // source-full copy before deriving meta or restoring brand names, so a
+      // failed target never enters the result map or overwrites older content.
+      if (sourceFull && comparableFull(translatedFull) === comparableFull(sourceFull)) {
+        logger.warn(`⚠️ AI: Translation to ${targetLangName} rejected: full description repeats the source language`);
+        return { lang: targetLang, langName: targetLangName, success: false };
+      }
+
       // RELAXED validation: Accept translations that have meaningful content
       // Some languages (Arabic, Chinese, etc.) need shorter content to express same idea
       const minFullLength = 50; // Reduced from 100
       const minMetaLength = 20; // Reduced from 50
       
-      // FIX: If full is valid but meta is empty/short, generate meta from full description
-      if (translatedFull && translatedFull.length >= minFullLength && (!translatedMeta || translatedMeta.length < minMetaLength)) {
+      // A distinct full translation can still come with a copied source meta.
+      // Reuse the existing excerpt fallback, except for identity-only metadata
+      // which legitimately stays the same across languages.
+      const copiedSourceMeta = translatedMeta && translatedMeta === sourceMeta &&
+        !isTranslationIdentityOnly(translatedMeta, stationName);
+      if (translatedFull && translatedFull.length >= minFullLength && (!translatedMeta || translatedMeta.length < minMetaLength || copiedSourceMeta)) {
         // Generate meta from full description - take first 155 chars and add ellipsis
         const generatedMeta = translatedFull.substring(0, 155).trim();
         // Find last complete word/sentence
@@ -458,7 +485,7 @@ ${stationName}: [translated meta, 155-160 chars]`;
       } else {
         // SAFETY: Ensure "Mega Radio" and station name are NEVER translated (preserve brand & station names)
         // Check if original has "Mega Radio" and verify it's preserved in translation
-        const hasOriginalBrand = fullDescription.includes('Mega Radio') || metaDescription.includes('Mega Radio');
+        const hasOriginalBrand = sourceFull.includes('Mega Radio') || sourceMeta.includes('Mega Radio');
         
         if (hasOriginalBrand && !translatedFull.includes('Mega Radio')) {
           // If original had "Mega Radio" but translation doesn't, restore it
@@ -473,7 +500,7 @@ ${stationName}: [translated meta, 155-160 chars]`;
         }
         
         // SAFETY: Ensure station name is preserved in translation (not translated)
-        if (stationName && (fullDescription.includes(stationName) || metaDescription.includes(stationName))) {
+        if (stationName && (sourceFull.includes(stationName) || sourceMeta.includes(stationName))) {
           if (!translatedFull.includes(stationName)) {
             // Station name might have been translated, restore it
             logger.log(`⚠️ AI: Station name "${stationName}" not found in ${targetLangName} translation, attempting to restore`);
@@ -490,7 +517,7 @@ ${stationName}: [translated meta, 155-160 chars]`;
               logger.log(`   ✅ Prepended station name to translation`);
             }
           }
-          if (!translatedMeta.includes(stationName) && metaDescription.includes(stationName)) {
+          if (!translatedMeta.includes(stationName) && sourceMeta.includes(stationName)) {
             logger.log(`⚠️ AI: Station name "${stationName}" not found in meta description for ${targetLangName}, attempting to restore`);
             // Restore station name to meta description
             translatedMeta = `${stationName} - ${translatedMeta}`;

@@ -33,3 +33,4 @@ export * from "./admin-maintenance";
 export * from "./admin-auxiliary";
 export * from "./genre-merge-audit";
 export * from "./cleanup-state";
+export * from "./migration-quarantine";

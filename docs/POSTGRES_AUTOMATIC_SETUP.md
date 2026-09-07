@@ -150,6 +150,52 @@ tamamının taşındığını veya production'ın hazır olduğunu tek başına 
 
 ## Hata / yeniden deneme
 
+### Eksik kullanıcıya bağlı tarihsel cihazlar ve kontrollü devam
+
+`0026` yalnız geçerli alanlara sahip, özgün kullanıcı kimliği dolu olan fakat
+kullanıcısı **hem kaynak kullanıcı arşivinde hem yerel kullanıcı tablosunda
+bulunmayan** `userdevices` kayıtlarını `migration_quarantine` içinde kaydeder.
+Bu operatör arşividir; uygulama bu tablodan oturum açmaz veya cihaz eşleştirmez.
+Özgün kullanıcı kimliği, neden ve değiştirilmeyen beklenen JSON/BSON checksum'ları,
+silinmesi FK ile engellenmiş tam `legacy_documents` kaydına bağlıdır. Kullanıcı
+oluşturulmaz, yetki/son kullanma tarihi yenilenmez, `user_devices` NOT NULL/FK
+korumaları gevşetilmez. Bozuk alanlar veya kaynakta var olup normalize edilmemiş
+kullanıcılar karantinaya atılmak yerine hatayla durur.
+
+Doğrulama her kaynak cihazının **tam olarak bir** yerde olmasını zorunlu tutar:
+geçerli yerel cihaz veya karantina. Fazladan/eksik/çakışan kimlik, değiştirilmiş
+checksum veya sonradan ortaya çıkan kullanıcı otomatik kabul edilmez. Sayılar
+`[normalize] userdevices` ve `[verify] userdevices` satırlarında açıkça bildirilir.
+
+Karantina oluştuktan sonra beklenmedik kapanma olursa `bootstrap` / `phase=all`
+**otomatik yeniden kopyalamaz**; yeniden kopyalama ve `MIGRATION_PRUNE` bilerek
+reddedilir. Sürekli restart yapmak yerine initializer'ı durdurun. Ancak operatör
+eksiksiz dondurulmuş kaynak yedeğini, bütün capture/checkpoint sayılarını,
+JSON/BSON checksum'larını, bağımsız geri yükleme kanıtını ve hedefte PostgreSQL
+yazma yetkisi olmadığını doğruladıktan sonra mevcut kopyaları kullanarak devam
+edebilir. Kaynak/hedef yazıcılar kapalı kalmalı, `MIGRATION_TARGET_WRITERS_STOPPED=true`
+koşulu sağlanmalı; `MONGODB_URI`, `MIGRATION_PRUNE`, koleksiyon filtreleri ve eski
+store-cutover değişkenleri bu devam ortamında bulunmamalıdır.
+
+Repo operatör ortamında gerçek PostgreSQL ile test edilmiş sıralama:
+
+```sh
+pnpm --filter @workspace/legacy-migration migrate --phase=normalize
+pnpm --filter @workspace/legacy-migration verify
+```
+
+İkinci komut yalnız birincisi başarıyla bittiyse çalıştırılır. Bunlar aynı
+`DATABASE_URL` üzerinde MongoDB'ye bağlanmadan, mevcut veri kilidi ve kalıcı
+yazma-yetkisi korumasıyla çalışır. Normalizasyon başarısı tek başına uygulamayı
+açmaz; tamamlanmış `verify` kaydı, eksiksiz checkpoint'ler, karantina dahil
+kimlik/içerik eşitliği ve uygulamanın `/readyz` kontrolü gerekir. Production
+initializer imajında `MIGRATION_PHASE=normalize` eklemek yeterli değildir:
+`bootstrap` her zaman `all` akışını seçer. İmajda bağımsız operatör girişini
+kullanmadan önce o build'in giriş yolu ve çalışma komutu ayrıca doğrulanmalıdır.
+Kaynak/hedef değişmişse bu devam yöntemi kullanılmaz; özgün hedef ve yedekler
+korunarak yeni, bağımsız hedefte yeniden prova yapılır. Karantina veya yetki
+kayıtlarını silerek koruma atlanmaz.
+
 - Yarım aktarım nedeniyle başlangıç durursa initializer, mevcut PostgreSQL
   kayıtlarından `[bootstrap:diagnostic]` satırlarını üretir. Son çalışmanın
   durumu/zamanı, kontrol noktalarındaki ilerleme ve varsa kayıtlı hatanın güvenli

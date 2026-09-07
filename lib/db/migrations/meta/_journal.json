@@ -169,6 +169,20 @@
       "when": 1790463600000,
       "tag": "0024_cleanup_state",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1790550000000,
+      "tag": "0025_description_job_cancelled_status",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1790636400000,
+      "tag": "0026_orphan_device_quarantine",
+      "breakpoints": true
     }
   ]
 }

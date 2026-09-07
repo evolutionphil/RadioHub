@@ -34,6 +34,7 @@ import { createInitialSsrHeadGuard } from '../src/utils/ssr-seo-head';
 import { SeoPageWrapper } from '../src/components/SeoPageWrapper';
 import { SeoHead as PageSeoHead } from '../src/components/SeoHead';
 import ListStructuredData from '../src/components/seo/ListStructuredData';
+import { generateSeoTags, SITEMAP_PRIORITY_LANGUAGES } from '@workspace/seo-shared/seo-config';
 
 function seedSsr() {
   document.head.innerHTML = `<title>Test Radyo — Canlı Dinle</title>
@@ -62,6 +63,33 @@ beforeEach(() => {
 });
 
 describe('one owner for the initial SSR head and subsequent navigation', () => {
+  it('keeps the shared localized-meta choice through station navigation in all 14 locales', async () => {
+    const content = <PageSeoHead pageType="station" stationData={null} />;
+    const view = render(<SeoPageWrapper>{content}</SeoPageWrapper>);
+    for (const language of SITEMAP_PRIORITY_LANGUAGES.universal14) {
+      const englishMeta = 'Fixture Radio: music and local news.';
+      const localFull = `${language}: Localized fixture description.`;
+      const station = {
+        name: 'Fixture Radio', slug: 'fixture-radio', country: 'Germany',
+        descriptions: {
+          en: { full: 'English fixture description.', meta: englishMeta },
+          ...(language === 'en' ? {} : { [language]: { full: localFull, meta: englishMeta } }),
+        },
+      };
+      state.location = `/${language}/station/fixture-radio`; state.language = language;
+      const seoTags = generateSeoTags('station', language, {}, '/station/fixture-radio', 'https://themegaradio.com', station);
+      state.data.set(`/api/seo/page-data|${state.location}|${language}`, { seoTags });
+      view.rerender(<SeoPageWrapper>{content}</SeoPageWrapper>);
+      const expected = language === 'en' ? englishMeta : localFull;
+      await waitFor(() => expect(document.querySelector('meta[name="description"]')?.getAttribute('content')).toBe(expected));
+      expect(document.querySelector('meta[name="twitter:description"]')?.getAttribute('content')).toBe(expected);
+      // Translation queries and child fallback must not restore English meta.
+      state.data.set(`/api/translations|${language}`, { meta_description: englishMeta });
+      view.rerender(<SeoPageWrapper><PageSeoHead pageType="station" stationData={null} /></SeoPageWrapper>);
+      expect(document.querySelector('meta[name="description"]')?.getAttribute('content')).toBe(expected);
+    }
+  });
+
   it('preserves station-specific SSR tags with homepage translations and a loading child', async () => {
     const before = document.head.innerHTML;
     render(<SeoPageWrapper><PageSeoHead pageType="station" stationData={null} /><span>Station page</span></SeoPageWrapper>);

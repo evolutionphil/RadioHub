@@ -75,7 +75,14 @@ describe('Native-domain snapshot migration', { skip: !connectionString }, () => 
     gsc_oauth_tokens: [{ _id: 'gsc-token', refreshToken: 'legacy-refresh-token', accessToken: 'legacy-access-token', expiryDate: 1788645600000, connectedEmail: 'gsc@example.invalid' }],
     visitor_sessions: [{ _id: 'visitor', ipAddress: '127.0.0.1', lastActiveDate: past, visitCount: 7, userAgent: 'Fixture' }],
     app_state: [{ _id: 'bootstrap:v1', runAt: past, customFlag: true }],
-    bulkdescriptionjobs: [{ _id: 'description-job', jobId: 'job-123', filterByCountry: 'TR', status: 'running', totalStations: 30, processedStations: 10, successCount: 8, failedCount: 1, skippedCount: 1 }],
+    bulkdescriptionjobs: [
+      { _id: 'description-job', jobId: 'job-123', filterByCountry: 'TR', status: 'running', totalStations: 30, processedStations: 10, successCount: 8, failedCount: 1, skippedCount: 1 },
+      ...['paused', 'completed', 'failed', 'cancelled'].map(status => ({
+        _id: `description-${status}`, jobId: `job-${status}`, status, totalStations: 12,
+        processedStations: 7, successCount: 5, failedCount: 1, skippedCount: 1,
+        createdAt: past, updatedAt: past,
+      })),
+    ],
     userprofiles: [{ _id: 'profile', sessionId: 'session-a', userId: 'user-a', preferredGenres: [{ genre: 'rock', weight: 0.8, confidence: 0.9 }],
       preferredCountries: [{ country: 'Turkey', weight: 0.5, confidence: 1 }], preferredLanguages: [{ language: 'Turkish', weight: 1, confidence: 1 }],
       profileStrength: 0.8, skipRate: 0.1, peakListeningHours: [3, 20], totalStationsListened: 40, uniqueStationsCount: 12 }],
@@ -162,6 +169,12 @@ describe('Native-domain snapshot migration', { skip: !connectionString }, () => 
     assert.equal((await pool.query("SELECT status FROM sitemap_manifests WHERE id='manifest-new'")).rows[0].status, 'active');
     assert.equal((await pool.query("SELECT status FROM sitemap_manifests WHERE id='manifest-building'")).rows[0].status, 'failed');
     assert.equal((await pool.query("SELECT status,processed_stations FROM bulk_description_jobs WHERE id='description-job'")).rows[0].status, 'paused');
+    for (const status of ['paused', 'completed', 'failed', 'cancelled']) {
+      assert.deepEqual((await pool.query(`SELECT status,total_stations,processed_stations,success_count,failed_count,skipped_count
+        FROM bulk_description_jobs WHERE id=$1`, [`description-${status}`])).rows[0], {
+        status, total_stations: 12, processed_stations: 7, success_count: 5, failed_count: 1, skipped_count: 1,
+      });
+    }
     assert.equal((await pool.query("SELECT value FROM runtime_app_state WHERE key='bootstrap:v1'")).rows[0].value.customFlag, true);
     assert.equal((await pool.query("SELECT outcome FROM coverage_backfill_status WHERE id='coverage-status'")).rows[0].outcome, 'failed');
     assert.equal((await pool.query("SELECT status,attempts FROM backfill_runs WHERE id='backfill'")).rows[0].status, 'failed');
@@ -174,6 +187,25 @@ describe('Native-domain snapshot migration', { skip: !connectionString }, () => 
     assert.equal(genres.find(row=>row.id==='duplicate-a').source.cleanupDemotion.collisionWinnerId,'duplicate-c');
     assert.equal(genres.find(row=>row.id==='hidden-original').slug,null);
     assert.equal(genres.find(row=>row.id==='hidden-original').source.cleanupDemotion.originalSlug,'prior');
+  });
+
+  it('accepts every runtime description-job state but retains invalid-state rejection', async () => {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      for (const status of ['running', 'paused', 'completed', 'failed', 'cancelled']) {
+        await client.query('INSERT INTO bulk_description_jobs(id,job_id,status,total_stations) VALUES ($1,$1,$2,0)',
+          [`constraint-${status}`, status]);
+      }
+      await assert.rejects(
+        client.query("INSERT INTO bulk_description_jobs(id,job_id,status,total_stations) VALUES ('invalid','invalid','unexpected',0)"),
+        (error: any) => error.code === '23514' && error.constraint === 'bulk_description_jobs_status_check',
+      );
+    } finally {
+      await client.query('ROLLBACK');
+      client.release();
+    }
+    await verifyNativeDomains(pool);
   });
 
   it('detects wrong identities and mutated fields even when row counts match', async () => {

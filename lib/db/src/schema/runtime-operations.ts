@@ -14,4 +14,4 @@ export const bulkDescriptionJobs = pgTable('bulk_description_jobs',{
   failedCount:integer('failed_count').notNull().default(0),skippedCount:integer('skipped_count').notNull().default(0),lastProcessedStationId:text('last_processed_station_id'),
   lastProcessedSkip:integer('last_processed_skip').notNull().default(0),errorMessage:text('error_message'),
   createdAt:timestamp('created_at',{withTimezone:true}).notNull().defaultNow(),updatedAt:timestamp('updated_at',{withTimezone:true}).notNull().defaultNow(),
-},table=>[index('bulk_description_jobs_status_created_idx').on(table.status,table.createdAt.desc()),check('bulk_description_jobs_status_check',sql`${table.status} IN ('running','paused','completed','failed')`)]);
+},table=>[index('bulk_description_jobs_status_created_idx').on(table.status,table.createdAt.desc()),check('bulk_description_jobs_status_check',sql`${table.status} IN ('running','paused','completed','failed','cancelled')`)]);

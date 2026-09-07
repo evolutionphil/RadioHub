@@ -8,6 +8,8 @@ import { iapAuditEventId, iapAuditProvider } from "../../../artifacts/api-server
 import { createMigrationLifecycle, lockedMigrationDatabase, MigrationLifecycleError, type MigrationDatabase, type MigrationLifecycle } from "./migration-lifecycle";
 import { migrationBatchLimits, shouldFlushMigrationBatch, type MigrationBatchLimits } from "./migration-batching";
 import { inspectInitialCaptureResume, validateCapturedSource } from "./initial-capture-resume";
+import { assertNoQuarantineReplay, quarantineUserDevice, userDeviceOwner, verifyQuarantinedUserDevice,
+  verifyUserDeviceQuarantine } from "./user-device-quarantine";
 export { bsonSafe, checksum, jsonSafe } from "./legacy-document-codec";
 
 const { Pool } = pg;
@@ -219,17 +221,20 @@ async function mirrorCollection(
   return { source, target };
 }
 
-async function forEachLegacyBatch(
+export async function forEachLegacyBatch(
   postgres: MigrationDatabase,
   collectionName: string,
   callback: (rows: JsonDocument[], client: pg.PoolClient) => Promise<void>,
 ): Promise<void> {
-  let offset = 0;
+  // Keep PostgreSQL's primary-key ordering, including an empty first ID.
+  // OFFSET rescans the entire skipped prefix on every normalization page.
+  let after: string | null = null;
   while (true) {
-    const result = await postgres.query<{ payload: JsonDocument }>(
-      `SELECT payload FROM legacy_documents
-       WHERE collection_name=$1 ORDER BY document_id LIMIT $2 OFFSET $3`,
-      [collectionName, batchSize, offset],
+    const result: pg.QueryResult<{ document_id: string; payload: JsonDocument }> = await postgres.query(
+      `SELECT document_id,payload FROM legacy_documents
+       WHERE collection_name=$1 AND ($2::text IS NULL OR document_id>$2)
+       ORDER BY document_id LIMIT $3`,
+      [collectionName, after, batchSize],
     );
     if (!result.rowCount) break;
     const client = await postgres.connect();
@@ -243,7 +248,8 @@ async function forEachLegacyBatch(
     } finally {
       client.release();
     }
-    offset += result.rowCount;
+    // A failing callback/commit must stop, never advance or replay this page.
+    after = result.rows[result.rows.length - 1].document_id;
   }
 }
 
@@ -1200,7 +1206,7 @@ const nativeMappings: NativeMapping[] = [
     },
   })),
   { collection: "userdevices", table: "user_devices",
-    map: async (item, client) => ({ id: id(item._id), user_id: await nativeOwner(client, item.userId, "users", true),
+    map: async (item, client) => ({ id: id(item._id), user_id: await userDeviceOwner(client, item.userId),
       device_id: requiredText(item.deviceId, "deviceId"), device_name: requiredText(item.deviceName, "deviceName"),
       platform: item.platform || "other", is_active: bool(item.isActive, true),
       ...(item.pairedAt == null ? {} : { paired_at: requiredTimestamp(item.pairedAt, "pairedAt") }),
@@ -1318,6 +1324,15 @@ export async function normalizeNativeDomains(postgres: MigrationDatabase): Promi
     await forEachLegacyBatch(postgres, mapping.collection, async (documents, client) => {
       for (const item of documents) {
         const row = await mappedNativeDocument(mapping, item, client);
+        if (mapping.table === "user_devices") {
+          if (row.user_id === null) {
+            await quarantineUserDevice(client, item);
+            continue;
+          }
+          if ((await client.query("SELECT 1 FROM migration_quarantine WHERE collection_name='userdevices' AND document_id=$1", [row.id])).rowCount) {
+            throw new Error("Previously quarantined device owner changed; explicit historical review is required");
+          }
+        }
         const columns = Object.keys(row), conflict = mapping.conflict || ["id"];
         await client.query(
           `INSERT INTO ${identifier(mapping.table)} (${columns.map(identifier).join(",")})
@@ -1329,6 +1344,12 @@ export async function normalizeNativeDomains(postgres: MigrationDatabase): Promi
       }
     });
   }
+  // Without quarantine, reviewed reconciliation may still need to prune stale
+  // native devices. Its ordinary final verification runs after that pruning.
+  if ((await postgres.query("SELECT 1 FROM migration_quarantine LIMIT 1")).rowCount) {
+    const devices = await verifyUserDeviceQuarantine(postgres);
+    console.log(`[normalize] userdevices: source=${devices.source}, native=${devices.native}, quarantined=${devices.quarantined}; missing-owner history preserved, no runtime devices/users created for quarantine`);
+  }
 }
 
 export async function verifyNativeDomains(postgres: MigrationDatabase): Promise<void> {
@@ -1338,11 +1359,12 @@ export async function verifyNativeDomains(postgres: MigrationDatabase): Promise<
     const collections = mappings.map(mapping => mapping.collection);
     const identity = mappings[0].identity || { columns: ["id"], legacy: ["d.document_id"] };
     const expectedIdentity = identity.legacy.join(","), actualIdentity = identity.columns.map(identifier).join(",");
+    const sourcePredicate = table === "user_devices" ? " AND EXISTS(SELECT 1 FROM users WHERE id=d.payload->>'userId')" : "";
     const difference = await postgres.query(`
       SELECT count(*)::int count FROM (
-        (SELECT ${expectedIdentity} FROM legacy_documents d WHERE collection_name=ANY($1::text[]) EXCEPT SELECT ${actualIdentity} FROM ${identifier(table)})
+        (SELECT ${expectedIdentity} FROM legacy_documents d WHERE collection_name=ANY($1::text[])${sourcePredicate} EXCEPT SELECT ${actualIdentity} FROM ${identifier(table)})
         UNION ALL
-        (SELECT ${actualIdentity} FROM ${identifier(table)} EXCEPT SELECT ${expectedIdentity} FROM legacy_documents d WHERE collection_name=ANY($1::text[]))
+        (SELECT ${actualIdentity} FROM ${identifier(table)} EXCEPT SELECT ${expectedIdentity} FROM legacy_documents d WHERE collection_name=ANY($1::text[])${sourcePredicate})
       ) difference`, [collections]);
     if (difference.rows[0].count) throw new Error("Native normalized identity mismatch: " + table);
   }
@@ -1350,6 +1372,10 @@ export async function verifyNativeDomains(postgres: MigrationDatabase): Promise<
     await forEachLegacyBatch(postgres, mapping.collection, async (documents, client) => {
       for (const item of documents) {
         const row = await mappedNativeDocument(mapping, item, client);
+        if (mapping.table === "user_devices" && row.user_id === null) {
+          await verifyQuarantinedUserDevice(client, item);
+          continue;
+        }
         const columns = Object.keys(row).filter(column => !mapping.ignoreVerify?.includes(column));
         const result = await client.query(`SELECT 1 FROM ${identifier(mapping.table)} WHERE ${columns
           .map((column, index) => identifier(column) + " IS NOT DISTINCT FROM $" + (index + 1)).join(" AND ")}`, columns.map(column => row[column]));
@@ -1357,9 +1383,12 @@ export async function verifyNativeDomains(postgres: MigrationDatabase): Promise<
       }
     });
   }
+  const devices = await verifyUserDeviceQuarantine(postgres);
+  if (devices.quarantined) console.log(`[verify] userdevices: source=${devices.source}, native=${devices.native}, quarantined=${devices.quarantined}; exact disjoint capture parity and quarantine checksums verified`);
 }
 
 export async function pruneNativeDomains(client: Pick<pg.PoolClient, "query">): Promise<void> {
+  await assertNoQuarantineReplay(client);
   // Never delete portal sessions, cast outbox/presence, or payment receipts.
   // Deleting an unmatched owner would CASCADE through runtime-only rows, too.
   const sessionOwners = await client.query(`SELECT 1 FROM api_developer_sessions s WHERE NOT EXISTS (
@@ -1810,6 +1839,9 @@ export async function runMigration(options: {
     if (mode !== "verify" && options.beforeWrite && !await options.beforeWrite(migrationLockClient)) return;
     lifecycle.assertHealthy();
     if (mode !== "verify") await assertNoPostgresWriteAuthority(migrationLockClient);
+    if (mode === "all" || mode === "mirror" || (mode !== "verify" && process.env.MIGRATION_PRUNE === "true")) {
+      await assertNoQuarantineReplay(migrationLockClient);
+    }
     if (options.resumeInitialCapture && (mode !== "all" || process.env.MIGRATION_PRUNE === "true" ||
         process.env.MIGRATION_COLLECTIONS?.trim() || process.env.MIGRATION_ALLOW_EMPTY_SOURCE === "true" ||
         process.env.DATABASE_MAINTENANCE_READ_ONLY === "true" ||

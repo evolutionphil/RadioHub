@@ -1582,6 +1582,31 @@ export function getLocalizedStationDescription(station: any, language: string, t
   return parts.join(' ');
 }
 
+function cleanStoredStationMetaDescription(value: unknown): string {
+  return typeof value === 'string' ? value
+    .replace(/^\s*\[TRANSLATED\s+META[^\]]*\]\s*/i, '')
+    .replace(/^\s*\[SEO\s+META[^\]]*\]\s*/i, '')
+    .replace(/^\s*\[[^\]]*META[^\]]*\]\s*/i, '')
+    .trim() : '';
+}
+
+function cleanStoredStationFullDescription(value: unknown): string {
+  return typeof value === 'string' ? value
+    .replace(/^\s*\[TRANSLATED\s+FULL\s+DESCRIPTION\]\s*/i, '')
+    .replace(/^\s*\[FULL\s+DESCRIPTION[^\]]*\]\s*/i, '')
+    .trim() : '';
+}
+
+// A name/brand can legitimately be identical in every language. Do not
+// interpret those identity-only values as an untranslated English sentence.
+function isStationIdentityOnly(value: string, stationName: unknown): boolean {
+  const normalize = (text: string) => text.toLowerCase().replace(/[\p{P}\p{S}\s]/gu, '');
+  const normalized = normalize(value);
+  const name = typeof stationName === 'string' ? normalize(stationName) : '';
+  const brand = 'megaradio';
+  return Boolean(normalized) && [name, brand, name + brand, brand + name].includes(normalized);
+}
+
 // NEW: Helper function to extract META description specifically for SEO meta tags
 // Returns 155-160 character meta description from AI-generated content
 // PRIORITY: AI description > database translation (trending_no_stations_message) > generic fallback
@@ -1590,31 +1615,33 @@ export function getStationMetaDescription(station: any, language: string, transl
   if (station.descriptions && station.descriptions[language]) {
     const desc = station.descriptions[language];
     // Handle new object format {full, meta}
-    if (typeof desc === 'object' && desc.meta) {
-      // Strip placeholder text if present - handle both [TRANSLATED META...] and [SEO META...]
-      let metaDesc = desc.meta
-        .replace(/^\s*\[TRANSLATED\s+META[^\]]*\]\s*/i, '')  // Remove [TRANSLATED META...]
-        .replace(/^\s*\[SEO\s+META[^\]]*\]\s*/i, '')  // Remove [SEO META...]
-        .replace(/^\s*\[[^\]]*META[^\]]*\]\s*/i, '')  // Remove any bracketed META placeholder
-        .trim();
-      return metaDesc;
-    }
-    // If only full is available, use it as fallback
-    if (typeof desc === 'object' && desc.full) {
-      let fullDesc = desc.full
-        .replace(/^\s*\[TRANSLATED\s+FULL\s+DESCRIPTION\]\s*/i, '')  // Remove [TRANSLATED FULL DESCRIPTION]
-        .replace(/^\s*\[FULL\s+DESCRIPTION[^\]]*\]\s*/i, '')  // Remove [FULL DESCRIPTION...]
-        .trim();
-      return truncateAtWordBoundary(fullDesc, 145);
+    if (typeof desc === 'object') {
+      const metaDesc = cleanStoredStationMetaDescription(desc.meta);
+      const fullDesc = cleanStoredStationFullDescription(desc.full);
+      if (metaDesc) {
+        const english = station.descriptions.en;
+        const englishMeta = cleanStoredStationMetaDescription(english?.meta);
+        const englishFull = cleanStoredStationFullDescription(typeof english === 'string' ? english : english?.full);
+        const comparableFull = (value: string) => value.replace(/\s+/g, ' ').toLowerCase();
+        // Some imported translations contain localized full copy but retain
+        // the English meta verbatim. Use the existing localized full fallback
+        // only for that exact match, never rewrite stored/admin SEO metadata.
+        // Full-copy language quality remains a separate editorial concern.
+        if (language !== 'en' && metaDesc === englishMeta && fullDesc &&
+            comparableFull(fullDesc) !== comparableFull(englishFull) &&
+            !isStationIdentityOnly(metaDesc, station.name) &&
+            !isStationIdentityOnly(fullDesc, station.name)) {
+          return truncateAtWordBoundary(fullDesc, 145);
+        }
+        return metaDesc;
+      }
+      // Empty or malformed meta must not hide an available full description.
+      if (fullDesc) return truncateAtWordBoundary(fullDesc, 145);
     }
     // Handle old string format - truncate to meta description length
     if (typeof desc === 'string') {
-      let strDesc = desc
-        .replace(/^\s*\[TRANSLATED\s+META[^\]]*\]\s*/i, '')  // Remove [TRANSLATED META...]
-        .replace(/^\s*\[SEO\s+META[^\]]*\]\s*/i, '')  // Remove [SEO META...]
-        .replace(/^\s*\[FULL\s+DESCRIPTION[^\]]*\]\s*/i, '')  // Remove [FULL DESCRIPTION...]
-        .trim();
-      return truncateAtWordBoundary(strDesc, 145);
+      const strDesc = cleanStoredStationFullDescription(cleanStoredStationMetaDescription(desc));
+      if (strDesc) return truncateAtWordBoundary(strDesc, 145);
     }
   }
   
