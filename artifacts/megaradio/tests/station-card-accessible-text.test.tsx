@@ -22,9 +22,10 @@ beforeEach(() => { state.language = 'en'; state.translations = {}; state.isPlayi
 
 describe('station card accessible text', () => {
   it('replaces the exact English legacy default in a German dictionary with its localized play action', () => {
-    state.language = 'de'; state.translations = { seo_listen_to_station: 'Listen to ${station.name}', btn_play: 'Abspielen' };
+    state.language = 'de'; state.translations = { seo_listen_to_station: 'Listen to ${station.name}', btn_play: 'Play Radio', player_play_station: 'Station abspielen' };
     render(<StationCard station={station} />);
-    expect(screen.getByRole('img').closest('a')).toHaveAttribute('aria-label', 'Abspielen — Test Radio');
+    expect(screen.getByRole('img').closest('a')).toHaveAttribute('aria-label', 'Station abspielen — Test Radio');
+    expect(screen.getByRole('button', { name: 'Station abspielen' })).toBeInTheDocument();
   });
   it.each(['Listen to ${station.name}', 'Höre {NAME}', 'Höre ${name}'])('safely interpolates the legacy/full dictionary label %s', template => {
     state.translations.seo_listen_to_station = template;
@@ -39,14 +40,21 @@ describe('station card accessible text', () => {
     expect(screen.getByRole('img').closest('a')).toHaveAttribute('aria-label', 'Abspielen — Test Radio');
   });
   it('localizes play/stop controls and country display while preserving the state proper name and original station data', () => {
-    state.language = 'de'; state.translations = { btn_play: 'Abspielen', btn_stop: 'Stoppen' };
+    state.language = 'de'; state.translations = { btn_play: 'Play Radio', btn_stop: 'Stop Radio', player_play_station: 'Station abspielen', player_stop: 'Stoppen' };
     const record = { ...station, country: 'Austria', state: 'Vienna' };
     const { rerender } = render(<StationCard station={record} />);
-    expect(screen.getByRole('button', { name: 'Abspielen' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Station abspielen' })).toBeInTheDocument();
     expect(screen.getByText('Österreich')).toBeInTheDocument(); expect(screen.getByText(', Vienna')).toBeInTheDocument();
     expect(record.country).toBe('Austria');
     state.isPlaying = true; rerender(<StationCard station={{ ...record }} />);
     expect(screen.getByRole('button', { name: 'Stoppen' })).toBeInTheDocument();
+  });
+  it('retains btn_* fallbacks when the more specific player translations are absent', () => {
+    state.translations = { btn_play: 'Legacy play', btn_stop: 'Legacy stop' };
+    const { rerender } = render(<StationCard station={station} />);
+    expect(screen.getByRole('button', { name: 'Legacy play' })).toBeInTheDocument();
+    state.isPlaying = true; rerender(<StationCard station={{ ...station }} />);
+    expect(screen.getByRole('button', { name: 'Legacy stop' })).toBeInTheDocument();
   });
   it('preserves and safely interpolates valid localized alt templates', () => {
     state.language = 'tr';

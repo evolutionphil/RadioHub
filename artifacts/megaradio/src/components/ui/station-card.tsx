@@ -309,7 +309,7 @@ const StationCard = memo(function StationCard({
             }}
             className="flex items-center justify-center w-12 h-12 rounded-full bg-[#656565] hover:bg-[#FF4199] transition-colors duration-300 group-hover:bg-[#FF4199]"
           >
-            <span className="sr-only">{t('btn_play', 'Play Radio')}</span>
+            <span className="sr-only">{t('player_play_station', t('btn_play', 'Play Radio'))}</span>
             <svg className="h-[26px] w-[26px] text-white ml-0.5" fill="currentColor" viewBox="0 0 24 24">
               <path fillRule="evenodd" d="M4.5 5.653c0-1.426 1.529-2.33 2.779-1.643l11.54 6.348c1.295.712 1.295 2.573 0 3.285L7.28 19.991c-1.25.687-2.779-.217-2.779-1.643V5.653z" clipRule="evenodd" />
             </svg>
@@ -322,7 +322,7 @@ const StationCard = memo(function StationCard({
             }}
             className="flex items-center justify-center w-12 h-12 rounded-full bg-[#FF4199] hover:bg-[#E63A87] transition-colors duration-300"
           >
-            <span className="sr-only">{t('btn_stop', 'Stop Radio')}</span>
+            <span className="sr-only">{t('player_stop', t('btn_stop', 'Stop Radio'))}</span>
             <svg className="h-[26px] w-[26px] text-white" fill="currentColor" viewBox="0 0 24 24">
               <path fillRule="evenodd" d="M4.5 7.5a3 3 0 013-3h9a3 3 0 013 3v9a3 3 0 01-3 3h-9a3 3 0 01-3-3v-9z" clipRule="evenodd" />
             </svg>
