@@ -17,8 +17,10 @@ export function About() {
             loading="lazy" 
             className="w-full max-w-7xl h-auto" 
             src="/assets/images/about-frame.png"
-            srcSet="/assets/images/about-frame-600w.webp 600w, /assets/images/about-frame-1200w.webp 1200w, /assets/images/about-frame.png 1800w"
-            sizes="(max-width: 768px) 600px, (max-width: 1400px) 1200px, 1800px"
+            width={1512}
+            height={121}
+            srcSet="/assets/images/about-frame-600w.webp 600w, /assets/images/about-frame-1200w.webp 1200w, /assets/images/about-frame.png 1512w"
+            sizes="(max-width: 768px) 600px, (max-width: 1400px) 1200px, 1512px"
             alt={t('about_hero_image_alt')} 
           />
         </div>

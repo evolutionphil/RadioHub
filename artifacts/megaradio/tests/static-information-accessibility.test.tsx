@@ -14,6 +14,8 @@ it('About has one primary heading before section headings without changing the h
   expect(headings[0].tagName).toBe('H1');
   expect(screen.getByText('about_page_title').tagName).toBe('P');
   expect(screen.getByText('about_page_title').className).toContain('text-[26px]');
+  expect(screen.getByRole('img',{name:'about_hero_image_alt'})).toHaveAttribute('width','1512');
+  expect(screen.getByRole('img',{name:'about_hero_image_alt'})).toHaveAttribute('height','121');
 });
 it('Contact keeps the live form interactive with accessible translated labels', () => {
   render(<Contact />);

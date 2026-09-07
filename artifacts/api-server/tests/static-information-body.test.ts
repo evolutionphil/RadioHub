@@ -23,6 +23,8 @@ for (const language of locales) {
     assert.equal((body.match(/<section\b/g) || []).length, 4);
     assert.ok(body.indexOf('<h1') < body.indexOf('<h2'));
     assert.equal((body.match(/<li>/g) || []).length, 7);
+    const frame = readFileSync(new URL('../../megaradio/public/images/about-frame.png', import.meta.url));
+    assert.ok(body.includes(`width="${frame.readUInt32BE(16)}" height="${frame.readUInt32BE(20)}"`));
   });
   test(`${language} Contact SSR exposes localized labels, without pre-boot submissions`, () => {
     const translations = Object.fromEntries(keys('contact').map(key => [key, `${language}:${key}`]));
