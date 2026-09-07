@@ -386,8 +386,21 @@ export async function urlRedirectMiddleware(req: Request, res: Response, next: N
       // of being collapsed onto the detail singular (which would render a
       // station-not-found page for the "slug" `a`).
       const listInfo = STATION_LIST_ALIASES.get(lang);
-      if (listInfo && listInfo.aliases.has(segments[1])) {
-        segments[1] = listInfo.canonical;
+      const db = await getDbTranslations();
+      const listAliases = new Set<string>(listInfo?.aliases);
+      for (const key of ['station', 'stations', 'radios']) {
+        listAliases.add(key);
+        const seeded = URL_TRANSLATIONS[lang]?.[key];
+        const configured = db.get(`${lang}:${key}`);
+        if (seeded) listAliases.add(seeded);
+        if (configured) listAliases.add(configured);
+      }
+      if (listAliases.has(secondSegment) || listAliases.has(segments[1])) {
+        // Match the sitemap and base-list branch below. In Arabic, step 5
+        // resolves seed mahtat via radios to DB radiohat, which the seed-only
+        // alias set did not recognize: every advertised A-Z URL became a
+        // noindex SPA shell instead of the native station directory.
+        segments[1] = db.get(`${lang}:stations`) || URL_TRANSLATIONS[lang]?.stations || 'stations';
       }
     } else if (segments.length >= 3) {
       const aliasInfo = STATION_DETAIL_ALIASES.get(lang);

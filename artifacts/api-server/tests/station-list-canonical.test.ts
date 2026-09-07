@@ -70,3 +70,32 @@ test('Arabic station detail and unrelated routes are not collapsed into the cata
     assert.equal(response.headers.get('location'), null);
   }
 });
+
+for (const letter of ['a', 'z', '0-9']) {
+  test(`Arabic ${letter} A-Z sitemap URL remains stable and every configured alias redirects once`, async () => {
+    const canonical = buildLocalizedUrl(`/stations/${letter}`, 'ar', undefined, mappings);
+    const expected = { language: 'ar', cleanPath: `/stations/${letter}` };
+    const stable = await fetch(`${baseUrl}${canonical}?page=2`, { redirect: 'manual' });
+    assert.equal(stable.status, 200);
+    assert.deepEqual(await stable.json(), expected);
+    for (const alias of ['radiohat', 'radios', 'stations', 'station', 'mahta']) {
+      const response = await fetch(`${baseUrl}/ar/${alias}/${letter}?page=2`, { redirect: 'manual' });
+      assert.equal(response.status, 301, alias);
+      assert.equal(response.headers.get('location'), `${canonical}?page=2`, alias);
+      const final = await fetch(baseUrl + response.headers.get('location'), { redirect: 'manual' });
+      assert.equal(final.status, 200, alias);
+      assert.deepEqual(await final.json(), expected);
+    }
+  });
+}
+
+test('all configured A-Z sitemap paths retain their plural canonical and station slugs stay untouched', async () => {
+  for (const { code } of SEO_LANGUAGES.filter(language => language.enabled)) {
+    const canonical = buildLocalizedUrl('/stations/a', code, undefined, mappings);
+    const response = await fetch(baseUrl + canonical, { redirect: 'manual' });
+    assert.equal(response.status, 200, `${code}: ${response.headers.get('location')}`);
+  }
+  const station = await fetch(baseUrl + '/ar/mahta/alpha-989', { redirect: 'manual' });
+  assert.equal(station.status, 200);
+  assert.deepEqual(await station.json(), { language: 'ar', cleanPath: '/station/alpha-989' });
+});

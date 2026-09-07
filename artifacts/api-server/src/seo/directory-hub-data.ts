@@ -26,7 +26,7 @@ export async function loadGenreDirectoryHub(): Promise<Array<{ slug: string; nam
 
 /** Existing reference-country read (about 237 rows), not a stations GROUP BY.
  * Region pages expose the remaining countries; this hub is deliberately small. */
-export async function loadRegionDirectoryHub(): Promise<Array<{ slug: string; name: string; countries: Array<{ slug: string; name: string }> }>> {
+async function loadReferenceCountries(): Promise<Array<{ slug: string; name: string; region: string }>> {
   const countries = new Map<string, { slug: string; name: string; region: string }>();
   for (const row of await pgSlugCountryNames()) {
     if (!row.name) continue;
@@ -34,9 +34,23 @@ export async function loadRegionDirectoryHub(): Promise<Array<{ slug: string; na
     const slug = countrySlug(name), region = getRegionSlugForCountry(name);
     if (region && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) countries.set(slug, { name, slug, region });
   }
+  return [...countries.values()].sort((a, b) => a.slug.localeCompare(b.slug));
+}
+
+export async function loadRegionDirectoryHub(): Promise<Array<{ slug: string; name: string; countries: Array<{ slug: string; name: string }> }>> {
+  const countries = await loadReferenceCountries();
   return DIRECTORY_REGIONS.map(region => ({ ...region,
-    countries: [...countries.values()].filter(country => country.region === region.slug)
+    countries: countries.filter(country => country.region === region.slug)
       .sort((a, b) => a.slug.localeCompare(b.slug)).slice(0, DIRECTORY_COUNTRIES_PER_REGION)
       .map(({ slug, name }) => ({ slug, name })),
   }));
+}
+
+/** A continent is a country directory, not a country named "Europe".
+ * Keep all reference countries here; only the parent hub has an eight-link cap. */
+export async function loadContinentDirectory(slug: string): Promise<{ slug: string; name: string; countries: Array<{ slug: string; name: string }> } | null> {
+  const region = DIRECTORY_REGIONS.find(region => region.slug === slug);
+  if (!region) return null;
+  return { ...region, countries: (await loadReferenceCountries())
+    .filter(country => country.region === slug).map(({ slug, name }) => ({ slug, name })) };
 }

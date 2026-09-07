@@ -463,6 +463,7 @@ export async function registerSeoSitemapRoutes(app: Express, deps: any, options?
         res.json({ error: 'SEO metadata temporarily unavailable' });
         return;
       }
+      if (seoData.pageData?.httpNotFound) res.status(404).set('Cache-Control', 'no-store');
       // The SPA needs page metadata and the same structured-data objects as
       // SSR, not duplicate translation dictionaries or full station records.
       // The admin SEO preview retains the full response without slim=1.

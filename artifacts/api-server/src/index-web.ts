@@ -20,6 +20,9 @@ import { stationCountryValidator } from './station-country-validator';
 import { serveStatic, log, HTML_CACHE_CONTROL } from "./serve-static";
 import { SeoRenderer, getSeoRenderStats } from './seo-renderer';
 import { markSeoTemporarilyUnavailable } from './seo/temporary-unavailable';
+import { parseSeoCatalogPage } from './seo/catalog-pagination';
+import { sendSeoNotFound } from './seo/send-seo-not-found';
+import { buildPublicRoutePreloads } from './seo/frontend-asset-preloads';
 import { registerSeoSitemapRoutes } from './routes/seo-sitemap-routes';
 import { getBaseUrl } from './routes/shared-utils';
 import { startOperation, endOperation, getActiveOperations, getGcStats } from './utils/operation-tracker';
@@ -661,7 +664,7 @@ app.use('/api/stream', streamServiceProxy);
   // case the SSR template falls back to its original `/src/main.tsx` tag —
   // safe because dev only runs the SSR path against the Vite dev server
   // anyway (which DOES serve `/src/main.tsx`).
-  interface ProdAssetTags { scripts: string; styles: string; preloads: string; }
+  interface ProdAssetTags { scripts: string; styles: string; preloads: string; routePreloads?: Record<string, string>; }
   let prodAssetTagsCache: ProdAssetTags | null = null;
   function getProdAssetTags(): ProdAssetTags {
     if (prodAssetTagsCache !== null) return prodAssetTagsCache;
@@ -677,6 +680,12 @@ app.use('/api/stream', streamServiceProxy);
       const styles = Array.from(html.matchAll(/<link\b[^>]*\brel="stylesheet"[^>]*\bhref="\/assets\/[^"]+\.css"[^>]*>/g)).map(m => m[0]).join('\n    ');
       const preloads = Array.from(html.matchAll(/<link\b[^>]*\brel="modulepreload"[^>]*>/g)).map(m => m[0]).join('\n    ');
       prodAssetTagsCache = { scripts, styles, preloads };
+      // Optional across rolling upgrades/dev: missing manifest must not discard
+      // the valid entry script/CSS tags or prevent rendering the site.
+      try {
+        const manifest = JSON.parse(fs.readFileSync(path.join(path.dirname(indexPath), '.vite', 'manifest.json'), 'utf8'));
+        prodAssetTagsCache.routePreloads = buildPublicRoutePreloads(manifest, `${scripts}\n${styles}\n${preloads}`);
+      } catch { /* Existing builds without a manifest keep the original tags. */ }
       logger.log(`📦 SSR template loaded: ${scripts.split('<script').length - 1} scripts, ${styles.split('<link').length - 1} styles, ${preloads.split('<link').length - 1} modulepreloads`);
     } catch (e: any) {
       logger.log(`⚠️ SSR template load failed: ${e?.message || e} — falling back to dev tag`);
@@ -844,19 +853,22 @@ app.use('/api/stream', streamServiceProxy);
     // cache keyed on the query-stripped cleanUrl only — so /en/stations?page=7
     // HTML (canonical …?page=7) was cached under /en/stations and served for
     // the sitemap-submitted page-1 URL ("sitemap URL canonicalizes to another
-    // URL"). Mirror the renderer's clamped suffix here. Suffixing purely on
-    // the ?page param (clamped 1..50) is safe for non-paginated pages too —
-    // worst case a duplicate cache slot, never wrong content.
-    const pageMatch = url.match(/[?&]page=(\d+)/);
-    const pageNum = pageMatch ? Math.min(Math.max(parseInt(pageMatch[1], 10) || 1, 1), 50) : 1;
+    // URL"). Mirror the renderer's validated page suffix without truncating
+    // real later pages. Invalid parameters must not reuse page-one HTML.
+    const parsedPage = parseSeoCatalogPage(url);
+    const pageNum = parsedPage.valid ? parsedPage.page : 1;
     const seoHtmlKey = pageNum > 1 ? `${cleanUrl}|page=${pageNum}` : cleanUrl;
-    const cachedHtml = performanceCache.getSeoHtml(seoHtmlKey);
+    const cachedHtml = parsedPage.valid ? performanceCache.getSeoHtml(seoHtmlKey) : undefined;
     if (cachedHtml) {
       // Cache-HIT junk guard: a station URL whose pageData cache reports
       // stationIsJunk must serve 410 even if a stale SSR HTML is still in
       // cache from a previous deploy. The pageData cache uses the same key
       // and would have been (re)written as junk by the renderer.
       const cachedPage: any = performanceCache.getPageData(seoHtmlKey);
+      if (cachedPage?.pageData?.httpNotFound) {
+        sendSeoNotFound(res, cachedHtml);
+        return;
+      }
       if (cachedPage?.pageData?.stationIsJunk) {
         const { sendJunkGone } = await import('./seo/send-junk-gone');
         sendJunkGone(res);
@@ -989,6 +1001,7 @@ app.use('/api/stream', streamServiceProxy);
     ${pageType === 'home' ? '<link rel="preload" as="image" href="/images/hero-bg-430w.webp" type="image/webp" media="(max-width: 767px)" fetchpriority="high"><link rel="preload" as="image" href="/images/hero-bg.webp" type="image/webp" media="(min-width: 768px)" fetchpriority="high">' : ''}
     ${prodTags.styles}
     ${prodTags.preloads}
+    ${prodTags.routePreloads?.[pageType] || ''}
     <style>
       body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif; margin: 0; padding: 0; background-color: #0a0a0a; color: #ffffff; line-height: 1.5; font-display: swap; }
       *, *::before, *::after { box-sizing: border-box; }
@@ -1071,6 +1084,10 @@ app.use('/api/stream', streamServiceProxy);
         if (seoData.pageData?.stationDbError) {
           markSeoTemporarilyUnavailable(res);
           next();
+          return;
+        }
+        if (seoData.pageData?.httpNotFound) {
+          sendSeoNotFound(res, htmlContent);
           return;
         }
 

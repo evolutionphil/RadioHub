@@ -90,6 +90,28 @@ describe('Native PostgreSQL public catalog', { skip: !process.env.PG_TEST_DATABA
     assert.equal(response.status, 200); const body = await response.json() as any;
     assert.equal(body.total, 2); assert.equal(body.totalPages, 2); assert.equal(body.stations[0]._id, 'accepted-b');
   });
+  it('indexed genre candidates preserve normalized tags, standalone source genres and literal raw-token fallbacks', async () => {
+    await catalog.insertMany([
+      station('normalized', { tags: 'Türkçe Pop', votes: 30 }),
+      station('source-only', { genre: 'Türkçe pOP', votes: 20 }),
+      station('unrelated', { tags: 'popcorn', votes: 999 }),
+      station('literal-percent', { tags: '100% music', votes: 10 }),
+      station('wildcard-impostor', { tags: '1000 music', votes: 999 }),
+      station('raw-unicode', { tags: '音乐', country: 'China' }),
+    ]);
+    // Exercise a raw token without a normalized relation, as with non-ASCII
+    // tags whose original normalizer cannot produce a non-empty ASCII slug.
+    await pool.query("DELETE FROM station_genres WHERE station_id='literal-percent'");
+    const result = await read.listStationsFromPostgres({ genre: 'Türkçe Pop', page: 1, limit: 10, compact: true });
+    assert.deepEqual(result.stations.map(s => s._id), ['normalized', 'source-only']);
+    assert.equal(result.totalCount, 2);
+    assert.deepEqual((await read.listStationsFromPostgres({ genre: '100% music', page: 1, limit: 10 })).stations.map(s => s._id), ['literal-percent']);
+    assert.deepEqual((await read.listStationsFromPostgres({ genre: '音乐', page: 1, limit: 10 })).stations.map(s => s._id), ['raw-unicode']);
+    const absent = await read.listStationsFromPostgres({ genre: 'Türkçe Pop', country: 'China', page: 1, limit: 1 });
+    assert.equal(absent.totalCount, 0); assert.deepEqual(absent.stations, []);
+    const pageTwo = await read.listStationsFromPostgres({ genre: 'Türkçe Pop', page: 2, limit: 1 });
+    assert.equal(pageTwo.totalCount, 2); assert.equal(pageTwo.stations[0]._id, 'source-only');
+  });
   it('compact list opt-in preserves ordering, filters and player fields without full translated articles', async () => {
     await catalog.insertMany([station('compact', { slug:'compact',votes:20,lastCheckOk:true,
       urlResolved:'https://stream.invalid/resolved',logoAssets:{status:'completed',webp256:'https://s3.invalid/logo.webp'},

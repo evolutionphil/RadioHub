@@ -282,7 +282,13 @@ export function registerGenresCountriesRoutes(app: Express, deps: any) {
 
       const identifier = (!countryName || countryName === 'all') ? 'global' : countryName;
       {
-        let genres = await pgPublicGenres(identifier === 'global' ? undefined : (resolveToDbName(identifier) || identifier), true);
+        const resolvedCountry = identifier === 'global' ? undefined : (resolveToDbName(identifier) || identifier);
+        // Share the native country aggregate across pages/searches and concurrent
+        // visitors. Whitelist edits immediately select a different cache entry.
+        const genreCacheKey = `genres:precomputed:native-v1:${resolvedCountry || 'global'}:whitelist-${publicGenreWhitelistVersion()}`;
+        let genres = await CacheManager.getOrSetSingleFlight(genreCacheKey,
+          () => pgPublicGenres(resolvedCountry, true), { ttl: 60 });
+        genres = [...genres];
         if (search) genres = genres.filter((genre: any) => genre.name?.toLowerCase().includes(search) || genre.slug?.toLowerCase().includes(search));
         genres.sort((a, b) => b.stationCount - a.stationCount || a.slug.localeCompare(b.slug));
         const total = genres.length;

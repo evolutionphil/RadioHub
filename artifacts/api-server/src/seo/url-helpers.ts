@@ -136,7 +136,7 @@ export interface RouteShapeResult {
   /** Which family the path belongs to. `null` when neither matches. */
   family: 'regions' | 'country' | null;
   /** Diagnostic reason when `ok=false`. Useful for tests + logs. */
-  reason?: 'unknown-continent' | 'bad-country-slug' | 'bad-city-slug' | 'empty';
+  reason?: 'unknown-continent' | 'bad-country-slug' | 'bad-city-slug' | 'extra-segments' | 'empty';
 }
 
 /**
@@ -166,6 +166,13 @@ export function validateRegionRouteShape(cleanPath: string): RouteShapeResult {
 
   const slug2 = decodeSegmentSafe(pathParts[2]);
   const slug3 = decodeSegmentSafe(pathParts[3]);
+  const maxParts = isRegionsRoute ? 6 : 5; // includes leading empty segment
+  const terminalIndex = isRegionsRoute ? 5 : 4;
+  if (pathParts.length > maxParts || (pathParts[terminalIndex] && pathParts[terminalIndex] !== 'stations')) {
+    return { ok: false, family, reason: 'extra-segments' };
+  }
+  const city = decodeSegmentSafe(pathParts[isRegionsRoute ? 4 : 3]);
+  if (city && !SAFE_REGION_SLUG_RE.test(city)) return { ok: false, family, reason: 'bad-city-slug' };
 
   if (isRegionsRoute) {
     const continentSlug = (slug2 || '').toLowerCase();

@@ -4,6 +4,7 @@ import path from "node:path";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
 import pg from "pg";
+import { applyConcurrentIndexMigration, parseConcurrentIndexMigration } from './postgres-concurrent-index.mjs';
 
 function positiveMilliseconds(value, fallback, maximum) {
   const parsed = Number(value);
@@ -30,6 +31,19 @@ export function postgresMigrationConnectionOptions(environment = process.env) {
 
 export function postgresMigrationLockTimeout(environment = process.env) {
   return positiveMilliseconds(environment.POSTGRES_MIGRATION_LOCK_TIMEOUT_MS, 60_000, 600_000);
+}
+
+async function acquireMigrationLock(client, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const result = await client.query("SELECT pg_try_advisory_lock(hashtext('radiohub-schema-migrations')) AS acquired");
+    if (result.rows[0]?.acquired) return;
+    if (Date.now() >= deadline) throw new Error('Timed out waiting for PostgreSQL schema migration lock');
+    // A blocking advisory-lock SELECT keeps an old transaction snapshot open.
+    // Concurrent index creation waits for that snapshot, deadlocking two
+    // starting replicas. Finish each try statement before waiting in JS.
+    await new Promise(resolve => setTimeout(resolve, Math.min(100, Math.max(1, deadline - Date.now()))));
+  }
 }
 
 export function safePostgresInitializationError(error, environment = process.env) {
@@ -75,7 +89,7 @@ export async function applyPostgresMigrations({
   if (!names.length) throw new Error(`No SQL migrations found in ${directory}`);
   const migrations = await Promise.all(names.map(async (name) => {
     const sql = await fs.readFile(path.join(directory, name), "utf8");
-    return { name, sql, checksum: crypto.createHash("sha256").update(sql).digest("hex") };
+    return { name, sql, concurrentIndex: parseConcurrentIndexMigration(sql), checksum: crypto.createHash("sha256").update(sql).digest("hex") };
   }));
   const pool = createPool(connectionOptions);
   let client;
@@ -83,7 +97,7 @@ export async function applyPostgresMigrations({
   try {
     client = await pool.connect();
     await client.query("SELECT set_config('lock_timeout', $1, false)", [String(postgresMigrationLockTimeout(environment))]);
-    await client.query("SELECT pg_advisory_lock(hashtext('radiohub-schema-migrations'))");
+    await acquireMigrationLock(client, postgresMigrationLockTimeout(environment));
     locked = true;
     await client.query(`CREATE TABLE IF NOT EXISTS radiohub_schema_migrations (
       name text PRIMARY KEY, checksum text NOT NULL, applied_at timestamptz NOT NULL DEFAULT now()
@@ -100,6 +114,16 @@ export async function applyPostgresMigrations({
     for (const migration of migrations) {
       if (appliedChecksums.has(migration.name)) {
         log(`[schema] already applied: ${migration.name}`);
+        continue;
+      }
+      if (migration.concurrentIndex) {
+        // This single-purpose DDL cannot run inside a transaction. A retry
+        // verifies/reuses a completed index (or repairs its cancelled build)
+        // before recording the immutable checksum on the locked connection.
+        await applyConcurrentIndexMigration(client, migration.concurrentIndex);
+        await client.query("INSERT INTO radiohub_schema_migrations(name,checksum) VALUES ($1,$2)", [migration.name, migration.checksum]);
+        appliedCount += 1;
+        log(`[schema] applied: ${migration.name}`);
         continue;
       }
       await client.query("BEGIN");

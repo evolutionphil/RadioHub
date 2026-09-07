@@ -192,6 +192,7 @@ export async function listStationsFromPostgres(options: PostgresStationListOptio
 }> {
   const values: unknown[] = [];
   const conditions: string[] = [];
+  let genreCandidates = '';
   const bind = (value: unknown): string => { values.push(value); return `$${values.length}`; };
   if (options.excludeBroken) conditions.push("last_check_ok=true");
   if (options.country) conditions.push(`lower(country)=lower(${bind(options.country)})`);
@@ -203,9 +204,17 @@ export async function listStationsFromPostgres(options: PostgresStationListOptio
   if (options.genre) {
     const normalized = bind(genreSlug(options.genre));
     const name = bind(options.genre);
-    conditions.push(`(EXISTS (SELECT 1 FROM station_genres sg WHERE sg.station_id=stations.id AND sg.genre_slug=${normalized})
-      OR lower(source->>'genre')=lower(${name})
-      OR EXISTS (SELECT 1 FROM unnest(string_to_array(tags_raw,',')) AS tag WHERE lower(btrim(tag))=lower(${name})))`);
+    // Keep all three historical match paths, but collect indexed IDs once.
+    // OR-ing the source fallback into every station row forced decompression
+    // of the complete archived JSON (including every translated article).
+    const pattern = bind(containsPattern(options.genre));
+    genreCandidates = `genre_matches AS MATERIALIZED (
+      SELECT station_id AS id FROM station_genres WHERE genre_slug=${normalized}
+      UNION SELECT id FROM stations WHERE lower(source->>'genre')=lower(${name})
+      UNION SELECT id FROM stations WHERE tags_raw ILIKE ${pattern}
+        AND EXISTS (SELECT 1 FROM unnest(string_to_array(tags_raw,',')) AS tag WHERE lower(btrim(tag))=lower(${name}))
+    ),`;
+    conditions.push('id IN (SELECT id FROM genre_matches)');
   }
   if (options.language) conditions.push(`language ILIKE ${bind(containsPattern(options.language))}`);
   let searchOrder = '';
@@ -243,7 +252,7 @@ export async function listStationsFromPostgres(options: PostgresStationListOptio
   const limit = boundedInteger(options.limit, 25, 500);
   // One statement gives count and page the same MVCC snapshot, including empty pages.
   const result = await getPostgresPool().query(
-    `WITH selected AS (SELECT ${options.compact ? CARD_SELECTION : '*'},row_number() OVER (ORDER BY ${order}) AS _position
+    `WITH ${genreCandidates} selected AS (SELECT ${options.compact ? CARD_SELECTION : '*'},row_number() OVER (ORDER BY ${order}) AS _position
        FROM stations ${where} ORDER BY ${order} LIMIT ${bind(limit)} OFFSET ${bind((page-1)*limit)})
      SELECT selected.*,(SELECT count(*)::integer FROM stations ${where}) AS _total
      FROM (SELECT 1) anchor LEFT JOIN selected ON true ORDER BY selected._position`, values,

@@ -53,18 +53,11 @@ if (VITE_API_BASE) {
 // Initialize performance monitoring and optimizations
 if (typeof window !== 'undefined') {
   const isDev = import.meta.env.DEV;
-  const isProduction = import.meta.env.PROD;
-  
-  // Suppress console errors in production
-  const originalConsoleError = console.error;
-  const originalConsoleWarn = console.warn;
-  
-  console.error = (...args) => {
-    // Suppress all errors in production
-    if (isProduction) return;
-    
-    // In dev, suppress Vite HMR WebSocket errors only
-    if (isDev) {
+  // Keep real production errors visible to users, monitoring and browser audits.
+  // Only local Vite HMR noise is filtered; hiding all errors masked regressions.
+  if (isDev) {
+    const originalConsoleError = console.error;
+    console.error = (...args) => {
       const message = args[0]?.toString?.() || '';
       const errorDetails = JSON.stringify(args).toLowerCase();
       if (message.includes('WebSocket connection') || 
@@ -75,14 +68,8 @@ if (typeof window !== 'undefined') {
         return;
       }
       originalConsoleError.apply(console, args);
-    }
-  };
-  
-  // Suppress React warnings in production
-  console.warn = (...args) => {
-    if (isProduction) return;
-    originalConsoleWarn.apply(console, args);
-  };
+    };
+  }
 
   // Handle unhandled promise rejections from Vite HMR to prevent app crashes
   window.addEventListener('unhandledrejection', (event) => {

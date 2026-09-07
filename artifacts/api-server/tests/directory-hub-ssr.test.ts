@@ -35,7 +35,7 @@ mock.module('../src/data/postgres-seo-read-store', { namedExports: { pgSeoCatalo
   throw new Error('Hub must not scan the station catalogue');
 } } });
 const { SeoRenderer } = await import('../src/seo-renderer');
-const { loadGenreDirectoryHub, loadRegionDirectoryHub, DIRECTORY_GENRE_LIMIT, DIRECTORY_COUNTRIES_PER_REGION } = await import('../src/seo/directory-hub-data');
+const { loadGenreDirectoryHub, loadRegionDirectoryHub, loadContinentDirectory, DIRECTORY_GENRE_LIMIT, DIRECTORY_COUNTRIES_PER_REGION } = await import('../src/seo/directory-hub-data');
 const renderer = new SeoRenderer();
 const escape = (text: string) => text.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#39;');
 beforeEach(() => { queries.length = 0; pageCache.clear(); failRead = false; allowed.add('rock'); });
@@ -80,10 +80,43 @@ test('warm genre hub cache follows whitelist removals immediately', async () => 
 test('failed hub reads are not cached as permanent empty navigation', async () => {
   failRead = true;
   const failed = await renderer.renderStaticPage('/en/regions', 'https://themegaradio.com');
-  assert.equal(failed.pageData.hubReadFailed, true); assert.equal(pageCache.size, 0);
+  assert.equal(failed.pageData.hubReadFailed, true); assert.equal(failed.pageData.stationDbError, true); assert.equal(pageCache.size, 0);
   failRead = false;
   const recovered = await renderer.renderStaticPage('/en/regions', 'https://themegaradio.com');
   assert.equal(recovered.pageData.directoryRegions.length, 6); assert.equal(queries.length, 2);
+});
+
+for (const language of ACTIVE_SITEMAP_LANGUAGES) {
+  test(`${language}/regions/europe renders a crawlable country directory without querying stations`, async () => {
+    const path = buildLocalizedUrl('/regions/europe', language, undefined, new Map());
+    const page = await renderer.renderStaticPage(path, 'https://themegaradio.com');
+    const body = renderer.generateHtmlBody({ pageType: 'regions', language, translations: {}, additionalData: page.pageData.additionalData, cleanPath: page.cleanPath, urlTranslations: page.urlTranslations });
+    assert.equal((body.match(/<h1\b/g) || []).length, 1);
+    assert.ok(body.includes(escape(getLocalizedRegionName('Europe', language))));
+    for (const country of ['germany', 'austria']) {
+      assert.ok(body.includes(`href="${buildLocalizedUrl(`/regions/europe/${country}`, language, undefined, new Map())}"`));
+    }
+    assert.ok(!body.includes('/turkey"'));
+    assert.ok(body.includes('class="country-directory"'));
+    assert.equal(page.seoTags.canonical, `https://themegaradio.com${path}`);
+    assert.equal(page.seoTags.hreflangs.length, ACTIVE_SITEMAP_LANGUAGES.length + 1);
+    assert.notEqual(page.seoTags.noIndex, true);
+    assert.equal(queries.length, 1);
+    await renderer.renderStaticPage(path, 'https://themegaradio.com');
+    assert.equal(queries.length, 1);
+  });
+}
+
+test('continent required-reference failure is retryable and not cached as an empty indexable page', async () => {
+  failRead = true;
+  const failed = await renderer.renderStaticPage('/en/regions/europe', 'https://themegaradio.com');
+  assert.equal(failed.pageData.stationDbError, true);
+  assert.equal(failed.pageData.notFound, false);
+  assert.equal(pageCache.size, 0);
+  failRead = false;
+  const recovered = await renderer.renderStaticPage('/en/regions/europe', 'https://themegaradio.com');
+  assert.equal(recovered.pageData.stationDbError, undefined);
+  assert.equal(recovered.pageData.continentDirectory.countries.length, 2);
 });
 test('hub bounds, alias deduplication, safe slugs and name escaping preserve curated identity', async () => {
   const originalGenres = genreRows, originalCountries = countryRows;
@@ -95,6 +128,9 @@ test('hub bounds, alias deduplication, safe slugs and name escaping preserve cur
     const regions = await loadRegionDirectoryHub();
     assert.equal(regions.find(region => region.slug === 'europe')!.countries.length, DIRECTORY_COUNTRIES_PER_REGION);
     assert.equal(regions.flatMap(region => region.countries).filter(country => country.slug === 'germany').length, 1);
+    const europe = await loadContinentDirectory('europe');
+    assert.equal(europe!.countries.length, 10, 'Continent directory exposes countries beyond the parent eight-link cap');
+    assert.equal(await loadContinentDirectory('not-a-continent'), null);
     const html = renderer.generateHtmlBody({ pageType: 'genres', language: 'de', translations: {}, additionalData: { directoryGenres: genres } });
     assert.ok(html.includes('&lt;b&gt;Editor &amp; name&lt;/b&gt;')); assert.ok(!html.includes('<b>Editor'));
   } finally { genreRows = originalGenres; countryRows = originalCountries; }

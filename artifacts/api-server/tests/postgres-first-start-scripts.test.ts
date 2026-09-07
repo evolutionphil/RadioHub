@@ -17,7 +17,7 @@ const verified = { id: "verified", mode: "all", status: "complete", finished_at:
 
 function fixture(overrides: Record<string, any> = {}) {
   const state = { authority: false, run: verified, checkpointCount: 1, incomplete: 0, hasDocuments: false,
-    hasCheckpoints: false, lockAvailable: true, applied: [], connectError: null, queryError: null, ...overrides };
+    hasCheckpoints: false, lockAvailable: true, applied: [], connectError: null, queryError: null, indexCreated: false, ...overrides };
   const calls: string[] = [];
   let releases = 0;
   let ends = 0;
@@ -26,6 +26,12 @@ function fixture(overrides: Record<string, any> = {}) {
     async query(sql: string, _values?: unknown[]) {
       calls.push(sql);
       if (state.queryError?.(sql)) throw new Error("injected query failure");
+      if (sql.includes('pg_try_advisory_lock')) return { rows: [{ acquired: state.lockAvailable }] };
+      if (sql.startsWith("SELECT current_setting('lock_timeout')")) return { rows: [{ value: '60s' }] };
+      if (sql.startsWith('CREATE INDEX CONCURRENTLY')) state.indexCreated = true;
+      if (sql.startsWith('SELECT i.indisvalid')) return { rows: state.indexCreated ? [{ valid: true, ready: true,
+        correct_table: true, method: 'gin', unique: false, keys: 1, no_predicate: true,
+        operator_class: 'gin_trgm_ops', expression: "lower((source ->> 'genre'::text))" }] : [] };
       if (sql.includes("pg_try_advisory_xact_lock")) return { rows: [{ acquired: state.lockAvailable }] };
       if (sql.startsWith("SELECT name,checksum")) return { rows: state.applied };
       if (sql.startsWith("SELECT domain")) return { rows: state.authority ? [{ domain: "USER_STORE" }] : [] };
@@ -58,15 +64,33 @@ test("migration connection validates URLs, verifies TLS and bounds every timeout
   assert.equal(postgresMigrationConnectionOptions({ ...environment, POSTGRES_SSL: "disable" }).ssl, false);
 });
 
-test("schema installer executes all SQL transactionally and closes its connection", async () => {
+test("schema installer executes normal SQL transactionally and the reviewed index concurrently on its locked connection", async () => {
   const db = fixture();
   assert.deepEqual(await applyPostgresMigrations({ environment, migrationsDirectory, createPool: db.createPool, log() {} }), { applied: files.length, skipped: 0 });
-  assert.equal(db.calls.filter((sql) => sql === "BEGIN").length, files.length);
-  assert.equal(db.calls.filter((sql) => sql === "COMMIT").length, files.length);
-  assert.ok(db.calls.some((sql) => sql.includes("pg_advisory_lock")));
+  assert.equal(db.calls.filter((sql) => sql === "BEGIN").length, files.length - 1);
+  assert.equal(db.calls.filter((sql) => sql === "COMMIT").length, files.length - 1);
+  const indexPosition = db.calls.findIndex(sql => sql.startsWith('CREATE INDEX CONCURRENTLY'));
+  assert.ok(indexPosition > db.calls.lastIndexOf('COMMIT'));
+  assert.ok(db.calls.slice(indexPosition + 1).find(sql => sql.startsWith('SELECT i.indisvalid')));
+  assert.ok(db.calls.some((sql) => sql.includes("pg_try_advisory_lock")));
   assert.ok(db.calls.some((sql) => sql.includes("pg_advisory_unlock")));
   assert.equal(db.releases, 1);
   assert.equal(db.ends, 1);
+});
+test('schema lock contention expires between completed try-lock statements without opening a transaction', async () => {
+  const db = fixture({ lockAvailable: false });
+  await assert.rejects(applyPostgresMigrations({ environment: { ...environment, POSTGRES_MIGRATION_LOCK_TIMEOUT_MS: '5' },
+    migrationsDirectory, createPool: db.createPool, log() {} }), /Timed out waiting/);
+  assert.ok(!db.calls.includes('BEGIN'));
+  assert.ok(!db.calls.some(sql => sql.includes('SELECT pg_advisory_lock(')));
+  assert.equal(db.releases, 1); assert.equal(db.ends, 1);
+});
+test('a cancelled concurrent build is not recorded as applied or wrapped in a transaction', async () => {
+  const db = fixture({ applied: hashes.slice(0, -1), queryError: (sql: string) => sql.startsWith('CREATE INDEX CONCURRENTLY') });
+  await assert.rejects(applyPostgresMigrations({ environment, migrationsDirectory, createPool: db.createPool, log() {} }), /injected/);
+  assert.ok(!db.calls.some(sql => sql.startsWith('INSERT INTO radiohub_schema_migrations')));
+  assert.ok(!db.calls.includes('BEGIN')); assert.ok(!db.calls.includes('COMMIT'));
+  assert.ok(db.calls.at(-1)?.includes('pg_advisory_unlock')); assert.equal(db.ends, 1);
 });
 
 test("schema installer is a no-op when every immutable migration is applied", async () => {

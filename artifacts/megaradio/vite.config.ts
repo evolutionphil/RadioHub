@@ -74,6 +74,7 @@ export default defineConfig({
   },
   root: path.resolve(import.meta.dirname),
   build: {
+    manifest: true,
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,
     // Target modern evergreen browsers only (all support native ESM, dynamic

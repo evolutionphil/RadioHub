@@ -420,6 +420,25 @@ test('slim SEO page-data forwards the exact localized renderer context and prese
   } finally { render.mock.restore(); generate.mock.restore(); }
 });
 
+test('absent catalogue slices expose404 and noindex in both slim navigation and full previews', async () => {
+  const { SeoRenderer } = await import('../src/seo-renderer');
+  const fixture = { language: 'de', cleanPath: '/stations', translations: {},
+    seoTags: { title: 'Radiosender', robots: 'noindex, follow', noIndex: true, hreflangs: [] },
+    pageData: { pageType: 'stations', notFound: true, httpNotFound: true } };
+  const render = mock.method(SeoRenderer.prototype, 'renderStaticPage', async () => fixture);
+  try {
+    for (const suffix of ['', '&slim=1']) {
+      const response = await fetch(`${baseUrl}/api/seo/page-data?url=%2Fde%2Fsender%3Fpage%3D999999${suffix}`);
+      assert.equal(response.status, 404);
+      assert.equal(response.headers.get('cache-control'), 'no-store');
+      const body = await response.json() as any;
+      assert.equal(body.seoTags.noIndex, true);
+      assert.deepEqual(body.seoTags.hreflangs, []);
+      if (!suffix) assert.deepEqual(body.pageData, fixture.pageData);
+    }
+  } finally { render.mock.restore(); }
+});
+
 test('large station sitemaps read bounded batches and retain manifest order, omissions and XML validity', async () => {
   const ids = Array.from({ length: 1201 }, (_, n) => `batch-${1200 - n}`);
   sitemapReadRows = ids.map((_id, n) => ({ ...FAKE_STATION_DOCS[0], _id, slug: `${_id}-radio`, noIndex: n === 500 }));

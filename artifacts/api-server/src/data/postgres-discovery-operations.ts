@@ -55,12 +55,19 @@ export async function pgDiverseStations(
   const rows = (
     await getPostgresPool().query(
       `WITH top_genres AS MATERIALIZED (
-    SELECT name FROM genres WHERE station_count>5 ORDER BY station_count DESC,id LIMIT 10
-  ) SELECT sampled.* FROM top_genres g CROSS JOIN LATERAL (
-    SELECT s.* FROM stations s WHERE ($1::text IS NULL OR lower(s.country)=lower($1))
-    AND (strpos(lower(s.tags_raw),lower(g.name))>0 OR strpos(lower(s.source->>'genre'),lower(g.name))>0)
+    SELECT name,row_number() OVER (ORDER BY station_count DESC,id) AS genre_rank,
+      '%' || replace(replace(replace(name,chr(92),chr(92)||chr(92)),
+      '%',chr(92)||'%'),'_',chr(92)||'_') || '%' AS pattern
+    FROM genres WHERE station_count>5 ORDER BY station_count DESC,id LIMIT 10
+  ), sampled_ids AS MATERIALIZED (
+    SELECT sampled.id,g.genre_rank FROM top_genres g CROSS JOIN LATERAL (
+    SELECT s.id FROM stations s WHERE ($1::text IS NULL OR lower(s.country)=lower($1))
+    AND (s.tags_raw ILIKE g.pattern OR lower(s.source->>'genre') LIKE lower(g.pattern))
     ORDER BY random() LIMIT greatest(2,ceil($2::numeric/greatest((SELECT count(*) FROM top_genres),1))::int)
-  ) sampled`,
+  ) sampled)
+  SELECT s.id,s.name,s.slug,s.favicon,s.url,s.country,s.language,s.tags_raw,s.votes,s.codec,s.bitrate,
+    CASE WHEN s.source ? 'genre' THEN jsonb_build_object('genre',s.source->'genre') ELSE '{}'::jsonb END AS source
+  FROM sampled_ids sampled JOIN stations s ON s.id=sampled.id ORDER BY sampled.genre_rank`,
       [country, bounded],
     )
   ).rows;

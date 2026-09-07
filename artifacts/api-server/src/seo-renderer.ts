@@ -8,6 +8,8 @@ import { pgSeoMetadata } from './data/postgres-content-store';
 import { pgLocalization } from './data/postgres-localization-store';
 import { PrecomputedGenresService } from './services/precomputed-genres';
 import { AZ_INDEX_KEYS, azDisplayLabel, azSlugBounds, matchAzIndexPath } from './seo/az-station-index';
+import { isMissingSeoCatalogPage, isSeoCatalogPath, parseSeoCatalogPage, seoCatalogPageLinks } from './seo/catalog-pagination';
+import { regionRouteExistence } from './seo/region-route-existence';
 
 // The renderer only needs this small subset of the normalized catalog shape.
 interface LeanStationCard {
@@ -185,6 +187,7 @@ export {
 } from './seo/url-helpers';
 import {
   buildLocalizedUrl,
+  VALID_CONTINENT_SLUGS,
   validateRegionRouteShape,
   isExactCountryPagePath,
 } from './seo/url-helpers';
@@ -318,6 +321,14 @@ export class SeoRenderer {
 
     // Get language from URL path, but prefer user's stored preference if available
     let { language, cleanPath } = getLanguageFromPath(cleanUrl);
+    const pagination = parseSeoCatalogPage(url);
+    // Validate before either pageData or HTML can alias an invalid request to
+    // a cached valid slice. Non-paginated pages retain their query behaviour.
+    if (isSeoCatalogPath(cleanPath) && !pagination.valid) {
+      return { language, cleanPath, translations: {}, urlTranslations: new Map(),
+        seoTags: { robots: 'noindex, follow', noIndex: true, hreflangs: [] },
+        pageData: { pageType: 'stations', notFound: true, httpNotFound: true } };
+    }
     
     // CRITICAL: Language/Country separation
     // If user has a stored language preference (from cookie), use that instead of country-derived language
@@ -348,8 +359,7 @@ export class SeoRenderer {
       cleanPath.startsWith('/regions') ||
       cleanPath.startsWith('/country')
     ) {
-      const pm = url.match(/[?&]page=(\d+)/);
-      const pg = pm ? Math.min(Math.max(parseInt(pm[1], 10) || 1, 1), 50) : 1;
+      const pg = pagination.valid ? pagination.page : 1;
       if (pg > 1) pageSuffix = `|page=${pg}`;
     }
     const cacheKey = (normalizedLang ? `${cleanUrl}|lang=${normalizedLang}` : cleanUrl) + pageSuffix
@@ -621,9 +631,10 @@ export class SeoRenderer {
           rawGenreSlug = pathParts[2];
         }
         const SAFE_GENRE_SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
-        if (!SAFE_GENRE_SLUG_RE.test(rawGenreSlug)) {
+        if (pathParts.length !== 3 || !SAFE_GENRE_SLUG_RE.test(rawGenreSlug)) {
           stationNotFound = true;
           additionalData.notFound = true;
+          if (pathParts.length !== 3) additionalData.httpNotFound = true;
           additionalData.genreSlug = rawGenreSlug;
           additionalData.genreName = rawGenreSlug;
         } else {
@@ -808,20 +819,19 @@ export class SeoRenderer {
       additionalData.azLetter = azLetter;
       try {
         const PAGE_SIZE = 60;
-        const pmAz = url.match(/[?&]page=(\d+)/);
-        const page = pmAz ? Math.min(Math.max(parseInt(pmAz[1], 10) || 1, 1), 50) : 1;
+        const page = pagination.page;
         const { gte, lt } = azSlugBounds(azLetter);
         const { CacheManager } = await import('./cache');
         const azData = await CacheManager.getOrSetSingleFlight(
           `az-index:${azLetter}:${page}`,
           async () => {
+            // Count the indexed range before any OFFSET. A manufactured huge
+            // page must not force a full range scan, and real page51 must not
+            // silently reuse page50 just because of the old SSR clamp.
+            const total = await pgSeoCatalog().count({ slug: { $gte: gte, $lt: lt }, lastCheckOk: true, noIndex: { $ne: true } });
+            if (page > Math.max(1, Math.ceil(total / PAGE_SIZE))) return { docs: [], total };
             const docs = await pgSeoCatalog().find(
               { slug: { $gte: gte, $lt: lt }, lastCheckOk: true, noIndex: { $ne: true } }, { sort: { slug: 1 }, offset: (page - 1) * PAGE_SIZE, limit: PAGE_SIZE });
-            // Range-only predicate → index-bounded count on {slug:1}. The
-            // junk/noIndex fraction is not subtracted (that would force a
-            // doc scan); totalPages is therefore a slight over-estimate,
-            // clamped to 50 like the hub.
-            const total = await pgSeoCatalog().count({ slug: { $gte: gte, $lt: lt } });
             return { docs, total };
           },
           { ttl: 21600 },
@@ -833,14 +843,11 @@ export class SeoRenderer {
         // ItemList + CollectionPage JSON-LD path emits structured data.
         additionalData.popularStations = catalog;
         additionalData.catalogPage = page;
-        additionalData.catalogTotalPages = Math.min(
-          Math.max(Math.ceil(((azData?.total as number) || 0) / PAGE_SIZE), 1),
-          50,
-        );
+        additionalData.catalogTotalPages = Math.max(Math.ceil(((azData?.total as number) || 0) / PAGE_SIZE), 1);
+        if (isMissingSeoCatalogPage(page, additionalData.catalogTotalPages, catalog)) additionalData.httpNotFound = true;
       } catch (error: any) {
         if (error?.name === 'AbortError' || signal?.aborted) throw error;
-        // Soft-fail: H1 + A-Z nav still render, list section is omitted.
-        // Public reads must never 500.
+        additionalData.hubReadFailed = true;
       }
     } else if (cleanPath.startsWith('/stations')) {
       pageType = 'stations';
@@ -853,8 +860,7 @@ export class SeoRenderer {
       // See SEO re-audit 2026-06-20, internal-linking Component (a).
       try {
         const PAGE_SIZE = 60;
-        const pm2 = url.match(/[?&]page=(\d+)/);
-        const page = pm2 ? Math.min(Math.max(parseInt(pm2[1], 10) || 1, 1), 50) : 1;
+        const page = pagination.page;
         const { PrecomputedStationsService } = await import('./services/precomputed-stations');
         const result = await PrecomputedStationsService.getGlobalStations(page, PAGE_SIZE);
         // Same light junk-gate the home/genre/region grids use so no link
@@ -869,11 +875,11 @@ export class SeoRenderer {
         // from catalogStations, so this only adds the schema — no double HTML.
         additionalData.popularStations = catalog;
         additionalData.catalogPage = page;
-        additionalData.catalogTotalPages = Math.min(result?.totalPages || 1, 50);
+        additionalData.catalogTotalPages = result?.totalPages || 1;
+        if (isMissingSeoCatalogPage(page, additionalData.catalogTotalPages, catalog)) additionalData.httpNotFound = true;
       } catch (error: any) {
         if (error?.name === 'AbortError' || signal?.aborted) throw error;
-        // Soft-fail: leave catalogStations undefined → the list section is
-        // omitted, H1 + nav still render. Public reads must never 500.
+        additionalData.hubReadFailed = true;
       }
     } else if (
       cleanPath === '/feedback' || cleanPath.startsWith('/feedback/') ||
@@ -925,6 +931,8 @@ export class SeoRenderer {
       // this regression). Logic extracted to `seo/url-helpers.ts` so the
       // regression suite can unit-test it without booting the renderer.
       const routeShape = validateRegionRouteShape(cleanPath);
+      const existence = routeShape.ok && (routeShape.family === 'regions' ? pathParts.length > 3 : pathParts.length > 2)
+        ? regionRouteExistence(cleanPath, await import('./seo/slug-existence')) : 'known';
 
       if (pathParts.length > 2) {
         additionalData.region = pathParts[2];
@@ -957,12 +965,24 @@ export class SeoRenderer {
           additionalData.city = pathParts[4];
         }
 
-        if (!routeShape.ok) {
+        if (!routeShape.ok || existence !== 'known') {
           // Task #127: route-shape failure → real 404. index-web.ts catch-all
           // maps notFound:true to HTTP 404 + 404 page body for bot traffic.
-          stationNotFound = true;
-          additionalData.notFound = true;
+          stationNotFound = existence !== 'unavailable';
+          additionalData.notFound = stationNotFound;
+          additionalData.httpNotFound = stationNotFound;
+          if (existence === 'unavailable') additionalData.hubReadFailed = true;
           additionalData.popularStations = [];
+        } else if (routeShape.family === 'regions' && pathParts.length === 3) {
+          // A continent lists its countries. Treating it as country="Europe"
+          // yielded an empty indexable template and wasted station queries.
+          try {
+            const { loadContinentDirectory } = await import('./seo/directory-hub-data');
+            additionalData.continentDirectory = await withSignal(loadContinentDirectory(pathParts[2]), signal);
+          } catch (error: any) {
+            if (error?.name === 'AbortError' || signal?.aborted) throw error;
+            additionalData.hubReadFailed = true;
+          }
         } else {
           // DALGA 2 W2.2: Fetch top 12 stations from this country for SSR flag + <img> grid
           try {
@@ -1000,8 +1020,7 @@ export class SeoRenderer {
             // hub gives the whole catalogue a crawl path. Mirrors /stations.
             try {
               const CATALOG_PAGE_SIZE = 60;
-              const pm = url.match(/[?&]page=(\d+)/);
-              const page = pm ? Math.min(Math.max(parseInt(pm[1], 10) || 1, 1), 50) : 1;
+              const page = pagination.page;
               const { PrecomputedStationsService } = await import('./services/precomputed-stations');
               const countryCatalog = await PrecomputedStationsService.getCountryStationsByName(
                 countryName, page, CATALOG_PAGE_SIZE,
@@ -1009,10 +1028,11 @@ export class SeoRenderer {
               additionalData.catalogStations = (countryCatalog?.stations || [])
                 .filter((s: any) => s && s.slug && s.noIndex !== true && !isJunkStation(s));
               additionalData.catalogPage = page;
-              additionalData.catalogTotalPages = Math.min(countryCatalog?.totalPages || 1, 50);
+              additionalData.catalogTotalPages = countryCatalog?.totalPages || 1;
+              if (isMissingSeoCatalogPage(page, additionalData.catalogTotalPages, additionalData.catalogStations)) additionalData.httpNotFound = true;
             } catch (err: any) {
               if (err?.name === 'AbortError' || signal?.aborted) throw err;
-              // Soft-fail: leave catalog unset → popular grid + nav still render.
+              additionalData.hubReadFailed = true;
             }
 
             // ---- Region cross-link fetch (architect P1: B3) --------------
@@ -1188,7 +1208,10 @@ export class SeoRenderer {
     //    dump ~55 of them into "Crawled - currently not indexed".
     let stationIsJunkFlag = false;
     let langRedirectUrl: string | null = null;
-    let stationDbErrorFlag = !!(stationData as any)?._dbError;
+    // The HTTP layer uses this retryable-data flag for any failed required
+    // SEO read, including reference directories. Never cache an empty 200
+    // HTML directory after a temporary outage.
+    let stationDbErrorFlag = !!(stationData as any)?._dbError || additionalData.hubReadFailed === true;
     if (pageType === 'station' && stationData && !stationNotFound && !stationDbErrorFlag) {
       try {
         const {
@@ -1553,6 +1576,10 @@ export class SeoRenderer {
       logger.log(`🎯 Using custom SEO metadata for ${dbPageType}/${routeKey}/${language}`);
       seoTags = this.applyCustomSeoMetadata(seoTags, customMetadata);
     }
+    if (additionalData.httpNotFound) {
+      stationNotFound = true;
+      seoTags = { ...seoTags, noIndex: true, robots: 'noindex, follow', hreflangs: [] };
+    }
 
     // Hydration must receive the same descriptions the HTML head emits.
     // Keep admin metadata precedence and all stored/full body text intact;
@@ -1607,7 +1634,7 @@ export class SeoRenderer {
     
     // A failed lookup must be retried on the very next request. Caching its
     // synthetic data kept healthy station URLs unavailable after PG recovered.
-    if (!stationDbErrorFlag && !additionalData.hubReadFailed) performanceCache.setPageData(cacheKey, pageData);
+    if (!stationDbErrorFlag && !additionalData.hubReadFailed && !additionalData.httpNotFound) performanceCache.setPageData(cacheKey, pageData);
     
     return pageData;
     }, url);
@@ -2129,7 +2156,10 @@ export class SeoRenderer {
           // "Italia", and (b) fall back to LOCALIZED_LABELS (per-language
           // hand-curated copy) when the DB key is missing instead of dumping
           // English into a non-English page.
-          const localizedRegion = getLocalizedCountryName(additionalData.regionName, language);
+          const isContinent = !additionalData.country && VALID_CONTINENT_SLUGS.has(String(additionalData.region || '').toLowerCase());
+          const localizedRegion = isContinent
+            ? getLocalizedRegionName(additionalData.regionName, language)
+            : getLocalizedCountryName(additionalData.regionName, language);
           const radioStationsText = translations['seo_radio_stations']?.trim()
               || LOCALIZED_RADIO_STATIONS[language]
               || 'Radio Stations';
@@ -2140,7 +2170,7 @@ export class SeoRenderer {
         return buildDirectoryIndexSeo('regions', language, translations).h1;
       
       case 'stations':
-        return deriveH1FromTitle(getLocalizedText('stations_page_title'));
+        return deriveH1FromTitle(buildCommunityPageSeo('stations', language, translations).title);
       
       case 'about':
         return deriveH1FromTitle(buildStaticPageSeo('about', language, translations).title);
@@ -2757,6 +2787,21 @@ export class SeoRenderer {
             </main>`;
             break;
           }
+          if (additionalData?.continentDirectory) {
+            const directory = additionalData.continentDirectory as { slug: string; name: string; countries: Array<{ slug: string; name: string }> };
+            const regionSeo = buildRegionSeo(directory.name, language, translations);
+            const allRegions = buildLocalizedUrl('/regions', language, undefined, urlTranslations || new Map());
+            content = `<main lang="${this.escapeHtml(language)}" dir="${language === 'ar' || language === 'he' ? 'rtl' : 'ltr'}">
+              <h1>${this.escapeHtml(h1Text)}</h1>
+              <p>${this.escapeHtml(regionSeo.bodyIntro)}</p>
+              <ul class="country-directory">${directory.countries.map(country => {
+                const path = buildLocalizedUrl(`/regions/${directory.slug}/${country.slug}`, language, undefined, urlTranslations || new Map());
+                return `<li><a href="${this.escapeHtml(path)}">${this.escapeHtml(getLocalizedCountryName(country.name, language))}</a></li>`;
+              }).join('')}</ul>
+              <nav><a href="${this.escapeHtml(allRegions)}">${this.escapeHtml(buildDirectoryIndexSeo('regions', language, translations).h1)}</a></nav>
+            </main>`;
+            break;
+          }
           const cc = additionalData?.countryCode;
           const flagSrc = cc && /^[a-z]{2}$/i.test(cc) ? `https://flagcdn.com/w320/${cc.toLowerCase()}.png` : '';
           // Multilingual body intro/availability — see shared/region-seo-templates.ts.
@@ -2855,7 +2900,7 @@ export class SeoRenderer {
               ${totalPages > 1 ? `
               <nav class="pagination" aria-label="${this.escapeHtml(getLocalizedText('pagination', 'Pagination'))}">
                 <ul>
-                  ${Array.from({ length: totalPages }, (_, i) => i + 1).map((n) => {
+                  ${seoCatalogPageLinks(curPage, totalPages).map((n) => {
                     if (n === curPage) return `<li><span aria-current="page">${n}</span></li>`;
                     const href = n === 1 ? base : `${base}?page=${n}`;
                     const rel = n === curPage - 1 ? ' rel="prev"' : n === curPage + 1 ? ' rel="next"' : '';
@@ -3091,7 +3136,7 @@ export class SeoRenderer {
             ${totalPages > 1 ? `
             <nav class="pagination" aria-label="${this.escapeHtml(getLocalizedText('pagination', 'Pagination'))}">
               <ul>
-                ${Array.from({ length: totalPages }, (_, i) => i + 1).map((n) => {
+                ${seoCatalogPageLinks(curPage, totalPages).map((n) => {
                   if (n === curPage) {
                     return `<li><span aria-current="page">${n}</span></li>`;
                   }

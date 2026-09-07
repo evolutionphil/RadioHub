@@ -6,16 +6,23 @@ import express from 'express';
 // Actual taxonomy and HTTP handlers, with only storage/network boundaries mocked.
 // No taxonomy, whitelist, station or production data is mutated.
 const row = (slug: string, count: number, discoverable = true, name = slug, source = {}) => ({ id: `id-${slug}`, slug, name, station_count: count, is_discoverable: discoverable, source });
-let rows: ReturnType<typeof row>[] = [], lastCountry: unknown;
+let rows: ReturnType<typeof row>[] = [], lastCountry: unknown, reads = 0;
 const allowed = new Set<string>();
 const cache = new Map<string, unknown>();
 mock.module('../src/postgres-runtime', { namedExports: { getPostgresPool: () => ({ query: async (sql: string, params: any[] = []) => {
   lastCountry = params[0];
+  reads++;
   assert.ok(sql.startsWith('SELECT'), 'Only a read query is allowed');
   return { rows: sql.includes('WHERE is_discoverable=true') ? rows.filter(r => r.is_discoverable) : rows };
 } }) } });
 mock.module('../src/seo/genre-whitelist-store', { namedExports: { getMergedWhitelist: () => allowed, getMergedAliases: () => new Map() } });
-const manager = { get: async (key: string) => cache.get(key), set: async (key: string, value: unknown) => { cache.set(key, value); } };
+const manager = {
+  get: async (key: string) => cache.get(key), set: async (key: string, value: unknown) => { cache.set(key, value); },
+  getOrSetSingleFlight: async (key: string, compute: () => Promise<unknown>) => {
+    if (cache.has(key)) return cache.get(key);
+    const result = await compute(); cache.set(key, result); return result;
+  },
+};
 mock.module('../src/cache', { defaultExport: manager, namedExports: { CacheManager: manager, CacheKeys: { genres: (...args: any[]) => `genres:${JSON.stringify(args)}` } } });
 mock.module('../src/services/recommendation-engine', { namedExports: { RecommendationEngine: {} } });
 mock.module('../src/services/precomputed-genres', { namedExports: { PrecomputedGenresService: {} } });
@@ -32,7 +39,7 @@ after(async () => { await new Promise<void>(resolve => server.close(() => resolv
 beforeEach(() => {
   rows = [row('105', 1000), row('105-9', 900), row('pop', 20), row('rock', 40), row('jazz', 100, false), row('custom-genre', 60), row('alias-only', 70)];
   allowed.clear(); for (const slug of ['pop', 'rock', 'jazz', 'custom-genre']) allowed.add(slug);
-  cache.clear(); lastCountry = undefined;
+  cache.clear(); lastCountry = undefined; reads = 0;
 });
 const get = async (path: string) => { const response = await fetch(base + path); assert.equal(response.status, 200); return response.json() as Promise<any>; };
 
@@ -76,4 +83,15 @@ it('search applies after qualification so hidden or unknown matches cannot bypas
   assert.equal((await get('/api/genres/precomputed?country=Austria&search=105')).total, 0);
   assert.equal((await get('/api/genres/precomputed?country=Austria&search=jazz')).total, 0);
   assert.deepEqual((await get('/api/genres/precomputed?country=Austria&search=pop')).data.map((r: any) => r.slug), ['pop']);
+});
+it('reuses the native aggregate across pagination/search while separating country and whitelist versions', async () => {
+  await get('/api/genres/precomputed?country=Austria&limit=2');
+  await get('/api/genres/precomputed?country=Austria&limit=1&page=2');
+  const filtered = await get('/api/genres/precomputed?country=Austria&search=pop');
+  assert.deepEqual(filtered.data.map((r: any) => r.slug), ['pop']);
+  assert.equal(reads, 1);
+  await get('/api/genres/precomputed?country=Germany'); assert.equal(reads, 2);
+  allowed.delete('rock');
+  const changed = await get('/api/genres/precomputed?country=Austria');
+  assert.equal(reads, 3); assert.ok(!changed.data.some((r: any) => r.slug === 'rock'));
 });
