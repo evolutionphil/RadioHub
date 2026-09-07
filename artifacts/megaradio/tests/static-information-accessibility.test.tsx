@@ -16,6 +16,10 @@ it('About has one primary heading before section headings without changing the h
   expect(screen.getByText('about_page_title').className).toContain('text-[26px]');
   expect(screen.getByRole('img',{name:'about_hero_image_alt'})).toHaveAttribute('width','1512');
   expect(screen.getByRole('img',{name:'about_hero_image_alt'})).toHaveAttribute('height','121');
+  expect(screen.getByRole('img',{name:'about_hero_image_alt'})).toHaveAttribute('src','/images/about-frame.png');
+  expect(screen.getByRole('img',{name:'about_hero_image_alt'})).not.toHaveAttribute('srcset');
+  expect(container.innerHTML).toContain("/images/about-bg.webp");
+  expect(container.innerHTML).not.toContain('/assets/images/');
 });
 it('Contact keeps the live form interactive with accessible translated labels', () => {
   render(<Contact />);

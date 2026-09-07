@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { before, mock, test } from 'node:test';
 import { renderStaticInformationBody } from '../src/seo/static-information-body';
 import { buildStaticPageSeo } from '@workspace/seo-shared/static-page-seo-templates';
@@ -25,6 +25,12 @@ for (const language of locales) {
     assert.equal((body.match(/<li>/g) || []).length, 7);
     const frame = readFileSync(new URL('../../megaradio/public/images/about-frame.png', import.meta.url));
     assert.ok(body.includes(`width="${frame.readUInt32BE(16)}" height="${frame.readUInt32BE(20)}"`));
+    assert.ok(body.includes('src="/images/about-frame.png"'));
+    assert.ok(body.includes("url('/images/about-bg.webp')"));
+    assert.doesNotMatch(body, /srcset=|\/assets\/images\//);
+    for (const asset of body.matchAll(/(?:src="|url\(')(\/images\/[^"')]+)/g)) {
+      assert.ok(existsSync(new URL(`../../megaradio/public${asset[1]}`, import.meta.url)), asset[1]);
+    }
   });
   test(`${language} Contact SSR exposes localized labels, without pre-boot submissions`, () => {
     const translations = Object.fromEntries(keys('contact').map(key => [key, `${language}:${key}`]));

@@ -8,7 +8,7 @@ export function About() {
     <div>
       <SeoHead pageType="about" />
       
-      <div className="relative flex h-[200px] items-center bg-[url('/assets/images/about-bg.webp')] bg-cover bg-center sm:h-[300px]">
+      <div className="relative flex h-[200px] items-center bg-[url('/images/about-bg.webp')] bg-cover bg-center sm:h-[300px]">
         <div className="container mx-auto">
           <p className="text-[26px] font-bold text-white sm:text-[36px]">{t('about_page_title')}</p>
         </div>
@@ -16,11 +16,9 @@ export function About() {
           <img 
             loading="lazy" 
             className="w-full max-w-7xl h-auto" 
-            src="/assets/images/about-frame.png"
+            src="/images/about-frame.png"
             width={1512}
             height={121}
-            srcSet="/assets/images/about-frame-600w.webp 600w, /assets/images/about-frame-1200w.webp 1200w, /assets/images/about-frame.png 1512w"
-            sizes="(max-width: 768px) 600px, (max-width: 1400px) 1200px, 1512px"
             alt={t('about_hero_image_alt')} 
           />
         </div>

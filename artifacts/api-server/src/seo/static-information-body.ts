@@ -35,9 +35,9 @@ export function renderStaticInformationBody(pageType: 'about' | 'contact', langu
   const technicalKeys = ['hls', 'metadata', 'format_conversion', 'gps_discovery', 'ml_recommendations', 'multilanguage', 'seo'];
   const technical = technicalKeys.filter(key => translations[`about_tech_feature_${key}`]?.trim()).map(key => `<li>${text(`about_tech_feature_${key}`)}</li>`).join('');
   return `<main>
-    <div class="relative flex h-[200px] items-center bg-[url('/assets/images/about-bg.webp')] bg-cover bg-center sm:h-[300px]">
+    <div class="relative flex h-[200px] items-center bg-[url('/images/about-bg.webp')] bg-cover bg-center sm:h-[300px]">
       <div class="container mx-auto"><p class="text-[26px] font-bold text-white sm:text-[36px]">${text('about_page_title')}</p></div>
-      <div class="absolute bottom-0 left-0 w-full"><img loading="lazy" width="1512" height="121" class="w-full max-w-7xl h-auto" src="/assets/images/about-frame.png" srcset="/assets/images/about-frame-600w.webp 600w, /assets/images/about-frame-1200w.webp 1200w, /assets/images/about-frame.png 1512w" sizes="(max-width: 768px) 600px, (max-width: 1400px) 1200px, 1512px" alt="${text('about_hero_image_alt')}"></div>
+      <div class="absolute bottom-0 left-0 w-full"><img loading="lazy" width="1512" height="121" class="w-full max-w-7xl h-auto" src="/images/about-frame.png" alt="${text('about_hero_image_alt')}"></div>
     </div>
     <div class="py-[100px] text-white"><div class="container max-w-4xl mx-auto space-y-12">
       <section class="space-y-8"><h1 class="text-4xl font-bold mb-8">${text('about_mega_radio', seo.title)}</h1><div class="prose prose-lg prose-invert max-w-none space-y-6">${p('about_intro_paragraph_1')}${p('about_intro_paragraph_2')}${p('about_intro_paragraph_3')}${!translations.about_intro_paragraph_1?.trim() ? `<p>${escapeHtml(seo.description)}</p>` : ''}</div></section>
