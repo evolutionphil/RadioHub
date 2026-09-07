@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { URL_TRANSLATIONS, normalizeUrlForLanguage, GLOBAL_REVERSE_URL_TRANSLATIONS } from '@workspace/seo-shared/url-translations';
 import { SEO_LANGUAGES, COUNTRY_TO_LANGUAGE } from '@workspace/seo-shared/seo-config';
+import { getPreferredLanguageCookie } from '@workspace/seo-shared/language-preference';
 import { logger } from './utils/logger';
 import { performanceCache } from './performance-cache';
 import { getCanonicalStationSlug, isSlugExistenceReady } from './seo/slug-existence';
@@ -197,22 +198,12 @@ const STATION_LIST_ALIASES = new Map<string, { canonical: string; aliases: Set<s
 })();
 
 function detectLanguageFromRequest(req: Request): string {
-  const cfCountry = (req.headers['cf-ipcountry'] as string || '').toLowerCase();
-  if (cfCountry && cfCountry !== 'xx' && cfCountry !== 't1' && COUNTRY_TO_LANGUAGE[cfCountry]) {
-    return COUNTRY_TO_LANGUAGE[cfCountry];
-  }
-  const cookieHeader = req.headers.cookie || '';
-  const prefLangMatch = cookieHeader.match(/preferredLanguage=([a-z]{2,5})/i);
-  if (prefLangMatch) {
-    const cookieLang = prefLangMatch[1].toLowerCase();
-    if (SEO_LANGUAGES.some(lang => lang.code === cookieLang)) return cookieLang;
-  }
-  const acceptLang = req.headers['accept-language'];
-  if (acceptLang) {
-    const primaryLang = acceptLang.split(',')[0].split('-')[0].toLowerCase().trim();
-    if (SEO_LANGUAGES.some(lang => lang.code === primaryLang)) return primaryLang;
-  }
-  return 'en';
+  // Country filters/IP geolocation are not language preferences. Express's
+  // language negotiation respects regional tags, quality weights and q=0.
+  const saved = getPreferredLanguageCookie(req.headers.cookie || '');
+  if (saved) return saved;
+  const supported = ['en', ...SEO_LANGUAGES.filter(lang => lang.enabled && lang.code !== 'en').map(lang => lang.code)];
+  return req.acceptsLanguages(...supported) || 'en';
 }
 
 export async function urlRedirectMiddleware(req: Request, res: Response, next: NextFunction): Promise<void> {
@@ -309,17 +300,23 @@ export async function urlRedirectMiddleware(req: Request, res: Response, next: N
     if (normalized !== segments[i]) segments[i] = normalized;
   }
 
-  // ---- Step 3: empty path = root → bot canonical 301 / user geo 302 ----
+  // ---- Step 3: only root negotiates language; localized URLs stay stable. ----
   if (segments.length === 0) {
+    // Neither a user's preference nor the bot branch may be cached for another
+    // visitor. Keep the existing deterministic bot destination.
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.vary('Cookie');
+    res.vary('Accept-Language');
+    res.vary('User-Agent');
     const userAgent = (req.headers['user-agent'] || '').toLowerCase();
     if (BOT_UA_RE.test(userAgent)) {
       logger.log(`🔀 SEO 301: / → /en (bot canonical)`);
-      res.redirect(301, '/en');
+      res.redirect(301, `/en${queryString}`);
       return;
     }
     const detectedLang = detectLanguageFromRequest(req);
-    logger.log(`🔀 SEO 302: / → /${detectedLang} (geo-detected)`);
-    res.redirect(302, `/${detectedLang}`);
+    logger.log(`🔀 SEO 302: / → /${detectedLang} (preferred language)`);
+    res.redirect(302, `/${detectedLang}${queryString}`);
     return;
   }
 
@@ -333,7 +330,7 @@ export async function urlRedirectMiddleware(req: Request, res: Response, next: N
   // /de/sender and English users to /en/radios for the same /stations URL
   // would poison cross-user cache. Bare known routes ALWAYS go to /en/...,
   // and the user-facing language switcher handles preferred language
-  // afterward (with a cookie). Only the root `/` keeps geo-302 because it
+  // afterward (with a cookie). Only the root `/` negotiates language because it
   // has no path content to canonicalize.
   if (!isLanguageCode && !isCountryCode && KNOWN_BARE_ROUTES.has(firstSegment)) {
     const db = await getDbTranslations();
@@ -400,14 +397,24 @@ export async function urlRedirectMiddleware(req: Request, res: Response, next: N
     }
 
     // ---- Step 7: station-list synonym collapse ----
-    // 2-segment listing pages: /it/stazione, /it/stazioni → /it/radio
-    // Canonical = URL_TRANSLATIONS[lang].radios because the SPA mounts
-    // the listing component at /radios literal route. Bare root /lang
-    // is intentionally untouched (home page).
+    // The sitemap/SSR catalog uses `stations`, not the first global reverse
+    // match for a synonym. Arabic's static `radios` and `stations` both map to
+    // mahtat, but its DB `radios` is radiohat: step 5 alone used to redirect the
+    // valid catalog to an unrecognized SPA shell. Keep DB aliases reachable
+    // while selecting the DB `stations` canonical, exactly like the sitemap.
     else if (segments.length === 2) {
+      const db = await getDbTranslations();
       const listInfo = STATION_LIST_ALIASES.get(lang);
-      if (listInfo && listInfo.aliases.has(segments[1])) {
-        segments[1] = listInfo.canonical;
+      const listAliases = new Set<string>(listInfo?.aliases);
+      for (const key of ['station', 'stations', 'radios']) {
+        listAliases.add(key);
+        const seeded = URL_TRANSLATIONS[lang]?.[key];
+        const configured = db.get(`${lang}:${key}`);
+        if (seeded) listAliases.add(seeded);
+        if (configured) listAliases.add(configured);
+      }
+      if (listAliases.has(secondSegment) || listAliases.has(segments[1])) {
+        segments[1] = db.get(`${lang}:stations`) || URL_TRANSLATIONS[lang]?.stations || 'stations';
       }
     }
   }

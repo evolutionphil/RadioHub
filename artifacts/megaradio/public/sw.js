@@ -11,9 +11,21 @@
 // Bump CACHE_NAME whenever the cacheable URL set changes so old caches are
 // purged on activate.
 const CACHE_NAME = 'megaradio-v2';
-const ASSET_CACHE = 'megaradio-assets-v1';
+// Retire pre-migration caches that could contain a successful HTML/JSON
+// fallback under a CSS/JS URL. Preferences and listening history are untouched.
+const ASSET_CACHE = 'megaradio-assets-v2';
 
 const CACHEABLE_PATH_RE = /^\/(?:assets|fonts)\//;
+
+function isValidAssetResponse(url, response) {
+  if (!response || response.status !== 200 || response.type !== 'basic' || response.redirected) return false;
+  const mime = (response.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
+  if (/\.css$/i.test(url.pathname)) return mime === 'text/css';
+  if (/\.m?js$/i.test(url.pathname)) return /^(?:text|application)\/(?:javascript|ecmascript|x-javascript)$/.test(mime);
+  if (/\.(?:woff2?|ttf|otf|eot)$/i.test(url.pathname)) return /^(?:font\/|application\/(?:font-|x-font-|vnd\.ms-fontobject|octet-stream))/.test(mime);
+  if (/\.(?:png|jpe?g|gif|webp|avif|svg|ico)$/i.test(url.pathname)) return mime.startsWith('image/');
+  return false;
+}
 
 // Install event
 self.addEventListener('install', (event) => {
@@ -63,11 +75,12 @@ self.addEventListener('fetch', (event) => {
     try {
       const cache = await caches.open(ASSET_CACHE);
       const cached = await cache.match(req);
-      if (cached) return cached;
+      if (isValidAssetResponse(url, cached)) return cached;
+      if (cached) await cache.delete(req);
       const res = await fetch(req);
-      // Only cache successful, basic (same-origin) responses.
-      if (res && res.status === 200 && res.type === 'basic') {
-        cache.put(req, res.clone()).catch(() => {});
+      // A 200 alone is insufficient: an outage fallback is not a stylesheet.
+      if (isValidAssetResponse(url, res)) {
+        event.waitUntil(cache.put(req, res.clone()).catch(() => {}));
       }
       return res;
     } catch (err) {

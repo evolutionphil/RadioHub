@@ -3,6 +3,40 @@
 Tarih: 7 Eylül 2026. Kapsam: `themegaradio.com`, mevcut 14 SEO dili,
 istasyon ve liste sayfaları; tasarım ve işlevler korunarak kod düzeltmeleri.
 
+## Mobil ekran düzeltmeleri — 16:18 UTC sonrası
+
+- Bu bölüm önceki bekleyen durum notlarından yenidir. Başlangıç production
+  sürümü `39ebf5737`; bu yeni yamanın deployment doğrulaması ayrıca yapılacak.
+- Gösterilen `Recently Played` altındaki kalıcı boşluğun nedeni boş/hatalı
+  popüler istasyon sonucuna ayrılan 1400px minimum yükseklikti. Sonuç kesinleşince
+  içerik yüksekliği kullanılıyor; kart/grid tasarımı değiştirilmiyor.
+- Eski cihaz geçmişindeki istasyonlar tek toplu istekle güncel katalogdan
+  yenileniyor; yeni dinlemeler zaman damgasıyla sıralanıyor, geçmiş korunuyor.
+  Logo hata zinciri küçük çözünürlükleri de deniyor ve aynı ID'nin güncellenen
+  kaynaklarına yeniden şans veriyor. Harici her logonun erişilebilirliği garanti değil.
+- Kök URL kayıtlı tercih veya cihaz dilini kullanıyor (`de-AT/de-DE` → `de`);
+  IP ülkesi dili değiştirmiyor. Açık `/en` gibi URL'ler kendi dilinde kalıyor.
+  Kısmi SSR sözlüğü artık tam sözlük yüklenmesini engellemiyor.
+- Service Worker yalnız doğru MIME türündeki JS/CSS/görselleri saklıyor;
+  eski uygulama asset cache'i sürümlendi. Hatalı HTML/JSON CSS cevabının kalıcı
+  önbelleğe alınması önlendi; kişisel geçmiş/tercihler silinmiyor.
+- HTTP yüzey taraması: 100 sayfa, skor 60/100 (tam tarama/PSI skoru değildir).
+  Organization.logo ImageObject hataları tarayıcının string şartından kaynaklanan
+  yanlış pozitiflerdir; geçerli schema bozulmadı. Bilinmeyen sitemap XML
+  adreslerinin HTML 200 dönüşü gerçek hatadır ve 404 fallback ile gideriliyor.
+- Arapça katalogda `stations=mahtat` / `radios=radiohat` kayıtları korunarak
+  canonical önceliği düzeltildi; sitemap'in `/ar/mahtat` adresi kararlı, diğer
+  liste alias'ları query korunarak tek 301 ile buraya gider. DB değişmedi.
+- Yayın öncesi 188 frontend testi, 66 routing testi, 21 HTML/cache ve 4 Service
+  Worker testi geçti. Shared/API/frontend derlemeleri ve typecheck başarılı;
+  production paket sınırında MongoDB bağımlılığı sıfır. Bir toplu Node test
+  çalıştırmasında runner IPC deserialize hatası oldu; aynı test isolation=none
+  ile 17/17 geçti (uygulama assertion hatası değil).
+- Mobil görünüm 390×844 olarak gerçekten doğrulandı; bu Chromium kontrolüdür,
+  kullanıcının iPhone/Safari motorunda doğrudan çalıştırılmış test değildir.
+  PageSpeed/CrUX ölçümü hâlâ yok; tüm performans veya indeksleme sorunlarının
+  bittiği iddia edilmiyor. Liste sayfalarının soğuk TTFB ölçümleri ayrıca izlenmeli.
+
 ## Sonraki canlı kontrol — 15:44 UTC sonrası
 
 - Search Console `/en` canlı testi: **Google tarafından kullanılabilir / sayfa

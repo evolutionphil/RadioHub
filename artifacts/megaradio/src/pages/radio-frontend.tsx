@@ -56,6 +56,7 @@ const getRandomImage = (index: number): string => {
   return `url(${GENRE_IMAGES[Math.abs(index) % GENRE_IMAGES.length]})`;
 };
 import DiscoverableGenreSlider from "@/components/DiscoverableGenreSlider";
+import PopularStationsSection from "@/components/PopularStationsSection";
 import { InView } from "@/components/ui/in-view";
 import { useSeoRouting } from "@/hooks/useSeoRouting";
 import { decodeHtmlEntities } from "@/lib/utils";
@@ -71,6 +72,7 @@ const PageSocialShare = lazy(() => import("@/components/social/PageSocialShare")
 import { SeoHead } from "@/components/SeoHead";
 import { logger } from '@/lib/logger';
 import { getPrecomputedStationsSlice } from '@/lib/precomputed-pool';
+import { getLocalizedCountryDisplayName } from '@/utils/localized-country';
 import 'swiper/css';
 import 'swiper/css/free-mode';
 import 'swiper/css/navigation';
@@ -263,7 +265,7 @@ export default function RadioFrontend({
   selectedCountry?: string; 
   onCountryChange?: (country: string, isManual?: boolean) => void; 
 }) {
-  const { t, isLoading: translationsLoading } = useTranslation();
+  const { t, language, isLoading: translationsLoading } = useTranslation();
   const { navigateWithLanguage, navigateTranslated, getLocalizedUrl } = useSeoRouting();
   const queryClient = useQueryClient();
   const [searchQuery, setSearchQuery] = useState("");
@@ -712,7 +714,7 @@ export default function RadioFrontend({
 
   // PROGRESSIVE LOADING: Load 12 popular stations from 7-day cache (hasLogo→votes sorted)
   // DEFERRED: Load popular stations after page interactive (below fold content)
-  const { data: popularStationsData } = useQuery({
+  const { data: popularStationsData, isPending: popularStationsPending } = useQuery({
     queryKey: ['/api/stations/popular', selectedCountry, 'initial'],
     enabled: shouldLoadDiscoverableGenres, // DEFERRED
     queryFn: async () => {
@@ -1191,50 +1193,8 @@ export default function RadioFrontend({
             {/* 1.5. RECENTLY PLAYED STATIONS - Show only if user has played stations */}
             <RecentlyPlayedSection onPlay={handlePlay} />
 
-            {/* 2. POPULAR STATIONS - Responsive height reservation prevents CLS (~0.2 → ~0.02) */}
-            {/* Mobile (1 col, 12 cards × ~110px) ≈ 1400px; lg (2 col) ≈ 750px; xl (3 col) ≈ 530px */}
-            <InView rootMargin="150px" className="min-h-[1400px] lg:min-h-[750px] xl:min-h-[530px]">
-              {(inView) => (
-                <div className="container">
-                  {inView && popularStations?.length > 0 ? (
-                    <div className="my-8">
-                    <h3 className="section-header pb-4">
-                      {t('homepage_popular_stations', 'Popular Stations')}
-                      {activeCountry !== 'all' && (
-                        <span className="text-sm font-normal text-gray-400 ml-2">
-                          in {activeCountry}
-                        </span>
-                      )}
-                    </h3>
-                  {/* Popular Stations Grid - 3 columns x 4 rows */}
-                  <div className="relative">
-                    {/* Grid Display - 12 stations (3 columns x 4 rows) */}
-                    <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-x-[21px] gap-y-[20px]">
-                      {displayPopularStations
-                        .slice(0, 12)
-                        .map((station: any, i: number) => (
-                          <StationCard key={`popular-${station._id || i}`} station={station} onPlay={handlePlay} showVotes={true} />
-                        ))
-                      }
-                    </div>
-                  </div>
-                    </div>
-                ) : popularStations?.length > 0 ? (
-                  /* Skeleton for Popular Stations while loading */
-                  <div className="my-8">
-                    <h3 className="section-header pb-4">
-                      Popular Stations
-                    </h3>
-                    <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-x-[21px] gap-y-[20px]">
-                      {Array(12).fill(0).map((_, index) => (
-                        <div key={index} className="animate-pulse h-32 bg-gray-600 rounded-lg"></div>
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-            )}
-          </InView>
+            {/* 2. POPULAR STATIONS — reserve space while loading, not after an empty/error response. */}
+            <PopularStationsSection stations={displayPopularStations} isPending={popularStationsPending} activeCountry={activeCountry} onPlay={handlePlay} />
 
             {/* 3. STATIONS NEAR YOU SECTION */}
             {shouldShowNearbyStations && (nearbyStationsData as any)?.stations?.length > 0 && (
@@ -1348,7 +1308,7 @@ export default function RadioFrontend({
                 <Suspense fallback={
                   <div className="container">
                     <div className="my-8">
-                      <h3 className="section-header pb-4">Community Favorites</h3>
+                      <h3 className="section-header pb-4">{t('homepage_community_favorites', 'Community Favorites')}</h3>
                       <div className="flex gap-4 overflow-hidden">
                         {Array(4).fill(0).map((_, i) => (
                           <div key={i} className="animate-pulse h-32 w-64 bg-gray-600 rounded-lg"></div>
@@ -1362,7 +1322,7 @@ export default function RadioFrontend({
               ) : (
                 <div className="container">
                   <div className="my-8">
-                    <h3 className="section-header pb-4">Community Favorites</h3>
+                    <h3 className="section-header pb-4">{t('homepage_community_favorites', 'Community Favorites')}</h3>
                     <div className="flex gap-4 overflow-hidden">
                       {Array(4).fill(0).map((_, i) => (
                         <div key={i} className="animate-pulse h-32 w-64 bg-gray-600 rounded-lg"></div>
@@ -1379,7 +1339,7 @@ export default function RadioFrontend({
                 <span>{t('homepage_all_stations', 'All Stations')}</span>
                 {activeCountry !== 'all' && (
                   <span className="text-sm font-normal text-gray-400">
-                    from {activeCountry}
+                    {t('from', 'from')} {getLocalizedCountryDisplayName(activeCountry, language)}
                   </span>
                 )}
               </h3>

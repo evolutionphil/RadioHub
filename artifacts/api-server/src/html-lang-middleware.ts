@@ -15,13 +15,7 @@ import { Request, Response, NextFunction } from 'express';
 import { getLanguageFromPath, SEO_LANGUAGES, DEFAULT_LANGUAGE } from '@workspace/seo-shared/seo-config';
 import { performanceCache } from './performance-cache';
 import { logger } from './utils/logger';
-
-const CRITICAL_TRANSLATION_KEYS = [
-  'meta_title', 'meta_description', 'search_placeholder', 'popular_stations',
-  'all_stations', 'genres', 'favorites', 'recently_played', 'settings',
-  'loading', 'error', 'no_results', 'play', 'pause', 'stop', 'volume',
-  'home', 'about', 'contact', 'login', 'register', 'logout'
-];
+import { CRITICAL_TRANSLATION_KEYS } from '@workspace/seo-shared/critical-translation-keys';
 
 const HTML_REGEX = {
   htmlLang: /<html lang="en">/,

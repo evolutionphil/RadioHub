@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, type SyntheticEvent } from 'react';
 import { cn, normalizeFaviconUrl } from '@/lib/utils';
 import { useTranslation } from '@/hooks/useTranslation';
 
@@ -152,11 +152,11 @@ export function StationLogo({
     const list: string[] = [];
     
     if (logoAssetsUsable(station.logoAssets) && station.logoAssets?.folder) {
-      const preferred = station.logoAssets[preferredAssetSize as keyof typeof station.logoAssets] as string | undefined;
-      const fallback = (station.logoAssets.webp96 || station.logoAssets.webp256 || station.logoAssets.webp48) as string | undefined;
-      const value = preferred || fallback;
-      if (value) {
-        list.push(resolveLogoUrl(station.logoAssets.folder, value));
+      // A failed high-DPI asset must not skip the station's working smaller
+      // files. srcSet is removed after an error so each candidate is tried once.
+      for (const key of [preferredAssetSize, 'webp96', 'webp256', 'webp48'] as const) {
+        const value = station.logoAssets[key];
+        if (value) list.push(resolveLogoUrl(station.logoAssets.folder, value));
       }
     }
     
@@ -176,16 +176,21 @@ export function StationLogo({
     // 4. Final fallback always available
     list.push(FALLBACK_IMAGE);
     
-    return list;
+    return [...new Set(list)];
   }, [station, preferredAssetSize]);
 
   // Track current source index - reset when station changes
   const [sourceIndex, setSourceIndex] = useState(0);
+  const [responsiveSourceFailed, setResponsiveSourceFailed] = useState(false);
   const stationKey = station._id || station.slug || station.name;
   
+  // Refreshing the same station may replace failed/stale URLs. Reset on the
+  // actual source list, not every new object or only on station identity.
+  const sourceKey = JSON.stringify(sources);
   useEffect(() => {
     setSourceIndex(0);
-  }, [stationKey]);
+    setResponsiveSourceFailed(false);
+  }, [stationKey, sourceKey]);
   
   const logoUrl = sources[Math.min(sourceIndex, sources.length - 1)];
 
@@ -195,6 +200,7 @@ export function StationLogo({
   const srcSet = useMemo(() => {
     if (
       sourceIndex !== 0 ||
+      responsiveSourceFailed ||
       !logoAssetsUsable(station.logoAssets) ||
       !station.logoAssets?.folder
     ) {
@@ -209,12 +215,20 @@ export function StationLogo({
     if (station.logoAssets.webp256)
       parts.push(`${resolveLogoUrl(folder, station.logoAssets.webp256)} 256w`);
     return parts.length > 1 ? parts.join(', ') : undefined;
-  }, [station.logoAssets, sourceIndex]);
+  }, [station.logoAssets, sourceIndex, responsiveSourceFailed]);
 
   const stationName = station.name || 'Radio Station';
   const altText = alt || t('station_logo_alt', `${stationName} logo`, { stationName });
 
-  const handleError = () => {
+  const handleError = (event: SyntheticEvent<HTMLImageElement>) => {
+    const image = event.currentTarget;
+    if (srcSet && image.currentSrc && image.currentSrc !== image.src) {
+      // Safari/high-DPI browsers may have failed a srcSet candidate rather
+      // than src. Retry the preferred src without srcSet before advancing.
+      setResponsiveSourceFailed(true);
+      return;
+    }
+    setResponsiveSourceFailed(true);
     // Move to next source in the list
     setSourceIndex(prev => Math.min(prev + 1, sources.length - 1));
   };

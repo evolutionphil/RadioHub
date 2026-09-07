@@ -1,7 +1,8 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, useEffect, useCallback } from "react";
-import { getLanguageFromPath, getLanguageFromCode, COUNTRY_TO_CODE, COUNTRY_TO_LANGUAGE, SEO_LANGUAGES } from "@workspace/seo-shared/seo-config";
+import { getExplicitLanguageFromPath, getSupportedLanguage } from "@workspace/seo-shared/language-preference";
 import { CRITICAL_TRANSLATION_KEYS } from "@workspace/seo-shared/critical-translation-keys";
+import { getBrowserLanguage, saveBrowserLanguage } from '@/lib/browser-language';
 import { logger } from '@/lib/logger';
 
 // TypeScript declarations for server-preloaded translations
@@ -12,12 +13,6 @@ declare global {
     __PRELOADED__?: boolean;
   }
 }
-
-// Helper function to extract language from path - browser compatible
-const extractLanguageFromPath = (pathname: string): string => {
-  const { language } = getLanguageFromPath(pathname);
-  return language;
-};
 
 // Translation data type
 interface Translation {
@@ -37,114 +32,19 @@ interface TranslationKey {
 }
 
 export function useTranslation() {
-  // Initialize language with proper detection logic
-  const [language, setLanguageState] = useState(() => {
-    if (typeof window !== 'undefined') {
-      // PRIORITY 1: Check for server-preloaded language (SSR)
-      if (window.__INITIAL_LANGUAGE__) {
-        localStorage.setItem('preferredLanguage', window.__INITIAL_LANGUAGE__);
-        return window.__INITIAL_LANGUAGE__;
-      }
-      
-      // PRIORITY 2: Try to get language from URL
-      const urlLanguage = extractLanguageFromPath(window.location.pathname);
-      
-      // If URL has a specific language prefix (not default English), use it
-      if (urlLanguage !== 'en' && window.location.pathname.match(/^\/[a-z]{2}(?:\/|$)/)) {
-        localStorage.setItem('preferredLanguage', urlLanguage);
-        return urlLanguage;
-      }
-      
-      // PRIORITY 3: Check if user has a stored language preference
-      const storedLang = localStorage.getItem('preferredLanguage');
-      if (storedLang && storedLang !== 'en') {
-        return storedLang;
-      }
-      
-      // PRIORITY 4: Default to English if no preference
-      return 'en';
-    }
-    return 'en';
-  });
+  // URL language wins even over stale SSR bootstrap data. Only `/` consults
+  // saved preferences and the device language; IP country never selects UI text.
+  const [language, setLanguageState] = useState(() =>
+    typeof window !== 'undefined' ? getBrowserLanguage() : 'en');
 
   const queryClient = useQueryClient();
 
-  // Fetch user location for automatic language detection
-  // OPTIMIZED: Defer this query to avoid blocking Main Thread during initial load
-  const { data: locationData } = useQuery<{
-    location: {
-      country: string;
-      countryCode: string;
-      detected: boolean;
-    };
-  }>({
-    queryKey: ["/api/location"],
-    staleTime: 60 * 60 * 1000, // 1 hour - location doesn't change often
-    // Defer this non-critical query to improve Main Thread performance
-    enabled: typeof window !== 'undefined' && document.readyState === 'complete',
-  });
-
-  // Auto-detect language based on URL language code, country code, or location
+  // Keep client-side navigation aligned with the same URL-first policy.
   useEffect(() => {
-    // Always check if URL has changed and should affect language
-    const urlPath = window.location.pathname;
-    const codeMatch = urlPath.match(/^\/([a-z]{2})(?:\/|$)/);
-    
-    if (codeMatch) {
-      const urlCode = codeMatch[1];
-      
-      // CRITICAL FIX: Check LANGUAGE codes FIRST (priority over country codes)
-      // This ensures /ar → Arabic, /de → German, /tr → Turkish work correctly
-      // Previously checked country codes first which caused /ar to map to Argentina → English
-      const isValidLanguage = SEO_LANGUAGES.find(lang => lang.code === urlCode && lang.enabled);
-      
-      if (isValidLanguage) {
-        // It's a valid language code - use it directly
-        if (urlCode !== language) {
-          logger.log(`🌐 Language detected from URL: '${urlCode}'`);
-          localStorage.setItem('preferredLanguage', urlCode);
-          setLanguageState(urlCode);
-        }
-        return;
-      }
-      
-      // Not a language code, check if it's a country code
-      const languageFromCountry = COUNTRY_TO_LANGUAGE[urlCode];
-      if (languageFromCountry && languageFromCountry !== language) {
-        // URL country code maps to a language
-        localStorage.setItem('preferredLanguage', languageFromCountry);
-        setLanguageState(languageFromCountry);
-        return;
-      }
-    } else {
-      // CRITICAL: No code in URL = GLOBAL view = ALWAYS English
-      // Global views must NEVER show translations, only English
-      if (language !== 'en') {
-        logger.log('🌍 Global view detected - forcing English language');
-        localStorage.setItem('preferredLanguage', 'en');
-        setLanguageState('en');
-        return;
-      }
-    }
-    
-    // Fallback to location-based detection only if no URL code and no stored preference
-    if (!codeMatch && locationData?.location && locationData.location.detected && 
-        !localStorage.getItem('preferredLanguage') && 
-        language === 'en') {
-      
-      const countryName = locationData.location.country;
-      const countryCode = COUNTRY_TO_CODE[countryName];
-      
-      if (countryCode) {
-        const detectedLanguage = COUNTRY_TO_LANGUAGE[countryCode];
-        if (detectedLanguage && detectedLanguage !== 'en') {
-          // Location-based detection
-          localStorage.setItem('preferredLanguage', detectedLanguage);
-          setLanguageState(detectedLanguage);
-        }
-      }
-    }
-  }, [locationData, language, window.location.pathname]);
+    const nextLanguage = getBrowserLanguage();
+    if (nextLanguage !== language) setLanguageState(nextLanguage);
+    if (getExplicitLanguageFromPath(window.location.pathname)) saveBrowserLanguage(nextLanguage);
+  }, [language, window.location.pathname]);
 
   const hasPreloadedTranslations = typeof window !== 'undefined' && 
     window.__INITIAL_TRANSLATIONS__ && 
@@ -165,7 +65,7 @@ export function useTranslation() {
   // Only fetch after critical translations are ready (200ms delay to prioritize critical)
   const { data: fullTranslations, isLoading: fullTranslationsLoading } = useQuery<Record<string, string>>({
     queryKey: ["/api/translations", language],
-    enabled: !!language && !hasPreloadedTranslations && !!criticalTranslations, // Only fetch full after critical ready
+    enabled: !!language && (!!hasPreloadedTranslations || !!criticalTranslations),
     staleTime: 5 * 60 * 1000, // 5 minutes
     gcTime: 10 * 60 * 1000, // 10 minutes cache
     refetchOnMount: false,
@@ -173,9 +73,13 @@ export function useTranslation() {
   });
 
   // Merge critical + full translations (critical loaded first, full merges in)
-  const translations = hasPreloadedTranslations 
-    ? window.__INITIAL_TRANSLATIONS__ 
-    : { ...criticalTranslations, ...fullTranslations };
+  // SSR contains only the critical subset, not the complete dictionary. Keep
+  // its first-paint strings, then allow the current full/admin dictionary to win.
+  const translations = {
+    ...(hasPreloadedTranslations ? window.__INITIAL_TRANSLATIONS__ : undefined),
+    ...criticalTranslations,
+    ...fullTranslations,
+  };
 
   // Loading indicator: true if using server-preloaded OR if critical translations not yet loaded
   const isLoading = !hasPreloadedTranslations && !criticalTranslations;
@@ -500,8 +404,9 @@ export function useTranslation() {
 
   // Change language function with instant switching (use cache first, then background update)
   const setLanguage = useCallback(async (newLanguage: string) => {
+    if (getSupportedLanguage(newLanguage) !== newLanguage) return;
     setLanguageState(newLanguage);
-    localStorage.setItem('preferredLanguage', newLanguage);
+    saveBrowserLanguage(newLanguage);
     
     // Check if translation already exists in cache for instant switch
     const cachedTranslations = queryClient.getQueryData(["/api/translations", newLanguage]);
@@ -550,19 +455,9 @@ export function useTranslation() {
   // Add a listener for URL changes to trigger language switching
   useEffect(() => {
     const handlePopstate = () => {
-      const urlPath = window.location.pathname;
-      const countryCodeMatch = urlPath.match(/^\/([a-z]{2})(?:\/|$)/);
-      
-      if (countryCodeMatch) {
-        const urlCountryCode = countryCodeMatch[1];
-        const languageFromUrl = COUNTRY_TO_LANGUAGE[urlCountryCode];
-        
-        if (languageFromUrl && languageFromUrl !== language) {
-          // Popstate language change
-          setLanguageState(languageFromUrl);
-          localStorage.setItem('preferredLanguage', languageFromUrl);
-        }
-      }
+      const nextLanguage = getBrowserLanguage();
+      setLanguageState(nextLanguage);
+      if (getExplicitLanguageFromPath(window.location.pathname)) saveBrowserLanguage(nextLanguage);
     };
 
     // Listen for URL changes (back/forward buttons)

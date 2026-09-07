@@ -1,17 +1,18 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from './useAuth';
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import type { StationWithCountry as Station } from '@workspace/db-shared/schema';
+import { useBatchStations } from './useBatchStations';
+import { readRecentlyPlayed, mergeRecentlyPlayed, hydrateRecentlyPlayed } from '@/utils/recently-played';
 
 export function useRecentlyPlayed() {
   const { isAuthenticated } = useAuth();
   const queryClient = useQueryClient();
-  const [localRecentlyPlayed, setLocalRecentlyPlayed] = useState<Station[]>([]);
+  const [localRecentlyPlayed, setLocalRecentlyPlayed] = useState<ReturnType<typeof readRecentlyPlayed>>([]);
 
   const loadLocalStorage = useCallback(() => {
     try {
       const stored = localStorage.getItem('recentlyPlayed');
-      setLocalRecentlyPlayed(stored ? JSON.parse(stored) : []);
+      setLocalRecentlyPlayed(readRecentlyPlayed(stored));
     } catch {
       setLocalRecentlyPlayed([]);
     }
@@ -53,37 +54,11 @@ export function useRecentlyPlayed() {
     staleTime: 30 * 1000,
   });
 
-  const recentlyPlayed = useMemo(() => {
-    if (!isAuthenticated) {
-      return localRecentlyPlayed;
-    }
-
-    if (apiRecentlyPlayed.length === 0 && localRecentlyPlayed.length === 0) {
-      return [];
-    }
-
-    const merged = new Map<string, any>();
-
-    for (const station of apiRecentlyPlayed) {
-      const id = station._id?.toString();
-      if (id) merged.set(id, station);
-    }
-
-    for (const station of localRecentlyPlayed) {
-      const id = station._id?.toString();
-      if (id && !merged.has(id)) {
-        merged.set(id, station);
-      }
-    }
-
-    const sorted = Array.from(merged.values()).sort((a, b) => {
-      const timeA = a.playedAt ? new Date(a.playedAt).getTime() : 0;
-      const timeB = b.playedAt ? new Date(b.playedAt).getTime() : 0;
-      return timeB - timeA;
-    });
-
-    return sorted.slice(0, 12);
-  }, [isAuthenticated, localRecentlyPlayed, apiRecentlyPlayed]);
+  const history = useMemo(() => mergeRecentlyPlayed(localRecentlyPlayed, isAuthenticated ? apiRecentlyPlayed : []),
+    [isAuthenticated, localRecentlyPlayed, apiRecentlyPlayed]);
+  const stationIds = useMemo(() => history.map(station => String(station._id)), [history]);
+  const { stationsMap } = useBatchStations(stationIds);
+  const recentlyPlayed = useMemo(() => hydrateRecentlyPlayed(history, stationsMap), [history, stationsMap]);
 
   const hasRecentlyPlayed = recentlyPlayed && recentlyPlayed.length > 0;
 

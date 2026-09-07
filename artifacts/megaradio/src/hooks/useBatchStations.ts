@@ -16,7 +16,7 @@ export function useBatchStations(stationIds: string[]) {
   const shouldFetch = stationIds.length > 0;
   
   const { data: stationsMap, isLoading, error } = useQuery({
-    queryKey: ['batch-stations', stationIds.sort().join(',')],
+    queryKey: ['batch-stations', [...stationIds].sort().join(',')],
     queryFn: async () => {
       if (!stationIds.length) return {};
       

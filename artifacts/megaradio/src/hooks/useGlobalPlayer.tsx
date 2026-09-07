@@ -5,6 +5,7 @@ import { createMetadataClient } from '@/services/metadata-client';
 import { trackStationPlay, trackListeningTime, trackStationFavorite } from '../lib/analytics';
 import { logger } from '@/lib/logger';
 import { getStreamProxyUrl, resolveStreamUrl } from '@/lib/utils';
+import { addRecentlyPlayed } from '@/utils/recently-played';
 
 import type { GlobalPlayerState } from './useGlobalPlayer.shell';
 import { GlobalPlayerContext } from './useGlobalPlayer.shell';
@@ -765,10 +766,7 @@ export function GlobalPlayerProvider({ children }: { children: ReactNode }) {
       
       // Track recently played - localStorage for all users + API for authenticated
       try {
-        const stored = localStorage.getItem('recentlyPlayed') || '[]';
-        const recentlyPlayed = JSON.parse(stored) as any[];
-        const filtered = recentlyPlayed.filter(s => s._id !== station._id);
-        const updated = [station, ...filtered].slice(0, 12);
+        const updated = addRecentlyPlayed(localStorage.getItem('recentlyPlayed'), station);
         localStorage.setItem('recentlyPlayed', JSON.stringify(updated));
         window.dispatchEvent(new CustomEvent('recentlyPlayedUpdated'));
         

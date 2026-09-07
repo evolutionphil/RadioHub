@@ -1,6 +1,11 @@
 // Essential translation keys needed for initial page render
 // These load first (50-70ms), remaining keys load in background
 export const CRITICAL_TRANSLATION_KEYS = [
+  // Existing SSR shell labels and metadata; keep server and API subsets aligned.
+  'meta_title', 'meta_description', 'search_placeholder', 'popular_stations',
+  'all_stations', 'genres', 'favorites', 'recently_played', 'settings',
+  'no_results', 'play', 'pause', 'stop', 'volume',
+  'home', 'about', 'contact', 'login', 'register', 'logout',
   // Navigation and header
   'nav_home', 'nav_stations', 'nav_countries', 'nav_genres', 'nav_trending',
   'nav_about', 'nav_contact', 'nav_search', 'nav_logout', 'nav_login',
@@ -39,7 +44,7 @@ export const CRITICAL_TRANSLATION_KEYS = [
   
   // Homepage/landing
   'homepage_title', 'homepage_subtitle', 'homepage_see_all',
-  'homepage_popular', 'homepage_trending', 'homepage_community_favorites',
+  'homepage_popular', 'homepage_popular_stations', 'homepage_trending', 'homepage_community_favorites', 'from',
   'homepage_stations_description',
   
   // Sort options

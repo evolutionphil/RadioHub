@@ -1,13 +1,13 @@
 import { useLocation } from "wouter";
-import { useEffect, useState, useRef } from "react";
-import { getLanguageFromPath, DEFAULT_LANGUAGE, SEO_LANGUAGES, COUNTRY_TO_CODE, COUNTRY_TO_LANGUAGE, getCountryCodeFromName } from "@workspace/seo-shared/seo-config";
+import { useEffect, useState } from "react";
+import { getLanguageFromPath, DEFAULT_LANGUAGE, SEO_LANGUAGES, COUNTRY_TO_LANGUAGE } from "@workspace/seo-shared/seo-config";
 import { translateUrl, reverseTranslateUrl, normalizeUrlForLanguage } from "@workspace/seo-shared/url-translations";
 import { useTranslation } from "./useTranslation";
-import { useQuery } from "@tanstack/react-query";
+import { getBrowserLanguage, saveBrowserLanguage } from '@/lib/browser-language';
+import { getExplicitLanguageFromPath } from '@workspace/seo-shared/language-preference';
 import { logger } from '@/lib/logger';
 
-// RESTORED: Working version from 10+ days ago
-// NO localStorage country detection that overwrites URLs
+// Language-prefixed URLs are authoritative; country selection is a content filter.
 export function useSeoRouting() {
   const [location, setLocation] = useLocation();
   const { setLanguage: setTranslationLanguage } = useTranslation();
@@ -15,19 +15,14 @@ export function useSeoRouting() {
   // Parse current URL for language
   const { language: urlLanguage, cleanPath } = getLanguageFromPath(location);
   
-  // CRITICAL FIX: If URL has no language prefix, redirect to default language (/en/...)
-  // This ensures page refresh works correctly for bare URLs like /station/a-haber
+  // The server normally negotiates `/` before loading the SPA. Handle internal
+  // navigation to `/` identically without changing explicit localized URLs.
   useEffect(() => {
-    if (typeof window !== 'undefined' && !urlLanguage && location !== '/') {
-      // Get preferred language from localStorage or default to 'en'
-      const preferredLanguage = localStorage.getItem('preferredLanguage') || DEFAULT_LANGUAGE;
-      const newUrl = `/${preferredLanguage}${location}`;
-      logger.log(`🔄 Redirecting bare URL to language-prefixed: ${location} → ${newUrl}`);
-      // Use replace to avoid adding to history stack
-      window.history.replaceState(null, '', newUrl);
-      setLocation(newUrl);
+    if (typeof window !== 'undefined' && location === '/') {
+      const newUrl = `/${getBrowserLanguage('/')}${window.location.search}${window.location.hash}`;
+      setLocation(newUrl, { replace: true });
     }
-  }, [location, urlLanguage, setLocation]);
+  }, [location, setLocation]);
   
   // CROSS-LANGUAGE URL NORMALIZATION
   // Handles cases like /de/istasyon/slug → /de/sender/slug
@@ -45,7 +40,8 @@ export function useSeoRouting() {
   }, [location, urlLanguage, setLocation]);
   
   // Use detected language or fallback to default
-  const effectiveLanguage = urlLanguage || DEFAULT_LANGUAGE;
+  const effectiveLanguage = location === '/' && typeof window !== 'undefined'
+    ? getBrowserLanguage('/') : urlLanguage || DEFAULT_LANGUAGE;
   
   // CRITICAL FIX: Calculate English path for routing
   // cleanPath might be in translated language (e.g., "/zhanret"), but router needs English (e.g., "/genres")
@@ -63,26 +59,10 @@ export function useSeoRouting() {
       setTranslationLanguage(effectiveLanguage);
     }
     
-    // LANGUAGE/COUNTRY SEPARATION: Save detected language to localStorage AND cookie
-    // This ensures that when user changes country, their language preference is preserved
-    // Cookie is SSR-compatible (server can read it on first render)
-    // Example: User lands on /tr/radyolar → preferredLanguage = 'tr' saved
-    // Later, user selects Germany → /de/radyolar → getLanguageFromPath uses stored 'tr'
-    // CRITICAL: Save ALL languages including English for consistent behavior
-    if (effectiveLanguage) {
-      const storedLang = localStorage.getItem('preferredLanguage');
-      if (storedLang !== effectiveLanguage) {
-        // Save to localStorage (client-side)
-        localStorage.setItem('preferredLanguage', effectiveLanguage);
-        
-        // Save to cookie (SSR-compatible) - 1 year expiry, path=/
-        const expires = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toUTCString();
-        document.cookie = `preferredLanguage=${effectiveLanguage}; expires=${expires}; path=/; SameSite=Lax`;
-        
-        logger.log('💾 Language preference saved (localStorage + cookie):', effectiveLanguage);
-      }
-    }
-  }, [effectiveLanguage, currentLanguage, setTranslationLanguage]);
+    // Persist explicit URL choices in both stores, including English. A bare
+    // content URL's fallback must not overwrite a previously chosen language.
+    if (getExplicitLanguageFromPath(location)) saveBrowserLanguage(effectiveLanguage);
+  }, [location, effectiveLanguage, currentLanguage, setTranslationLanguage]);
 
   // Note: Location data is fetched in radio-frontend.tsx to avoid duplicate calls
 
@@ -93,15 +73,13 @@ export function useSeoRouting() {
   // Function to change language - stays on current page, translates URL
   // User expects to stay on same page when switching language (better UX)
   const changeLanguage = (newLanguage: string) => {
-    if (!SEO_LANGUAGES.find(lang => lang.code === newLanguage)) {
+    if (!SEO_LANGUAGES.find(lang => lang.code === newLanguage && lang.enabled)) {
       // Invalid language code
       return;
     }
     
     // Store the preferred language immediately (localStorage + cookie for SSR)
-    localStorage.setItem('preferredLanguage', newLanguage);
-    const expires = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toUTCString();
-    document.cookie = `preferredLanguage=${newLanguage}; expires=${expires}; path=/; SameSite=Lax`;
+    saveBrowserLanguage(newLanguage);
     
     // Translate current page to new language and stay on same page
     // Use englishPath (already computed) to get canonical English route

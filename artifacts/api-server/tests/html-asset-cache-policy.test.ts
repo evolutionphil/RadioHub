@@ -32,6 +32,7 @@ before(async () => {
     if (req.path === '/private-shell') res.set('Cache-Control', 'no-store');
     next();
   });
+  app.get('/sitemap-index.xml', (_req, res) => res.type('application/xml').send('<sitemapindex/>'));
   serveStatic(app, fixtureDirectory);
   server = await new Promise<Server>(resolve => {
     const value = app.listen(0, '127.0.0.1', () => resolve(value));
@@ -94,6 +95,23 @@ for (const asset of ['removed-OldHash.js', 'removed-OldHash.css', 'removed-OldHa
     assert.equal(await response.text(), 'Not found');
   });
 }
+
+for (const sitemap of ['/news-sitemap.xml', '/page-sitemap.xml', '/post-sitemap.xml', '/sitemap_index.xml', '/sitemap1.xml', '/de/sitemap-missing.xml?probe=1']) {
+  test(`unknown sitemap never returns a successful HTML shell: ${sitemap}`, async () => {
+    const response = await fetch(baseUrl + sitemap);
+    assert.equal(response.status, 404);
+    assert.equal(response.headers.get('cache-control'), 'no-store');
+    assert.match(response.headers.get('content-type') || '', /text\/plain/);
+    assert.equal(await response.text(), 'Sitemap not found');
+  });
+}
+
+test('registered XML sitemap routes are not intercepted by the fallback', async () => {
+  const response = await fetch(baseUrl + '/sitemap-index.xml');
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get('content-type') || '', /application\/xml/);
+  assert.equal(await response.text(), '<sitemapindex/>');
+});
 
 test('HEAD on a missing chunk returns the same uncached 404 without a body', async () => {
   const response = await fetch(baseUrl + '/assets/removed-OldHash.js', { method: 'HEAD' });

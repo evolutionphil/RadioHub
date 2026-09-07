@@ -4,6 +4,28 @@ This is an operational journal. The latest verified status below supersedes
 earlier maintenance/pending entries; remaining SEO/performance work is explicit.
 The SEO/code audit is recorded separately in `SEO_PERFORMANCE_AUDIT_2026-09-07.md`.
 
+## Mobile repair follow-up — after 16:18 UTC
+
+- The running release before this follow-up is `39ebf5737`; the verified native
+  cutover and subsequent recovery evidence are retained outside Git in
+  `RadioHubBackups/20260907-recovery/FINAL_RELEASE_VERIFICATION.md`.
+- Rechecked the verified snapshot: 61,291 stations, 170 users, 879 translation
+  keys, 48,472 translation rows and 1,680 localized URL rows. Previously verified
+  native parity checks remain the baseline; this is not a new production write.
+- The 272 archive-only records were inspected using READ ONLY transactions:
+  uppercase legacy translation variants have all 57 corresponding native
+  language values; obsolete counters, estimated language statistics and three
+  old page snapshots are not missing active data. Do not overwrite current
+  translations or page content with these variants.
+- Per the user's revised scope, no historical GSC/log reimport is needed or
+  performed. Existing records, archives and database backups are retained.
+- Recent-played display repair refreshes up to 12 station IDs from PostgreSQL's
+  existing batch endpoint. It does not delete local history, invent listening
+  times for old records, or reconnect the application to MongoDB.
+- Remaining original content issues are distinct from migration loss: legal
+  page bodies contain English-only copy and company details require owner
+  verification. Historical snapshots contain no missing German legal bodies.
+
 ## API recovery follow-up — after 15:44 UTC
 
 - Deployment `5933fc27-0b73-4d22-b296-9f1c288087eb` (commit `26e3629d`)

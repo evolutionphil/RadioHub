@@ -49,6 +49,15 @@ export function serveStatic(app: Express, distPath = path.resolve(import.meta.di
     }).type('text/plain').send('Not found');
   });
 
+  // Unknown sitemap probes are files, not client-side page routes. Registered
+  // manifests (including their intentional 503/410 responses) run before this.
+  app.get(/\/(?:[^/]*sitemap[^/]*)\.xml$/i, (_req, res) => {
+    res.status(404).set({
+      'Cache-Control': 'no-store',
+      'X-Content-Type-Options': 'nosniff',
+    }).type('text/plain').send('Sitemap not found');
+  });
+
   app.use("/*splat", (_req, res) => {
     revalidateSuccessfulHtml(res);
     res.sendFile(path.resolve(distPath, "index.html"));
