@@ -871,7 +871,8 @@ export async function registerSeoSitemapRoutes(app: Express, deps: any, options?
   // 2026-05-13: body is now assembled by `buildLlmsTxtBody()` (adds About,
   // localized entry points, top countries/genres). Same helper is used by
   // the early-mounted shadow handler in `index-web.ts` so the bytes are
-  // identical regardless of which route serves the request.
+  // identical regardless of which route serves the request. A cold optional
+  // discovery cache never blocks the core guide on database aggregations.
   app.get("/llms.txt", async (req, res) => {
     const baseUrl = getBaseUrl(req);
     try {

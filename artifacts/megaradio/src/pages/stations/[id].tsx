@@ -17,7 +17,7 @@ import youtubeIcon from "@assets/youtube-logo.png";
 import spotifyIcon from "@assets/spotify-logo.png";
 import deezerIcon from "@assets/deezer.png";
 import shareIcon from "@assets/sharebutton.png";
-import bgGradient from "@assets/bg-gradient.png";
+import bgGradient from "@assets/bg-gradient.lossless.png";
 import nosignalIcon from "@assets/nosignal.png";
 import StationLogo from "@/components/ui/station-logo";
 import { readStationBootstrap } from '@/lib/station-bootstrap';
@@ -747,14 +747,16 @@ export default function StationDetails() {
             )}
             
             {/* Background Gradient - Figma: 521x521, positioned behind station logo - Hidden on mobile/tablet */}
-            <img 
-              src={bgGradient}
-              alt=""
+            <div
+              aria-hidden="true"
               className="hidden md:block absolute pointer-events-none w-[521px] h-[521px]"
               style={{
                 top: '-41px',
                 left: '-64px',
-                opacity: 1
+                opacity: 1,
+                backgroundImage: `url(${bgGradient})`,
+                backgroundSize: '100% 100%',
+                backgroundRepeat: 'no-repeat'
               }}
             />
             <div className="container m-auto relative z-10">
@@ -973,11 +975,13 @@ export default function StationDetails() {
                   </div>
                 </div>
 
-                {/* Desktop Ad Space - Lazy loaded */}
+                {/* Desktop Ad Space - Lazy loaded. Reserve each resolved slot's
+                    minimum height so the centered station row does not move
+                    when its module resolves (carousel218px, AdSense250px). */}
                 <div className="mt-4 text-center sm:mt-0 hidden md:block">
                   <div className="mt-6">
                     {!isPremium && (advertisements && advertisements.some((ad: any) => ad.position === 'desktop_sidebar' && ad.isActive) ? (
-                      <Suspense fallback={<div className="bg-gray-800 rounded flex items-center justify-center text-gray-400 aspect-square h-56 flex-none animate-pulse" />}>
+                      <Suspense fallback={<div className="bg-gray-800 rounded flex items-center justify-center text-gray-400 w-[218px] h-[218px] flex-none animate-pulse" />}>
                         <AdCarousel
                           ads={advertisements}
                           position="desktop_sidebar"
@@ -986,7 +990,7 @@ export default function StationDetails() {
                         />
                       </Suspense>
                     ) : (
-                      <Suspense fallback={<div className="bg-gray-800 rounded flex items-center justify-center text-gray-400 aspect-square h-56 flex-none animate-pulse" />}>
+                      <Suspense fallback={<div className="bg-gray-800 rounded flex items-center justify-center text-gray-400 w-56 h-[250px] flex-none animate-pulse" />}>
                         <AdSenseUnit adSlot="3609188113" adFormat="rectangle" className="min-h-[250px]" />
                       </Suspense>
                     ))}
@@ -1211,9 +1215,9 @@ export default function StationDetails() {
                               />
                             </div>
                             <div className="flex-1">
-                              <h4 className="text-lg font-semibold text-white truncate mb-1">
+                              <h3 className="text-lg font-semibold text-white truncate mb-1">
                                 {linkedStation.name}
-                              </h4>
+                              </h3>
                               <p className="text-sm font-medium text-gray-300 truncate">
                                 {linkedStation.country}
                                 {linkedStation.state && linkedStation.state !== "" && (
@@ -1276,9 +1280,9 @@ export default function StationDetails() {
                         className="ml-4 truncate flex-1 text-left rounded p-2"
                       >
                         <div>
-                          <h4 className="text-[16px] font-medium text-white truncate" style={{ fontFamily: "'Ubuntu', system-ui, sans-serif", fontWeight: 500 }}>
+                          <h3 className="text-[16px] font-medium text-white truncate" style={{ fontFamily: "'Ubuntu', system-ui, sans-serif", fontWeight: 500 }}>
                             {similarStation.name}
-                          </h4>
+                          </h3>
                           <p className="text-[15px] text-white" style={{ fontFamily: "'Ubuntu', system-ui, sans-serif", fontWeight: 300 }}>
                             <span className="truncate">{similarStation.country && similarStation.country.length > 21 ? similarStation.country.substring(0, 21) + '...' : similarStation.country}</span>
                             {similarStation.state && similarStation.state !== "" && (
@@ -1417,9 +1421,9 @@ export default function StationDetails() {
                         className="ml-4 truncate flex-1 text-left rounded p-2"
                       >
                         <div>
-                          <h4 className="text-[16px] font-medium text-white truncate" style={{ fontFamily: "'Ubuntu', system-ui, sans-serif", fontWeight: 500 }}>
+                          <h3 className="text-[16px] font-medium text-white truncate" style={{ fontFamily: "'Ubuntu', system-ui, sans-serif", fontWeight: 500 }}>
                             {countryStation.name}
-                          </h4>
+                          </h3>
                           <p className="text-[15px] text-white" style={{ fontFamily: "'Ubuntu', system-ui, sans-serif", fontWeight: 300 }}>
                             <span className="truncate">{countryStation.country && countryStation.country.length > 21 ? countryStation.country.substring(0, 21) + '...' : countryStation.country}</span>
                             {countryStation.state && countryStation.state !== "" && (

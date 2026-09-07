@@ -133,7 +133,13 @@ describe('PostgreSQL public sitemap and playback diagnostics',{skip:!connectionS
     assert.equal(existence.getCanonicalStationSlug('legacy-berlin'),'berlin-music');assert.equal(existence.getCanonicalStationSlug('legacy-noise'),null);
     assert.equal(existence.hasGenreSlug('pop'),true);assert.equal(existence.hasCountrySlug('albania'),true);assert.equal(existence.hasCitySlug('albania','tirana'),true);
     const {buildLlmsTxtBody,clearLlmsTxtCache}=await import('../src/seo/llms-txt-builder');clearLlmsTxtCache();
-    const body=await buildLlmsTxtBody('https://example.invalid');assert.match(body,/example\.invalid\/en\/genres\/pop/);assert.match(body,/example\.invalid\/en\/regions\/europe\/germany/);
+    let body=await buildLlmsTxtBody('https://example.invalid');
+    assert.match(body,/example\.invalid\/sitemap-index\.xml/); // Core guide does not wait for optional PostgreSQL work.
+    const deadline=Date.now()+5000;
+    while(!body.includes('/en/genres/pop')&&Date.now()<deadline){
+      await new Promise(resolve=>setTimeout(resolve,10));body=await buildLlmsTxtBody('https://example.invalid');
+    }
+    assert.match(body,/example\.invalid\/en\/genres\/pop/);assert.match(body,/example\.invalid\/en\/regions\/europe\/germany/);
   });
   it('cancels slow SSR catalog queries inside PostgreSQL and restores pooled statement-timeout configuration',async()=>{
     const {pgSeoCatalog}=await import('../src/data/postgres-seo-read-store');const blocker=await pool.connect();

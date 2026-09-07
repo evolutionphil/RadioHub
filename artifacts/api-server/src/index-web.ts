@@ -114,7 +114,8 @@ app.get('/llms.txt', async (req, res) => {
   // pulled from the active main sitemap manifest and top-20 genres
   // computed from a 6h-cached aggregation. Both /llms.txt handlers
   // (this one and the canonical one in routes/seo-sitemap-routes.ts)
-  // call the SAME helper so the output is byte-identical.
+  // call the SAME helper. Cold reads return the core guide immediately;
+  // optional database-backed sections refresh in one background operation.
   try {
     const { buildLlmsTxtBody } = await import('./seo/llms-txt-builder');
     const body = await buildLlmsTxtBody(baseUrl);
@@ -123,7 +124,7 @@ app.get('/llms.txt', async (req, res) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.status(200).send(body);
   } catch (err) {
-    // Defensive: if the builder throws (Mongo down, etc.) emit the
+    // Defensive: if the builder throws unexpectedly emit the
     // historical minimal body so /llms.txt never returns the SPA shell.
     const fallback = `# MegaRadio\n\n${baseUrl}/\n\n## Sitemaps\n${baseUrl}/sitemap-index.xml\n${baseUrl}/robots.txt\n\n## Key sections\n${baseUrl}/en/radios\n${baseUrl}/en/genres\n${baseUrl}/en/regions\n${baseUrl}/en/about\n${baseUrl}/en/faq\n${baseUrl}/en/contact\n${baseUrl}/en/privacy-policy\n${baseUrl}/en/terms-and-conditions\n`;
     res.setHeader('Content-Type', 'text/plain; charset=utf-8');

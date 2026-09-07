@@ -32,18 +32,21 @@
  * routes/seo-sitemap-routes.ts) call this single helper so the bytes are
  * identical no matter which route serves the request.
  *
- * Failure mode: every data source is wrapped in try/catch and falls back
- * to the previous minimal body so a Mongo blip can never 500 /llms.txt.
+ * Cold/stale reads never wait for optional PostgreSQL aggregations. They
+ * return the core guide/last good body while one shared refresh enriches it.
+ * Failed sources are omitted, never replaced with invented ranked links.
  */
 
 import { pgTopIndexableTags } from '../data/postgres-seo-indexing-store';
 import { URL_TRANSLATIONS } from '@workspace/seo-shared/url-translations';
+import { ACTIVE_SITEMAP_LANGUAGES } from '@workspace/seo-shared/seo-config';
 import { getActiveManifest, extractTopCountriesFromChunk } from './sitemap-manifest-builder';
 import { getCachedQualifiedLanguages } from './qualified-languages';
 import { GENRE_WHITELIST_SEED } from './genre-whitelist-seed';
 import { logger } from '../utils/logger';
 
 const TTL_MS = 6 * 60 * 60 * 1000;
+const RETRY_MS = 60 * 1000;
 const COUNTRY_CAP = 30;
 const GENRE_CAP = 20;
 const LANG_CAP = 30;
@@ -53,61 +56,32 @@ interface CacheEntry {
   expiresAt: number;
 }
 const _cache = new Map<string, CacheEntry>();
-
-let _topGenresCache: { slugs: string[]; expiresAt: number } | null = null;
+const _refreshes = new Map<string, Promise<void>>();
+let cacheGeneration = 0;
 
 async function fetchTopGenres(): Promise<string[]> {
-  if (_topGenresCache && Date.now() < _topGenresCache.expiresAt) {
-    return _topGenresCache.slugs;
-  }
-  try {
-    // Group indexable stations by their first tag, count, sort, intersect
-    // with the SEO genre whitelist, take the top GENRE_CAP. Mirrors the
-    // junk/noIndex filter used by the main-manifest top-country aggregation
-    // (sitemap-manifest-builder.ts:553) so the leaderboards align.
-    // .allowDiskUse(true) is REQUIRED — see replit.md "MongoDB aggregation
-    // memory limits" landmine note.
-    const rows = await pgTopIndexableTags(GENRE_CAP * 5);
-
-    const whitelisted = rows
-      .map((r) => String(r._id || '').replace(/\s+/g, '-'))
-      .filter((slug) => slug && GENRE_WHITELIST_SEED.has(slug))
-      .slice(0, GENRE_CAP);
-
-    _topGenresCache = { slugs: whitelisted, expiresAt: Date.now() + TTL_MS };
-    return whitelisted;
-  } catch (err: any) {
-    logger.warn(`llms-txt: top-genres aggregation failed (${err?.message || err}); falling back to whitelist seed sample`);
-    // Deterministic fallback: take the first GENRE_CAP slugs from the seed
-    // in iteration order so the file still lists SOMETHING.
-    return Array.from(GENRE_WHITELIST_SEED).slice(0, GENRE_CAP);
-  }
+  const rows = await pgTopIndexableTags(GENRE_CAP * 5);
+  return rows
+    .map((r) => String(r._id || '').replace(/\s+/g, '-'))
+    .filter((slug) => slug && GENRE_WHITELIST_SEED.has(slug))
+    .slice(0, GENRE_CAP);
 }
 
 async function fetchTopCountries(): Promise<Array<{ region: string; country: string }>> {
-  try {
-    const main = await getActiveManifest('main', 'en');
-    if (!main || !main.chunks?.length) return [];
-    const chunk = main.chunks[0];
-    const entries = extractTopCountriesFromChunk(chunk.stationIds || []);
-    // entries are already ordered by the manifest builder's leaderboard.
-    return entries.slice(0, COUNTRY_CAP).map((e) => ({
-      region: e.regionSlug,
-      country: e.countrySlug,
-    }));
-  } catch (err: any) {
-    logger.warn(`llms-txt: top-countries lookup failed (${err?.message || err})`);
-    return [];
-  }
+  const main = await getActiveManifest('main', 'en');
+  if (!main || !main.chunks?.length) return [];
+  const entries = extractTopCountriesFromChunk(main.chunks[0].stationIds || []);
+  return entries.slice(0, COUNTRY_CAP).map((e) => ({
+    region: e.regionSlug,
+    country: e.countrySlug,
+  }));
 }
 
-async function fetchQualifiedLanguagesSafe(): Promise<string[]> {
-  try {
-    const langs = await getCachedQualifiedLanguages();
-    return Array.isArray(langs) ? langs.slice(0, LANG_CAP) : ['en'];
-  } catch {
-    return ['en'];
-  }
+async function fetchQualifiedLanguages(): Promise<string[]> {
+  const langs = await getCachedQualifiedLanguages();
+  return Array.isArray(langs)
+    ? langs.filter(lang => ACTIVE_SITEMAP_LANGUAGES.some(active => active === lang)).slice(0, LANG_CAP)
+    : ['en'];
 }
 
 export async function buildLlmsTxtBody(baseUrl: string): Promise<string> {
@@ -115,11 +89,34 @@ export async function buildLlmsTxtBody(baseUrl: string): Promise<string> {
   const cached = _cache.get(cleanBase);
   if (cached && Date.now() < cached.expiresAt) return cached.body;
 
-  const [topCountries, topGenres, qualifiedLangs] = await Promise.all([
-    fetchTopCountries(),
-    fetchTopGenres(),
-    fetchQualifiedLanguagesSafe(),
-  ]);
+  if (!_refreshes.has(cleanBase)) {
+    const generation = cacheGeneration;
+    const refresh = Promise.allSettled([
+      fetchTopCountries(), fetchTopGenres(), fetchQualifiedLanguages(),
+    ]).then(([countries, genres, languages]) => {
+      if (generation !== cacheGeneration) return;
+      const failed = [countries, genres, languages].some(result => result.status === 'rejected');
+      if (failed) logger.warn('llms-txt: optional discovery refresh unavailable; retaining the last guide or verified core links');
+      // A transient refresh failure must not discard a previously complete
+      // guide or present an arbitrary whitelist sample as a measured top list.
+      const body = failed && cached ? cached.body : renderLlmsTxtBody(cleanBase,
+        countries.status === 'fulfilled' ? countries.value : [],
+        genres.status === 'fulfilled' ? genres.value : [],
+        languages.status === 'fulfilled' ? languages.value : ['en']);
+      _cache.set(cleanBase, { body, expiresAt: Date.now() + (failed ? RETRY_MS : TTL_MS) });
+    }).catch(() => {
+      logger.warn('llms-txt: optional discovery refresh failed; core guide remains available');
+    }).finally(() => {
+      if (_refreshes.get(cleanBase) === refresh) _refreshes.delete(cleanBase);
+    });
+    _refreshes.set(cleanBase, refresh);
+  }
+
+  return cached?.body || renderLlmsTxtBody(cleanBase, [], [], ['en']);
+}
+
+function renderLlmsTxtBody(cleanBase: string, topCountries: Array<{ region: string; country: string }>,
+  topGenres: string[], qualifiedLangs: string[]): string {
 
   // Always-present minimal sections come first so even if every async
   // source returned [] we still emit a valid llms.txt (the byte-identical
@@ -128,28 +125,28 @@ export async function buildLlmsTxtBody(baseUrl: string): Promise<string> {
   lines.push('# MegaRadio');
   lines.push('');
   lines.push(
-    '> MegaRadio is a free global radio streaming directory with 43,000+ live FM/AM and internet radio stations from 150+ countries, available in 57 languages. Stream any station directly in the browser with no signup required. Available on iOS, Android, Samsung TV, LG TV, and Apple TV.',
+    `> MegaRadio is a global directory of FM/AM and internet radio stations. Browse localized directories in ${ACTIVE_SITEMAP_LANGUAGES.length} supported languages and listen to station streams in the browser.`,
   );
   lines.push('');
   lines.push(
-    'MegaRadio indexes stations from the Radio-Browser open database, augmented with AI-generated descriptions, verified stream URLs, and genre tagging. Station data is updated daily.',
+    'MegaRadio indexes stations from the Radio-Browser open database, with station descriptions and genre tags. Stream availability depends on the broadcaster.',
   );
   lines.push('');
 
   lines.push('## Browse');
   lines.push(`- [All Stations](${cleanBase}/en/stations): Full directory of radio stations by country`);
   lines.push(`- [Genres](${cleanBase}/en/genres): Browse stations by music genre or format`);
-  lines.push(`- [Top 100 Global](${cleanBase}/en/popular): Most-listened stations worldwide`);
+  lines.push(`- [Popular Stations](${cleanBase}/en): Popular stations on the homepage`);
   lines.push(`- [Countries & Regions](${cleanBase}/en/regions): Station index by country and continent`);
   lines.push('');
 
   lines.push('## Developer API');
   lines.push(`- [API Documentation](${cleanBase}/api-docs): REST API for station metadata, stream URLs, genre listings, and country data`);
-  lines.push(`- [API Registration](${cleanBase}/api-user): Register for a free API key (free tier: 1,000 requests/day)`);
+  lines.push(`- [API Registration](${cleanBase}/api-user): API account registration and access information`);
   lines.push('');
 
   lines.push('## Data & Discovery');
-  lines.push(`- [Sitemap Index](${cleanBase}/sitemap-index.xml): Full URL sitemap covering all stations, genres, and country pages in 57 languages`);
+  lines.push(`- [Sitemap Index](${cleanBase}/sitemap-index.xml): Published station, genre, country, and localized page URLs`);
   lines.push(`- [robots.txt](${cleanBase}/robots.txt): Crawl rules`);
   lines.push('');
 
@@ -192,12 +189,11 @@ export async function buildLlmsTxtBody(baseUrl: string): Promise<string> {
     lines.push('');
   }
 
-  const body = lines.join('\n');
-  _cache.set(cleanBase, { body, expiresAt: Date.now() + TTL_MS });
-  return body;
+  return lines.join('\n');
 }
 
 export function clearLlmsTxtCache(): void {
   _cache.clear();
-  _topGenresCache = null;
+  _refreshes.clear();
+  cacheGeneration++;
 }

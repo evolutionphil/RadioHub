@@ -1208,7 +1208,7 @@ export default function RadioHeader({
                   <div className="hidden xl:flex items-center">
                     <Link
                       href={`${getLocalizedUrl("/login")}?returnTo=${encodeURIComponent(location)}`}
-                      className="flex items-center justify-center text-white font-semibold transition-colors bg-[#FF4199] hover:bg-[#E5357F] w-[97px] h-[45px] rounded-[25px] text-sm"
+                      className="flex items-center justify-center text-white font-semibold transition-colors bg-[#D82C80] hover:bg-[#C32470] w-[97px] h-[45px] rounded-[25px] text-sm"
                     >
                       {t('nav_login', 'Log in')}
                     </Link>
