@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo, useCallback, Suspense, lazy } from "react";
 import { createPortal } from "react-dom";
+import { fetchStationCardList } from '@/lib/station-card-list-request';
 import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
 import { User } from "lucide-react";
@@ -444,7 +445,7 @@ export default function RadioHeader({
     setIsSearching(true);
 
     const params = new URLSearchParams({ search: searchTerm, limit: '20' });
-    fetch(`/api/stations?${params}`, { signal: controller.signal })
+    fetchStationCardList(params, { signal: controller.signal })
       .then(res => {
         if (!res.ok) throw new Error(`Search failed: ${res.status}`);
         return res.json();

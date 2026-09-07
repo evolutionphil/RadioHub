@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { fetchStationCardList } from '@/lib/station-card-list-request';
 import { useLocation } from 'wouter';
 import StationCard from '@/components/ui/station-card';
 import { useGlobalPlayer } from '@/hooks/useGlobalPlayer';
@@ -129,8 +130,7 @@ export default function RadiosPage({ selectedCountry = 'all', onCountryChange }:
       params.append('page', page.toString());
       params.append('limit', '33');
       params.append('sort', sort);
-      const url = `/api/stations?${params}`;
-      const response = await fetch(url);
+      const response = await fetchStationCardList(params);
       if (!response.ok) throw new Error('Failed to fetch stations');
       const data = await response.json();
       return data;

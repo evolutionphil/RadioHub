@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo, Suspense, lazy } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { homeStationPageOptions, selectPopularHomeStations } from '@/lib/home-station-query';
+import { fetchStationCardList } from '@/lib/station-card-list-request';
 import { Link } from "wouter";
 import StationCard from "@/components/ui/station-card";
 import StationCardSkeleton from "@/components/ui/station-card-skeleton";
@@ -821,7 +822,7 @@ export default function RadioFrontend({
           sort: 'votes'
         });
         
-        const response = await fetch(`/api/stations?${params}`, {
+        const response = await fetchStationCardList(params, {
           signal: abortControllerRef.current.signal
         });
         

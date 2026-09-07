@@ -908,9 +908,6 @@ export function getLanguageFromPath(pathname: string): { language: string; clean
   const pathSegments = pathname.split('/').filter(Boolean);
   const firstSegment = pathSegments[0];
   
-  // Get user's stored language preference (client-side)
-  const storedPreference = getStoredPreferredLanguage();
-  
   // CRITICAL: Normalize to lowercase for consistent lookup
   const normalizedFirstSegment = firstSegment?.toLowerCase();
   
@@ -984,6 +981,10 @@ export function getLanguageFromPath(pathname: string): { language: string; clean
       
       // If no translation found, use stored preference or fallback
       if (!detectedFromPath) {
+        // Explicit language URLs above are pure: every card, header and SEO
+        // consumer parses them. Only legacy country aliases need synchronous
+        // storage access; never read localStorage on the normal render path.
+        const storedPreference = getStoredPreferredLanguage();
         if (pathWithoutCountry === '/') {
           // Root path (e.g., /de/) - use stored preference or country's language
           actualLanguage = storedPreference || mappedLanguage;

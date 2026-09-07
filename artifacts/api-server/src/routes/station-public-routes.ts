@@ -518,6 +518,8 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
     // a populated country page even when the exact filter/sort/page
     // combination has no cached entry.
     const isTV = req.query.tv === '1';
+    // Existing API/admin clients keep full records; card-only consumers opt in.
+    const compact = req.query.slim === '1';
     const {
       country,
       state,
@@ -540,13 +542,13 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
     const { page, limit } = safeParams;
 
     const webCacheKey = !search && !excludeStationIds
-      ? `stations:list:${country || 'all'}:${state || 'all'}:${genre || 'all'}:${tags || 'all'}:${language || 'all'}:${sort}:${page}:${limit}:${excludeBroken}:${minVotes}:${timePeriod}:${isTV ? 'tv' : 'web'}`
+      ? `stations:list:${country || 'all'}:${state || 'all'}:${genre || 'all'}:${tags || 'all'}:${language || 'all'}:${sort}:${page}:${limit}:${excludeBroken}:${minVotes}:${timePeriod}:${isTV ? 'tv' : 'web'}${compact ? ':cards:v1' : ''}`
       : null;
 
     // Country-only LKG cache key — last successful payload for this
     // country regardless of filter/sort/page. Used as second-tier
     // fallback in the catch block when the exact webCacheKey is cold.
-    const lkgKey = `stations:list:lkg:${country || 'all'}:${isTV ? 'tv' : 'web'}`;
+    const lkgKey = `stations:list:lkg:${country || 'all'}:${isTV ? 'tv' : 'web'}${compact ? ':cards:v1' : ''}`;
 
     const computeStationsList = async () => {
       {
@@ -565,6 +567,7 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
           sort: String(sort), excludeBroken: excludeBroken === 'true',
           excludeIds: typeof excludeStationIds === 'string' ? excludeStationIds.split(',').map((value) => value.trim()).filter(Boolean) : [],
           minVotes: Number(minVotes) || 0, createdAfter, page: Number(page), limit: Number(limit),
+          compact,
         });
       }
 

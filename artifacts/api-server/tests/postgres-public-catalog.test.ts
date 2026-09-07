@@ -33,7 +33,10 @@ describe('Native PostgreSQL public catalog', { skip: !process.env.PG_TEST_DATABA
       get: async (key: string) => cache.get(key) ?? null,
       getSWR: async (key: string) => cache.get(key) ?? null,
       set: async (key: string, value: any) => { cache.set(key, value); },
-      getOrSetSingleFlight: async (key: string, compute: () => Promise<any>) => cache.get(key) ?? compute(),
+      getOrSetSingleFlight: async (key: string, compute: () => Promise<any>) => {
+        if (cache.has(key)) return cache.get(key);
+        const value = await compute(); cache.set(key, value); return value;
+      },
       getOrSetSWR: async (key: string, compute: () => Promise<any>) => cache.get(key) ?? compute(),
     };
     mock.module('../src/cache', { defaultExport: manager, namedExports: { CacheManager: manager, CacheKeys: { genres: (...args: any[]) => JSON.stringify(args) } } });
@@ -133,6 +136,78 @@ describe('Native PostgreSQL public catalog', { skip: !process.env.PG_TEST_DATABA
     assert.deepEqual(body.data,body.stations);
     const detail=await read.getStationByIdentifier('compact');
     assert.ok(detail.descriptions.de.full.length>30000);
+  });
+  it('legacy slim opt-in preserves card/player/logo fields and filters while the default stays full', async () => {
+    const article = { de: { full: 'Full station article '.repeat(3000) } };
+    await catalog.insertMany([
+      station('card-a', { name: 'Radio Wien A', slug: 'radio-wien-a', state: 'Vienna', tags: 'jazz', votes: 20,
+        urlResolved: 'https://stream.invalid/resolved', hls: true, codec: 'AAC', bitrate: 128,
+        homepage: 'https://station.invalid', favicon: 'https://logo.invalid/a', hasLogo: true,
+        logoAssets: { folder: 'fixture', status: 'completed', webp48: '48.webp', webp96: '96.webp', webp256: '256.webp' },
+        localImagePath: 'fixture.png', sslError: true, genre: 'Jazz', genres: ['Jazz'], mood: 'calm',
+        geoLat: 48.2, geoLong: 16.3, lastCheckOk: true, noIndex: true,
+        isFeatured: true, showInGlobalPopular: true, descriptions: article, extraArchiveField: 'full-only' }),
+      station('card-b', { name: 'Radio Wien B', state: 'Wien', tags: 'jazz', votes: 10, lastCheckOk: true }),
+      station('wrong-city', { state: 'Berlin', tags: 'jazz', votes: 999, lastCheckOk: true }),
+      station('broken', { state: 'Wien', tags: 'jazz', votes: 999, lastCheckOk: false }),
+    ]);
+    const path = '/api/stations?country=Germany&state=Wien&tags=jazz&excludeBroken=true&sort=votes&limit=1&page=1';
+    const request = async (suffix = '') => {
+      const response = await fetch(base + path + suffix); assert.equal(response.status, 200);
+      return await response.json() as any;
+    };
+    const full = await request(); const compact = await request('&slim=1');
+    assert.deepEqual(compact.pagination, { page: 1, limit: 1, total: 2, pages: 2 });
+    assert.deepEqual(compact.pagination, full.pagination);
+    assert.deepEqual(compact.stations.map((s: any) => s._id), full.stations.map((s: any) => s._id));
+    for (const field of ['_id','stationuuid','slug','name','country','countryCode','state','votes','url','urlResolved',
+      'hls','codec','bitrate','homepage','favicon','hasLogo','logoAssets','localImagePath','sslError','genre','genres',
+      'mood','geoLat','geoLong','lastCheckOk','noIndex','isFeatured','showInGlobalPopular']) {
+      assert.deepEqual(compact.stations[0][field], full.stations[0][field], field);
+    }
+    assert.deepEqual(full.stations[0].descriptions, article);
+    assert.equal(full.stations[0].extraArchiveField, 'full-only');
+    assert.deepEqual(compact.stations[0].descriptions, {});
+    assert.equal(compact.stations[0].extraArchiveField, undefined);
+    assert.ok(JSON.stringify(compact).length < JSON.stringify(full).length / 10);
+    for (const suffix of ['&slim=0', '&slim=true']) assert.deepEqual(await request(suffix), full);
+    // Both warm shapes must stay independently usable without touching PostgreSQL.
+    const fault = mock.method(pool, 'query', async () => { throw new Error('Unexpected warm-cache query'); });
+    try { assert.deepEqual(await request(), full); assert.deepEqual(await request('&slim=1'), compact); }
+    finally { fault.mock.restore(); }
+  });
+  it('legacy slim search keeps synonyms and ranking without exposing full descriptions', async () => {
+    await catalog.insertMany([
+      station('search', { name: 'Vienna FM', descriptions: { de: { full: 'Search article' } } }),
+      station('other-search', { name: 'Unrelated station' }),
+    ]);
+    const request = async (suffix: string) => {
+      const response = await fetch(base + '/api/stations?search=Viyana%20FM&limit=20' + suffix);
+      assert.equal(response.status, 200); return await response.json() as any;
+    };
+    const full = await request(''); const compact = await request('&slim=1');
+    assert.deepEqual(compact.stations.map((s: any) => s._id), ['search']);
+    assert.deepEqual(compact.pagination, full.pagination);
+    assert.deepEqual(compact.stations[0].descriptions, {});
+    assert.equal(full.stations[0].descriptions.de.full, 'Search article');
+  });
+  it('legacy fallback caches cannot cross full/compact shapes and search failures stay unavailable', async () => {
+    await catalog.insertMany([station('fallback', { descriptions: { de: { full: 'Preserved full article' } } })]);
+    for (const [warm, cold] of [['', '&slim=1'], ['&slim=1', '']]) {
+      cache.clear();
+      assert.equal((await fetch(base + '/api/stations?country=Germany' + warm)).status, 200);
+      const fault = mock.method(pool, 'query', async () => { throw new Error('Injected catalog outage'); });
+      try {
+        const wrongShape = await fetch(base + '/api/stations?country=Germany&state=Berlin' + cold);
+        assert.equal(wrongShape.status, 503); assert.equal(wrongShape.headers.get('cache-control'), 'no-store');
+        const sameShape = await fetch(base + '/api/stations?country=Germany&state=Berlin' + warm);
+        assert.equal(sameShape.status, 200); assert.equal(sameShape.headers.get('x-data-stale'), 'true');
+        const body = await sameShape.json() as any;
+        assert.deepEqual(body.stations[0].descriptions, warm ? {} : { de: { full: 'Preserved full article' } });
+        const search = await fetch(base + '/api/stations?country=Germany&search=missing' + warm);
+        assert.equal(search.status, 503);
+      } finally { fault.mock.restore(); }
+    }
   });
   it('concurrent PostgreSQL counters never lose increments and retain click timestamps', async () => {
     await catalog.insertMany([station('counter')]);

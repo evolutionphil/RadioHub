@@ -2,7 +2,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { getExplicitLanguageFromPath, getSupportedLanguage } from "@workspace/seo-shared/language-preference";
 import { CRITICAL_TRANSLATION_KEYS } from "@workspace/seo-shared/critical-translation-keys";
-import { getBrowserLanguage, saveBrowserLanguage } from '@/lib/browser-language';
+import { getBrowserLanguage, saveBrowserLanguage, syncBrowserLanguageFromUrl } from '@/lib/browser-language';
 import { logger } from '@/lib/logger';
 import { getMergedTranslationDictionary } from '@/lib/translation-dictionary-cache';
 
@@ -44,7 +44,7 @@ export function useTranslation() {
   useEffect(() => {
     const nextLanguage = getBrowserLanguage();
     if (nextLanguage !== language) setLanguageState(nextLanguage);
-    if (getExplicitLanguageFromPath(window.location.pathname)) saveBrowserLanguage(nextLanguage);
+    if (getExplicitLanguageFromPath(window.location.pathname)) syncBrowserLanguageFromUrl(nextLanguage);
   }, [language, window.location.pathname]);
 
   const hasPreloadedTranslations = typeof window !== 'undefined' && 
@@ -458,7 +458,7 @@ export function useTranslation() {
     const handlePopstate = () => {
       const nextLanguage = getBrowserLanguage();
       setLanguageState(nextLanguage);
-      if (getExplicitLanguageFromPath(window.location.pathname)) saveBrowserLanguage(nextLanguage);
+      if (getExplicitLanguageFromPath(window.location.pathname)) syncBrowserLanguageFromUrl(nextLanguage);
     };
 
     // Listen for URL changes (back/forward buttons)

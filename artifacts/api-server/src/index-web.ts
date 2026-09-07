@@ -1005,12 +1005,13 @@ app.use('/api/stream', streamServiceProxy);
     ${prodTags.preloads}
     ${prodTags.routePreloads?.[pageType] || ''}
     <style>
-      body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif; margin: 0; padding: 0; background-color: #0a0a0a; color: #ffffff; line-height: 1.5; font-display: swap; }
+      body { font-family: 'Ubuntu', system-ui, sans-serif; margin: 0; padding: 0; background-color: #0a0a0a; color: #ffffff; line-height: 1.5; }
       *, *::before, *::after { box-sizing: border-box; }
       img { height: auto; max-width: 100%; display: block; }
       .container-critical { max-width: 1200px; margin: 0 auto; padding: 0 1rem; }
-      .container { max-width: 1200px; margin: 0 auto; padding: 0 1rem; }
-      .hero-container { min-height: 500px; position: relative; overflow: hidden; }
+      /* Responsive .container and .hero-container geometry belongs to the
+         production stylesheet above. Legacy global fallbacks here overrode
+         its mobile 255px hero and desktop widths even after React mounted. */
       button { font-family: inherit; }
       a { color: inherit; text-decoration: none; }
       .grid-stations { display: grid; grid-template-columns: 1fr; gap: 1rem; }

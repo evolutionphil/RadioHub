@@ -2,7 +2,7 @@ import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, render, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { getBrowserLanguage, saveBrowserLanguage } from '../src/lib/browser-language';
+import { getBrowserLanguage, saveBrowserLanguage, syncBrowserLanguageFromUrl } from '../src/lib/browser-language';
 import { useTranslation } from '../src/hooks/useTranslation';
 import { useSeoRouting } from '../src/hooks/useSeoRouting';
 
@@ -21,7 +21,8 @@ function RoutingConsumer() { routing = useSeoRouting(); return null; }
 function mount(route = false) {
   return render(<QueryClientProvider client={client}><Consumer route={route} /></QueryClientProvider>);
 }
-beforeEach(() => {
+beforeEach(async () => {
+  await Promise.resolve(); // End the preceding test's automatic-sync task.
   window.history.replaceState({}, '', '/');
   localStorage.clear();
   document.cookie = 'preferredLanguage=; max-age=0; path=/';
@@ -33,6 +34,71 @@ beforeEach(() => {
     client.setQueryData(['/api/translations', language], { hello: language });
     client.setQueryData(['/api/translations', language, 'critical'], { hello: language });
   }
+});
+
+describe('same-task automatic URL preference sync', () => {
+  it('100 translation consumers synchronously read cookie/storage only once on mount', () => {
+    window.history.replaceState({}, '', '/de');
+    const storage = vi.spyOn(Storage.prototype, 'getItem');
+    const cookie = vi.spyOn(Document.prototype, 'cookie', 'get');
+    render(<QueryClientProvider client={client}>
+      {Array.from({ length: 100 }, (_, index) => <Consumer key={index} />)}
+    </QueryClientProvider>);
+    expect(storage.mock.calls.filter(([key]) => key === 'preferredLanguage')).toHaveLength(1);
+    expect(cookie).toHaveBeenCalledTimes(1);
+    cookie.mockRestore(); storage.mockRestore();
+    expect(document.cookie).toContain('preferredLanguage=de');
+    expect(localStorage.getItem('preferredLanguage')).toBe('de');
+  });
+
+  it('saves immediately, coalesces repeats, and retries after the microtask checkpoint', async () => {
+    const storage = vi.spyOn(Storage.prototype, 'getItem');
+    const cookie = vi.spyOn(Document.prototype, 'cookie', 'get');
+    syncBrowserLanguageFromUrl('de');
+    for (let index = 0; index < 100; index++) syncBrowserLanguageFromUrl('de');
+    expect(storage).toHaveBeenCalledTimes(1); expect(cookie).toHaveBeenCalledTimes(1);
+    document.cookie = 'preferredLanguage=; max-age=0; path=/';
+    await Promise.resolve();
+    syncBrowserLanguageFromUrl('de');
+    expect(storage).toHaveBeenCalledTimes(2); expect(cookie).toHaveBeenCalledTimes(2);
+    cookie.mockRestore();
+    expect(document.cookie).toContain('preferredLanguage=de');
+  });
+
+  it('does not skip a different locale or same-task back navigation', () => {
+    const storage = vi.spyOn(Storage.prototype, 'getItem');
+    syncBrowserLanguageFromUrl('de'); syncBrowserLanguageFromUrl('ar'); syncBrowserLanguageFromUrl('de');
+    expect(storage).toHaveBeenCalledTimes(3);
+    expect(document.cookie).toContain('preferredLanguage=de');
+  });
+
+  it('explicit saves still repair deleted cookies and invalidate an older automatic marker', () => {
+    syncBrowserLanguageFromUrl('de');
+    document.cookie = 'preferredLanguage=; max-age=0; path=/';
+    saveBrowserLanguage('de');
+    expect(document.cookie).toContain('preferredLanguage=de');
+    saveBrowserLanguage('ar');
+    syncBrowserLanguageFromUrl('de');
+    expect(document.cookie).toContain('preferredLanguage=de');
+    expect(localStorage.getItem('preferredLanguage')).toBe('de');
+  });
+
+  it('coalesces blocked Safari storage safely and retries it on the next task', async () => {
+    const storage = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new DOMException('blocked', 'SecurityError'); });
+    const cookie = vi.spyOn(Document.prototype, 'cookie', 'get').mockImplementation(() => { throw new DOMException('blocked', 'SecurityError'); });
+    for (let index = 0; index < 100; index++) expect(() => syncBrowserLanguageFromUrl('de')).not.toThrow();
+    expect(storage).toHaveBeenCalledTimes(1); expect(cookie).toHaveBeenCalledTimes(1);
+    await Promise.resolve();
+    expect(() => syncBrowserLanguageFromUrl('de')).not.toThrow();
+    expect(storage).toHaveBeenCalledTimes(2); expect(cookie).toHaveBeenCalledTimes(2);
+  });
+
+  it('ignores unsupported values without poisoning the next valid automatic sync', () => {
+    const storage = vi.spyOn(Storage.prototype, 'getItem');
+    syncBrowserLanguageFromUrl('xx-invalid'); syncBrowserLanguageFromUrl('de');
+    expect(storage).toHaveBeenCalledTimes(1);
+    expect(document.cookie).toContain('preferredLanguage=de');
+  });
 });
 afterEach(() => { cleanup(); client.clear(); vi.restoreAllMocks(); });
 
