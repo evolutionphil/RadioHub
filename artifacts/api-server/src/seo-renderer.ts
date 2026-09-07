@@ -1011,13 +1011,9 @@ export class SeoRenderer {
             // The 12-station "popular" grid above only links a country's TOP
             // stations, leaving the long tail with zero internal in-links
             // ("no referring page" → Crawled-not-indexed). Paginate the
-            // SWR-cached per-country list (up to 1500 live stations, 24h TTL)
-            // 60/page so EVERY station gets an in-link from its country hub.
-            // getCountryStationsByName reads from the precomputed cache and
-            // slices in memory — NO per-request deep-skip DB query, so it is
-            // incident-safe (2026-05-14 pile-up was concurrent unindexed
-            // Station.find). Since every station has a country, the country
-            // hub gives the whole catalogue a crawl path. Mirrors /stations.
+            // Per-country directory at 60/page, independently SWR-cached.
+            // Native count + bounded projection include the long tail beyond
+            // the popular pool's 3,000 cap, without reading archived articles.
             try {
               const CATALOG_PAGE_SIZE = 60;
               const page = pagination.page;
@@ -2248,7 +2244,7 @@ export class SeoRenderer {
         // first contentful paint; when React repaints an identical-size image
         // from cache it produces no larger paint, so the early LCP stands.
         content = `
-          <main>
+          <main class="pt-[70px] md:pt-[80px] lg:pt-[90px] xl:pt-[105px]">
             <div class="hero-container overflow-visible">
               <picture>
                 <source media="(min-width: 768px)" srcset="/images/hero-bg.webp" type="image/webp">

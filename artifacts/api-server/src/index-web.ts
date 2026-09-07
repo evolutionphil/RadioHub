@@ -23,6 +23,8 @@ import { markSeoTemporarilyUnavailable } from './seo/temporary-unavailable';
 import { parseSeoCatalogPage } from './seo/catalog-pagination';
 import { sendSeoNotFound } from './seo/send-seo-not-found';
 import { buildPublicRoutePreloads } from './seo/frontend-asset-preloads';
+import { renderStationBootstrap } from './seo/station-bootstrap';
+import { renderTranslationBootstrap } from './seo/translation-bootstrap';
 import { registerSeoSitemapRoutes } from './routes/seo-sitemap-routes';
 import { getBaseUrl } from './routes/shared-utils';
 import { startOperation, endOperation, getActiveOperations, getGcStats } from './utils/operation-tracker';
@@ -1038,6 +1040,8 @@ app.use('/api/stream', streamServiceProxy);
         })}
       </div>
     </div>
+    ${renderTranslationBootstrap(seoData.language, seoData.translations)}
+    ${pageType === 'station' && !seoData.pageData?.notFound && !seoData.pageData?.stationIsJunk ? renderStationBootstrap(seoData.pageData?.station, seoData.language) : ''}
     ${prodTags.scripts || '<script type="module" src="/src/main.tsx"></script>'}
     ${(() => {
       const topGenres = seoData.pageData?.additionalData?.topGenres;

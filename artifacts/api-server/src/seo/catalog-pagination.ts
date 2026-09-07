@@ -4,7 +4,7 @@ export function parseSeoCatalogPage(url: string): { page: number; valid: boolean
   if (!values.length) return { page: 1, valid: true };
   if (values.length !== 1 || !/^\d+$/.test(values[0])) return { page: 1, valid: false };
   const page = Number(values[0]);
-  return { page, valid: Number.isSafeInteger(page) && page >= 1 };
+  return { page, valid: Number.isSafeInteger(page) && page >= 1 && Number.isSafeInteger((page - 1) * 200) };
 }
 
 export function isSeoCatalogPath(cleanPath: string): boolean {

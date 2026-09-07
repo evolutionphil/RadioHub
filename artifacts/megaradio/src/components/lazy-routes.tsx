@@ -4,7 +4,7 @@ import { lazy } from "react";
 // This reduces initial bundle size from ~1.8MB to <100KB
 
 // Core radio/frontend pages - most visited
-export const RadioFrontend = lazy(() => import("@/pages/radio-frontend"));
+export { InitialHome as RadioFrontend } from '@/lib/initial-home-components';
 export const StationDetails = lazy(() => import("@/pages/stations/[id]"));
 export const GenreDetail = lazy(() => import("@/pages/genres/[slug]"));
 export const GenreLanding = lazy(() => import("@/pages/genres/genre-landing"));

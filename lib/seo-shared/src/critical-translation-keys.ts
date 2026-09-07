@@ -43,6 +43,10 @@ export const CRITICAL_TRANSLATION_KEYS = [
   'station_bitrate', 'stations_total',
   
   // Homepage/landing
+  'hero_over_100_countries', 'hero_worlds_best_radio', 'hero_listen_everywhere', 'hero_search_placeholder',
+  'nav_add_your_station', 'nav_global', 'nav_profile_menu', 'nav_signup', 'nav_your_favorites',
+  'station_about_station', 'station_similar_radios', 'station_more_from_country', 'station_media_group_radios',
+  'stations_near_you', 'discover_genres',
   'homepage_title', 'homepage_subtitle', 'homepage_see_all',
   'homepage_popular', 'homepage_popular_stations', 'homepage_trending', 'homepage_community_favorites', 'from',
   'homepage_stations_description',

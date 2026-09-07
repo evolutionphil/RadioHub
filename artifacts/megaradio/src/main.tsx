@@ -5,6 +5,8 @@ import { measureCoreWebVitals } from "./utils/performance";
 import { initImageOptimizations } from "./utils/image-optimization";
 import { initAsyncStyles, loadWebFonts, addResourceHints } from './utils/async-css-loader';
 import { initOAuthTokenExchange } from './lib/oauth-token-exchange';
+import { preloadInitialHomeComponents } from './lib/initial-home-components';
+import { mountWithInitialHomeHandover } from './lib/initial-home-handover';
 
 // CRITICAL: must run BEFORE App renders so the /api/auth/me query cache is
 // pre-seeded (with either {_pendingTokenExchange:true} placeholder OR the
@@ -128,4 +130,14 @@ if (typeof window !== 'undefined') {
   }, 3000);
 }
 
-createRoot(document.getElementById("root")!).render(<App />);
+const rootElement = document.getElementById('root')!;
+void mountWithInitialHomeHandover({
+  root: rootElement,
+  pathname: window.location.pathname,
+  production: import.meta.env.PROD,
+  preload: preloadInitialHomeComponents,
+  mount: () => { createRoot(rootElement).render(<App />); },
+  // Failed chunks already trigger the existing Vite staleness recovery above.
+  // For other failures keep the readable SSR page and expose the actual error.
+  onError: error => { console.error('[Initial home bootstrap]', error); },
+});

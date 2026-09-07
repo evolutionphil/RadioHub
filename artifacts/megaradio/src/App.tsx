@@ -86,7 +86,7 @@ const Header = lazy(() => import("@/components/layout/header"));
 
 // Lazy load Footer and RadioHeader - they're below the fold and not needed for FCP
 const Footer = lazy(() => import("@/components/layout/footer"));
-const RadioHeader = lazy(() => import("@/components/layout/radio-header"));
+import { RadioHeader } from '@/lib/initial-home-components';
 
 // Minimal fallback for header during load - matches reference: 70px mobile, 90px desktop
 const RadioHeaderFallback = () => (

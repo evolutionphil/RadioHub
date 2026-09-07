@@ -1,5 +1,5 @@
 import { CacheManager } from '../cache';
-import { pgCatalog } from '../data/postgres-catalog-store';
+import { pgCatalog, type CatalogFilter } from '../data/postgres-catalog-store';
 import { logger } from '../utils/logger';
 import { sleep } from '../utils/event-loop-yield';
 import { trackOperation } from '../utils/operation-tracker';
@@ -255,23 +255,42 @@ export class PrecomputedStationsService {
     page: number = 1, 
     limit: number = 33
   ): Promise<{ stations: PrecomputedStation[]; total: number; page: number; totalPages: number; cached: boolean }> {
+    if (!Number.isSafeInteger(page) || page < 1 || !Number.isSafeInteger(limit) || limit < 1 || limit > 200 ||
+        !Number.isSafeInteger((page - 1) * limit)) {
+      throw new RangeError('Country catalogue page must be a positive safe integer and limit must be 1–200');
+    }
     const resolvedName = await this.resolveCountryName(countryName);
-    const cacheKey = this.getCacheKey(resolvedName);
-    // INCIDENT 2026-05-15 v10.2 — single-flight + SWR. Concurrent SSR
-    // cold misses (homepage fanout when CDN expires) coalesce into ONE
-    // compute. The 7-day stale window means a brief Atlas hiccup mid-
-    // refresh serves last-known-good instead of throwing a 500.
+    // This is the crawlable country directory, not the capped popular pool.
+    // Cache each bounded page separately, with a true native count; page51
+    // must not become a false404 just because the popular cache stops at3000.
+    const cacheKey = `${CACHE_KEY_PREFIX}catalog:v1:${encodeURIComponent(resolvedName)}:${page}:${limit}`;
     let cached = true;
     const data = await CacheManager.getOrSetSWR<PrecomputedCountryData>(cacheKey, async () => {
       cached = false;
-      return await this.computeCountryStationsByName(resolvedName);
-    }, { freshTtl: 86400, staleTtl: 86400 * 7 });
-
-    const offset = (page - 1) * limit;
-    const paginatedStations = data.stations.slice(offset, offset + limit);
+      const catalog = pgCatalog();
+      let filter: CatalogFilter = { country: resolvedName, lastCheckOk: true };
+      let total = await catalog.count(filter);
+      if (total === 0) {
+        const escapedName = resolvedName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        filter = { country: { $regex: new RegExp(`^${escapedName}$`, 'i') }, lastCheckOk: true };
+        total = await catalog.count(filter);
+      }
+      // DB errors must propagate to the renderer's retryable503 path rather
+      // than becoming a cached empty directory. Huge past-end pages count
+      // only; they never issue an expensive OFFSET query.
+      if (!Number.isSafeInteger(total) || total < 0) throw new Error('Invalid country catalogue count');
+      const offset = (page - 1) * limit;
+      const fields = ['_id', 'slug', 'name', 'url', 'urlResolved', 'favicon', 'country', 'state',
+        'votes', 'hasLogo', 'tags', 'codec', 'bitrate', 'logoAssets', 'noIndex', 'lastCheckOk'];
+      const stations = offset < total ? await catalog.find(filter, {
+        sort: { hasLogo: -1, votes: -1, _id: 1 }, limit, offset, fields,
+      }) : [];
+      return { stations: stations.map(station => ({ ...station, url_resolved: station.urlResolved })) as PrecomputedStation[],
+        total, computedAt: Date.now(), countryName: resolvedName };
+    }, { freshTtl: CACHE_TTL, staleTtl: CACHE_TTL * 7 });
 
     return {
-      stations: paginatedStations,
+      stations: data.stations,
       total: data.total,
       page,
       totalPages: Math.ceil(data.total / limit),

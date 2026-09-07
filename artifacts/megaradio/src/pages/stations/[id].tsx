@@ -20,6 +20,7 @@ import shareIcon from "@assets/sharebutton.png";
 import bgGradient from "@assets/bg-gradient.png";
 import nosignalIcon from "@assets/nosignal.png";
 import StationLogo from "@/components/ui/station-logo";
+import { readStationBootstrap } from '@/lib/station-bootstrap';
 import AnimatedEqualizer from "@/components/ui/animated-equalizer";
 import { StarRating } from "@/components/star-rating";
 import { ListeningTimer } from "@/components/ui/listening-timer";
@@ -214,6 +215,7 @@ export default function StationDetails() {
 
   const { data: station, isLoading: stationLoading, error, refetch: refetchStation } = useQuery<any>({
     queryKey: [`/api/station/${identifier}`],
+    placeholderData: () => readStationBootstrap(identifier, language),
     enabled: !!identifier,
   });
 
@@ -1234,9 +1236,9 @@ export default function StationDetails() {
             {(loadingSimilar || (filteredSimilarStations && filteredSimilarStations.length > 0)) && (
               <div>
                 <div className="py-6">
-                  <h3 className="text-xl font-bold">
+                  <h2 className="text-xl font-bold">
                     {t('station_similar_radios', 'Similar Radios')}
-                  </h3>
+                  </h2>
                 </div>
                 <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4 md:gap-6">
                   {loadingSimilar ? (
@@ -1375,9 +1377,9 @@ export default function StationDetails() {
             {(loadingCountry || (filteredCountryStations && filteredCountryStations.length > 0)) && (station as any)?.country && (
               <div>
                 <div className="py-6">
-                  <h3 className="text-xl font-bold">
+                  <h2 className="text-xl font-bold">
                     {t('station_more_from_country', 'More from {country}', { country: (station as any).country })}
-                  </h3>
+                  </h2>
                 </div>
                 <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4 md:gap-6">
                   {loadingCountry ? (

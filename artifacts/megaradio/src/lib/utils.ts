@@ -103,7 +103,7 @@ export function normalizeFaviconUrl(favicon: string | undefined | null): string 
     return favicon;
   }
 
-  if (favicon.startsWith('/')) {
+  if (favicon.startsWith('/') && !favicon.startsWith('//')) {
     return favicon;
   }
 
@@ -124,7 +124,9 @@ export function normalizeFaviconUrl(favicon: string | undefined | null): string 
   // via resolveLogoUrl; this normalizer only ever receives the external favicon.
   if (normalizedUrl.startsWith('http://') || normalizedUrl.startsWith('https://')) {
     const encodedUrl = safeBase64Encode(normalizedUrl);
-    return getStreamProxyUrl(`/api/image/${encodedUrl}`);
+    // Images use the web/API image service (resizing/cache/SSRF protection),
+    // never the independent audio service's stale image implementation.
+    return getApiProxyUrl(`/api/image/${encodedUrl}`);
   }
 
   return normalizedUrl;
