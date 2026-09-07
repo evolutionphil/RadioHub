@@ -63,6 +63,22 @@ kullanılabilir; bu akış veritabanını public ağa açmayı gerektirmez.
 
 ## Hata / yeniden deneme
 
+- Yarım aktarım nedeniyle başlangıç durursa initializer, mevcut PostgreSQL
+  kayıtlarından `[bootstrap:diagnostic]` satırlarını üretir. Son çalışmanın
+  durumu/zamanı, kontrol noktalarındaki ilerleme ve varsa kayıtlı hatanın güvenli
+  kategorisi gösterilir. Bu teşhis yalnız okuma yapar; aktarımı yeniden oynatmaz,
+  kayıt silmez ve MongoDB'ye bağlanmaz. Ham hata metni, bağlantı bilgileri ve
+  müşteri verileri loga yazılmaz.
+- Son çalışma `running` kalmış ve hata kaydedilmemişse kesintinin nedeni bu
+  kayıttan belirlenemez. Bellek sınırı, zorla sonlandırma veya deployment değişimi
+  varsayılmamalıdır; Railway kapanış bilgisi ayrıca kontrol edilmelidir. Teşhis
+  çıktısının alınması, aktarımın tamamlandığı veya güvenle yeniden başlatılabileceği
+  anlamına gelmez.
+- `[mirror]` aşamasında veriler PostgreSQL'deki `legacy_documents` tablosuna
+  paketler halinde kalıcı yazılır; ilerleme `migration_checkpoints` içindedir.
+  Bütün koleksiyonlar kopyalandıktan sonra `[normalize]` uygulama tablolarını
+  doldurur. Bu yüzden henüz `stations` veya `users` içinde satır görünmemesi,
+  hiçbir verinin aktarılmadığı anlamına gelmez.
 - Eksik bağlantı/onay veya doğrulama hatasında boş sistem başarıyla açılmış gibi
   davranılmaz; API/web'in ilk PostgreSQL yazma yetkisi verilmez.
 - Yarım kalmış aktarım veya önceden var olan satırlar otomatik silinmez. Böyle

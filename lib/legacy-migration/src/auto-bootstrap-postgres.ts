@@ -16,6 +16,7 @@ export interface BootstrapDependencies {
   applySchema(environment: Environment): Promise<void>;
   readState(client: Connection): Promise<BootstrapState>;
   isPristine(client: Connection): Promise<boolean>;
+  diagnostics?(client: Connection, log: (message: string) => void): Promise<void>;
   runImport(environment: Environment, beforeWrite: (client: Connection) => Promise<boolean>): Promise<void>;
   log(message: string): void;
 }
@@ -90,6 +91,93 @@ export async function readBootstrapState(client: Connection): Promise<BootstrapS
   };
 }
 
+/** Hints only: stored text cannot prove why a process exited. Never return that text. */
+export function classifyBootstrapFailure(error: unknown, unfinished = false): { category: string; hint: string } {
+  if (typeof error !== "string" || !error.trim()) {
+    return { category: "not-recorded", hint: unfinished
+      ? "Completion/error was not durably recorded: an abrupt interruption or an unrecorded failure is possible; inspect original deployment logs and exit reason."
+      : "No failure text is stored; inspect original deployment logs if the import did not finish." };
+  }
+  const text = error.slice(0, 8192);
+  const categories: Array<[string, RegExp, string]> = [
+    ["tls", /\bTLS\b|\bSSL\b|certificate|self[- ]signed/i, "Stored text suggests a TLS/certificate problem; verify trusted connection configuration."],
+    ["memory", /out of memory|heap out of memory|heap limit|allocation failed|\bENOMEM\b/i, "Stored text mentions memory exhaustion; confirm with deployment memory and exit events."],
+    ["verification", /verification (?:failed|refused)|parity|invalidChecksums|countMismatches/i, "Stored text suggests verification did not succeed; inspect the original failure privately."],
+    ["numeric-data", /exact numeric range|out of range|invalid input syntax|duplicate key|violates .*constraint|foreign key|not-null|cannot convert|\b(?:22P02|22003|23502|23503|23505)\b/i, "Stored text suggests a numeric/data-integrity issue; inspect the original failure privately."],
+    ["timeout", /timed? ?out|timeout|\bETIMEDOUT\b|statement cancellation/i, "Stored text suggests a timeout; inspect database and deployment limits."],
+    ["connection", /\b(?:ECONNREFUSED|ECONNRESET|ENOTFOUND|EHOSTUNREACH)\b|connection (?:terminated|closed|lost|refused)|authentication failed|password authentication|server selection/i, "Stored text suggests connectivity/authentication trouble; inspect connection and deployment events."],
+  ];
+  for (const [category, pattern, hint] of categories) if (pattern.test(text)) return { category, hint };
+  return { category: "unknown", hint: "A failure was stored but its category is unknown; inspect the original failure privately." };
+}
+
+function diagnosticLabel(value: unknown, allowed: string[]): string {
+  return typeof value === "string" && allowed.includes(value) ? value : "unknown";
+}
+
+function diagnosticTime(value: unknown): string | null {
+  if (!(value instanceof Date) && typeof value !== "string") return null;
+  const parsed = value instanceof Date ? value : new Date(value);
+  return Number.isFinite(parsed.getTime()) ? parsed.toISOString() : null;
+}
+
+function diagnosticCount(value: unknown): string {
+  if (typeof value === "number") return Number.isSafeInteger(value) && value >= 0 ? String(value) : "unknown";
+  return typeof value === "string" && /^\d{1,30}$/.test(value) ? value : "unknown";
+}
+
+/** Metadata only. Checkpoints are global snapshots, not progress for the latest run. */
+export async function readBootstrapDiagnostics(client: Connection) {
+  // node-postgres supports per-query client timeouts; older @types/pg releases
+  // omit this property from QueryConfig, so retain it through an explicit type.
+  const query = (text: string): pg.QueryConfig & { query_timeout: number } => ({ text, query_timeout: 3000 });
+  const latest = await client.query(query(`SELECT mode,status,started_at,finished_at,left(error,8192) AS recorded_error
+    FROM migration_runs ORDER BY started_at DESC,id DESC LIMIT 1`));
+  const totals = await client.query(query(`SELECT count(*)::text AS total,
+    count(*) FILTER (WHERE status='complete')::text AS complete,
+    count(*) FILTER (WHERE status='running')::text AS running,
+    count(*) FILTER (WHERE status='mismatch')::text AS mismatch,
+    coalesce(sum(documents_processed),0)::text AS documents_processed,
+    coalesce(sum(source_count),0)::text AS source_count,
+    coalesce(sum(target_count),0)::text AS target_count
+    FROM migration_checkpoints`));
+  const recent = await client.query(query(`SELECT status,documents_processed,source_count,target_count,updated_at
+    FROM migration_checkpoints ORDER BY updated_at DESC,collection_name ASC LIMIT 3`));
+  const run = latest.rows[0];
+  const snapshot = totals.rows[0] || {};
+  const counters = (row: Record<string, unknown>) => ({
+    documentsProcessed: diagnosticCount(row.documents_processed),
+    recordedSourceCount: diagnosticCount(row.source_count),
+    recordedTargetCount: diagnosticCount(row.target_count),
+  });
+  return {
+    latestRun: run ? {
+      mode: diagnosticLabel(run.mode, ["all", "mirror", "normalize", "verify"]),
+      status: diagnosticLabel(run.status, ["running", "complete", "failed"]),
+      startedAt: diagnosticTime(run.started_at), finishedAt: diagnosticTime(run.finished_at),
+      failure: classifyBootstrapFailure(run.recorded_error, !diagnosticTime(run.finished_at)),
+    } : null,
+    recordedMirrorCheckpointSnapshot: {
+      total: diagnosticCount(snapshot.total), complete: diagnosticCount(snapshot.complete),
+      running: diagnosticCount(snapshot.running), mismatch: diagnosticCount(snapshot.mismatch), ...counters(snapshot),
+    },
+    recentCheckpointSnapshots: recent.rows.slice(0, 3).map((row, index) => ({
+      ordinal: index + 1, status: diagnosticLabel(row.status, ["pending", "running", "complete", "mismatch"]),
+      updatedAt: diagnosticTime(row.updated_at), ...counters(row),
+    })),
+    note: "Checkpoint snapshots can span runs; target counts may remain zero/stale until a collection finishes. They do not establish data loss, normalization, verification, or a percentage complete.",
+  };
+}
+
+/** Diagnostic failures must never replace a safety rejection or authorize replay. */
+export async function reportBootstrapDiagnostics(client: Connection, log: (message: string) => void): Promise<void> {
+  try {
+    log("[bootstrap:diagnostic] " + JSON.stringify(await readBootstrapDiagnostics(client)));
+  } catch {
+    try { log("[bootstrap:diagnostic] Metadata report unavailable; the original initialization safety checks still apply."); } catch { /* best effort only */ }
+  }
+}
+
 export async function isPristineDestination(client: Connection): Promise<boolean> {
   const tables = await client.query<{ name: string }>(`SELECT c.relname AS name
     FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
@@ -157,6 +245,9 @@ export async function runAutomaticBootstrap(
   };
   connection.client.on?.("error", onConnectionError);
   const assertCoordinator = () => { if (connectionFailure) throw connectionFailure; };
+  const diagnose = async (client: Connection) => {
+    try { await (dependencies.diagnostics || reportBootstrapDiagnostics)(client, dependencies.log); } catch { /* never replace the original safety guard */ }
+  };
   try {
     await connection.client.query("SELECT pg_advisory_lock(hashtext('radiohub-initial-bootstrap'))");
     locked = true;
@@ -172,6 +263,7 @@ export async function runAutomaticBootstrap(
     }
     const pristine = !state.latestRun && state.checkpointCount === 0 &&
       await dependencies.isPristine(connection.client);
+    if (!pristine) await diagnose(connection.client);
     validateAutomaticImport(environment, pristine);
     assertCoordinator();
     dependencies.log("[bootstrap] Capturing all source collections from the primary, normalizing and verifying PostgreSQL");
@@ -183,6 +275,7 @@ export async function runAutomaticBootstrap(
       if (current.postgresOwned || isVerifiedImport(current)) return false;
       const stillPristine = !current.latestRun && current.checkpointCount === 0 &&
         await dependencies.isPristine(migrationClient);
+      if (!stillPristine) await diagnose(migrationClient);
       validateAutomaticImport(environment, stillPristine);
       assertCoordinator();
       return true;
