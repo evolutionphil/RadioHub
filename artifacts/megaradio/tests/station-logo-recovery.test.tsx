@@ -35,13 +35,13 @@ describe('station logo source recovery', () => {
     fireEvent.error(img); expect(img).toHaveAttribute('src', station.logoAssets.webp48);
     fireEvent.error(img); expect(img).toHaveAttribute('src', '/original.png');
     fireEvent.error(img);
-    expect(screen.getByRole('img', { name: 'No image' }).tagName).toBe('DIV');
+    expect(screen.getByRole('img', { name: station.name }).tagName).toBe('DIV');
   });
   it('recovers updated logo URLs for the same station after all previous sources failed', () => {
     const old = { ...station, logoAssets: undefined, favicon: '/old.png' };
     const { rerender } = render(<StationLogo station={old} />);
     fireEvent.error(screen.getByRole('img'));
-    expect(screen.getByRole('img')).toHaveAttribute('aria-label', 'No image');
+    expect(screen.getByRole('img')).toHaveAttribute('aria-label', station.name);
     rerender(<StationLogo station={{ ...old, favicon: '/repaired.png' }} />);
     expect(screen.getByRole('img')).toHaveAttribute('src', '/repaired.png');
   });
@@ -50,9 +50,9 @@ describe('station logo source recovery', () => {
     const { rerender } = render(<StationLogo station={old} />);
     fireEvent.error(screen.getByRole('img'));
     rerender(<StationLogo station={{ ...old }} />);
-    expect(screen.getByRole('img')).toHaveAttribute('aria-label', 'No image');
+    expect(screen.getByRole('img')).toHaveAttribute('aria-label', station.name);
     rerender(<StationLogo station={{ ...old, _id: 'two' }} />);
-    expect(screen.getByRole('img')).toHaveAttribute('aria-label', 'No image');
+    expect(screen.getByRole('img')).toHaveAttribute('aria-label', station.name);
   });
   it('skips a URL that already failed in another card, but retries after the short TTL', () => {
     const now = vi.spyOn(Date, 'now').mockReturnValue(1000);
@@ -60,7 +60,7 @@ describe('station logo source recovery', () => {
     const first = render(<StationLogo station={old} />);
     fireEvent.error(screen.getByRole('img')); first.unmount();
     const second = render(<StationLogo station={old} />);
-    expect(screen.getByRole('img')).toHaveAttribute('aria-label', 'No image'); second.unmount();
+    expect(screen.getByRole('img')).toHaveAttribute('aria-label', station.name); second.unmount();
     now.mockReturnValue(31001);
     render(<StationLogo station={old} />);
     expect(screen.getByRole('img')).toHaveAttribute('src', '/unavailable.png');

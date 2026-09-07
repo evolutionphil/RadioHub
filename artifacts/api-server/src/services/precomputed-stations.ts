@@ -402,7 +402,7 @@ export class PrecomputedStationsService {
    * Compute and cache global stations (all countries, sorted by hasLogo + votes)
    * Stores top stations for pagination (limit: GLOBAL_STATIONS_LIMIT)
    */
-  static async computeGlobalStations(): Promise<PrecomputedCountryData> {
+  static async computeGlobalStations(options: { writeCache?: boolean } = {}): Promise<PrecomputedCountryData> {
     logger.log('🌍 Computing global stations cache (native PostgreSQL ranking)...');
     const startTime = Date.now();
 
@@ -420,9 +420,12 @@ export class PrecomputedStationsService {
       countryName: 'global'
     };
 
-    // INCIDENT 2026-05-15 v10.2 — read side is SWR (getGlobalStations);
-    // write through setSWR.
-    await CacheManager.setSWR(GLOBAL_CACHE_KEY, data, { freshTtl: CACHE_TTL, staleTtl: CACHE_TTL * 7 });
+    // Direct refresh callers still publish the SWR envelope. When invoked as
+    // an SWR loader, CacheManager owns publication; writing here as well
+    // serializes the full pool and awaits the same Redis write twice.
+    if (options.writeCache !== false) {
+      await CacheManager.setSWR(GLOBAL_CACHE_KEY, data, { freshTtl: CACHE_TTL, staleTtl: CACHE_TTL * 7 });
+    }
 
     const duration = Math.round((Date.now() - startTime) / 1000);
     logger.log(`✅ GLOBAL CACHE: Computed ${stations.length} stations (total: ${totalCount}) in ${duration}s`);
@@ -445,7 +448,7 @@ export class PrecomputedStationsService {
     let cached = true;
     const data = await CacheManager.getOrSetSWR<PrecomputedCountryData>(GLOBAL_CACHE_KEY, async () => {
       cached = false;
-      return await this.computeGlobalStations();
+      return await this.computeGlobalStations({ writeCache: false });
     }, { freshTtl: 86400, staleTtl: 86400 * 7 });
 
     const offset = (page - 1) * limit;

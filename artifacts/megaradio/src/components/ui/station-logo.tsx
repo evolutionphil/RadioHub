@@ -46,7 +46,7 @@ const SIZES = {
 const FALLBACK_IMAGE = '/images/no-image.webp';
 
 // NoImage Fallback Component - #3E3E3E background with inline music-note icon
-function NoImageFallback({ className }: { className?: string }) {
+function NoImageFallback({ className, label }: { className?: string; label: string }) {
   return (
     <div
       className={cn("flex items-center justify-center", className)}
@@ -54,7 +54,7 @@ function NoImageFallback({ className }: { className?: string }) {
         backgroundColor: '#3E3E3E',
         borderRadius: '9.95px',
       }}
-      aria-label="No image"
+      aria-label={label}
       role="img"
     >
       <svg
@@ -260,6 +260,7 @@ export function StationLogo({
   if (isShowingFallback) {
     return (
       <NoImageFallback 
+        label={alt?.trim() || stationName}
         className={cn(
           useFillMode ? 'w-full h-full' : sizeConfig.className,
           className

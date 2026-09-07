@@ -5,6 +5,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useTranslation } from '../src/hooks/useTranslation';
 import { SeoHead } from '../src/components/SeoHead';
 import { ServerSeoHeadContext } from '../src/utils/ssr-seo-head';
+import { ACTIVE_SITEMAP_LANGUAGES } from '@workspace/seo-shared/seo-config';
+import { getStationControlLabels } from '../src/utils/station-control-labels';
 
 let client: QueryClient;
 let result: ReturnType<typeof useTranslation>;
@@ -49,6 +51,42 @@ function renderConsumers(count = 30) {
 }
 
 describe('shared Turkish translation query lifecycle', () => {
+  it.each(ACTIVE_SITEMAP_LANGUAGES)('%s control defaults remain in the current locale with the real English fallback cache loaded', async language => {
+    window.history.replaceState({}, '', `/${language}`);
+    const english = {
+      player_play_station: 'Play station', player_stop: 'Stop station', previous: 'Previous station', next: 'Next station',
+      button_share_station: 'Share station', station_vote: 'Vote for this station', general_close: 'Close',
+    };
+    client.setQueryData(['/api/translations', 'en'], english);
+    client.setQueryData(['/api/translations', language, 'critical'], { hello: 'fixture' });
+    if (language !== 'en') client.setQueryData(['/api/translations', language], { hello: 'fixture' });
+    renderConsumers(1);
+    await act(async () => {});
+    expect(result.language).toBe(language);
+    // Global t semantics deliberately remain unchanged; only controls bypass
+    // English fallback precedence when a current-locale key is missing.
+    expect(result.t('station_vote', getStationControlLabels(language).vote)).toBe(english.station_vote);
+    expect(getStationControlLabels(language, result.localeTranslations)).toEqual(getStationControlLabels(language));
+    if (language !== 'en') expect(result.localeTranslations.station_vote).toBeUndefined();
+    expect(requests).toEqual([]);
+  });
+
+  it('exposes stable current-locale data and preserves full/admin overrides without another query', async () => {
+    window.__INITIAL_LANGUAGE__ = 'tr';
+    window.__INITIAL_TRANSLATIONS__ = { player_play_station: 'SSR oynat', button_share_station: 'SSR paylaş' };
+    client.setQueryData(['/api/translations', 'en'], { player_play_station: 'English play', station_vote: 'English vote' });
+    client.setQueryData(['/api/translations', 'tr'], { player_play_station: 'Özel oynatma', station_vote: 'Özel oy' });
+    const view = renderConsumers(1);
+    const dictionary = result.localeTranslations;
+    expect(getStationControlLabels('tr', dictionary)).toMatchObject({ play: 'Özel oynatma', share: 'SSR paylaş', vote: 'Özel oy' });
+    view.rerender(<QueryClientProvider client={client}><Consumer /></QueryClientProvider>);
+    expect(result.localeTranslations).toBe(dictionary);
+    await act(async () => { client.setQueryData(['/api/translations', 'tr'], { player_play_station: 'Güncel oynatma' }); });
+    await waitFor(() => expect(getStationControlLabels('tr', result.localeTranslations).play).toBe('Güncel oynatma'));
+    expect(getStationControlLabels('tr', result.localeTranslations).vote).toBe('Bu istasyona oy ver');
+    expect(requests).toEqual([]);
+  });
+
   it('SEO and 30 UI consumers cannot cache the SSR subset as a complete dictionary', async () => {
     window.__INITIAL_LANGUAGE__ = 'tr';
     window.__INITIAL_TRANSLATIONS__ = { hello: 'SSR merhaba' };

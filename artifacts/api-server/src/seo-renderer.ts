@@ -2034,11 +2034,11 @@ export class SeoRenderer {
       const idx = items.findIndex(b => !b.path.includes('/station'));
       const stationsName = getLocalizedText('nav_stations', 'Stations');
       if (idx >= 0 && !items.find(b => b.name.toLowerCase() === stationsName.toLowerCase())) {
-        let stationSegment = 'stations';
-        if (language !== 'en' && urlTranslations && urlTranslations.size > 0) {
-          const translated = urlTranslations.get(`${language}:station`) || urlTranslations.get(`${language}:stations`);
-          if (translated) stationSegment = translated;
-        }
+        // The collection crumb targets the plural directory, never the
+        // singular station-detail prefix. Keep SSR HTML and JSON-LD aligned
+        // with the client even before optional URL overrides are cached.
+        const stationSegment = urlTranslations?.get(`${language}:stations`)
+          || URL_TRANSLATIONS[language]?.stations || 'stations';
         items.splice(idx + 1, 0, { name: stationsName, path: `/${language}/${stationSegment}` });
       }
     }

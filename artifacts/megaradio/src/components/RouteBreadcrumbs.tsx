@@ -136,7 +136,7 @@ function computeItems(params: {
     if (idx >= 0 && !items.find((b) => b.name.toLowerCase() === stationsName.toLowerCase())) {
       let stationSegment = 'stations';
       if (lang !== 'en') {
-        stationSegment = langTranslations['station'] || langTranslations['stations'] || 'stations';
+        stationSegment = langTranslations['stations'] || 'stations';
       }
       items.splice(idx + 1, 0, {
         name: stationsName,

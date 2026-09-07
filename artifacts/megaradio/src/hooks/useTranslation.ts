@@ -474,6 +474,9 @@ export function useTranslation() {
 
   return {
     t,
+    // Current-locale data only; explicit localized fallbacks must not inherit
+    // the global translator's English fallback dictionary.
+    localeTranslations: translations,
     language,
     setLanguage,
     isLoading,

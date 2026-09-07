@@ -843,7 +843,7 @@ export default function RadioHeader({
               </button>
 
               {/* Logo - Figma specs: icon 50x50px, text 100.85x23.15px, left 61px (11px gap) */}
-              <Link href={getLocalizedUrl("/")} className="not-active flex flex-shrink-0 items-center">
+              <Link href={getLocalizedUrl("/")} aria-label="MegaRadio" className="not-active flex flex-shrink-0 items-center">
                 <div className="relative flex-shrink-0">
                   <img
                     className="w-8 h-8 md:w-10 md:h-10 lg:w-[50px] lg:h-[50px] object-contain flex-shrink-0 rounded-[6px] relative z-10"
@@ -852,8 +852,8 @@ export default function RadioHeader({
                     height="50"
                     loading="eager"
                     decoding="async"
-                    alt="Megaradio streaming service"
-                    title="Megaradio - Listen to live stations worldwide"
+                    alt=""
+                    title="MegaRadio"
                   />
                   {/* Pink glow effect - bottom right - HIDDEN on mobile/tablet, visible from xl+ */}
                   <div 

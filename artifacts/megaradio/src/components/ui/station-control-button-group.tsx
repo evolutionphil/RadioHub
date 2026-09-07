@@ -1,6 +1,7 @@
 import { useGlobalPlayer } from "@/hooks/useGlobalPlayer";
 import FavoriteButton from "@/components/ui/favorite-button";
 import VoteButton from "@/components/ui/vote-button";
+import { getStationControlLabels, type StationControlLabels } from '@/utils/station-control-labels';
 
 // Custom favorite icon from Figma design
 import favIcon from "@assets/fav-icon.png";
@@ -58,9 +59,10 @@ interface StationControlButtonGroupProps {
   className?: string;
   currentPageStation?: any; // Station from the current detail page
   size?: 'default' | 'mobile'; // Figma: default=50px, mobile=33.46px
+  labels?: StationControlLabels;
 }
 
-export default function StationControlButtonGroup({ className, currentPageStation, size = 'default' }: StationControlButtonGroupProps) {
+export default function StationControlButtonGroup({ className, currentPageStation, size = 'default', labels = getStationControlLabels() }: StationControlButtonGroupProps) {
   // Size configurations based on Figma
   const buttonSize = size === 'mobile' ? '33.46px' : '50px';
   const buttonRadius = size === 'mobile' ? '16.73px' : '25px';
@@ -118,8 +120,8 @@ export default function StationControlButtonGroup({ className, currentPageStatio
         className="flex items-center justify-center bg-black hover:opacity-80 transition-opacity"
         style={{ width: buttonSize, height: buttonSize, borderRadius: buttonRadius }}
         onClick={playPreviousStation}
-        aria-label="Play previous station"
-        title="Previous station"
+        aria-label={labels.previous}
+        title={labels.previous}
         data-testid="button-previous-station"
       >
         <div style={{ transform: `scale(${iconScale})` }}><PreviousIcon /></div>
@@ -130,8 +132,8 @@ export default function StationControlButtonGroup({ className, currentPageStatio
         onClick={handlePlayPause}
         className="flex items-center justify-center bg-black hover:opacity-80 transition-opacity"
         style={{ width: buttonSize, height: buttonSize, borderRadius: buttonRadius }}
-        aria-label={isPlaying ? "Stop station" : "Play station"}
-        title={isPlaying ? "Stop" : "Play"}
+        aria-label={isPlaying ? labels.stop : labels.play}
+        title={isPlaying ? labels.stop : labels.play}
         data-testid="button-play-stop"
       >
         <div style={{ transform: `scale(${iconScale})` }}>{isPlaying ? <PauseIcon /> : <PlayIcon />}</div>
@@ -142,8 +144,8 @@ export default function StationControlButtonGroup({ className, currentPageStatio
         className="flex items-center justify-center bg-black hover:opacity-80 transition-opacity"
         style={{ width: buttonSize, height: buttonSize, borderRadius: buttonRadius }}
         onClick={playNextStation}
-        aria-label="Play next station"
-        title="Next station"
+        aria-label={labels.next}
+        title={labels.next}
         data-testid="button-next-station"
       >
         <div style={{ transform: `scale(${iconScale})` }}><NextIcon /></div>
@@ -152,6 +154,7 @@ export default function StationControlButtonGroup({ className, currentPageStatio
       {/* Vote Button */}
       <VoteButton 
         stationId={displayStation._id} 
+        label={labels.vote}
         className={size === 'mobile' ? 'w-[33.46px] h-[33.46px] rounded-[16.73px]' : 'w-[50px] h-[50px] rounded-[25px]'}
         size={size}
       />

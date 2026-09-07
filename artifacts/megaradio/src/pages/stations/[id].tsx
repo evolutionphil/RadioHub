@@ -21,6 +21,8 @@ import bgGradient from "@assets/bg-gradient.lossless.png";
 import nosignalIcon from "@assets/nosignal.png";
 import StationLogo from "@/components/ui/station-logo";
 import { readStationBootstrap } from '@/lib/station-bootstrap';
+import { getStationControlLabels } from '@/utils/station-control-labels';
+import { getStationImageAlt } from '@workspace/seo-shared/station-image-alt';
 import AnimatedEqualizer from "@/components/ui/animated-equalizer";
 import { StarRating } from "@/components/star-rating";
 import { ListeningTimer } from "@/components/ui/listening-timer";
@@ -172,7 +174,8 @@ export default function StationDetails() {
   
   const { user, isAuthenticated } = useAuth();
   const { isPremium } = usePremiumStatus();
-  const { t, language } = useTranslation();
+  const { t, language, localeTranslations } = useTranslation();
+  const controlLabels = useMemo(() => getStationControlLabels(language, localeTranslations), [language, localeTranslations]);
   const { toast } = useToast();
   const { currentStation, isPlaying, playStation, pauseStation, stopStation, stationMeta, hasError } = useGlobalPlayer();
 
@@ -671,7 +674,7 @@ export default function StationDetails() {
                     backgroundColor: '#FFFFFF',
                     borderRadius: '50%'
                   }}
-                  aria-label="Close"
+                  aria-label={controlLabels.close}
                 >
                   <svg 
                     xmlns="http://www.w3.org/2000/svg" 
@@ -898,15 +901,16 @@ export default function StationDetails() {
                       <button 
                         onClick={handleShare}
                         className="hover:opacity-80 transition-opacity flex-shrink-0" 
-                        title={t('button_share_station', 'Share Station')}
+                        title={controlLabels.share}
+                        aria-label={controlLabels.share}
                       >
-                        <img src={shareIcon} alt="Share" style={{ width: 26, height: 26 }} />
+                        <img src={shareIcon} alt={controlLabels.share} style={{ width: 26, height: 26 }} />
                       </button>
                     </div>
 
                     {/* Station Control Buttons - extra margin on mobile */}
                     <div className="mt-4 md:mt-0">
-                      <StationControlButtonGroup currentPageStation={station} />
+                      <StationControlButtonGroup currentPageStation={station} labels={controlLabels} />
                     </div>
                   </div>
                 </div>
@@ -967,10 +971,10 @@ export default function StationDetails() {
                     <button 
                       onClick={handleShare}
                       className="hover:opacity-80 transition-opacity flex-shrink-0"
-                      aria-label="Share station"
-                      title="Share"
+                      aria-label={controlLabels.share}
+                      title={controlLabels.share}
                     >
-                      <img src={shareIcon} alt="Share" style={{ width: 26, height: 26 }} />
+                      <img src={shareIcon} alt={controlLabels.share} style={{ width: 26, height: 26 }} />
                     </button>
                   </div>
                 </div>
@@ -1207,7 +1211,7 @@ export default function StationDetails() {
                                 height={56}
                                 width={56}
                                 src={(() => { const v = linkedStation.logoAssets?.webp256 || linkedStation.logoAssets?.webp96; return v ? (v.startsWith('http') ? v : `/station-logos/${linkedStation.logoAssets?.folder}/${v}`) : linkedStation.favicon || "/images/no-image.webp"; })()}
-                                alt={`Listen ${linkedStation.name}`}
+                                alt={getStationImageAlt(linkedStation, language, t)}
                                 className="w-14 h-14 rounded object-cover"
                                 onError={(e) => {
                                   (e.target as HTMLImageElement).src = "/images/no-image.webp";
@@ -1268,7 +1272,7 @@ export default function StationDetails() {
                           station={similarStation}
                           size="card"
                           className="!w-[73px] !h-[73px]"
-                          alt={`Listen ${similarStation.name} at megaradio`}
+                          alt={getStationImageAlt(similarStation, language, t)}
                         />
                       </div>
                       <button 
@@ -1321,7 +1325,7 @@ export default function StationDetails() {
                               : 'bg-[#656565] hover:bg-[#FF4199] group-hover:bg-[#FF4199]'
                           }`}
                         >
-                          <span className="sr-only">Play Radio</span>
+                          <span className="sr-only">{controlLabels.play}</span>
                           {currentStation?._id === similarStation._id && isPlaying ? (
                             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" className="h-[26px] w-[26px] text-white">
                               <path fillRule="evenodd" d="M6.75 5.25a.75.75 0 0 1 .75-.75H9a.75.75 0 0 1 .75.75v13.5a.75.75 0 0 1-.75.75H7.5a.75.75 0 0 1-.75-.75V5.25Zm7.5 0A.75.75 0 0 1 15 4.5h1.5a.75.75 0 0 1 .75.75v13.5a.75.75 0 0 1-.75.75H15a.75.75 0 0 1-.75-.75V5.25Z" clipRule="evenodd"></path>
@@ -1409,7 +1413,7 @@ export default function StationDetails() {
                           station={countryStation}
                           size="card"
                           className="!w-[73px] !h-[73px]"
-                          alt={`Listen ${countryStation.name} at megaradio`}
+                          alt={getStationImageAlt(countryStation, language, t)}
                         />
                       </div>
                       <button 
@@ -1462,7 +1466,7 @@ export default function StationDetails() {
                               : 'bg-[#656565] hover:bg-[#FF4199] group-hover:bg-[#FF4199]'
                           }`}
                         >
-                          <span className="sr-only">Play Radio</span>
+                          <span className="sr-only">{controlLabels.play}</span>
                           {currentStation?._id === countryStation._id && isPlaying ? (
                             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" className="h-[26px] w-[26px] text-white">
                               <path fillRule="evenodd" d="M6.75 5.25a.75.75 0 0 1 .75-.75H9a.75.75 0 0 1 .75.75v13.5a.75.75 0 0 1-.75.75H7.5a.75.75 0 0 1-.75-.75V5.25Zm7.5 0A.75.75 0 0 1 15 4.5h1.5a.75.75 0 0 1 .75.75v13.5a.75.75 0 0 1-.75.75H15a.75.75 0 0 1-.75-.75V5.25Z" clipRule="evenodd"></path>

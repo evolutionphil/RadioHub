@@ -56,3 +56,12 @@ it('substitutes the imported underscore-separated station placeholder', () => {
   render(<StationLogo station={station} />);
   expect(screen.getByRole('img')).toHaveAttribute('alt', 'Radio Eins Logo');
 });
+
+it.each([
+  ['KRAL FM logosu', 'KRAL FM logosu'],
+  [undefined, 'Radio Eins'],
+])('a missing image preserves accessible text %s without translation subscriptions', (alt, expected) => {
+  render(<StationLogo station={{ _id: 'missing-logo', name: 'Radio Eins' }} alt={alt} />);
+  expect(screen.getByRole('img', { name: expected })).toHaveAttribute('aria-label', expected);
+  expect(translationHook).not.toHaveBeenCalled();
+});

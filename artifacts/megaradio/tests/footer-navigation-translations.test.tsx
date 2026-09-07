@@ -11,6 +11,14 @@ vi.mock('wouter', () => ({ Link: ({ children, to, href, ...props }: any) => <a {
 import Footer from '../src/components/layout/footer';
 beforeEach(() => { state.values = { nav_for_you: 'Für Sie', users: 'Nutzer' }; state.changeLanguage.mockClear(); });
 
+it('brand link opens the localized home with one language-neutral accessible name', () => {
+  render(<Footer />);
+  const brand = screen.getByRole('link', { name: 'MegaRadio', exact: true });
+  expect(brand).toHaveAttribute('href', '/de/');
+  expect(brand.querySelector('img')).toHaveAttribute('alt', '');
+  expect(brand.querySelector('img')).toHaveAttribute('title', 'MegaRadio');
+});
+
 it('uses verified existing German navigation translations without changing destinations', () => {
   render(<Footer />);
   expect(screen.getByRole('link', { name: 'Für Sie' })).toHaveAttribute('href', '/de/recommendations');

@@ -1,10 +1,11 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useGlobalPlayer } from "@/hooks/useGlobalPlayer";
 import { useLocation } from "wouter";
 import { ChevronDown, ChevronUp, Play, Pause, SkipBack, SkipForward } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { cn } from "@/lib/utils";
 import StationControlButtonGroup from "@/components/ui/station-control-button-group";
+import { getStationControlLabels } from '@/utils/station-control-labels';
 import { StationLogo } from "@/components/ui/station-logo";
 import MetaActionsButtonGroup from "@/components/ui/meta-actions-button-group";
 import FavoriteButton from "@/components/ui/favorite-button";
@@ -22,7 +23,8 @@ export default function GlobalPlayer() {
   const [collapsed, setCollapsed] = useState(false);
   const [showSignupBanner, setShowSignupBanner] = useState(false);
   const [showSignupModal, setShowSignupModal] = useState(false);
-  const { t } = useTranslation();
+  const { t, language, localeTranslations } = useTranslation();
+  const controlLabels = useMemo(() => getStationControlLabels(language, localeTranslations), [language, localeTranslations]);
   const { getLocalizedUrl, englishPath } = useSeoRouting();
 
   // Use englishPath (language-stripped) so /tr/profile/..., /de/profile/...
@@ -377,7 +379,7 @@ export default function GlobalPlayer() {
             {/* RIGHT SIDE: 5-Button Control Group + Volume Slider */}
             <div className="flex items-center gap-3">
               {/* 5-Button Control Group from Radio Details - Figma: 50x50 each */}
-              <StationControlButtonGroup currentPageStation={currentStation} />
+              <StationControlButtonGroup currentPageStation={currentStation} labels={controlLabels} />
               
               {/* Volume Slider Container - Figma: 256x50, border-radius 25px */}
               <div 
@@ -582,7 +584,7 @@ export default function GlobalPlayer() {
                   </div>
                   
                   {/* Control Buttons - 5-button group, mobile size (33.46px) */}
-                  <StationControlButtonGroup currentPageStation={currentStation} size="mobile" />
+                  <StationControlButtonGroup currentPageStation={currentStation} size="mobile" labels={controlLabels} />
                 </div>
               </div>
             </div>

@@ -6,6 +6,7 @@ interface VoteButtonProps {
   stationId: string;
   className?: string;
   size?: 'default' | 'mobile';
+  label?: string;
 }
 
 const ThumbsUpIcon = () => (
@@ -27,7 +28,7 @@ const ThumbsUpIcon = () => (
   </svg>
 );
 
-const VoteButton = memo(function VoteButton({ stationId, className = "", size = 'default' }: VoteButtonProps) {
+const VoteButton = memo(function VoteButton({ stationId, className = "", size = 'default', label = 'Vote for this station' }: VoteButtonProps) {
   // Figma: mobile icon 18.74x18.74, default icon 24x24
   const iconSize = size === 'mobile' ? '18.74px' : '24px';
   const [isAnimating, setIsAnimating] = useState(false);
@@ -55,7 +56,8 @@ const VoteButton = memo(function VoteButton({ stationId, className = "", size = 
       onClick={handleVoteClick}
       disabled={voteMutation.isPending}
       className={`relative flex items-center justify-center rounded-full bg-black hover:opacity-80 transition-all ${className}`}
-      title="Vote for this station"
+      title={label}
+      aria-label={label}
       data-testid="button-vote-station"
       style={{
         transform: isAnimating ? 'scale(1.15)' : 'scale(1)',

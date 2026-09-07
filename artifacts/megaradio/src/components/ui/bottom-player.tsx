@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { ChevronUp, ChevronDown, Play, Pause, SkipBack, SkipForward, Heart, Volume2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useGlobalPlayer } from "@/hooks/useGlobalPlayer";
 import { Link } from "wouter";
 import { cn, getImageUrl } from "@/lib/utils";
 import StationControlButtonGroup from "@/components/ui/station-control-button-group";
+import { getStationControlLabels } from '@/utils/station-control-labels';
 import MetaActionsButtonGroup from "@/components/ui/meta-actions-button-group";
 import { StationLogo } from "@/components/ui/station-logo";
 import { useTranslation } from "@/hooks/useTranslation";
@@ -40,7 +41,8 @@ export default function BottomPlayer() {
   const [collapsed, setCollapsed] = useState(false);
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
   const { toast } = useToast();
-  const { t } = useTranslation();
+  const { t, language, localeTranslations } = useTranslation();
+  const controlLabels = useMemo(() => getStationControlLabels(language, localeTranslations), [language, localeTranslations]);
   
   const { 
     currentStation, 
@@ -200,7 +202,7 @@ export default function BottomPlayer() {
                 </div>
                 
                 {/* Control Buttons - Full View Only */}
-                {!collapsed && <StationControlButtonGroup />}
+                {!collapsed && <StationControlButtonGroup labels={controlLabels} />}
               </div>
 
               {/* RIGHT SIDE: Collapse Button - Collapsed View Only */}

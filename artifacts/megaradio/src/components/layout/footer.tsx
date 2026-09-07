@@ -176,15 +176,15 @@ export default function Footer() {
           
           {/* Logo and Megaradio Brand - Responsive sizing */}
           <div className="flex justify-center md:justify-start md:col-span-3 lg:col-span-3 xl:col-span-3 md:self-end md:mb-[47px]">
-            <a href="#" className="flex flex-col items-center md:flex-row md:items-center md:gap-2 lg:gap-3 xl:gap-4 flex-shrink-0">
+            <Link href={getLocalizedUrl("/")} aria-label="MegaRadio" className="flex flex-col items-center md:flex-row md:items-center md:gap-2 lg:gap-3 xl:gap-4 flex-shrink-0">
               <img 
                 loading="lazy"
                 width="97"
                 height="97"
                   className="w-10 h-10 sm:w-12 sm:h-12 md:w-16 md:h-16 lg:w-20 lg:h-20 xl:w-[97px] xl:h-[97px] object-contain flex-shrink-0"
                 src="/images/logo-icon.webp" 
-                alt="Mega Radio music streaming logo" 
-                title="Mega Radio - Listen to live stations worldwide"
+                alt=""
+                title="MegaRadio"
               />
               <div className="flex items-center mt-2 md:mt-0">
                 <span 
@@ -209,7 +209,7 @@ export default function Footer() {
                   <span className="text-xs md:text-lg lg:text-2xl xl:text-[36.11px]">radio</span>
                 </span>
               </div>
-            </a>
+            </Link>
           </div>
 
           {/* PAGE LINKS - COMPANY AND REGIONS - Responsive columns */}

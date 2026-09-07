@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { beforeEach, mock, test } from 'node:test';
 import { ACTIVE_SITEMAP_LANGUAGES, generateLanguageUrls, truncateAtWordBoundary } from '@workspace/seo-shared/seo-config';
 import { getIndexableLanguagesForStation, isStationIndexableInLanguage } from '../src/seo/junk-station-rules';
+import { URL_TRANSLATIONS } from '@workspace/seo-shared/url-translations';
 
 const pageCache = new Map<string, any>();
 let databaseFails = false;
@@ -35,6 +36,19 @@ mock.module('../src/seo/qualified-languages', { namedExports: { getCachedQualifi
 } } });
 const { SeoRenderer } = await import('../src/seo-renderer');
 const renderer = new SeoRenderer();
+for (const language of ACTIVE_SITEMAP_LANGUAGES) {
+  test(`${language}: station collection breadcrumb uses the real plural directory with and without cached overrides`, () => {
+    const expected = URL_TRANSLATIONS[language]?.stations || 'stations';
+    const overrides = new Map(Object.entries(URL_TRANSLATIONS[language] || {}).map(([key, value]) => [`${language}:${key}`, value]));
+    overrides.set(`${language}:station`, 'detail-only-prefix');
+    for (const mapping of [overrides, undefined]) {
+      const items = (renderer as any).computeBreadcrumbItems(language, '/station/kral-fm', mapping,
+        { name: 'KRAL FM' }, (key: string, fallback: string) => key === 'nav_stations' ? 'Directory' : fallback);
+      assert.equal(items.find((item: any) => item.name === 'Directory')?.path, `/${language}/${expected}`);
+      assert.notEqual(items.find((item: any) => item.name === 'Directory')?.path, `/${language}/detail-only-prefix`);
+    }
+  });
+}
 const url = '/en/station/recovery-fm';
 beforeEach(() => {
   pageCache.clear(); databaseFails = false; qualificationFails = false;
