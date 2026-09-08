@@ -37,6 +37,10 @@ import { pgUserManagementStats } from "../data/postgres-user-store";
 // so a newer alert automatically un-suppresses the banner.
 const COVERAGE_DROP_ACK_KEY = 'coverage-drop-alert-ack';
 const isCatalogId = (value:unknown):value is string => typeof value==='string' && /^[a-f0-9]{24}$/i.test(value);
+// Admin list inputs are text filters, not a regular-expression editor. Escape
+// metacharacters before handing the pattern to the native catalog compiler.
+const literalListPattern = (value: unknown): RegExp =>
+  new RegExp(String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
 
 // Convert a lowercased city name (e.g. "new york", "san josé") to a
 // title-cased canonical spelling ("New York", "San José"). Used by the
@@ -597,10 +601,11 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
       const filter: any = {};
       
       if (search && search !== '') {
+        const pattern = literalListPattern(search);
         filter.$or = [
-          { name: { $regex: new RegExp(search as string, 'i') } },
-          { country: { $regex: new RegExp(search as string, 'i') } },
-          { tags: { $regex: new RegExp(search as string, 'i') } }
+          { name: { $regex: pattern } },
+          { country: { $regex: pattern } },
+          { tags: { $regex: pattern } }
         ];
       }
       
@@ -609,11 +614,11 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
       }
       
       if (language && language !== '' && language !== 'all') {
-        filter.language = { $regex: new RegExp(language as string, 'i') };
+        filter.language = { $regex: literalListPattern(language) };
       }
       
       if (genre && genre !== '' && genre !== 'all') {
-        filter.tags = { $regex: new RegExp(genre as string, 'i') };
+        filter.tags = { $regex: literalListPattern(genre) };
       }
       
       if (tagsStatus && tagsStatus !== '' && tagsStatus !== 'all') {

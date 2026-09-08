@@ -1,4 +1,4 @@
-import { generateSeoTags, getLanguageFromPath, DEFAULT_LANGUAGE, generateLanguageUrls, COUNTRY_TO_LANGUAGE, SEO_LANGUAGES, generateLocalizedStationTitle, truncateAtWordBoundary, LOCALIZED_LOGO_WORD, LOCALIZED_FLAG_WORD } from '@workspace/seo-shared/seo-config';
+import { generateSeoTags, getLanguageFromPath, DEFAULT_LANGUAGE, generateLanguageUrls, COUNTRY_TO_LANGUAGE, SEO_LANGUAGES, generateLocalizedStationTitle, truncateAtWordBoundary, normalizeSeoTitle, LOCALIZED_LOGO_WORD, LOCALIZED_FLAG_WORD } from '@workspace/seo-shared/seo-config';
 import { buildDirectoryIndexSeo } from '@workspace/seo-shared/directory-index-seo';
 import { getStationImageAlt } from '@workspace/seo-shared/station-image-alt';
 import { getStationBroadcastLanguages, getSchemaCountry, generateOrganizationSchema, generateWebSiteSchema, generateDeveloperOrganizationSchema } from '@workspace/seo-shared/structured-data';
@@ -53,7 +53,7 @@ import {
   getCanonicalGenreSlug,
   MIN_STATIONS_FOR_GENRE_INDEX,
 } from './seo/genre-whitelist';
-import { FAQ_PAGE_ITEMS } from '@workspace/seo-shared/faq-schema';
+import { resolveFaqPageItems } from '@workspace/seo-shared/faq-schema';
 
 // SEO audit fix (2026-05-12) — per-language fallback labels used by the
 // regions/country page <title>+<h1> when the corresponding DB translation
@@ -1696,12 +1696,20 @@ export class SeoRenderer {
         baseSeoTags.title = seo.title;
         baseSeoTags.description = seo.description;
         baseSeoTags.keywords = seo.keywords;
+        baseSeoTags.ogTitle = seo.title;
+        baseSeoTags.ogDescription = seo.description;
+        baseSeoTags.twitterTitle = seo.title;
+        baseSeoTags.twitterDescription = seo.description;
       } else if (additionalData.region) {
         const regionName = additionalData.region.replace(/-/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase());
         const seo = buildRegionSeo(regionName, language, translations);
         baseSeoTags.title = seo.title;
         baseSeoTags.description = seo.description;
         baseSeoTags.keywords = seo.keywords;
+        baseSeoTags.ogTitle = seo.title;
+        baseSeoTags.ogDescription = seo.description;
+        baseSeoTags.twitterTitle = seo.title;
+        baseSeoTags.twitterDescription = seo.description;
       }
     }
     
@@ -3016,10 +3024,10 @@ export class SeoRenderer {
           // Task #129: render every FAQ Q&A server-side as <h2>+<p> so
           // Googlebot sees the exact text referenced by the FAQPage JSON-LD
           // on first fetch (no schema/visible-content mismatch).
-          const faqBlocks = FAQ_PAGE_ITEMS.map((item) => `
+          const faqBlocks = resolveFaqPageItems(language, getLocalizedText).map((item) => `
               <section>
-                <h2>${this.escapeHtml(getLocalizedText(item.qKey, item.qFallback))}</h2>
-                <p>${this.escapeHtml(getLocalizedText(item.aKey, item.aFallback))}</p>
+                <h2>${this.escapeHtml(item.question)}</h2>
+                <p>${this.escapeHtml(item.answer)}</p>
               </section>`).join('');
           content = `
           <main>
@@ -3042,6 +3050,7 @@ export class SeoRenderer {
 
       case 'about':
       case 'contact':
+      case 'applications':
         content = renderStaticInformationBody(pageType, language, translations);
         break;
 
@@ -3222,12 +3231,12 @@ export class SeoRenderer {
       faqPageSchema = {
         "@context": "https://schema.org",
         "@type": "FAQPage",
-        "mainEntity": FAQ_PAGE_ITEMS.map((item) => ({
+        "mainEntity": resolveFaqPageItems(language, getLocalizedText).map((item) => ({
           "@type": "Question",
-          "name": getLocalizedText(item.qKey, item.qFallback),
+          "name": item.question,
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": getLocalizedText(item.aKey, item.aFallback),
+            "text": item.answer,
           },
         })),
       };
@@ -3650,12 +3659,7 @@ export class SeoRenderer {
     // word-boundary truncation. NOTE: this runs AFTER getH1Text() so
     // <h1> derivation (which uses the FULL untruncated title) is
     // unaffected — only the HTML emission is capped.
-    const MAX_TITLE_LEN = 70;
-    const ensureTitleLength = (raw: any, fallback: string): string => {
-      const trimmed = (raw && String(raw).trim()) ? String(raw).trim() : '';
-      if (!trimmed) return truncateAtWordBoundary(fallback, MAX_TITLE_LEN);
-      return truncateAtWordBoundary(trimmed, MAX_TITLE_LEN);
-    };
+    const ensureTitleLength = normalizeSeoTitle;
     const descriptions = this.normalizeDescriptionTags(seoTags);
     // CRITICAL: every dynamic value below MUST go through escapeHtml() before
     // being interpolated into the HTML head — station names, descriptions,

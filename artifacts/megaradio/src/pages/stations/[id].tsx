@@ -162,7 +162,8 @@ export default function StationDetails() {
   });
   
   const { user, isAuthenticated } = useAuth();
-  const { isPremium } = usePremiumStatus();
+  const { isPremium, isLoading: premiumLoading, error: premiumError } = usePremiumStatus();
+  const showAdvertisements = !isPremium && !premiumLoading && !premiumError;
   const { t, language, localeTranslations } = useTranslation();
   const controlLabels = useMemo(() => getStationControlLabels(language, localeTranslations), [language, localeTranslations]);
   const { toast } = useToast();
@@ -792,13 +793,14 @@ export default function StationDetails() {
                     when its module resolves (carousel218px, AdSense250px). */}
                 <div className="mt-4 text-center sm:mt-0 hidden md:block">
                   <div className="mt-6">
-                    {!isPremium && (advertisements && advertisements.some((ad: any) => ad.position === 'desktop_sidebar' && ad.isActive) ? (
+                    {showAdvertisements && (advertisements && advertisements.some((ad: any) => ad.position === 'desktop_sidebar' && ad.isActive) ? (
                       <Suspense fallback={<div className="bg-gray-800 rounded flex items-center justify-center text-gray-400 w-[218px] h-[218px] flex-none animate-pulse" />}>
                         <AdCarousel
                           ads={advertisements}
                           position="desktop_sidebar"
                           autoSwitchInterval={8000}
                           placeholderText={t('general_ad_space', 'Ad Space')}
+                          fallback={<AdSenseUnit adSlot="3609188113" adFormat="rectangle" className="min-h-[250px]" />}
                         />
                       </Suspense>
                     ) : (
@@ -1146,7 +1148,7 @@ export default function StationDetails() {
             )}
 
             {/* Middle Section Ad — hidden for premium users */}
-            {!isPremium && (
+            {showAdvertisements && (
               <div className="py-6">
                 {advertisements && advertisements.some((ad: any) => ad.position === 'middle_section' && ad.isActive) ? (
                   <Suspense fallback={null}>
@@ -1154,6 +1156,7 @@ export default function StationDetails() {
                       ads={advertisements}
                       position="middle_section"
                       autoSwitchInterval={8000}
+                      fallback={<AdSenseUnit adSlot="3609188113" adFormat="horizontal" className="max-w-[1206px] mx-auto min-h-[90px]" />}
                     />
                   </Suspense>
                 ) : (
@@ -1165,7 +1168,7 @@ export default function StationDetails() {
             )}
 
             {/* Mobile Bottom Ad — hidden for premium users */}
-            {!isPremium && (
+            {showAdvertisements && (
               <div className="md:hidden py-4">
                 {advertisements && advertisements.some((ad: any) => ad.position === 'mobile_bottom' && ad.isActive) ? (
                   <Suspense fallback={null}>
@@ -1173,6 +1176,7 @@ export default function StationDetails() {
                       ads={advertisements}
                       position="mobile_bottom"
                       autoSwitchInterval={8000}
+                      fallback={<AdSenseUnit adSlot="3609188113" adFormat="auto" className="min-h-[100px]" />}
                     />
                   </Suspense>
                 ) : (

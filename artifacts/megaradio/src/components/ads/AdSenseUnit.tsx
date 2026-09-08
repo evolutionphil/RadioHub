@@ -1,99 +1,79 @@
-import { useEffect, useRef } from "react";
-import { usePremiumStatus } from "@/hooks/usePremiumStatus";
+import { useEffect, useRef, useState } from 'react';
+import { usePremiumStatus } from '@/hooks/usePremiumStatus';
+import { ADSENSE_CLIENT, ensureAdSenseScript, isAdSensePage } from '@/lib/adsense-runtime';
 
 interface AdSenseUnitProps {
   adSlot?: string;
-  adFormat?: "auto" | "fluid" | "rectangle" | "vertical" | "horizontal";
+  adFormat?: 'auto' | 'fluid' | 'rectangle' | 'vertical' | 'horizontal';
   fullWidthResponsive?: boolean;
   className?: string;
 }
 
-declare global {
-  interface Window {
-    adsbygoogle: unknown[];
-  }
+declare global { interface Window { adsbygoogle: unknown[] } }
+
+export default function AdSenseUnit(props: AdSenseUnitProps) {
+  // Google owns a filled <ins>. A new slot/format needs a fresh element.
+  return <AdSensePlacement key={JSON.stringify([props.adSlot, props.adFormat, props.fullWidthResponsive])} {...props} />;
 }
 
-export default function AdSenseUnit({
-  adSlot = "3609188113",
-  adFormat = "auto",
-  fullWidthResponsive = true,
-  className = "",
-}: AdSenseUnitProps) {
-  const { isPremium } = usePremiumStatus();
+function AdSensePlacement({ adSlot = '3609188113', adFormat = 'auto', fullWidthResponsive = true, className = '' }: AdSenseUnitProps) {
+  const { isPremium, isLoading, error } = usePremiumStatus();
+  const allowed = !isPremium && !isLoading && !error && isAdSensePage(window.location.pathname);
   const containerRef = useRef<HTMLDivElement>(null);
-  const pushedRef = useRef(false);
+  const pushedRef = useRef<HTMLElement | null>(null);
+  const [sdkReady, setSdkReady] = useState(false);
+  const [visible, setVisible] = useState(false);
+  const [exposed, setExposed] = useState(false);
 
   useEffect(() => {
-    pushedRef.current = false;
-    if (isPremium || typeof window === "undefined" || !containerRef.current) return;
+    if (!allowed) return;
+    let active = true;
+    const load = () => { void ensureAdSenseScript().then(ready => { if (active) setSdkReady(ready); }); };
+    // Yield noncritical advertising to startup for every visitor, with a
+    // bounded delay. Auto ads also load before the footer enters the viewport.
+    const idle = window.requestIdleCallback?.(load, { timeout: 2000 });
+    const timer = idle === undefined ? setTimeout(load, 500) : undefined;
+    return () => { active = false; if (idle !== undefined) window.cancelIdleCallback?.(idle); clearTimeout(timer); };
+  }, [allowed]);
 
+  useEffect(() => {
     const container = containerRef.current;
-    let cancelled = false;
-    let retryTimer: ReturnType<typeof setTimeout>;
-    let retryCount = 0;
-
-    const doPush = () => {
-      if (cancelled || pushedRef.current) return;
-      const ins = container.querySelector("ins.adsbygoogle");
-      if (!ins) return;
-      if (ins.hasAttribute("data-adsbygoogle-status")) {
-        pushedRef.current = true;
-        return;
-      }
-      try {
-        (window.adsbygoogle = window.adsbygoogle || []).push({});
-        pushedRef.current = true;
-      } catch (_e) {
-        // AdSense not ready yet
-      }
+    if (!allowed || !container) { setVisible(false); setExposed(false); return; }
+    let inView = !('IntersectionObserver' in window);
+    const check = () => {
+      const visible = inView && container.getBoundingClientRect().width > 0;
+      setVisible(visible);
+      if (visible) setExposed(true);
     };
+    const observer = typeof IntersectionObserver === 'undefined' ? undefined : new IntersectionObserver(entries => {
+      inView = !!entries[0]?.isIntersecting;
+      check();
+    }, { rootMargin: '300px' });
+    const resize = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(check);
+    observer?.observe(container);
+    resize?.observe(container);
+    window.addEventListener('resize', check);
+    check();
+    return () => { observer?.disconnect(); resize?.disconnect(); window.removeEventListener('resize', check); };
+  }, [allowed]);
 
-    const tryWithRetry = () => {
-      if (cancelled || pushedRef.current) return;
-      const ins = container.querySelector("ins.adsbygoogle");
-      if (ins?.hasAttribute("data-adsbygoogle-status")) {
-        pushedRef.current = true;
-        return;
-      }
-      doPush();
-      if (!pushedRef.current && retryCount < 20) {
-        retryCount++;
-        retryTimer = setTimeout(tryWithRetry, 500);
-      }
-    };
+  useEffect(() => {
+    if (!allowed || !visible || !sdkReady) return;
+    const ins = containerRef.current?.querySelector<HTMLElement>('ins.adsbygoogle');
+    if (!ins || pushedRef.current === ins || ins.hasAttribute('data-adsbygoogle-status') || ins.getBoundingClientRect().width <= 0) return;
+    try {
+      (window.adsbygoogle = window.adsbygoogle || []).push({});
+      pushedRef.current = ins;
+    } catch { /* Blocked/no-fill ads must not crash the radio page. */ }
+  }, [allowed, visible, sdkReady]);
 
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0]?.isIntersecting) {
-          setTimeout(tryWithRetry, 200);
-          observer.disconnect();
-        }
-      },
-      { rootMargin: "300px" },
-    );
-
-    observer.observe(container);
-
-    return () => {
-      cancelled = true;
-      observer.disconnect();
-      clearTimeout(retryTimer);
-    };
-  }, [adSlot, isPremium]);
-
-  if (isPremium) return null;
-
+  if (isPremium || !isAdSensePage(window.location.pathname)) return null;
   return (
-    <div ref={containerRef} className={`adsense-container ${className}`}>
-      <ins
-        className="adsbygoogle"
-        style={{ display: "block", minHeight: "90px" }}
-        data-ad-client="ca-pub-8771434485570434"
-        data-ad-slot={adSlot}
-        data-ad-format={adFormat}
-        data-full-width-responsive={fullWidthResponsive.toString()}
-      />
+    <div ref={containerRef} className={`adsense-container ${className}`} style={{ minHeight: '90px' }}>
+      {/* Keep an initialized element on scroll; never manufacture ad refreshes. */}
+      {allowed && exposed && <ins className="adsbygoogle" style={{ display: 'block', minHeight: '90px' }}
+        data-ad-client={ADSENSE_CLIENT} data-ad-slot={adSlot} data-ad-format={adFormat}
+        data-full-width-responsive={fullWidthResponsive.toString()} />}
     </div>
   );
 }

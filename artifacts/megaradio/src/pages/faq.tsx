@@ -4,7 +4,7 @@ import { Link } from "wouter";
 import { useTranslation } from "@/hooks/useTranslation";
 import { useSeoRouting } from "@/hooks/useSeoRouting";
 import { SeoHead } from "@/components/SeoHead";
-import { FAQ_PAGE_ITEMS, type FAQTranslatedItem } from "@workspace/seo-shared/faq-schema";
+import { resolveFaqPageItems } from "@workspace/seo-shared/faq-schema";
 
 interface FaqItem {
   q: string;
@@ -13,8 +13,7 @@ interface FaqItem {
 
 export default function FaqPage() {
   const { t } = useTranslation();
-  const { currentLanguage } = useSeoRouting();
-  const langPrefix = currentLanguage === "en" ? "" : `/${currentLanguage}`;
+  const { currentLanguage, getLocalizedUrl } = useSeoRouting();
   const [openIndex, setOpenIndex] = useState<number | null>(0);
 
   const h1 = t("faq_page_h1", "Mega Radio Frequently Asked Questions");
@@ -23,9 +22,9 @@ export default function FaqPage() {
     "Answers to common questions about Mega Radio: how online radio streaming works, supported devices, free access, mobile apps, station coverage across 120+ countries, and account help."
   );
 
-  const items: FaqItem[] = FAQ_PAGE_ITEMS.map((item: FAQTranslatedItem) => ({
-    q: t(item.qKey, item.qFallback),
-    a: t(item.aKey, item.aFallback),
+  const items: FaqItem[] = resolveFaqPageItems(currentLanguage, t).map(item => ({
+    q: item.question,
+    a: item.answer,
   }));
 
   return (
@@ -85,21 +84,21 @@ export default function FaqPage() {
           </p>
           <div className="flex flex-wrap gap-3">
             <Link
-              href={`${langPrefix}/contact`}
+              href={getLocalizedUrl('/contact')}
               className="px-4 py-2 bg-[#FF4199] rounded-lg font-medium hover:opacity-90 transition-opacity"
               data-testid="link-contact"
             >
               {t("nav_contact", "Contact Us")}
             </Link>
             <Link
-              href={`${langPrefix}/about`}
+              href={getLocalizedUrl('/about')}
               className="px-4 py-2 bg-white/10 rounded-lg font-medium hover:bg-white/20 transition-colors"
               data-testid="link-about"
             >
               {t("nav_about", "About Mega Radio")}
             </Link>
             <Link
-              href={`${langPrefix}/search`}
+              href={getLocalizedUrl('/search')}
               className="px-4 py-2 bg-white/10 rounded-lg font-medium hover:bg-white/20 transition-colors"
               data-testid="link-search"
             >

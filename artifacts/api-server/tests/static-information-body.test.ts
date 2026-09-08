@@ -16,6 +16,21 @@ const source = (page: string) => readFileSync(new URL(`../../megaradio/src/pages
 const keys = (page: string) => [...new Set([...source(page).matchAll(/\bt\(['"]([^'"]+)/g)].map(m => m[1]))];
 
 for (const language of locales) {
+  test(`${language} Applications SSR retains every existing localized content section`, () => {
+    const applicationKeys = ['applications_page_title', 'applications_description',
+      'applications_tv_title', 'applications_tv_description', 'applications_mobile_title',
+      'applications_mobile_description', 'applications_desktop_title', 'applications_desktop_description'];
+    const translations = Object.fromEntries(applicationKeys.map(key => [key, `${language}:${key}`]));
+    const body = renderer.generateHtmlBody({ pageType: 'applications', language, translations });
+    for (const key of applicationKeys) assert.ok(body.includes(`${language}:${key}`), key);
+    assert.equal((body.match(/<h1\b/g) || []).length, 1);
+    assert.equal((body.match(/<h2\b/g) || []).length, 3);
+    assert.equal((body.match(/<p\b/g) || []).length, 4);
+    assert.doesNotMatch(body, /href="#"|SoftwareApplication|aggregateRating/);
+    const empty = renderStaticInformationBody('applications', language, {});
+    assert.ok(empty.includes(buildStaticPageSeo('applications', language).description));
+    assert.doesNotMatch(empty, /applications_|<h2/);
+  });
   test(`${language} home missing intro key uses localized copy and canonical navigation segments`, () => {
     const translations = { nav_for_you: 'LOCAL_FOR_YOU', nav_users: 'LOCAL_USERS' };
     const body = renderer.generateHtmlBody({ pageType: 'home', language, translations,
@@ -64,4 +79,10 @@ test('database values are escaped and missing dictionaries use localized safe co
   const empty = renderStaticInformationBody('contact','tr',{});
   assert.ok(empty.includes(buildStaticPageSeo('contact','tr').description));
   assert.doesNotMatch(empty, /<form|<h2|contact_/);
+  const applications = renderStaticInformationBody('applications', 'de', {
+    applications_page_title: malicious, applications_description: malicious,
+    applications_tv_title: malicious, applications_tv_description: malicious,
+  });
+  assert.ok(applications.includes('&lt;script&gt;'));
+  assert.doesNotMatch(applications, /<script>/);
 });

@@ -26,6 +26,7 @@ import { pgDiscoverableGenres } from "../data/postgres-taxonomy-store";
 import { pgFindApiKeyByHash } from "../data/postgres-api-access-store";
 import { logger } from "../utils/logger";
 import crypto from "crypto";
+import { registerAdvertisementUploadRoute } from './advertisement-upload';
 import {
   PRODUCT_TO_PLAN as IAP_PRODUCT_TO_PLAN,
   PLAN_FEATURES as IAP_PLAN_FEATURES,
@@ -67,55 +68,13 @@ export function registerMiscRoutes(
 ) {
   const { requireAdmin, requireAuth } = deps;
   // ADMIN ADVERTISEMENT MANAGEMENT API
-  const setupMulter = async () => {
-    const multer = (await import("multer")).default;
-    const path = (await import("path")).default;
-    const fs = (await import("fs")).promises;
-    const { nanoid } = await import("nanoid");
-    const uploadsDir = path.resolve(process.cwd(), "public", "uploads");
-    try {
-      await fs.mkdir(uploadsDir, { recursive: true });
-    } catch (err) {}
-    const express = await import("express");
-    app.use("/uploads", express.default.static(uploadsDir));
-    const storage = multer.diskStorage({
-      destination: uploadsDir,
-      filename: (req, file, cb) => {
-        const ext = path.extname(file.originalname);
-        cb(null, `ad-${nanoid(10)}${ext}`);
-      },
-    });
-    return multer({
-      storage,
-      limits: { fileSize: 5 * 1024 * 1024 },
-      fileFilter: (req, file, cb) => {
-        const allowed = /jpeg|jpg|png|webp|gif/;
-        const ext = allowed.test(path.extname(file.originalname).toLowerCase());
-        const mime = allowed.test(file.mimetype);
-        if (ext && mime) cb(null, true);
-        else cb(new Error("Only images are allowed"));
-      },
-    });
-  };
-  setupMulter().then((upload) => {
-    app.post(
-      "/api/admin/advertisements/upload",
-      requireAdmin,
-      upload.single("image"),
-      (req, res) => {
-        if (!req.file)
-          return void res.status(400).json({ error: "No file uploaded" });
-        const imageUrl = `/uploads/${req.file.filename}`;
-        res.json({ imageUrl });
-      },
-    );
-  });
+  registerAdvertisementUploadRoute(app, requireAdmin);
   // PUBLIC: only active ads, projection-limited (no admin-only fields).
   // Cached at the CDN edge for 5 minutes to keep the API server cool.
   app.get("/api/advertisements", async (_req, res) => {
     try {
       const ads = (await pgListAdvertisements(true)).map(
-        ({ _id, title, imageUrl, altText, seoDescription, url, position }) => ({
+        ({ _id, title, imageUrl, altText, seoDescription, url, position, isActive }) => ({
           _id,
           title,
           imageUrl,
@@ -123,6 +82,7 @@ export function registerMiscRoutes(
           seoDescription,
           url,
           position,
+          isActive,
         }),
       );
       res.set("Cache-Control", "public, max-age=300, s-maxage=300");

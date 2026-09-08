@@ -3,7 +3,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { act, cleanup, render, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useSeoRouting } from '../src/hooks/useSeoRouting';
-import { useTranslation } from '../src/hooks/useTranslation';
+import { TranslationProvider, useTranslation } from '../src/hooks/useTranslation';
 import { prefetchNavigationTranslations } from '../src/lib/translation-navigation-prefetch';
 import { setDatabaseUrlTranslations } from '@workspace/seo-shared/url-translations';
 
@@ -19,7 +19,7 @@ function RoutingConsumer({ index }: { index: number }) {
 function TranslationConsumer() { const { t } = useTranslation(); return <p>{t('hello')}</p>; }
 function mount(count = 100, translated = false) {
   return render(<QueryClientProvider client={client}>
-    {translated && <TranslationConsumer />}
+    {translated && <TranslationProvider><TranslationConsumer /></TranslationProvider>}
     {Array.from({ length: count }, (_, index) => <RoutingConsumer index={index} key={index} />)}
   </QueryClientProvider>);
 }

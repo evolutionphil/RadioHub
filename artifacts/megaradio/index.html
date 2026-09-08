@@ -227,30 +227,11 @@
     }
     </script>
 
-    <!-- 🚀 PERF: Defer Google AdSense + Cast SDK to requestIdleCallback so
-         Lighthouse / PageSpeed Insights can reach "network idle" within its
-         60s budget. Without this defer, PSI was returning DEADLINE_EXCEEDED
-         for themegaradio.com because Adsense + Cast SDK keep opening new
-         requests for >60s after page load, preventing the audit from
-         finishing. Both scripts still load on real browsers — just after
-         FCP/LCP/TTI are measured. -->
+    <!-- Cast yields to initial rendering. AdSense is initialized once by the
+         shared placement runtime after authentication/premium status resolves. -->
     <script>
       (function () {
         function loadDeferredScripts() {
-          // Skip AdSense entirely for premium users (flag set at checkout.completed).
-          var isPremium = false;
-          try { isPremium = localStorage.getItem('_mrt_is_premium') === '1'; } catch {}
-          // ADMIN GATE (2026-07-04): never load AdSense on /admin — auto-ads
-          // vignettes were interrupting the dashboard.
-          var isAdminPage = window.location.pathname.indexOf('/admin') === 0;
-          if (!isPremium && !isAdminPage) {
-            var ads = document.createElement('script');
-            ads.async = true;
-            ads.crossOrigin = 'anonymous';
-            ads.src = 'https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-8771434485570434';
-            document.head.appendChild(ads);
-          }
-
           var cast = document.createElement('script');
           cast.async = true;
           cast.src = 'https://www.gstatic.com/cv/js/sender/v1/cast_sender.js?loadCastFramework=1';

@@ -327,6 +327,9 @@ const FAQ_EMITTING_PAGE_TYPES: FaqEmittingPage[] = [
     },
   },
 ];
+for (const language of ['de', 'es', 'fr', 'pt', 'it', 'ru', 'ar', 'zh', 'ja', 'ko', 'hi', 'he']) {
+  FAQ_EMITTING_PAGE_TYPES.push({ pageType: 'faq', cleanPath: '/faq', language });
+}
 
 for (const surface of FAQ_EMITTING_PAGE_TYPES) {
   const label = `pageType="${surface.pageType}" lang=${surface.language ?? 'en'}`;

@@ -1,14 +1,17 @@
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, render, waitFor } from '@testing-library/react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider as BaseQueryClientProvider } from '@tanstack/react-query';
 import { getBrowserLanguage, saveBrowserLanguage, syncBrowserLanguageFromUrl } from '../src/lib/browser-language';
-import { useTranslation } from '../src/hooks/useTranslation';
+import { TranslationProvider, useTranslation } from '../src/hooks/useTranslation';
 import { useSeoRouting } from '../src/hooks/useSeoRouting';
 
 let client: QueryClient;
 let translation: ReturnType<typeof useTranslation>;
 let routing: ReturnType<typeof useSeoRouting>;
+function QueryClientProvider({ children, ...props }: React.ComponentProps<typeof BaseQueryClientProvider>) {
+  return <BaseQueryClientProvider {...props}><TranslationProvider>{children}</TranslationProvider></BaseQueryClientProvider>;
+}
 const deviceLanguages = (languages: string[]) => {
   vi.spyOn(navigator, 'languages', 'get').mockReturnValue(languages);
   vi.spyOn(navigator, 'language', 'get').mockReturnValue(languages[0] || 'zz-ZZ');

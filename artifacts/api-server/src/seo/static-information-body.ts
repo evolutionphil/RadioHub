@@ -2,13 +2,30 @@ import { buildStaticPageSeo } from '@workspace/seo-shared/static-page-seo-templa
 
 const escapeHtml = (value: string) => value.replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]!);
 
-/** Mirror the existing public About/Contact copy before client boot. No new
+/** Mirror the existing public About/Contact/Applications copy before client boot. No new
  * claims, operator details or network reads; values come from the same locale
  * dictionary used by React. Missing body copy is omitted, never a raw key. */
-export function renderStaticInformationBody(pageType: 'about' | 'contact', language: string, translations: Record<string, string>): string {
+export function renderStaticInformationBody(pageType: 'about' | 'contact' | 'applications', language: string, translations: Record<string, string>): string {
   const seo = buildStaticPageSeo(pageType, language, translations);
   const text = (key: string, fallback = '') => escapeHtml(translations[key]?.trim() || fallback);
   const p = (key: string, cls = 'text-lg leading-relaxed') => translations[key]?.trim() ? `<p class="${cls}">${text(key)}</p>` : '';
+  if (pageType === 'applications') {
+    // Same public copy as applications.tsx. Download actions stay with React,
+    // which resolves the operator's current store URLs; never emit placeholder
+    // href="#" links or invent availability for a platform without a URL.
+    const sections = ['tv', 'mobile', 'desktop'].filter(platform =>
+      translations[`applications_${platform}_description`]?.trim(),
+    ).map(platform => `<section class="flex flex-col justify-between items-center px-5 md:px-0 py-10 gap-5 md:gap-8 bg-[#1B1B1B]">
+      ${translations[`applications_${platform}_title`]?.trim() ? `<h2 class="text-2xl font-bold text-center">${text(`applications_${platform}_title`)}</h2>` : ''}
+      ${p(`applications_${platform}_description`, 'max-w-xl text-center md:leading-loose')}
+    </section>`).join('');
+    return `<main class="text-white flex flex-col">
+      <div class="py-7 md:py-12 bg-gradient-to-bl from-[#FF55A4] from-0% to-[#BD52FF] to-100%"><div class="container flex justify-center items-center flex-col gap-3">
+        <h1 class="md:text-2xl font-bold">${text('applications_page_title', seo.title)}</h1>
+        <p class="max-w-xl text-sm md:text-base text-center md:leading-loose">${text('applications_description', seo.description)}</p>
+      </div></div>${sections}
+    </main>`;
+  }
   if (!translations[pageType === 'about' ? 'about_intro_paragraph_1' : 'contact_happy_to_hear']?.trim()) {
     return `<main><h1>${escapeHtml(seo.title)}</h1><p>${escapeHtml(seo.description)}</p></main>`;
   }

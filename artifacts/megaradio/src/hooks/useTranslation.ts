@@ -1,5 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { createContext, createElement, useContext, useState, useEffect, useCallback, useMemo, type ReactNode } from "react";
+import { useLocation } from 'wouter';
 import { getExplicitLanguageFromPath, getSupportedLanguage } from "@workspace/seo-shared/language-preference";
 import { CRITICAL_TRANSLATION_KEYS } from "@workspace/seo-shared/critical-translation-keys";
 import { getBrowserLanguage, saveBrowserLanguage, syncBrowserLanguageFromUrl } from '@/lib/browser-language';
@@ -32,7 +33,24 @@ interface TranslationKey {
   isPlural: boolean;
 }
 
+const TranslationContext = createContext<ReturnType<typeof useTranslationRuntime> | undefined>(undefined);
+
+/** Own the shared dictionary queries once, not once per label/card. */
+export function TranslationProvider({ children }: { children: ReactNode }) {
+  const value = useTranslationRuntime();
+  return createElement(TranslationContext.Provider, { value }, children);
+}
+
 export function useTranslation() {
+  const value = useContext(TranslationContext);
+  if (!value) throw new Error('useTranslation must be used within TranslationProvider');
+  return value;
+}
+
+function useTranslationRuntime() {
+  // The provider must observe navigation itself; child renders no longer drive
+  // a separate URL/preference effect for every translation consumer.
+  const [pathname] = useLocation();
   // URL language wins even over stale SSR bootstrap data. Only `/` consults
   // saved preferences and the device language; IP country never selects UI text.
   const [language, setLanguageState] = useState(() =>
@@ -45,7 +63,7 @@ export function useTranslation() {
     const nextLanguage = getBrowserLanguage();
     if (nextLanguage !== language) setLanguageState(nextLanguage);
     if (getExplicitLanguageFromPath(window.location.pathname)) syncBrowserLanguageFromUrl(nextLanguage);
-  }, [language, window.location.pathname]);
+  }, [language, pathname]);
 
   const hasPreloadedTranslations = typeof window !== 'undefined' && 
     window.__INITIAL_TRANSLATIONS__ && 
@@ -86,9 +104,9 @@ export function useTranslation() {
   const isLoading = !hasPreloadedTranslations && !criticalTranslations;
 
   // Refetch function for compatibility
-  const refetch = () => {
+  const refetch = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ["/api/translations", language] });
-  };
+  }, [queryClient, language]);
   
 
   // Translation loading state tracking
@@ -472,7 +490,7 @@ export function useTranslation() {
     // Language changed, translations will be refetched automatically
   }, [language, translations]);
 
-  return {
+  return useMemo(() => ({
     t,
     // Current-locale data only; explicit localized fallbacks must not inherit
     // the global translator's English fallback dictionary.
@@ -483,5 +501,5 @@ export function useTranslation() {
     refetch,
     translationCount: translations?.length || 0,
     availableLanguages: ['en', 'de', 'es', 'fr', 'tr', 'ar'] // Available languages with translations
-  };
+  }), [t, translations, language, setLanguage, isLoading, refetch]);
 }

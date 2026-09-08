@@ -123,4 +123,29 @@ describe('Native PostgreSQL admin catalog HTTP contracts',{ skip:!connectionStri
     const saved=await catalog.findById(ids[0]);assert.equal(saved?.descriptions.tr.full,'Manual Turkish text must survive this translation job.');
     assert.equal(Object.keys(saved?.descriptions).length,14);
   });
+  it('treats admin search, language and genre input as literal case-insensitive text',async()=>{
+    const values=['Mark[One','Mark(Two','Mark\\Three','Mark.*Four','Mark+Five','Mark%Six','Mark_Seven'];
+    const literalIds=values.map((_value,index)=>(100+index).toString(16).padStart(24,'0'));
+    const normalId='f'.repeat(24);
+    await catalog.insertMany([
+      ...values.map((value,index)=>({_id:literalIds[index],stationuuid:`literal-admin-${index}`,name:`Literal ${value}`,
+        country:'Germany',countryCode:'DE',url:`https://example.invalid/literal-${index}`,language:value,tags:value})),
+      {_id:normalId,stationuuid:'literal-admin-normal',name:'Ordinary Station',country:'Germany',countryCode:'DE',
+        url:'https://example.invalid/ordinary',language:'Deutsch',tags:'Alternative Rock'},
+    ]);
+    for(const filter of ['search','language','genre']){
+      for(const [index,value] of values.entries()){
+        const response=await request('/api/admin/stations?'+new URLSearchParams({[filter]:value,country:'DE'}));
+        assert.equal(response.status,200,`${filter}: ${value}`);
+        const body:any=await response.json();
+        assert.equal(body.total,1);assert.deepEqual(body.stations.map((s:any)=>s._id),[literalIds[index]]);
+      }
+    }
+    for(const [filter,value] of [['search','ordinary'],['language','deutsch'],['genre','alternative rock']]){
+      const response=await request('/api/admin/stations?'+new URLSearchParams({[filter]:value}));
+      assert.equal(response.status,200);const body:any=await response.json();
+      assert.deepEqual(body.stations.map((s:any)=>s._id),[normalId]);
+    }
+    assert.equal((await request('/api/admin/stations?search=%5B','GET',undefined,null)).status,401);
+  });
 });

@@ -20,6 +20,24 @@ export function truncateAtWordBoundary(text: string, maxLen: number = 145): stri
   return slice.substring(0, cutAt).replace(/[\s,;:.—–\-]+$/, '');
 }
 
+/** Shared presentation limit for HTML, SPA and social cards. Keep stored/admin
+ * titles and H1 source text untouched; retain a complete existing brand suffix. */
+export function normalizeSeoTitle(raw: unknown, fallback = 'Mega Radio: Free Live Radio from 120+ Countries'): string {
+  const title = String(raw || '').trim() || fallback;
+  if (title.length <= 70) return title;
+  const brand = title.match(/\s+\|\s+Mega Radio$/i)?.[0];
+  if (brand) return `${truncateAtWordBoundary(title.slice(0, -brand.length), 70 - brand.length)}${brand}`;
+  return truncateAtWordBoundary(title, 70);
+}
+
+export function normalizeSeoTitleTags<T extends { title?: string; ogTitle?: string; twitterTitle?: string }>(tags: T): T {
+  const result = { ...tags };
+  for (const key of ['title', 'ogTitle', 'twitterTitle'] as const) {
+    if (key in tags) result[key] = normalizeSeoTitle(tags[key], normalizeSeoTitle(tags.title));
+  }
+  return result;
+}
+
 export interface SeoLanguage {
   code: string;
   name: string;

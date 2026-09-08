@@ -45,9 +45,15 @@ function fromPostgres(row: Record<string, any> | undefined): any | null {
 
 async function postgresStation(identifier: string): Promise<any | null> {
   const result = await getPostgresPool().query(
-    `SELECT * FROM stations
-     WHERE slug=$1 OR id=$1 OR $1=ANY(slug_aliases)
-     ORDER BY CASE WHEN slug=$1 THEN 0 WHEN id=$1 THEN 1 ELSE 2 END LIMIT 1`,
+    // OR-ing the unindexed alias array with slug/id makes every direct hit
+    // scan the complete catalog. Retain precedence in one snapshot, but only
+    // evaluate the legacy fallback when the indexed direct lookup is empty.
+    `WITH direct AS MATERIALIZED (
+       SELECT * FROM stations WHERE slug=$1 OR id=$1
+       ORDER BY CASE WHEN slug=$1 THEN 0 ELSE 1 END LIMIT 1
+     ) SELECT * FROM direct
+     UNION ALL (SELECT * FROM stations
+       WHERE NOT EXISTS (SELECT 1 FROM direct) AND $1=ANY(slug_aliases) LIMIT 1)`,
     [identifier],
   );
   return fromPostgres(result.rows[0]);
@@ -250,10 +256,15 @@ export async function listStationsFromPostgres(options: PostgresStationListOptio
   const order = searchOrder + numericNamesLast + `(btrim(COALESCE(favicon,'')) ~* '^(https?://.+|data:image/.+)') DESC,${sortMap[options.sort || 'votes'] || sortMap.votes},id ASC`;
   const page = boundedInteger(options.page, 1, 1_000_000);
   const limit = boundedInteger(options.limit, 25, 500);
+  // Select the bounded ID page before loading wide station/source columns.
+  // This permits a narrow top-N sort instead of sorting full catalog rows
+  // for the window. Reapply the identical order only to the selected page.
   // One statement gives count and page the same MVCC snapshot, including empty pages.
   const result = await getPostgresPool().query(
-    `WITH ${genreCandidates} selected AS (SELECT ${options.compact ? CARD_SELECTION : '*'},row_number() OVER (ORDER BY ${order}) AS _position
-       FROM stations ${where} ORDER BY ${order} LIMIT ${bind(limit)} OFFSET ${bind((page-1)*limit)})
+    `WITH ${genreCandidates} page_ids AS MATERIALIZED (SELECT id FROM stations ${where}
+       ORDER BY ${order} LIMIT ${bind(limit)} OFFSET ${bind((page-1)*limit)}),
+     selected AS (SELECT ${options.compact ? CARD_SELECTION : '*'},row_number() OVER (ORDER BY ${order}) AS _position
+       FROM stations WHERE id IN (SELECT id FROM page_ids))
      SELECT selected.*,(SELECT count(*)::integer FROM stations ${where}) AS _total
      FROM (SELECT 1) anchor LEFT JOIN selected ON true ORDER BY selected._position`, values,
   );

@@ -3,9 +3,26 @@ import { AppStoreDownloadLink } from "@/components/links/AppStoreDownloadLink";
 import { PlaystoreDownloadLink } from "@/components/links/PlaystoreDownloadLink";
 import { useTranslation } from "@/hooks/useTranslation";
 import { SeoHead } from "@/components/SeoHead";
+import { useQuery } from '@tanstack/react-query';
+import { resolveApiUrl } from '@/lib/queryClient';
+import { applicationDownloadCopy, applicationStoreUrl } from '@/lib/application-downloads';
 
 export function Applications() {
-  const { t } = useTranslation();
+  const { t, language } = useTranslation();
+  const { data: manifest } = useQuery({
+    queryKey: ['/api/tv/version'],
+    queryFn: async ({ signal }) => {
+      const response = await fetch(resolveApiUrl('/api/tv/version'), { signal, credentials: 'omit' });
+      if (!response.ok) throw new Error('App download configuration unavailable');
+      return response.json();
+    },
+    staleTime: 5 * 60_000,
+    retry: 1,
+  });
+  const copy = applicationDownloadCopy(language);
+  const unavailableLabel = t('application_download_unavailable', copy.unavailable);
+  const appleProps = { unavailableLabel, downloadLabel: t('application_download_on', copy.appStore) };
+  const playProps = { unavailableLabel, downloadLabel: t('application_get_it_on', copy.playStore) };
   return (
     <div className="text-white flex flex-col">
       <SeoHead pageType="applications" />
@@ -35,8 +52,8 @@ export function Applications() {
           {t('applications_tv_description') || 'Experience Mega Radio on your smart TV with our dedicated app. Enjoy your favorite stations on the big screen.'}
         </p>
         <div className="flex gap-x-5">
-          <AppStoreDownloadLink className="bg-black rounded-[10px]" />
-          <PlaystoreDownloadLink className="bg-black rounded-[10px]" />
+          <AppStoreDownloadLink className="bg-black rounded-[10px]" link={applicationStoreUrl(manifest, 'tvos')} {...appleProps} />
+          <PlaystoreDownloadLink className="bg-black rounded-[10px]" link={applicationStoreUrl(manifest, 'androidtv')} {...playProps} />
         </div>
       </div>
       
@@ -67,8 +84,8 @@ export function Applications() {
           {t('applications_mobile_description') || 'Take Mega Radio with you everywhere. Download our mobile app for Android and iOS devices.'}
         </p>
         <div className="flex gap-x-5">
-          <AppStoreDownloadLink className="bg-black rounded-[10px]" />
-          <PlaystoreDownloadLink className="bg-black rounded-[10px]" />
+          <AppStoreDownloadLink className="bg-black rounded-[10px]" link={applicationStoreUrl(manifest, 'ios')} {...appleProps} />
+          <PlaystoreDownloadLink className="bg-black rounded-[10px]" link={applicationStoreUrl(manifest, 'android')} {...playProps} />
         </div>
       </div>
       
@@ -90,8 +107,8 @@ export function Applications() {
           {t('applications_desktop_description') || 'Get the full Mega Radio experience on your computer with our desktop application for Windows, Mac, and Linux.'}
         </p>
         <div className="flex gap-x-5">
-          <AppStoreDownloadLink className="bg-black rounded-[10px]" />
-          <PlaystoreDownloadLink className="bg-black rounded-[10px]" />
+          <AppStoreDownloadLink className="bg-black rounded-[10px]" link={applicationStoreUrl(manifest, 'macos')} {...appleProps} />
+          <PlaystoreDownloadLink className="bg-black rounded-[10px]" {...playProps} />
         </div>
       </div>
     </div>

@@ -2,7 +2,7 @@ import { useContext, useEffect } from 'react';
 import { useLocation, useSearch } from 'wouter';
 import { preserveInitialSsrHead, ServerSeoHeadContext } from '@/utils/ssr-seo-head';
 import { useTranslation } from '@/hooks/useTranslation';
-import { generateSeoTags, getLanguageFromPath, truncateAtWordBoundary } from '@workspace/seo-shared/seo-config';
+import { generateSeoTags, getLanguageFromPath, truncateAtWordBoundary, normalizeSeoTitle } from '@workspace/seo-shared/seo-config';
 // PageSpeed 2026-07-03: the four per-language template registries below
 // (genre/search/legal/static) are ~127 KB raw / ~40 KB gz of pure data that
 // used to load statically with this component — putting them in the HOME
@@ -162,7 +162,7 @@ export function SeoHead({ stationData, pageType = 'home', genreName }: SeoHeadPr
 
     // Update title
     if (seoTags.title) {
-      document.title = seoTags.title;
+      document.title = normalizeSeoTitle(seoTags.title);
     }
 
     // Cap the meta description at <=160 chars (Google truncates ~155-160; Ahrefs
@@ -178,7 +178,7 @@ export function SeoHead({ stationData, pageType = 'home', genreName }: SeoHeadPr
     updateLinkTag('canonical', seoTags.canonical);
 
     // Update Open Graph tags
-    updateMetaProperty('og:title', seoTags.ogTitle || seoTags.title);
+    updateMetaProperty('og:title', normalizeSeoTitle(seoTags.ogTitle || seoTags.title));
     updateMetaProperty('og:description', truncateAtWordBoundary(seoTags.ogDescription || seoTags.description || '', 160));
     updateMetaProperty('og:type', 'website');
     updateMetaProperty('og:url', seoTags.canonical);
@@ -188,7 +188,7 @@ export function SeoHead({ stationData, pageType = 'home', genreName }: SeoHeadPr
 
     // Update Twitter tags
     updateMetaTag('twitter:card', 'summary_large_image');
-    updateMetaTag('twitter:title', seoTags.twitterTitle || seoTags.title);
+    updateMetaTag('twitter:title', normalizeSeoTitle(seoTags.twitterTitle || seoTags.title));
     updateMetaTag('twitter:description', truncateAtWordBoundary(seoTags.twitterDescription || seoTags.description || '', 160));
 
     // NOTE (2026-07-01): client-side hreflang + JSON-LD injection REMOVED.

@@ -83,6 +83,62 @@ describe('Native PostgreSQL public catalog', { skip: !process.env.PG_TEST_DATABA
     const empty = await read.listStationsFromPostgres({ genre: 'rock', page: 3, limit: 1 });
     assert.equal(empty.totalCount, 1); assert.deepEqual(empty.stations, []); assert.equal(empty.pagination.pages, 1);
   });
+  it('prioritizes canonical slug then ID without scanning legacy aliases on a direct hit', async () => {
+    await catalog.insertMany([
+      station('canonical-owner', { slug: 'collision', slugAliases: ['old-canonical'], descriptions: { de: { full: 'Kept article' } } }),
+      station('collision', { slug: 'id-owner' }),
+      station('alias-owner', { slug: 'alias-owner', slugAliases: ['collision', 'alias-only', 'id-owner'] }),
+    ]);
+    const observe = mock.method(pool, 'query');
+    let sql = '';
+    try {
+      assert.equal((await read.getStationByIdentifier('collision'))._id, 'canonical-owner');
+      sql = observe.mock.calls[0].arguments[0] as string;
+      assert.equal(observe.mock.callCount(), 1, 'The lookup stays a single snapshot/round trip');
+    } finally { observe.mock.restore(); }
+    const plan = (await pool.query('EXPLAIN (ANALYZE,FORMAT JSON) ' + sql, ['collision'])).rows[0]['QUERY PLAN'][0].Plan;
+    const nodes = (node: any): any[] => [node, ...(node.Plans || []).flatMap(nodes)];
+    const aliases = nodes(plan).filter(node => String(node.Filter || '').includes('ANY (slug_aliases)'));
+    assert.ok(aliases.length > 0, 'The legacy alias fallback remains present');
+    assert.ok(aliases.every(node => node['Actual Loops'] === 0), 'Canonical hits must not execute the full alias scan');
+    assert.equal((await read.getStationByIdentifier('id-owner'))._id, 'collision');
+    assert.equal((await read.getStationByIdentifier('alias-only'))._id, 'alias-owner');
+    assert.equal((await read.getStationByIdentifier('old-canonical')).descriptions.de.full, 'Kept article');
+    assert.equal(await read.getStationByIdentifier('not-a-station'), null);
+    await pool.query("UPDATE stations SET slug='new-canonical' WHERE id='canonical-owner'");
+    assert.equal((await read.getStationByIdentifier('collision'))._id, 'collision', 'ID must beat another station alias');
+  });
+  it('bounds IDs before loading wide list rows while preserving all sorts, pages and exact totals', async () => {
+    const article = { de: { full: 'Full station text '.repeat(2000) } };
+    await catalog.insertMany([
+      station('a', { name: 'Alpha', favicon: 'https://logo.invalid/a', votes: 5, tags: 'rock', descriptions: article, createdAt: '2020-01-01' }),
+      station('b', { name: 'Beta', favicon: 'https://logo.invalid/b', votes: 10, tags: 'rock', descriptions: article, createdAt: '2021-01-01' }),
+      station('c', { name: '123 Radio', favicon: 'https://logo.invalid/c', votes: 20, tags: 'rock', descriptions: article, createdAt: '2022-01-01' }),
+      station('d', { name: 'No logo', votes: 999, tags: 'jazz', descriptions: article, createdAt: '2023-01-01' }),
+    ]);
+    const sorts: Record<string, string[]> = { votes: ['c', 'b', 'a', 'd'], az: ['a', 'b', 'd', 'c'], za: ['b', 'a', 'd', 'c'], newest: ['c', 'b', 'a', 'd'], oldest: ['a', 'b', 'c', 'd'] };
+    for (const [sort, expected] of Object.entries(sorts)) {
+      for (const compact of [false, true]) {
+        const ids: string[] = [];
+        for (const page of [1, 2, 3]) {
+          const response = await read.listStationsFromPostgres({ page, limit: 2, sort, compact });
+          assert.equal(response.totalCount, 4); assert.equal(response.pagination.pages, 2);
+          ids.push(...response.stations.map(s => s._id));
+          for (const row of response.stations) assert.deepEqual(row.descriptions, compact ? {} : article);
+        }
+        assert.deepEqual(ids, expected, `${sort}/${compact}`);
+      }
+    }
+    const observe = mock.method(pool, 'query');
+    try {
+      const filtered = await read.listStationsFromPostgres({ genre: 'rock', search: 'Alpha', page: 1, limit: 1, compact: true });
+      assert.deepEqual(filtered.stations.map(s => s._id), ['a']); assert.equal(filtered.totalCount, 1);
+      assert.equal(observe.mock.callCount(), 1, 'Count and page retain one MVCC snapshot');
+      const sql = observe.mock.calls[0].arguments[0] as string;
+      assert.match(sql, /page_ids AS MATERIALIZED \(SELECT id FROM stations[\s\S]*?LIMIT \$\d+ OFFSET \$\d+\)/);
+      assert.match(sql, /WHERE id IN \(SELECT id FROM page_ids\)/);
+    } finally { observe.mock.restore(); }
+  });
   it('filters codec, bitrate and logos before pagination in the precomputed public API', async () => {
     await catalog.insertMany([
       station('top-rejected', { codec: 'AAC', bitrate: 64, votes: 999 }),

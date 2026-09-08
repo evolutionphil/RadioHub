@@ -152,6 +152,7 @@ describe(
       const visible = await request("/api/advertisements");
       assert.equal(visible.body.length, 1);
       assert.equal(visible.body[0].title, "Updated");
+      assert.equal(visible.body[0].isActive, true, 'public placements require this flag to display active advertisements');
       assert.deepEqual(
         Object.keys(visible.body[0]).sort(),
         [
@@ -162,6 +163,7 @@ describe(
           "seoDescription",
           "url",
           "position",
+          "isActive",
         ].sort(),
       );
       assert.match(visible.headers.get("cache-control")!, /s-maxage=300/);

@@ -386,9 +386,11 @@ test('SEO page-data never returns synthetic metadata on transient errors, includ
 
 test('slim SEO page-data forwards the exact localized renderer context and preserves the full preview contract', async () => {
   const { SeoRenderer } = await import('../src/seo-renderer');
+  const { normalizeSeoTitleTags } = await import('@workspace/seo-shared/seo-config');
+  const fullTitle = 'Station One et toutes ses émissions musicales et culturelles en direct | Mega Radio';
   const fixture = {
     language: 'fr', cleanPath: '/station/station-one', translations: { genres: 'Genres français' },
-    seoTags: { title: 'Station One en direct', canonical: 'https://themegaradio.com/fr/station/station-one' },
+    seoTags: { title: fullTitle, canonical: 'https://themegaradio.com/fr/station/station-one' },
     urlTranslations: new Map([['fr:station', 'station']]),
     pageData: { pageType: 'station', station: { ...FAKE_STATION_DOCS[0], descriptions: { fr: { full: 'Description française', meta: 'Écoutez cette station' } } } },
   };
@@ -405,18 +407,24 @@ test('slim SEO page-data forwards the exact localized renderer context and prese
     const preview = await full.json() as any;
     assert.deepEqual(preview.pageData, JSON.parse(JSON.stringify(fixture.pageData)));
     assert.deepEqual(preview.translations, fixture.translations);
+    assert.equal(preview.seoTags.title, fullTitle, 'admin preview preserves the full title');
     assert.equal(preview.structuredData, undefined);
     assert.equal(generate.mock.callCount(), 0);
 
     const slim = await fetch(`${baseUrl}/api/seo/page-data?url=${requestedUrl}&slim=1`);
     assert.equal(slim.status, 200);
     const payload = await slim.json() as any;
-    assert.deepEqual(payload, { language: fixture.language, cleanPath: fixture.cleanPath, seoTags: fixture.seoTags, structuredData });
+    assert.deepEqual(payload, { language: fixture.language, cleanPath: fixture.cleanPath, seoTags: normalizeSeoTitleTags(fixture.seoTags), structuredData });
+    assert.ok(payload.seoTags.title.length <= 70);
+    assert.ok(payload.seoTags.title.endsWith(' | Mega Radio'));
+    assert.equal(fixture.seoTags.title, fullTitle, 'cached title/H1 inputs stay untouched');
     assert.deepEqual(render.mock.calls.at(-1)!.arguments, [requestedUrl, 'https://themegaradio.com']);
     assert.equal(generate.mock.callCount(), 1);
     const expectedArguments = [fixture.seoTags, fixture.language, fixture.translations, fixture.cleanPath, fixture.pageData.station, fixture.urlTranslations, fixture.pageData];
     generate.mock.calls[0].arguments.forEach((argument, index) => assert.strictEqual(argument, expectedArguments[index]));
     assert.equal(generate.mock.calls[0].arguments.length, expectedArguments.length);
+    const head = new SeoRenderer().generateHtmlHead(fixture.seoTags, fixture.language, {}, fixture.cleanPath);
+    assert.ok(head.includes(`<title>${payload.seoTags.title}</title>`), 'HTML and slim navigation titles match');
   } finally { render.mock.restore(); generate.mock.restore(); }
 });
 

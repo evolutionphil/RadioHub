@@ -1,8 +1,8 @@
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, render, waitFor } from '@testing-library/react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { useTranslation } from '../src/hooks/useTranslation';
+import { QueryClient, QueryClientProvider as BaseQueryClientProvider } from '@tanstack/react-query';
+import { TranslationProvider, useTranslation } from '../src/hooks/useTranslation';
 import { SeoHead } from '../src/components/SeoHead';
 import { ServerSeoHeadContext } from '../src/utils/ssr-seo-head';
 import { ACTIVE_SITEMAP_LANGUAGES } from '@workspace/seo-shared/seo-config';
@@ -11,6 +11,10 @@ import { getStationControlLabels } from '../src/utils/station-control-labels';
 let client: QueryClient;
 let result: ReturnType<typeof useTranslation>;
 let requests: string[];
+
+function QueryClientProvider({ children, ...props }: React.ComponentProps<typeof BaseQueryClientProvider>) {
+  return <BaseQueryClientProvider {...props}><TranslationProvider>{children}</TranslationProvider></BaseQueryClientProvider>;
+}
 
 function Consumer() {
   result = useTranslation();

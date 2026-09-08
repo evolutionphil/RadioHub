@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, type ReactNode } from 'react';
 
 interface Advertisement {
   _id: string;
@@ -16,19 +16,24 @@ interface AdCarouselProps {
   position: 'desktop_sidebar' | 'mobile_bottom' | 'middle_section';
   autoSwitchInterval?: number;
   placeholderText?: string;
+  fallback?: ReactNode;
 }
 
 export function AdCarousel({ 
   ads, 
   position, 
   autoSwitchInterval = 8000,
-  placeholderText = 'Ad Space'
+  placeholderText = 'Ad Space',
+  fallback,
 }: AdCarouselProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [failedImages, setFailedImages] = useState<Set<string>>(new Set());
 
   // Filter ads by position and get active ones
-  const filteredAds = ads?.filter(ad => ad.position === position && ad.isActive) || [];
+  const filteredAds = ads?.filter(ad => ad.position === position && ad.isActive && !failedImages.has(`${ad._id}:${ad.imageUrl}`)) || [];
+  // An admin edit/deactivation can shrink a live list while its old index is
+  // still selected. Clamp during render, not in an effect after a crash.
+  const safeIndex = filteredAds.length ? currentIndex % filteredAds.length : 0;
 
   // Auto-switch ads
   useEffect(() => {
@@ -82,6 +87,7 @@ export function AdCarousel({
   };
 
   if (!filteredAds || filteredAds.length === 0) {
+    if (fallback !== undefined) return <>{fallback}</>;
     return (
       <div className={getPlaceholderStyles()}>
         {placeholderText}
@@ -89,9 +95,9 @@ export function AdCarousel({
     );
   }
 
-  const currentAd = filteredAds[currentIndex];
+  const currentAd = filteredAds[safeIndex];
   const hasMultipleAds = filteredAds.length > 1;
-  const isImageFailed = failedImages.has(currentAd._id);
+  const isImageFailed = failedImages.has(`${currentAd._id}:${currentAd.imageUrl}`);
 
   return (
     <div className={`relative ${getContainerStyles()}`}>
@@ -99,7 +105,7 @@ export function AdCarousel({
       <a 
         href={currentAd.url}
         target="_blank"
-        rel="noopener noreferrer"
+        rel="sponsored noopener noreferrer"
         className="block w-full h-full overflow-hidden hover:opacity-80 transition-opacity"
         data-testid="link-ad"
       >
@@ -110,11 +116,10 @@ export function AdCarousel({
             className={getImageStyles()}
             data-testid={`img-${position}-ad`}
             onError={() => {
-              setFailedImages(prev => new Set(prev).add(currentAd._id));
+              setFailedImages(prev => new Set(prev).add(`${currentAd._id}:${currentAd.imageUrl}`));
             }}
             loading="lazy"
             decoding="async"
-            crossOrigin="anonymous"
           />
         ) : (
           <div className={`${getPlaceholderStyles()} text-xs`}>
@@ -130,14 +135,15 @@ export function AdCarousel({
         <div className="absolute bottom-1 left-0 right-0 flex justify-center gap-1 pointer-events-none">
           {filteredAds.map((_, idx) => (
             <button
-              key={idx}
+              key={filteredAds[idx]._id}
+              type="button"
               onClick={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
                 setCurrentIndex(idx);
               }}
               className={`pointer-events-auto w-1.5 h-1.5 rounded-full transition-all ${
-                idx === currentIndex 
+                idx === safeIndex
                   ? 'bg-white w-4' 
                   : 'bg-white/50 hover:bg-white/75'
               }`}
@@ -151,7 +157,7 @@ export function AdCarousel({
       {/* Ad counter */}
       {hasMultipleAds && (
         <div className="absolute top-1 right-1 bg-black/60 text-white text-xs px-1.5 py-0.5 rounded text-xs pointer-events-none">
-          {currentIndex + 1}/{filteredAds.length}
+          {safeIndex + 1}/{filteredAds.length}
         </div>
       )}
     </div>

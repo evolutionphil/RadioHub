@@ -5,7 +5,7 @@ import { pgActiveManifests, pgSeoGenres, pgTouchSitemapStations, pgSitemapStatio
 import { markSeoTemporarilyUnavailable } from '../seo/temporary-unavailable';
 import { logger } from "../utils/logger";
 import { SeoRenderer, buildLocalizedUrl } from "../seo-renderer";
-import { SITEMAP_CONFIG, ACTIVE_SITEMAP_LANGUAGES, REQUIRED_STATION_SEO_KEYS, hasCompleteSeoTranslations, SEO_LANGUAGES, LOCALIZED_LOGO_WORD, LOCALIZED_RADIO_STATION_WORD } from '@workspace/seo-shared/seo-config';
+import { SITEMAP_CONFIG, ACTIVE_SITEMAP_LANGUAGES, REQUIRED_STATION_SEO_KEYS, hasCompleteSeoTranslations, SEO_LANGUAGES, LOCALIZED_LOGO_WORD, LOCALIZED_RADIO_STATION_WORD, normalizeSeoTitleTags } from '@workspace/seo-shared/seo-config';
 
 // Map a SEO language code (e.g. "nb") to its BCP47/hreflang tag (e.g. "nb-NO")
 // so XML sitemap alternates match the HTML <link rel="alternate"> tags emitted
@@ -471,7 +471,7 @@ export async function registerSeoSitemapRoutes(app: Express, deps: any, options?
         res.json({
           language: (seoData as any).language,
           cleanPath: (seoData as any).cleanPath,
-          seoTags: (seoData as any).seoTags,
+          seoTags: normalizeSeoTitleTags(seoData.seoTags),
           structuredData: seoRenderer.generateStructuredData(
             seoData.seoTags, seoData.language, seoData.translations || {},
             seoData.cleanPath, seoData.pageData?.station, seoData.urlTranslations, seoData.pageData,

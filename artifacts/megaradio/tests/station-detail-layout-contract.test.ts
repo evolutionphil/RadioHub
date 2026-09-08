@@ -12,7 +12,8 @@ it('desktop ad placeholders match the existing resolved carousel and AdSense min
   expect(desktop).toMatch(/fallback=\{<div className="[^"]*w-56 h-\[250px\][^"]*" \/>\}[\s\S]*?<AdSenseUnit[^>]*className="min-h-\[250px\]"/);
   expect(desktop).not.toMatch(/aspect-square h-56/);
   expect(desktop).toContain('hidden md:block');
-  expect(desktop).toContain('!isPremium &&');
+  expect(desktop).toContain('showAdvertisements &&');
+  expect(station).toContain('const showAdvertisements = !isPremium && !premiumLoading && !premiumError;');
   expect(desktop).toContain('autoSwitchInterval={8000}');
   expect(desktop).toContain('adSlot="3609188113"');
 });

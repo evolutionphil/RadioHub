@@ -1,4 +1,5 @@
 // FAQ Schema.org structured data for help and about pages
+import { FAQ_PAGE_LOCALE_FALLBACKS } from './faq-page-fallbacks';
 
 export interface FAQItem {
   question: string;
@@ -115,7 +116,7 @@ export const FAQ_PAGE_ITEMS: FAQTranslatedItem[] = [
     qFallback: "What languages does Mega Radio support?",
     aKey: "faq_languages_supported_answer",
     aFallback:
-      "Our interface is available in 57 languages and stations broadcast in dozens more — local language broadcasting from every region.",
+      "The website offers multiple language options. Radio stations broadcast in many more languages from around the world.",
   },
   {
     qKey: "faq_request_station",
@@ -266,3 +267,24 @@ export const TECHNICAL_FAQ: FAQItem[] = [
     answer: "We monitor all streams continuously and use advanced error recovery mechanisms including auto-reconnection and fallback URLs."
   }
 ];
+
+const APPENDED_FAQ_KEYS = ['faq_how_search', 'faq_supported_devices', 'faq_account_required', 'faq_languages_supported', 'faq_request_station'];
+const OLD_LANGUAGE_ANSWER = 'Our interface is available in 57 languages and stations broadcast in dozens more — local language broadcasting from every region.';
+
+/** One locale-aware source for visible React, initial HTML and FAQ JSON-LD.
+ * Only known English seed fallbacks are replaced; meaningful custom copy wins. */
+export function resolveFaqPageItems(language: string, translate: (key: string, fallback: string) => string): FAQItem[] {
+  return FAQ_PAGE_ITEMS.map(item => {
+    const index = APPENDED_FAQ_KEYS.indexOf(item.qKey);
+    const localized = index >= 0 ? FAQ_PAGE_LOCALE_FALLBACKS[language]?.[index] : undefined;
+    const resolve = (key: string, english: string, local: string | undefined) => {
+      const fallback = local || english;
+      const current = translate(key, fallback)?.trim();
+      if (!current || current === key || (local && current === english) ||
+        (key === 'faq_languages_supported_answer' && current === OLD_LANGUAGE_ANSWER)) return fallback;
+      return current;
+    };
+    return { question: resolve(item.qKey, item.qFallback, localized?.[0]),
+      answer: resolve(item.aKey, item.aFallback, localized?.[1]) };
+  });
+}

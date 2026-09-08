@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { SeoMetaTags, truncateAtWordBoundary } from '@workspace/seo-shared/seo-config';
+import { SeoMetaTags, truncateAtWordBoundary, normalizeSeoTitle } from '@workspace/seo-shared/seo-config';
 import { applyServerStructuredData, type ServerStructuredData } from '@/utils/server-structured-data';
 
 interface SeoHeadProps {
@@ -11,7 +11,7 @@ export function SeoHead({ seoData, structuredData }: SeoHeadProps) {
   useEffect(() => {
     // Update document title
     if (seoData.title) {
-      document.title = seoData.title;
+      document.title = normalizeSeoTitle(seoData.title);
     }
     
     // Update meta tags
@@ -63,7 +63,7 @@ export function SeoHead({ seoData, structuredData }: SeoHeadProps) {
     if (seoData.robots) updateMetaTag('robots', seoData.robots);
 
     // Open Graph tags - ALL 4 REQUIRED properties
-    updateMetaTag('', seoData.ogTitle || seoData.title, 'og:title');
+    updateMetaTag('', normalizeSeoTitle(seoData.ogTitle || seoData.title), 'og:title');
     updateMetaTag('', truncateAtWordBoundary(seoData.ogDescription || seoData.description || '', 160), 'og:description');
     
     // og:url - REQUIRED (fallback to canonical or current URL)
@@ -88,7 +88,7 @@ export function SeoHead({ seoData, structuredData }: SeoHeadProps) {
     updateMetaTag('twitter:card', 'summary_large_image');
     updateMetaTag('twitter:site', '@megaradio');
     updateMetaTag('twitter:creator', '@megaradio');
-    updateMetaTag('twitter:title', seoData.twitterTitle || seoData.title);
+    updateMetaTag('twitter:title', normalizeSeoTitle(seoData.twitterTitle || seoData.title));
     updateMetaTag('twitter:description', seoData.twitterDescription || seoData.description);
     
     // Ensure Twitter image is absolute URL (required by Twitter)

@@ -1,0 +1,96 @@
+// Only the five appended FAQ entries whose locale keys are absent in the
+// existing dictionaries. Existing translated questions/answers keep priority.
+type Pair = readonly [question: string, answer: string];
+export const FAQ_PAGE_LOCALE_FALLBACKS: Record<string, readonly Pair[]> = {
+  de: [
+    ['Wie suche ich einen bestimmten Sender?', 'Suche nach Sendername, Genre, Sprache oder Land. Die Ergebnisse erscheinen während der Eingabe.'],
+    ['Welche Geräte unterstützt Mega Radio?', 'Mega Radio funktioniert auf Computern, Laptops, Smartphones, Tablets, Smart Speakern, Smart-TVs und Infotainmentsystemen im Auto.'],
+    ['Brauche ich ein Konto zum Hören?', 'Zum Hören ist kein Konto nötig. Mit einem optionalen kostenlosen Konto kannst du Favoriten speichern, Geräte synchronisieren und Empfehlungen personalisieren.'],
+    ['Welche Sprachen unterstützt Mega Radio?', 'Die Website bietet verschiedene Sprachoptionen. Radiosender senden in vielen weiteren Sprachen aus aller Welt.'],
+    ['Wie kann ich einen Sender hinzufügen oder vorschlagen?', 'Schlage deinen Lieblingssender über das Formular für Senderanfragen vor. Unser Team prüft die Vorschläge und fügt regelmäßig neue Sender hinzu.'],
+  ],
+  tr: [
+    ['Belirli bir radyo istasyonunu nasıl arayabilirim?', 'Arama sayfasında istasyon adı, tür, dil veya ülkeye göre arayın. Sonuçlar siz yazarken görünür.'],
+    ['Mega Radio hangi cihazları destekliyor?', 'Mega Radio masaüstü ve dizüstü bilgisayarlarda, telefonlarda, tabletlerde, akıllı hoparlörlerde, akıllı televizyonlarda ve araç multimedya sistemlerinde çalışır.'],
+    ['Radyo dinlemek için hesap gerekir mi?', 'Dinlemek için hesap gerekmez. İsteğe bağlı ücretsiz hesapla favorilerinizi kaydedebilir, cihazları eşitleyebilir ve önerileri kişiselleştirebilirsiniz.'],
+    ['Mega Radio hangi dilleri destekliyor?', 'Web sitesi farklı dil seçenekleri sunar. Radyo istasyonları dünyanın dört bir yanından çok daha fazla dilde yayın yapar.'],
+    ['Bir istasyon nasıl ekleyebilir veya talep edebilirim?', 'Sevdiğiniz radyoyu istasyon talep formundan gönderin. Ekibimiz önerileri inceler ve düzenli olarak yeni istasyonlar ekler.'],
+  ],
+  es: [
+    ['¿Cómo busco una emisora concreta?', 'Usa la página de búsqueda para encontrar emisoras por nombre, género, idioma o país. Los resultados aparecen mientras escribes.'],
+    ['¿Qué dispositivos admite Mega Radio?', 'Mega Radio funciona en ordenadores, portátiles, teléfonos, tabletas, altavoces inteligentes, televisores inteligentes y sistemas multimedia de vehículos.'],
+    ['¿Necesito una cuenta para escuchar?', 'No necesitas una cuenta para escuchar. Una cuenta gratuita opcional permite guardar favoritos, sincronizar dispositivos y personalizar recomendaciones.'],
+    ['¿Qué idiomas admite Mega Radio?', 'El sitio web ofrece varias opciones de idioma. Las emisoras transmiten en muchos más idiomas de todo el mundo.'],
+    ['¿Cómo puedo añadir o solicitar una emisora?', 'Envía tu emisora favorita mediante el formulario de solicitud. Nuestro equipo revisa las propuestas y añade nuevas emisoras regularmente.'],
+  ],
+  fr: [
+    ['Comment rechercher une station précise ?', 'Recherchez des stations par nom, genre, langue ou pays sur la page de recherche. Les résultats apparaissent pendant la saisie.'],
+    ['Quels appareils Mega Radio prend-il en charge ?', 'Mega Radio fonctionne sur les ordinateurs, téléphones, tablettes, enceintes connectées, téléviseurs connectés et systèmes multimédias automobiles.'],
+    ['Faut-il un compte pour écouter ?', 'Aucun compte n’est nécessaire pour écouter. Un compte gratuit facultatif permet de sauvegarder des favoris, de synchroniser les appareils et de personnaliser les recommandations.'],
+    ['Quelles langues Mega Radio prend-il en charge ?', 'Le site web propose plusieurs langues. Les stations diffusent dans de nombreuses autres langues du monde entier.'],
+    ['Comment ajouter ou proposer une station ?', 'Proposez votre station préférée avec le formulaire de demande. Notre équipe examine les propositions et ajoute régulièrement de nouvelles stations.'],
+  ],
+  pt: [
+    ['Como encontro uma estação específica?', 'Use a página de pesquisa para procurar por nome, gênero, idioma ou país. Os resultados aparecem enquanto você digita.'],
+    ['Quais dispositivos o Mega Radio suporta?', 'O Mega Radio funciona em computadores, notebooks, celulares, tablets, alto-falantes inteligentes, smart TVs e sistemas multimídia de veículos.'],
+    ['Preciso de uma conta para ouvir?', 'Não é necessário ter conta para ouvir. Uma conta gratuita opcional permite salvar favoritos, sincronizar dispositivos e personalizar recomendações.'],
+    ['Quais idiomas o Mega Radio suporta?', 'O site oferece várias opções de idioma. As estações transmitem em muitos outros idiomas de todo o mundo.'],
+    ['Como posso adicionar ou solicitar uma estação?', 'Envie sua estação favorita pelo formulário de solicitação. Nossa equipe analisa as sugestões e adiciona novas estações regularmente.'],
+  ],
+  it: [
+    ['Come cerco una stazione specifica?', 'Usa la pagina di ricerca per cercare per nome, genere, lingua o paese. I risultati appaiono mentre scrivi.'],
+    ['Quali dispositivi supporta Mega Radio?', 'Mega Radio funziona su computer, portatili, smartphone, tablet, altoparlanti intelligenti, smart TV e sistemi multimediali delle auto.'],
+    ['Serve un account per ascoltare?', 'Non serve un account per ascoltare. Un account gratuito facoltativo consente di salvare i preferiti, sincronizzare i dispositivi e personalizzare i suggerimenti.'],
+    ['Quali lingue supporta Mega Radio?', 'Il sito web offre diverse opzioni di lingua. Le stazioni trasmettono in molte altre lingue da tutto il mondo.'],
+    ['Come posso aggiungere o richiedere una stazione?', 'Invia la tua stazione preferita tramite il modulo di richiesta. Il nostro team esamina le proposte e aggiunge regolarmente nuove stazioni.'],
+  ],
+  ru: [
+    ['Как найти определённую радиостанцию?', 'На странице поиска ищите станции по названию, жанру, языку или стране. Результаты появляются по мере ввода.'],
+    ['Какие устройства поддерживает Mega Radio?', 'Mega Radio работает на компьютерах, ноутбуках, смартфонах, планшетах, умных колонках, смарт-телевизорах и автомобильных мультимедийных системах.'],
+    ['Нужна ли учётная запись для прослушивания?', 'Для прослушивания учётная запись не нужна. Бесплатный необязательный аккаунт позволяет сохранять избранное, синхронизировать устройства и персонализировать рекомендации.'],
+    ['Какие языки поддерживает Mega Radio?', 'На сайте можно выбрать разные языки. Радиостанции вещают на многих других языках со всего мира.'],
+    ['Как добавить или предложить радиостанцию?', 'Предложите любимую станцию через форму заявки. Наша команда рассматривает предложения и регулярно добавляет новые станции.'],
+  ],
+  ar: [
+    ['كيف أبحث عن محطة محددة؟', 'استخدم صفحة البحث للعثور على المحطات حسب الاسم أو النوع أو اللغة أو البلد. تظهر النتائج أثناء الكتابة.'],
+    ['ما الأجهزة التي يدعمها Mega Radio؟', 'يعمل Mega Radio على أجهزة الكمبيوتر والهواتف والأجهزة اللوحية ومكبرات الصوت الذكية والتلفزيونات الذكية وأنظمة الوسائط في السيارات.'],
+    ['هل أحتاج إلى حساب للاستماع؟', 'لا تحتاج إلى حساب للاستماع. يتيح لك الحساب المجاني الاختياري حفظ المفضلة ومزامنة الأجهزة وتخصيص التوصيات.'],
+    ['ما اللغات التي يدعمها Mega Radio؟', 'يقدم الموقع خيارات لغات متعددة. وتبث المحطات بلغات أخرى كثيرة من جميع أنحاء العالم.'],
+    ['كيف أضيف محطة أو أقترحها؟', 'أرسل محطتك المفضلة عبر نموذج طلب محطة. يراجع فريقنا الاقتراحات ويضيف محطات جديدة بانتظام.'],
+  ],
+  zh: [
+    ['如何搜索特定电台？', '在搜索页面按电台名称、类型、语言或国家搜索。输入时即可看到结果。'],
+    ['Mega Radio 支持哪些设备？', 'Mega Radio 可用于台式电脑、笔记本电脑、智能手机、平板电脑、智能音箱、智能电视和车载多媒体系统。'],
+    ['收听需要账户吗？', '无需账户即可收听。您也可以选择注册免费账户，用于收藏电台、同步设备和个性化推荐。'],
+    ['Mega Radio 支持哪些语言？', '网站提供多种语言选项。来自世界各地的电台还以更多语言播出。'],
+    ['如何添加或申请收录电台？', '通过电台申请表提交您喜爱的电台。我们的团队会审核建议，并定期添加新电台。'],
+  ],
+  ja: [
+    ['特定のラジオ局を検索するには？', '検索ページで局名、ジャンル、言語、国から検索できます。入力すると結果が表示されます。'],
+    ['Mega Radio はどの端末に対応していますか？', 'Mega Radio はパソコン、スマートフォン、タブレット、スマートスピーカー、スマートテレビ、車載マルチメディアシステムで利用できます。'],
+    ['聴くためにアカウントは必要ですか？', '聴くためのアカウントは不要です。任意の無料アカウントで、お気に入りの保存、端末の同期、おすすめのパーソナライズができます。'],
+    ['Mega Radio は何語に対応していますか？', 'ウェブサイトでは複数の言語を選択できます。世界各地のラジオ局は、さらに多くの言語で放送しています。'],
+    ['ラジオ局の追加を依頼するには？', 'ラジオ局のリクエストフォームから、お気に入りの局を送信してください。担当チームが内容を確認し、定期的に新しい局を追加します。'],
+  ],
+  ko: [
+    ['특정 방송국을 어떻게 검색하나요?', '검색 페이지에서 방송국 이름, 장르, 언어 또는 국가로 검색하세요. 입력하는 동안 결과가 표시됩니다.'],
+    ['Mega Radio는 어떤 기기를 지원하나요?', 'Mega Radio는 컴퓨터, 노트북, 스마트폰, 태블릿, 스마트 스피커, 스마트 TV 및 차량용 멀티미디어 시스템에서 작동합니다.'],
+    ['청취하려면 계정이 필요한가요?', '계정 없이 청취할 수 있습니다. 선택 사항인 무료 계정으로 즐겨찾기를 저장하고 기기를 동기화하며 추천을 맞춤 설정할 수 있습니다.'],
+    ['Mega Radio는 어떤 언어를 지원하나요?', '웹사이트는 여러 언어 옵션을 제공합니다. 전 세계 방송국은 이보다 더 다양한 언어로 방송합니다.'],
+    ['방송국 추가를 어떻게 요청하나요?', '방송국 요청 양식으로 좋아하는 방송국을 보내주세요. 담당 팀이 제안을 검토하고 정기적으로 새 방송국을 추가합니다.'],
+  ],
+  hi: [
+    ['मैं किसी खास स्टेशन को कैसे खोजूँ?', 'खोज पेज पर स्टेशन के नाम, शैली, भाषा या देश से खोजें। टाइप करते समय परिणाम दिखाई देते हैं।'],
+    ['Mega Radio किन उपकरणों पर चलता है?', 'Mega Radio कंप्यूटर, लैपटॉप, स्मार्टफोन, टैबलेट, स्मार्ट स्पीकर, स्मार्ट टीवी और कार मल्टीमीडिया सिस्टम पर चलता है।'],
+    ['क्या सुनने के लिए खाता चाहिए?', 'सुनने के लिए खाता जरूरी नहीं है। वैकल्पिक मुफ्त खाते से पसंदीदा स्टेशन सहेज सकते हैं, उपकरण सिंक कर सकते हैं और सुझाव अपने अनुसार पा सकते हैं।'],
+    ['Mega Radio कौन-सी भाषाएँ उपलब्ध कराता है?', 'वेबसाइट कई भाषा विकल्प उपलब्ध कराती है। दुनिया भर के स्टेशन कई अन्य भाषाओं में भी प्रसारण करते हैं।'],
+    ['मैं कोई स्टेशन कैसे जोड़ूँ या उसका अनुरोध करूँ?', 'स्टेशन अनुरोध फॉर्म से अपना पसंदीदा स्टेशन भेजें। हमारी टीम सुझावों की समीक्षा करती है और नियमित रूप से नए स्टेशन जोड़ती है।'],
+  ],
+  he: [
+    ['איך מחפשים תחנה מסוימת?', 'בדף החיפוש אפשר לחפש תחנות לפי שם, סגנון, שפה או מדינה. התוצאות מופיעות בזמן ההקלדה.'],
+    ['באילו מכשירים Mega Radio תומך?', 'Mega Radio פועל במחשבים, במחשבים ניידים, בטלפונים, בטאבלטים, ברמקולים חכמים, בטלוויזיות חכמות ובמערכות מולטימדיה לרכב.'],
+    ['האם צריך חשבון כדי להאזין?', 'לא צריך חשבון כדי להאזין. חשבון חינמי לבחירתכם מאפשר לשמור מועדפים, לסנכרן מכשירים ולהתאים המלצות אישיות.'],
+    ['באילו שפות Mega Radio תומך?', 'האתר מציע אפשרויות שפה שונות. תחנות מרחבי העולם משדרות בשפות רבות נוספות.'],
+    ['איך מוסיפים או מציעים תחנה?', 'שלחו את התחנה האהובה עליכם בטופס בקשת תחנה. הצוות שלנו בודק את ההצעות ומוסיף תחנות חדשות באופן קבוע.'],
+  ],
+};
