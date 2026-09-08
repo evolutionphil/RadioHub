@@ -1,9 +1,10 @@
 import { useState, useEffect, memo, lazy, Suspense } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { useNotificationService } from "@/services/NotificationService";
 import { apiRequest } from "@/lib/queryClient";
 import { useTranslation } from "@/hooks/useTranslation";
+import { useFavoriteState } from "@/hooks/useFavoriteState";
 import { trackStationFavorite } from "@/lib/analytics";
 import fav60Icon from "@assets/fav60.png";
 
@@ -31,63 +32,8 @@ const FavoriteButton = memo(function FavoriteButton({ stationId, className = "",
   const queryClient = useQueryClient();
   const { t } = useTranslation();
 
-  // Check if user is authenticated and get favorites list
-  const { data: userResponse } = useQuery({
-    queryKey: ['/api/auth/me'],
-    queryFn: async () => {
-      const response = await fetch('/api/auth/me', {
-        credentials: 'include',
-      });
-      if (!response.ok) {
-        if (response.status === 401) {
-          return null; // Not authenticated
-        }
-        throw new Error('Failed to fetch user');
-      }
-      return response.json();
-    },
-    retry: false,
-  });
-
-  const user = userResponse?.authenticated ? userResponse.user : null;
-
-  // Get user's favorite stations list
-  const { data: favoritesData } = useQuery({
-    queryKey: ['/api/user/favorites'],
-    queryFn: async () => {
-      const response = await fetch('/api/user/favorites', {
-        credentials: 'include',
-      });
-      if (!response.ok) {
-        return [];
-      }
-      const result = await response.json();
-      return result;
-    },
-    enabled: !!user && !!userResponse?.authenticated,
-    staleTime: 10 * 60 * 1000, // 10 minutes - prevents repeated refetches
-    refetchOnMount: false, // Use cache, don't refetch on every mount
-    refetchOnWindowFocus: false, // Don't refetch on window focus
-  });
-
-  // Get station information for rich notifications - only when needed for notifications
-  const { data: stationData } = useQuery({
-    queryKey: ['/api/stations', stationId],
-    queryFn: async () => {
-      const response = await fetch(`/api/stations/${stationId}`, {
-        credentials: 'include',
-      });
-      if (!response.ok) return null;
-      return response.json();
-    },
-    enabled: false, // Disable automatic fetching - only fetch when needed for notifications
-    staleTime: 5 * 60 * 1000, // 5 minutes cache
-    gcTime: 10 * 60 * 1000, // 10 minutes
-  });
-
-  // Check if current station is in favorites - API returns array of stations directly
-  const favoriteStationIds = favoritesData?.map((station: any) => station._id) || [];
-  const isFavorited = favoriteStationIds.includes(stationId);
+  const { user, favoriteStationIds } = useFavoriteState();
+  const isFavorited = favoriteStationIds.has(stationId);
 
   // Add to favorites mutation
   const addToFavoritesMutation = useMutation({
@@ -95,6 +41,9 @@ const FavoriteButton = memo(function FavoriteButton({ stationId, className = "",
       return await apiRequest('POST', '/api/user/favorites', { body: { stationId } });
     },
     onSuccess: (data: any) => {
+      // This metadata was always cache-only (enabled:false). Read its latest
+      // value only when a notification is needed, without a per-card observer.
+      const stationData = queryClient.getQueryData<any>(['/api/stations', stationId]);
       if (!data.alreadyFavorited) {
         // Show toast for immediate feedback
         toast({
@@ -160,6 +109,7 @@ const FavoriteButton = memo(function FavoriteButton({ stationId, className = "",
       return await apiRequest('DELETE', `/api/user/favorites/${stationId}`);
     },
     onSuccess: () => {
+      const stationData = queryClient.getQueryData<any>(['/api/stations', stationId]);
       toast({
         title: t('favorites_removed_from_favorites') || "Removed from Favorites",
         description: t('favorites_removed_from_favorites_description') || "Station has been removed from your favorites",

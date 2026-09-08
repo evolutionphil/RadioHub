@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import { isDeepStrictEqual } from 'node:util';
 import type pg from "pg";
 import { getPostgresPool } from "../postgres-runtime";
+import type { StationDescriptionChange } from '../utils/station-description-patch';
 
 export type CatalogDocument = Record<string, any>;
 export type CatalogFilter = Record<string, any>;
@@ -411,6 +412,43 @@ export class PostgresCatalogStore {
     let count = 0;
     for (const entry of updates) count += (await this.update({ stationuuid: entry.uuid }, { $set: entry.patch }, { respectManualFields: true, protectLocalCounters: true, fillMissingFaviconOnly: true, syncRunId })).modifiedCount;
     return { modifiedCount: count };
+  }
+  // Manual content changes must not rewrite the captured source document.
+  // Lock one station, validate the entire batch, then touch only named JSON paths.
+  async patchDescriptions(id: string, slug: string, changes: StationDescriptionChange[]): Promise<
+    { status: 'missing' } | { status: 'conflict' } | { status: 'updated'; station: CatalogDocument }
+  > {
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query("SET LOCAL lock_timeout='5s'");
+      await client.query("SET LOCAL statement_timeout='15s'");
+      const row = (await client.query('SELECT * FROM stations WHERE id=$1 FOR UPDATE', [id])).rows[0];
+      if (!row) { await client.query('ROLLBACK'); return { status: 'missing' }; }
+      const descriptions = row.descriptions || {};
+      const conflict = row.slug !== slug || Array.isArray(descriptions) || typeof descriptions !== 'object' || changes.some(change => {
+        const exists = Object.hasOwn(descriptions, change.locale);
+        return (change.expectedLocaleObject === null ? exists : !isDeepStrictEqual(descriptions[change.locale], change.expectedLocaleObject)) ||
+          (descriptions[change.locale]?.[change.field] ?? null) !== change.expectedCurrentValue;
+      });
+      if (conflict) { await client.query('ROLLBACK'); return { status: 'conflict' }; }
+      const values: unknown[] = [id];
+      const bind = (value: unknown) => { values.push(value); return `$${values.length}`; };
+      let expression = "COALESCE(descriptions,'{}'::jsonb)";
+      const added = new Set<string>();
+      for (const change of changes) {
+        if (!Object.hasOwn(descriptions, change.locale) && !added.has(change.locale)) {
+          expression = `jsonb_set(${expression},${bind([change.locale])}::text[],'{}'::jsonb,true)`;
+          added.add(change.locale);
+        }
+        expression = `jsonb_set(${expression},${bind([change.locale, change.field])}::text[],${bind(JSON.stringify(change.value))}::jsonb,true)`;
+      }
+      const saved = await client.query(`UPDATE stations SET descriptions=${expression},
+        manual_edit_fields=COALESCE(manual_edit_fields,'{}'::jsonb)||'{"descriptions":true}'::jsonb,
+        updated_at=now() WHERE id=$1 RETURNING *`, values);
+      await client.query('COMMIT');
+      return { status: 'updated', station: catalogShape(saved.rows[0]) };
+    } catch (error) { await client.query('ROLLBACK'); throw error; } finally { client.release(); }
   }
   async patchById(id: string, patch: CatalogDocument): Promise<CatalogDocument | null> {
     return (await this.update({ _id: id },patch,{ returnDocument: true })).document || null;

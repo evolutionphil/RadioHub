@@ -5,12 +5,13 @@ const state = vi.hoisted(() => ({ favorite: false, authenticated: true, mutate: 
   favorites_add_to_favorites: 'Zu Favoriten hinzufügen', favorites_remove_from_favorites: 'Aus Favoriten entfernen',
 } as Record<string, string> }));
 vi.mock('@tanstack/react-query', () => ({
-  useQuery: ({ queryKey }: any) => ({ data: queryKey[0] === '/api/auth/me'
-    ? { authenticated: state.authenticated, user: state.authenticated ? { _id: 'user' } : null }
-    : queryKey[0] === '/api/user/favorites' ? (state.favorite ? [{ _id: 'radio' }] : []) : null }),
   useMutation: () => ({ mutate: state.mutate, isPending: false }),
   useQueryClient: () => ({ invalidateQueries: vi.fn() }),
 }));
+vi.mock('@/hooks/useFavoriteState', () => ({ useFavoriteState: () => ({
+  user: state.authenticated ? { _id: 'user' } : null,
+  favoriteStationIds: new Set(state.favorite ? ['radio'] : []),
+}) }));
 vi.mock('@/hooks/useTranslation', () => ({ useTranslation: () => ({ t: (key: string, fallback: string) => state.translations[key] ?? fallback }) }));
 vi.mock('@/hooks/use-toast', () => ({ useToast: () => ({ toast: vi.fn() }) }));
 vi.mock('@/services/NotificationService', () => ({ useNotificationService: () => ({}) }));

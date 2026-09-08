@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand, DeleteObjectCommand, DeleteObjectsCommand } from "@aws-sdk/client-s3";
+import { S3Client, GetObjectCommand, PutObjectCommand, DeleteObjectCommand, DeleteObjectsCommand } from "@aws-sdk/client-s3";
 import { logger } from "../utils/logger";
 
 const BUCKET = process.env.AWS_BUCKET_NAME || "";
@@ -92,4 +92,51 @@ export async function deleteFolderFromS3(folderPrefix: string): Promise<void> {
 
 export function isS3Configured(): boolean {
   return !!(BUCKET && process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY);
+}
+
+export function logoVariantStorageConfig(): { bucket: string; region: string } | null {
+  return isS3Configured() && /^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/.test(BUCKET) && /^[a-z0-9-]+$/.test(REGION)
+    ? { bucket: BUCKET, region: REGION } : null;
+}
+
+/** Read only an already-published 256px object from our own configured bucket. */
+export async function readLogoVariantSource(key: string, signal: AbortSignal): Promise<Buffer> {
+  if (!logoVariantStorageConfig() || !/^station-logos\/[a-z0-9_-]{1,200}\/logo-256\.webp$/.test(key)) {
+    throw new Error('Unsupported logo variant source key');
+  }
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15_000);
+  const combined = AbortSignal.any([signal, controller.signal]);
+  let body: any;
+  try {
+    const result = await getClient().send(new GetObjectCommand({ Bucket: BUCKET, Key: key }), { abortSignal: combined });
+    body = result.Body;
+    const maxBytes = 2 * 1024 * 1024;
+    if (result.ContentType?.split(';')[0].trim() !== 'image/webp' || !body ||
+      (result.ContentLength !== undefined && (result.ContentLength <= 0 || result.ContentLength > maxBytes))) {
+      throw new Error('Invalid stored logo content');
+    }
+    const chunks: Buffer[] = []; let bytes = 0;
+    for await (const chunk of body) {
+      combined.throwIfAborted();
+      const buffer = Buffer.from(chunk); bytes += buffer.length;
+      if (bytes > maxBytes) throw new Error('Stored logo exceeds size limit');
+      chunks.push(buffer);
+    }
+    if (!bytes) throw new Error('Stored logo is empty');
+    return Buffer.concat(chunks, bytes);
+  } finally {
+    controller.abort(); body?.destroy?.(); clearTimeout(timeout);
+  }
+}
+
+/** New UUID-scoped keys only; a collision must fail rather than overwrite. */
+export async function uploadLogoVariant(key: string, buffer: Buffer, signal: AbortSignal): Promise<string> {
+  if (!logoVariantStorageConfig() || !/^station-logos\/[a-z0-9_-]{1,200}\/variants\/[a-f0-9-]{36}\/logo-(48|96)\.webp$/.test(key) ||
+    !buffer.length || buffer.length > 128 * 1024) throw new Error('Invalid small logo variant');
+  await getClient().send(new PutObjectCommand({
+    Bucket: BUCKET, Key: key, Body: buffer, ContentType: 'image/webp', IfNoneMatch: '*',
+    CacheControl: 'public, max-age=31536000, immutable',
+  }), { abortSignal: AbortSignal.any([signal, AbortSignal.timeout(15_000)]) });
+  return getS3PublicUrl(key);
 }

@@ -112,6 +112,7 @@ import { SeoPageWrapper } from "@/components/SeoPageWrapper";
 import { BreadcrumbOverrideProvider, RouteBreadcrumbs } from "@/components/RouteBreadcrumbs";
 import { useSeoRouting } from "@/hooks/useSeoRouting";
 import { TranslationProvider, useTranslation } from "@/hooks/useTranslation";
+import { FavoriteStateProvider } from "@/hooks/useFavoriteState";
 import { SEO_LANGUAGES, COUNTRY_TO_LANGUAGE, COUNTRY_TO_CODE, getLanguageForCountry } from "@workspace/seo-shared/seo-config";
 
 import { URL_TRANSLATIONS } from "@workspace/seo-shared/url-translations";
@@ -1337,6 +1338,7 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
         <TranslationProvider>
+        <FavoriteStateProvider>
         <TranslationPreloader />
         <RecommendationsPrefetcher />
         <PushNotificationBridge />
@@ -1349,6 +1351,7 @@ function App() {
             </TooltipProvider>
           </LazyGlobalPlayerProvider>
         </ThemeProvider>
+        </FavoriteStateProvider>
         </TranslationProvider>
       </WouterRouter>
     </QueryClientProvider>

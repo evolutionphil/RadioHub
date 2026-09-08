@@ -11,6 +11,7 @@ const AddYourStationModal = lazy(() => import("@/components/modals/AddYourStatio
 const RequestStationModal = lazy(() => import("@/components/modals/RequestStationModal"));
 import { Globe } from "lucide-react";
 import AdSenseUnit from "@/components/ads/AdSenseUnit";
+import PrivacySettingsButton from "@/components/ads/PrivacySettingsButton";
 
 interface FooterSocialLink {
   _id: string;
@@ -267,6 +268,7 @@ export default function Footer() {
                       <Link to={getLocalizedUrl("/privacy-policy")} className="inline-flex items-center min-h-[44px] md:min-h-[30px] text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
                         {ft('footer_privacy', 'Privacy')}
                       </Link>
+                      <PrivacySettingsButton language={currentLanguage} />
                       <button
                         type="button"
                         className="inline-flex items-center min-h-[44px] md:min-h-[30px] text-left bg-transparent border-0 p-0 m-0 cursor-pointer text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors"

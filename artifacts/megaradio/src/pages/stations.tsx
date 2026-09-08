@@ -8,6 +8,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Plus, RefreshCw, Users, Merge, Check, X, ChevronDown, ChevronUp, Trash2, Crown, Sparkles, AlertTriangle, Tag, Database } from "lucide-react";
 import StationTable from "@/components/stations/station-table";
 import StationForm from "@/components/stations/station-form";
+import { saveAdminStationEdit } from '@/lib/admin-station-description';
 import Filters from "@/components/stations/filters";
 import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from "@/components/ui/pagination";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -207,7 +208,7 @@ export default function Stations() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string | number; data: any }) => api.updateStation(id, data),
+    mutationFn: ({ id, data }: { id: string | number; data: any }) => saveAdminStationEdit(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/admin/stations'] });
       queryClient.invalidateQueries({ queryKey: ['/api/dashboard/stats'] });
@@ -805,39 +806,9 @@ export default function Stations() {
       return;
     }
 
-    try {
-      const response = await fetch(`/api/admin/stations/${station._id}/translate-descriptions`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          targetLanguages: ['en', 'es', 'fr', 'de', 'it', 'pt', 'tr', 'ru', 'ar', 'zh', 'ja', 'he']
-        })
-      });
-      
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || 'Failed to translate descriptions');
-      }
-      
-      const data = await response.json();
-      toast({
-        title: "✨ Descriptions Translated",
-        description: `Successfully translated to ${data.translationsCount} languages`
-      });
-      
-      // Refresh station data
-      setTimeout(() => {
-        queryClient.invalidateQueries({ queryKey: ['/api/admin/stations'] });
-        refetch();
-      }, 1500);
-    } catch (error: any) {
-      toast({
-        title: "Translation Error",
-        description: error.message || "Failed to translate descriptions",
-        variant: "destructive"
-      });
-    }
+    // Translation is part of the existing reviewed AI job, not a synchronous
+    // endpoint. Keep the selected station and let the admin confirm languages.
+    handleGenerateAiDescription(station);
   };
 
   const handleRecheckStationTags = async (station: any) => {

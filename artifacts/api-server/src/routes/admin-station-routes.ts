@@ -31,6 +31,7 @@ import {
   upsertAdminSettingWithHistory,
 } from "../services/admin-setting-audit";
 import { pgUserManagementStats } from "../data/postgres-user-store";
+import { registerAdminDescriptionRoutes } from './admin-description-routes';
 
 // AdminSetting key used to record the most recent coverage drop alert
 // acknowledgement (Task #238). The stored value is keyed by snapshotDate
@@ -507,6 +508,7 @@ interface RouteDeps {
 
 export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
   const { requireAdmin } = deps;
+  registerAdminDescriptionRoutes(app, requireAdmin);
 
   // 2026-05-15: manual on-demand trigger for the nightly Radio-Browser sync.
   // Same code path as the 03:00 Berlin cron (`scheduledStationSync.runOnce`)
@@ -1025,6 +1027,9 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
       }
 
       const update = pickAllowedStationFields(req.body || {});
+      if (Object.hasOwn(req.body || {}, 'descriptions')) {
+        return void res.status(400).json({ error: 'Save descriptions through PATCH /api/admin/stations/:id/descriptions with expected current values' });
+      }
       if (Object.keys(update).length === 0) {
         return void res.status(400).json({ error: 'No editable fields provided' });
       }

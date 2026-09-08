@@ -10,6 +10,7 @@ import { isS3Configured } from "../services/s3-storage";
 import { IndexNowService } from "../services/indexnow";
 import { ObjectStorageService } from "../objectStorage";
 import CacheManager from "../cache";
+import { backfillLogoVariants, parseLogoVariantRequest, LogoVariantRequestError } from '../services/logo-variant-backfill';
 
 interface RouteDeps {
   requireAuth: any;
@@ -19,6 +20,19 @@ interface RouteDeps {
 
 export function registerLogoRoutes(app: Express, deps: RouteDeps) {
   const { requireAdmin } = deps;
+
+  // Explicit, bounded migration of completed 256-only logos. Unlike reprocess,
+  // this preserves every working asset and never downloads external favicons.
+  app.post('/api/admin/logos/backfill-variants', requireAdmin, async (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    try {
+      const request = parseLogoVariantRequest(req.body);
+      res.json(await backfillLogoVariants(request));
+    } catch (error: any) {
+      const status = error instanceof LogoVariantRequestError ? 400 : [409, 503].includes(error?.status) ? error.status : 500;
+      res.status(status).json({ error: status === 500 ? 'Logo variant backfill failed' : error.message });
+    }
+  });
 
   // ===== BULK LOGO PROCESSING ENDPOINTS =====
   

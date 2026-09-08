@@ -135,20 +135,6 @@ export default function AdminLogin() {
             </Button>
           </form>
 
-          <div className="mt-6 pt-6 border-t border-gray-700">
-            <div className="text-center space-y-2">
-              <p className="text-xs text-gray-500">
-                Default credentials for development:
-              </p>
-              <div className="bg-gray-800 rounded-lg p-3 text-left">
-                <div className="font-mono text-sm text-gray-300 space-y-1">
-                  <div>Username: <span className="text-blue-400">admin</span></div>
-                  <div>Password: <span className="text-blue-400">admin123</span></div>
-                </div>
-              </div>
-            </div>
-          </div>
-
           <div className="mt-4 text-center">
             <Button
               variant="outline"

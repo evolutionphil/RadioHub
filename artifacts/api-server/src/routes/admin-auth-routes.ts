@@ -46,8 +46,7 @@ export function registerAdminAuthRoutes(app: Express, deps: any) {
           logger.error('❌ Session save error:', err);
           return void res.status(500).json({ error: 'Session save failed' });
         }
-        logger.log('✅ Admin login successful - Session ID:', req.sessionID);
-        logger.log('✅ Admin auth data stored:', adminAuthData);
+        logger.log('✅ Admin login successful');
 
         res.json({ 
           success: true, 
@@ -78,7 +77,6 @@ export function registerAdminAuthRoutes(app: Express, deps: any) {
   app.get("/api/admin/auth/me", requireAdmin, (req, res) => {
     try {
       const adminAuth = (req.session as any).adminAuth;
-      logger.log('🔍 Admin auth check - Session ID:', req.sessionID);
       
       if (adminAuth) {
         res.json({

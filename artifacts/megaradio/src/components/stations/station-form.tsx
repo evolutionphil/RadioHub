@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,6 +16,7 @@ import { Badge } from "@/components/ui/badge";
 import { Upload, Star, Globe, Loader2, Zap, Check, AlertCircle, Radio, Sparkles, Languages } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
+import { buildDescriptionChanges, generateAdminStationDescription } from '@/lib/admin-station-description';
 
 const stationFormSchema = z.object({
   name: z.string().min(1, "Station name is required"),
@@ -39,6 +40,7 @@ const stationFormSchema = z.object({
 
 interface StationData {
   _id?: string;
+  slug?: string;
   id?: string;
   name: string;
   url: string;
@@ -56,7 +58,7 @@ interface StationData {
   lastCheckOk?: boolean;
   isFeatured?: boolean;
   showInGlobalPopular?: boolean;
-  descriptions?: Record<string, string>;
+  descriptions?: Record<string, any>;
 }
 
 type StationFormData = z.infer<typeof stationFormSchema>;
@@ -93,6 +95,8 @@ export default function StationForm({
   const [isAnalyzingStream, setIsAnalyzingStream] = useState(false);
   const [streamAnalysis, setStreamAnalysis] = useState<any>(null);
   const [activeTab, setActiveTab] = useState("basic");
+  const baseline = useRef<StationData | undefined>(station);
+  const wasOpen = useRef(false);
 
   const { data: countriesData } = useQuery<CountryOption[]>({
     queryKey: ['/api/admin/available-countries'],
@@ -134,23 +138,21 @@ export default function StationForm({
 
   const { data: freshStation } = useQuery({
     queryKey: station ? ['/api/admin/stations', station._id] : ['disabled'],
-    queryFn: () => station ? fetch(`/api/admin/stations/${station._id}`).then(res => res.json()) : Promise.resolve(null),
+    queryFn: async () => station ? (await apiRequest('GET', `/api/admin/stations/${station._id}`)).json() : null,
     enabled: !!station && open,
     staleTime: 0,
   });
 
   const generateAiMutation = useMutation({
-    mutationFn: async (stationId: string) => {
-      const response = await apiRequest('POST', `/api/admin/stations/${stationId}/generate-descriptions`);
-      return response.json();
-    },
+    mutationFn: generateAdminStationDescription,
     onSuccess: (data) => {
       if (data.descriptions) {
+        baseline.current = data;
         form.setValue('descriptionsJson', JSON.stringify(data.descriptions, null, 2));
       }
       toast({
         title: "AI Description Generated",
-        description: "Multi-language descriptions have been created",
+        description: "The description in the station's language was saved and reloaded",
       });
     },
     onError: (error: any) => {
@@ -163,8 +165,12 @@ export default function StationForm({
   });
 
   useEffect(() => {
+    const alreadyOpen = wasOpen.current;
+    wasOpen.current = open;
     if (open) {
       const dataToUse = freshStation || station;
+      if (alreadyOpen && baseline.current?._id === dataToUse?._id && form.formState.isDirty) return;
+      baseline.current = dataToUse;
       form.reset(getDefaultValues(dataToUse));
       setStreamAnalysis(null);
       setActiveTab("basic");
@@ -196,17 +202,21 @@ export default function StationForm({
   }, [form]);
 
   const handleSubmit = (data: StationFormData) => {
-    if (data.descriptionsJson && data.descriptionsJson.trim()) {
-      try {
-        (data as any).descriptions = JSON.parse(data.descriptionsJson);
-      } catch (e) {
-        (data as any).descriptions = {};
+    try {
+      const { changes, descriptions } = buildDescriptionChanges(data.descriptionsJson || '', baseline.current?.descriptions || {});
+      const { descriptionsJson: _json, ...fields } = data;
+      if (!station) return onSubmit({ ...fields, ...(Object.keys(descriptions).length ? { descriptions } : {}) } as any);
+      const defaults = getDefaultValues(baseline.current);
+      const changed: Record<string, unknown> = Object.fromEntries(Object.entries(fields).filter(([key, value]) => value !== (defaults as any)[key]));
+      if (changes.length) {
+        if (!baseline.current?.slug) throw new Error('Reload the station before editing descriptions.');
+        changed.descriptionPatch = { slug: baseline.current.slug, changes };
       }
-    } else {
-      (data as any).descriptions = {};
+      onSubmit(changed as any);
+    } catch (error) {
+      form.setError('descriptionsJson', { message: error instanceof Error ? error.message : 'Invalid descriptions' });
+      setActiveTab('ai');
     }
-    delete (data as any).descriptionsJson;
-    onSubmit(data);
   };
 
   const handleCountryChange = (countryName: string) => {
@@ -238,7 +248,7 @@ export default function StationForm({
   const descriptionCount = Object.keys(descriptions).length;
 
   return (
-    <Dialog open={open} onOpenChange={onClose}>
+    <Dialog open={open} onOpenChange={() => { if (!isLoading && !generateAiMutation.isPending) onClose(); }}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto bg-white border border-gray-200 shadow-lg text-gray-900">
         <DialogHeader className="pb-2">
           <DialogTitle className="text-gray-900 flex items-center gap-2">
@@ -603,14 +613,14 @@ export default function StationForm({
                         AI Description Generator
                       </h4>
                       <p className="text-sm text-gray-600 mt-0.5">
-                        Generate SEO-optimized descriptions in 57 languages
+                        Generate a description in the station's language
                       </p>
                     </div>
                     <Button
                       type="button"
                       variant="outline"
                       size="sm"
-                      disabled={generateAiMutation.isPending}
+                      disabled={generateAiMutation.isPending || isLoading || form.formState.isDirty}
                       onClick={() => station?._id && generateAiMutation.mutate(station._id)}
                       className="bg-white"
                     >
@@ -652,7 +662,7 @@ export default function StationForm({
                         <Textarea 
                           {...field}
                           value={field.value || ""}
-                          placeholder='{"en": "English description", "tr": "Turkish description", ...}'
+                          placeholder='{"en": {"full": "English description", "meta": "Short summary"}}'
                           rows={8}
                           className="font-mono text-xs text-gray-900"
                         />
@@ -669,10 +679,10 @@ export default function StationForm({
 
             {/* Submit Buttons */}
             <div className="flex justify-end gap-3 pt-3 border-t">
-              <Button type="button" variant="outline" onClick={onClose} disabled={isLoading}>
+              <Button type="button" variant="outline" onClick={onClose} disabled={isLoading || generateAiMutation.isPending}>
                 Cancel
               </Button>
-              <Button type="submit" disabled={isLoading} className="bg-blue-600 hover:bg-blue-700">
+              <Button type="submit" disabled={isLoading || generateAiMutation.isPending} className="bg-blue-600 hover:bg-blue-700">
                 {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 {station ? 'Save Changes' : 'Add Station'}
               </Button>

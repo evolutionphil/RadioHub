@@ -148,4 +148,51 @@ describe('Native PostgreSQL admin catalog HTTP contracts',{ skip:!connectionStri
     }
     assert.equal((await request('/api/admin/stations?search=%5B','GET',undefined,null)).status,401);
   });
+  it('repairs only selected description fields and preserves source, siblings and station identity over HTTP',async()=>{
+    const id='d'.repeat(24),slug='description-repair-fixture';
+    const descriptions={de:{full:'Existing German article',meta:'',provenance:'unchanged'},en:{full:'Existing English article',meta:'English summary'}};
+    await catalog.insertMany([{_id:id,stationuuid:'description-repair-fixture',slug,name:'Description fixture',url:'https://example.invalid/description',descriptions,manualEditFields:{name:true}}]);
+    const before=(await pool.query('SELECT * FROM stations WHERE id=$1',[id])).rows[0];
+    const change={locale:'de',field:'meta',value:'Reviewed German summary',expectedCurrentValue:'',expectedLocaleObject:descriptions.de};
+    const endpoint='/api/admin/stations/'+id+'/descriptions';
+    assert.equal((await request(endpoint,'PATCH',{slug,changes:[change]},null)).status,401);
+    assert.equal((await request('/api/admin/stations/'+id)).status,200);
+    const response=await request(endpoint,'PATCH',{slug,changes:[change]});assert.equal(response.status,200);
+    const after=(await pool.query('SELECT * FROM stations WHERE id=$1',[id])).rows[0];
+    assert.deepEqual(after.descriptions,{...descriptions,de:{...descriptions.de,meta:change.value}});
+    assert.deepEqual(after.source,before.source);assert.equal(after.id,before.id);assert.equal(after.slug,before.slug);
+    assert.deepEqual(after.manual_edit_fields,{name:true,descriptions:true});
+    for(const key of Object.keys(before))if(!['descriptions','manual_edit_fields','updated_at'].includes(key))assert.deepEqual(after[key],before[key],key);
+    assert.equal((await request(endpoint,'PATCH',{slug,changes:[change]})).status,409);
+    assert.equal((await request('/api/stations/'+id,'PUT',{name:'Must not save',descriptions:{de:{meta:'silent overwrite'}}})).status,400);
+    assert.equal((await catalog.findById(id))?.name,'Description fixture');
+  });
+  it('rejects whole-batch locale/slug drift and serializes concurrent repairs without overwriting the winner',async()=>{
+    const id='d'.repeat(24),slug='description-repair-fixture',endpoint='/api/admin/stations/'+id+'/descriptions';
+    const current=(await catalog.findById(id))!;
+    const changes=[{locale:'en',field:'meta',value:'First proposed text',expectedCurrentValue:current.descriptions.en.meta,expectedLocaleObject:current.descriptions.en},
+      {locale:'de',field:'meta',value:'Second proposed text',expectedCurrentValue:'',expectedLocaleObject:{...current.descriptions.de,meta:''}}];
+    assert.equal((await request(endpoint,'PATCH',{slug,changes})).status,409);
+    assert.deepEqual((await catalog.findById(id))?.descriptions,current.descriptions);
+    assert.equal((await request(endpoint,'PATCH',{slug:'different-slug',changes:[changes[0]]})).status,409);
+    const responses=await Promise.all([request(endpoint,'PATCH',{slug,changes:[changes[0]]}),request(endpoint,'PATCH',{slug,changes:[{...changes[0],value:'Other writer'}]})]);
+    assert.deepEqual(responses.map(r=>r.status).sort(),[200,409]);
+    const saved=(await catalog.findById(id))!;
+    assert.deepEqual(saved.descriptions.de,current.descriptions.de);
+    const absent={locale:'tr',field:'full',value:'New Turkish article',expectedCurrentValue:null,expectedLocaleObject:null};
+    assert.equal((await request(endpoint,'PATCH',{slug,changes:[absent]})).status,200);
+    assert.equal((await request(endpoint,'PATCH',{slug,changes:[{...absent,value:'Must not overwrite'}]})).status,409);
+    assert.equal((await request('/api/admin/stations/'+'e'.repeat(24)+'/descriptions','PATCH',{slug,changes:[absent]})).status,404);
+  });
+  it('reports an already committed description edit successfully even if cache invalidation fails',async()=>{
+    const id='d'.repeat(24),current=(await catalog.findById(id))!;
+    const {performanceCache}=await import('../src/performance-cache');
+    const failing=mock.method(performanceCache,'invalidateStationCache',()=>{throw new Error('Injected cache failure');});
+    try{
+      const change={locale:'en',field:'meta',value:'Committed despite cache error',expectedCurrentValue:current.descriptions.en.meta,expectedLocaleObject:current.descriptions.en};
+      const response=await request('/api/admin/stations/'+id+'/descriptions','PATCH',{slug:current.slug,changes:[change]});
+      assert.equal(response.status,200);const body:any=await response.json();assert.equal(body.success,true);assert.equal(body.cacheInvalidated,false);
+      assert.equal((await catalog.findById(id))?.descriptions.en.meta,change.value);
+    }finally{failing.mock.restore();}
+  });
 });
