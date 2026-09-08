@@ -788,11 +788,13 @@ export default function StationDetails() {
                   </div>
                 </div>
 
-                {/* Desktop Ad Space - Lazy loaded. Reserve each resolved slot's
-                    minimum height so the centered station row does not move
-                    when its module resolves (carousel218px, AdSense250px). */}
-                <div className="mt-4 text-center sm:mt-0 hidden md:block">
-                  <div className="mt-6">
+                {/* Desktop Ad Space - keep one frame through auth, data and
+                    module loading. The carousel stays 218px; its 250px fallback
+                    must not repeatedly resize the centered station row. */}
+                <div className="mt-4 text-center sm:mt-0 hidden md:block"
+                  data-testid="station-desktop-ad-frame"
+                  style={isPremium ? undefined : { width: '224px', flexShrink: 0 }}>
+                  <div className="mt-6" style={isPremium ? undefined : { minHeight: '250px' }}>
                     {showAdvertisements && (advertisements && advertisements.some((ad: any) => ad.position === 'desktop_sidebar' && ad.isActive) ? (
                       <Suspense fallback={<div className="bg-gray-800 rounded flex items-center justify-center text-gray-400 w-[218px] h-[218px] flex-none animate-pulse" />}>
                         <AdCarousel

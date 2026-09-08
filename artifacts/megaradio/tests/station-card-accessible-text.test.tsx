@@ -11,7 +11,7 @@ vi.mock('@/hooks/use-toast', () => ({ useToast: () => ({ toast: vi.fn() }) }));
 vi.mock('@/hooks/useGlobalPlayer', () => ({ useGlobalPlayer: () => ({ currentStation: { _id: 'test-radio' }, isPlaying: state.isPlaying,
   stopStation: vi.fn(), playStation: vi.fn() }) }));
 vi.mock('@/components/ui/favorite-button', () => ({ default: () => null }));
-vi.mock('@/components/ui/station-logo', () => ({ StationLogo: ({ alt }: { alt: string }) => <img src="/logo.png" alt={alt} /> }));
+vi.mock('@/components/ui/station-logo', () => ({ StationLogo: ({ alt, sizes }: { alt: string; sizes?: string }) => <img src="/logo.png" alt={alt} sizes={sizes} /> }));
 vi.mock('@/utils/slugs', () => ({ getStationUrl: () => '/en/station/test-radio' }));
 vi.mock('wouter', () => ({ useLocation: () => ['/en', vi.fn()],
   Link: ({ children, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement>) => <a {...props}>{children}</a> }));
@@ -21,6 +21,12 @@ const station = { _id: 'test-radio', name: 'Test Radio', country: 'Germany', gen
 beforeEach(() => { state.language = 'en'; state.translations = {}; state.isPlaying = false; });
 
 describe('station card accessible text', () => {
+  it('reports the existing 70px mobile and 90px desktop logo slot without changing its layout', () => {
+    render(<StationCard station={station} />);
+    const image = screen.getByRole('img');
+    expect(image).toHaveAttribute('sizes', '(min-width: 768px) 90px, 70px');
+    expect(image.closest('a')).toHaveClass('w-[70px]', 'h-[70px]', 'md:w-[90px]', 'md:h-[90px]');
+  });
   it('replaces the exact English legacy default in a German dictionary with its localized play action', () => {
     state.language = 'de'; state.translations = { seo_listen_to_station: 'Listen to ${station.name}', btn_play: 'Play Radio', player_play_station: 'Station abspielen' };
     render(<StationCard station={station} />);

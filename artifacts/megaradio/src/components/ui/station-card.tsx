@@ -199,6 +199,7 @@ const StationCard = memo(function StationCard({
         <StationLogo
           station={station}
           size="card"
+          sizes="(min-width: 768px) 90px, 70px"
           alt={getStationImageAlt(station, language, t)}
           className="absolute inset-0 rounded-[9px]"
         />

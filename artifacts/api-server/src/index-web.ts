@@ -31,6 +31,7 @@ import { startOperation, endOperation, getActiveOperations, getGcStats } from '.
 import { COUNTRY_TO_LANGUAGE, SEO_LANGUAGES } from '@workspace/seo-shared/seo-config';
 
 import { geoBlockMiddleware } from './middleware/geo-block';
+import { privateApiCachePolicy, setHealthCacheHeaders } from './middleware/cache-policy';
 
 // Country-prefix duplicate canonical fix (Bing DALGA A)
 // SEO_LANGUAGES'da OLMAYAN ama COUNTRY_TO_LANGUAGE'da bulunan 2-harf prefix'leri
@@ -60,6 +61,7 @@ app.disable('x-powered-by');
 
 // Geo-block FIRST — drop TCP connection from blocked countries (no response)
 app.use(geoBlockMiddleware);
+app.use(['/api/admin', '/api/auth'], privateApiCachePolicy);
 
 let uncaughtExitScheduled = false;
 function scheduleFatalExit(label: string) {
@@ -87,8 +89,12 @@ process.on('unhandledRejection', (reason: any) => {
 const BACKEND_API_URL = process.env.BACKEND_API_URL || 'http://localhost:5000';
 const STREAM_PROXY_URL = process.env.STREAM_PROXY_URL || process.env.VITE_STREAM_PROXY_URL || 'https://stream.themegaradio.com';
 
-app.get('/healthz', (_req, res) => res.status(200).send('ok'));
+app.get('/healthz', (_req, res) => {
+  setHealthCacheHeaders(res);
+  res.status(200).type('text/plain').send('ok');
+});
 app.get('/readyz', async (_req,res) => {
+  setHealthCacheHeaders(res);
   const postgres = await getPostgresHealth();
   const ready = startupReady && postgres.status === 'connected';
   res.status(ready ? 200 : 503).json({ ready,database:'postgresql',postgres:postgres.status });
@@ -135,6 +141,7 @@ app.get('/llms.txt', async (req, res) => {
 });
 
 app.get('/health', async (_req, res) => {
+  setHealthCacheHeaders(res);
   const mem = process.memoryUsage();
   const heapMB = Math.round(mem.heapUsed / 1024 / 1024);
   const rssMB = Math.round(mem.rss / 1024 / 1024);

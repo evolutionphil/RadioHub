@@ -28,6 +28,8 @@ interface StationLogoProps {
   className?: string;
   alt?: string;
   priority?: boolean;
+  // Match a caller's CSS slot without changing dimensions or inventing assets.
+  sizes?: string;
   width?: number;
   height?: number;
 }
@@ -156,6 +158,7 @@ export function StationLogo({
   size = 'md', 
   className,
   alt,
+  sizes,
   priority = false
 }: StationLogoProps) {
   const sizeConfig = SIZES[size];
@@ -274,7 +277,7 @@ export function StationLogo({
       stationName={stationName}
       src={logoUrl}
       srcSet={srcSet}
-      sizes={srcSet ? getSizes(size) : undefined}
+      sizes={srcSet ? (sizes || getSizes(size)) : undefined}
       alt={alt}
       width={sizeConfig.px}
       height={sizeConfig.px}

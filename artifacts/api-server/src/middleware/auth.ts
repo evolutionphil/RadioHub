@@ -1,10 +1,12 @@
 import { logger } from '../utils/logger';
 import { createAuthToken, findActiveAuthToken } from '../data/auth-token-store';
 import { pgFindUserById } from '../data/postgres-user-store';
+import { setPrivateCacheHeaders } from './cache-policy';
 
 export type MiddlewareFn = (req: any, res: any, next: any) => void | Promise<void>;
 
 export const requireAuth: MiddlewareFn = async (req, res, next) => {
+  setPrivateCacheHeaders(res);
   try {
     const session = req.session;
     let userId = session?.user?.userId || session?.userId || req.user?._id || req.user?.id;
@@ -30,6 +32,7 @@ export const requireAuth: MiddlewareFn = async (req, res, next) => {
 };
 
 export const requireAdmin: MiddlewareFn = async (req, res, next) => {
+  setPrivateCacheHeaders(res);
   try {
     const session = req.session as any;
 

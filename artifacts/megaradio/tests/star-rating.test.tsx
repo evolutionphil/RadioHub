@@ -8,7 +8,7 @@ import { getLocalizedRatingLabels } from '../src/utils/localized-rating-labels';
 const locale = vi.hoisted(() => ({ language: 'en', dictionary: {} as Record<string, string> }));
 vi.mock('@/hooks/useTranslation', () => ({ useTranslation: () => ({
   language: locale.language, localeTranslations: locale.dictionary,
-  t: (_key: string, fallback: string) => fallback,
+  t: (key: string, fallback: string) => locale.dictionary[key] || fallback,
 }) }));
 import { StarRating } from '../src/components/star-rating';
 
@@ -16,6 +16,20 @@ beforeEach(() => { locale.language = 'en'; locale.dictionary = {}; });
 afterEach(cleanup);
 const star = (rating: number) => screen.getByRole('button', { name: `Rate ${rating} out of 5` });
 const dialog = () => within(screen.getByRole('dialog'));
+
+it('lets long localized review controls wrap without shrinking stars or truncating the action', () => {
+  locale.language = 'de';
+  locale.dictionary = { add_review: 'Bewertung hinzufügen', no_rating: 'Noch keine Bewertungen' };
+  render(<StarRating stationId="A" />);
+  const row = screen.getByTestId('rating-summary-row');
+  expect(row).toHaveClass('flex-wrap');
+  expect(row.firstElementChild).toHaveClass('shrink-0');
+  const action = screen.getByRole('button', { name: 'Bewertung hinzufügen' });
+  expect(action).toHaveClass('whitespace-normal', 'max-w-full', 'h-auto', 'min-h-8');
+  expect(screen.getByText('Noch keine Bewertungen')).toBeInTheDocument();
+  fireEvent.click(action);
+  expect(screen.getByRole('dialog')).toBeInTheDocument();
+});
 
 it('resets selected rating, comment, hover and open dialog on station change', () => {
   const view = render(<StarRating stationId="A" initialRating={2} initialComment="A saved" />);

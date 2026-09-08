@@ -182,13 +182,13 @@ function ScopedStarRating({
   return (
     <div className={cn("space-y-3", className)}>
       {/* Main Rating Display */}
-      <div className="flex items-center gap-3">
-        <div className="flex items-center gap-1">
+      <div className="flex flex-wrap items-center gap-3" data-testid="rating-summary-row">
+        <div className="flex shrink-0 items-center gap-1">
           {[1, 2, 3, 4, 5].map(getStarIcon)}
         </div>
         
         {showStats && (
-          <div className="flex items-center gap-2 text-sm text-gray-400">
+          <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2 text-sm text-gray-400">
             <span className="font-medium text-white">
               {statsStatus === 'loading' ? labels.loading : statsStatus === 'error' ? labels.unavailable :
                 averageRating > 0 ? averageRating.toFixed(1) : t('no_rating', 'No ratings yet')}
@@ -208,7 +208,7 @@ function ScopedStarRating({
               <Button 
                 variant="outline" 
                 size="sm"
-                className="text-xs"
+                className="h-auto min-h-8 max-w-full whitespace-normal break-words text-xs"
                 data-testid="button-add-review"
                 disabled={isSubmitting}
               >

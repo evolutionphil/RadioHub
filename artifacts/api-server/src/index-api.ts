@@ -45,6 +45,7 @@ import { startOperation, endOperation, getActiveOperations, getGcStats, getActiv
 
 import { geoBlockMiddleware } from './middleware/geo-block';
 import { databaseMaintenanceMiddleware } from './middleware/database-maintenance';
+import { privateApiCachePolicy, setHealthCacheHeaders } from './middleware/cache-policy';
 
 const app = express();
 // Allows a staging/read-serving replica to boot the production code path without
@@ -57,6 +58,7 @@ app.disable('x-powered-by');
 
 // Geo-block FIRST — drop TCP connection from blocked countries (no response)
 app.use(geoBlockMiddleware);
+app.use(['/api/admin', '/api/auth'], privateApiCachePolicy);
 app.use(databaseMaintenanceMiddleware);
 app.use('/api/test', (_req, res, next) => {
   if (process.env.NODE_ENV === 'production') return void res.status(404).json({ error: 'Not found' });
@@ -153,8 +155,9 @@ const publicPath = path.join(process.cwd(), 'public');
 // the sitemap and only blocks /api/admin etc — is the one that responds.
 
 app.get(['/healthz', '/health', '/api/health'], async (req, res) => {
+  setHealthCacheHeaders(res);
   if (req.path === '/healthz') {
-    return void res.status(200).send('ok');
+    return void res.status(200).type('text/plain').send('ok');
   }
 
   const mem = process.memoryUsage();
@@ -250,6 +253,7 @@ app.get(['/healthz', '/health', '/api/health'], async (req, res) => {
 });
 
 app.get('/readyz', async (_req, res) => {
+  setHealthCacheHeaders(res);
   const postgres = await getPostgresHealth();
   const ready = startupReady && postgres.status === 'connected';
   res.status(ready ? 200 : 503).json({ ready,database:'postgresql',postgres:postgres.status });

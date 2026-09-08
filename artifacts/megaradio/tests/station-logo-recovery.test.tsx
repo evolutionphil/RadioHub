@@ -77,11 +77,25 @@ describe('station logo source recovery', () => {
     expect(hasRecentStationLogoFailure('/failed-255.png')).toBe(true);
   });
   it('retains dimensions, responsive hints and explicit eager priority', () => {
-    render(<StationLogo station={station} size="card" priority className="absolute inset-0 rounded-[9px]" alt="Localized logo" />);
+    render(<StationLogo station={station} size="card" sizes="(min-width: 768px) 90px, 70px" priority className="absolute inset-0 rounded-[9px]" alt="Localized logo" />);
     const img = screen.getByRole('img');
     expect(img).toHaveAttribute('width', '90'); expect(img).toHaveAttribute('height', '90');
-    expect(img).toHaveAttribute('sizes', '90px'); expect(img).toHaveAttribute('loading', 'eager');
+    expect(img).toHaveAttribute('sizes', '(min-width: 768px) 90px, 70px'); expect(img).toHaveAttribute('loading', 'eager');
     expect(img).toHaveAttribute('fetchpriority', 'high'); expect(img).toHaveAttribute('alt', 'Localized logo');
     expect(img).toHaveClass('w-full', 'h-full', 'absolute', 'inset-0');
+  });
+  it.each([['xs', 24], ['sm', 32], ['md', 48], ['lg', 64], ['xl', 96], ['card', 90], ['player', 105], ['hero', 200]] as const)(
+    'keeps the default %s responsive size unchanged without a caller override', (size, pixels) => {
+      render(<StationLogo station={station} size={size} />);
+      expect(screen.getByRole('img')).toHaveAttribute('sizes', `${pixels}px`);
+    },
+  );
+  it('does not invent smaller sources or responsive hints for an existing 256-only logo', () => {
+    const single = { ...station, logoAssets: { folder: 'one', status: 'completed' as const, webp256: station.logoAssets.webp256 } };
+    render(<StationLogo station={single} size="card" sizes="(min-width: 768px) 90px, 70px" />);
+    const img = screen.getByRole('img');
+    expect(img).toHaveAttribute('src', station.logoAssets.webp256);
+    expect(img).not.toHaveAttribute('srcset');
+    expect(img).not.toHaveAttribute('sizes');
   });
 });
