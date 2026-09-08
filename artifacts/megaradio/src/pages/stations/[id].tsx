@@ -788,12 +788,12 @@ export default function StationDetails() {
                   </div>
                 </div>
 
-                {/* Desktop Ad Space - keep one frame through auth, data and
-                    module loading. The carousel stays 218px; its 250px fallback
-                    must not repeatedly resize the centered station row. */}
-                <div className="mt-4 text-center sm:mt-0 hidden md:block"
+                {/* Desktop Ad Space - reserve the 250px slot + 24px top margin
+                    in a grid track: responsive AdSense rewrites ancestor height
+                    and min-height. The 218px carousel and premium layout stay unchanged. */}
+                <div className={isPremium ? 'mt-4 text-center sm:mt-0 hidden md:block' : 'mt-4 text-center sm:mt-0 hidden md:grid'}
                   data-testid="station-desktop-ad-frame"
-                  style={isPremium ? undefined : { width: '224px', flexShrink: 0 }}>
+                  style={isPremium ? undefined : { width: '224px', flexShrink: 0, gridTemplateRows: 'minmax(274px, auto)' }}>
                   <div className="mt-6" style={isPremium ? undefined : { minHeight: '250px' }}>
                     {showAdvertisements && (advertisements && advertisements.some((ad: any) => ad.position === 'desktop_sidebar' && ad.isActive) ? (
                       <Suspense fallback={<div className="bg-gray-800 rounded flex items-center justify-center text-gray-400 w-[218px] h-[218px] flex-none animate-pulse" />}>

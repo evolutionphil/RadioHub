@@ -25,7 +25,7 @@ const compiled = ts.transpileModule(`export const Fixture = ({isPremium, showAdv
 }).outputText;
 
 it.each(['auth-loading', 'auth-error', 'google', 'manual', 'failed-manual', 'lazy-loading', 'premium'])
-  ('keeps one desktop frame during %s without weakening the advertisement gate', state => {
+  ('keeps one desktop frame during %s, including SDK dimension resets, without weakening the advertisement gate', state => {
     const suspended = new Promise(() => {});
     const exports: { Fixture?: React.ComponentType<any> } = {};
     const unit = () => React.createElement('div', { 'data-ad': 'google', style: { minHeight: '90px' } });
@@ -43,13 +43,29 @@ it.each(['auth-loading', 'auth-error', 'google', 'manual', 'failed-manual', 'laz
     const container = document.createElement('div');
     container.innerHTML = renderToStaticMarkup(React.createElement(exports.Fixture!, { isPremium, showAdvertisements, advertisements }));
     const frame = container.querySelector<HTMLElement>('[data-testid="station-desktop-ad-frame"]')!;
-    expect(frame.className).toContain('hidden md:block');
+    expect(frame.className).toContain(isPremium ? 'hidden md:block' : 'hidden md:grid');
     expect(frame.style.width).toBe(isPremium ? '' : '224px');
     expect(frame.style.flexShrink).toBe(isPremium ? '' : '0');
-    expect((frame.firstElementChild as HTMLElement).style.minHeight).toBe(isPremium ? '' : '250px');
+    expect(frame.style.gridTemplateRows).toBe(isPremium ? '' : 'minmax(274px, auto)');
+    const inner = frame.firstElementChild as HTMLElement;
+    expect(inner.style.minHeight).toBe(isPremium ? '' : '250px');
     if (!showAdvertisements || state === 'lazy-loading') expect(frame.querySelector('[data-ad]')).toBeNull();
     else expect(frame.querySelector('[data-ad]')?.getAttribute('data-ad')).toBe(state === 'manual' ? 'manual' : 'google');
     if (state === 'manual') expect((frame.querySelector('[data-ad]') as HTMLElement).style.height).toBe('218px');
+    if (!isPremium) {
+      // Replay the exact responsive-AdSense ancestor mutations seen in a real
+      // filled slot. Height/min-height alone are not a durable reservation.
+      // jsdom checks the independent CSS contract; live browser QA checks pixels.
+      frame.style.setProperty('height', 'auto', 'important');
+      inner.style.setProperty('min-height', '0px', 'important');
+      inner.style.setProperty('height', 'auto', 'important');
+      expect(frame.style.getPropertyPriority('height')).toBe('important');
+      expect(inner.style.minHeight).toBe('0px');
+      expect(inner.style.getPropertyPriority('min-height')).toBe('important');
+      expect(frame.style.gridTemplateRows).toBe('minmax(274px, auto)');
+      expect(frame.className).toContain('hidden md:grid');
+      expect(frame.style.width).toBe('224px');
+    }
   });
 
 it('desktop ad placeholders match the existing resolved carousel and AdSense minimum heights', () => {
