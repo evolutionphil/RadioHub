@@ -32,7 +32,9 @@ export function sendJunkGone(res: Response): void {
     .status(410)
     .set({
       'Content-Type': 'text/plain; charset=utf-8',
-      'Cache-Control': 'public, max-age=86400',
+      // Exclusions can be reversed after a verified stream recovery. Never
+      // retain an old removal response at the CDN/browser for another day.
+      'Cache-Control': 'no-store',
       'X-SEO-Cache': 'JUNK-410',
       'X-Robots-Tag': 'noindex, follow',
     })

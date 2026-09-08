@@ -186,6 +186,8 @@ export class PerformanceCache {
   }
   
   setSeoHtml(url: string, html: string, userAgent: string = 'bot'): void {
+    const page = this.getPageData(url)?.pageData;
+    if (page?.stationIsJunk || page?.notFound) return;
     const cacheKey = `seo:${userAgent}:${url}`;
     this.safeSet(this.seoHtmlCache, 'seoHtmlCache', cacheKey, html);
   }
@@ -198,7 +200,14 @@ export class PerformanceCache {
   }
   
   setPageData(url: string, data: any): void {
-    this.safeSet(this.pageDataCache, 'pageDataCache', `page:${url}`, data);
+    const excluded = !!(data?.pageData?.stationIsJunk || data?.pageData?.notFound);
+    if (excluded) {
+      // Negative data must not outlive a reviewed recovery in another process.
+      // Remove accompanying HTML before shortening the decision TTL, so an
+      // expired negative guard can never expose an older cached 200 page.
+      this.seoHtmlCache.del(this.seoHtmlCache.keys().filter(key => key.endsWith(`:${url}`)));
+    }
+    this.safeSet(this.pageDataCache, 'pageDataCache', `page:${url}`, data, excluded ? 60 : undefined);
   }
   
   // === QUICK CACHING ===

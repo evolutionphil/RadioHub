@@ -9,6 +9,7 @@ import path from "path";
 import { createServer } from "http";
 import { createServer as createHttpsServer } from "https";
 import { createProxyMiddleware } from 'http-proxy-middleware';
+import { forwardApiRequest } from './middleware/forward-api-request';
 import { seedPostgresDefaultLanguages } from "./services/postgres-bootstrap";
 import { closePostgres, initializePostgres, getPostgresHealth, postgresAvailable } from "./postgres-runtime";
 import { performanceCache } from "./performance-cache";
@@ -616,6 +617,11 @@ app.use('/api/stream', streamServiceProxy);
   await initializePostgres();
   await seedPostgresDefaultLanguages();
 
+  // The local SEO registrar also installs admin maintenance paths with a
+  // deny-only stub. Delegate these to the authenticated API BEFORE that stub
+  // can shadow them; public page-data and sitemap XML still remain local.
+  app.use('/api/admin', forwardApiRequest(apiProxy));
+
   const seoSitemapDeps = {
     requireAdmin: (_req: any, res: any, next: any) => {
       res.status(403).json({ error: 'Admin routes only available on API service' });
@@ -625,10 +631,7 @@ app.use('/api/stream', streamServiceProxy);
   startupReady = true;
   logger.log('✅ SEO/Sitemap routes registered on frontend-web (handles /api/seo/page-data locally)');
 
-  app.use('/api', (req, res, next) => {
-    req.url = `/api${req.url}`;
-    return apiProxy(req, res, next);
-  });
+  app.use('/api', forwardApiRequest(apiProxy));
 
   const server = createServer(app);
 
