@@ -1,10 +1,12 @@
-import React from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useParams, useLocation, useRoute } from 'wouter';
+import { Link, useParams, useRoute } from 'wouter';
 import { SeoHead } from '@/components/SeoHead';
 import StationCard from '@/components/ui/station-card';
-import { CODE_TO_COUNTRY, SEO_LANGUAGES, getCountryCodeFromName } from '@workspace/seo-shared/seo-config';
+import { CODE_TO_COUNTRY, SEO_LANGUAGES } from '@workspace/seo-shared/seo-config';
 import { useTranslation } from '@/hooks/useTranslation';
+import { useSeoRouting } from '@/hooks/useSeoRouting';
+import { useGenreMobileViewport, useGenrePagination } from '@/hooks/useGenrePageState';
+import { getGenrePageLabels } from '@/utils/genre-page-labels';
 
 // Import arrow icons for pagination
 import arrowLeftIcon from "@assets/arrow-left.png";
@@ -16,18 +18,12 @@ interface GenreLandingProps {
 }
 
 export default function GenreLanding({ selectedCountry, onCountryChange }: GenreLandingProps) {
-  const { t } = useTranslation();
+  const { language, localeTranslations } = useTranslation();
+  const labels = getGenrePageLabels(language, localeTranslations);
+  const { getLocalizedUrl } = useSeoRouting();
   const { slug: paramsSlug } = useParams<{ slug: string }>();
-  const [, setLocation] = useLocation();
-  const [currentPage, setCurrentPage] = React.useState(1);
   const stationsPerPage = 15;
-  
-  // isMobile check for responsive pagination
-  const { data: isMobile } = useQuery({
-    queryKey: ['is-mobile-genre'],
-    queryFn: () => window.innerWidth < 768,
-    staleTime: Infinity,
-  });
+  const isMobile = useGenreMobileViewport();
   
   // Extract country from URL route parameters
   const [, paramsLang] = useRoute("/:lang/genres/:slug");  // For /dz/genres/classical
@@ -41,51 +37,21 @@ export default function GenreLanding({ selectedCountry, onCountryChange }: Genre
   const urlCountryCode = (urlCode && !isLanguageCode) ? urlCode : null;
   const urlCountryName = urlCountryCode ? (CODE_TO_COUNTRY[urlCountryCode] || 'all') : null;
   
-  const currentCountry = (selectedCountry && selectedCountry !== 'all' && selectedCountry !== urlCountryName) 
+  const requestedCountry = (selectedCountry && selectedCountry !== 'all' && selectedCountry !== urlCountryName)
     ? selectedCountry 
     : (urlCountryName || selectedCountry || 'all');
+  const currentCountry = requestedCountry === 'global' ? 'all' : requestedCountry;
+  const { currentPage, changePage: handlePageChange } = useGenrePagination(JSON.stringify([currentCountry, slug]));
   
-  
-  // Handle country selection with proper URL navigation (prevent page scroll and audio interruption)
-  const handleCountryClick = (countryName: string) => {
-    const countryCode = getCountryCodeFromName(countryName);
-    if (countryCode) {
-      // CRITICAL: Prevent audio interruption during navigation
-      // Set a navigation flag to prevent audio stops
-      if (window.history.state) {
-        window.history.state.navigatingCountry = true;
-      }
-      
-      // Navigate to localized genre URL: /de/genres/pop for Germany
-      const localizedUrl = `/${countryCode}/genres/${slug}`;
-      
-      // Navigate without causing page scroll
-      setLocation(localizedUrl);
-      
-      // Clear navigation flag after a short delay
-      setTimeout(() => {
-        if (window.history.state && window.history.state.navigatingCountry) {
-          delete window.history.state.navigatingCountry;
-        }
-      }, 1000);
-      
-      // Call onCountryChange to update parent state
-      onCountryChange?.(countryName, true);
-    } else {
-      // Fallback to calling the original onCountryChange if no country code mapping
-      onCountryChange?.(countryName, true);
-    }
-  };
-  
-  const { data: genre, isLoading: genreLoading, error: genreError } = useQuery<{name: string, slug: string}>({
+  const { data: genre, isLoading: genreLoading, isError: genreError, refetch: retryGenre, isFetching: genreFetching } = useQuery<{name: string, slug: string}>({
     queryKey: [`/api/genres/slug/${slug}`],
     enabled: !!slug
   });
 
 
-  const { data: stationsResponse, isLoading: stationsLoading } = useQuery<{stations: any[], total: number, page: number, pages: number}>({
+  const { data: stationsResponse, isLoading: stationsLoading, isError: stationsError, refetch: retryStations, isFetching: stationsFetching } = useQuery<{stations: any[], total: number, page: number, pages: number}>({
     queryKey: [`/api/genres/${slug}/stations`, { page: currentPage, limit: stationsPerPage }, currentCountry, urlCountryCode],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const params = new URLSearchParams({
         page: currentPage.toString(),
         limit: stationsPerPage.toString()
@@ -96,7 +62,7 @@ export default function GenreLanding({ selectedCountry, onCountryChange }: Genre
         params.append('country', currentCountry);
       }
       
-      const response = await fetch(`/api/genres/${slug}/stations?${params}`);
+      const response = await fetch(`/api/genres/${slug}/stations?${params}`, { signal });
       if (!response.ok) throw new Error('Failed to fetch stations');
       return await response.json();
     },
@@ -111,12 +77,6 @@ export default function GenreLanding({ selectedCountry, onCountryChange }: Genre
   const totalStations = stationsResponse?.total ?? 0;
   const totalPages = stationsResponse?.pages ?? Math.ceil(totalStations / stationsPerPage);
   
-  // Handle page changes
-  const handlePageChange = (page: number) => {
-    setCurrentPage(page);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
-
   // NOTE (2026-07-01, Ahrefs "H1 tag missing or empty"): we intentionally do NOT
   // gate the whole page behind `genreLoading` any more. The heading below is the
   // page's single <h1>; a full-page loading spinner meant a crawler that snapshot
@@ -135,16 +95,16 @@ export default function GenreLanding({ selectedCountry, onCountryChange }: Genre
         <div className="w-full bg-[#151515]" style={{ height: '100px' }}>
           <div className="mx-auto w-full max-w-[1512px] h-full px-5 md:px-[20px] flex items-center">
             <div className="mx-auto max-w-[1206px] w-full flex items-center text-white text-3xl font-bold">
-              <span className="text-[#777777] cursor-pointer hover:text-white transition-colors" onClick={() => setLocation('/genres')}>
-                {t('genres', 'Genres')}
-              </span>
+              <Link href={getLocalizedUrl('/genres')} className="text-[#777777] cursor-pointer hover:text-white transition-colors">
+                {labels.genres}
+              </Link>
               <span className="mx-3 text-[#777777]">&gt;</span>
               {/* Promoted from <span> to <h1> so the live genre page carries a
                   single heading on client navigation (the SSR genre page emits
                   one via getH1Text; the SPA was replacing it with a <span>).
                   Tailwind preflight resets h1 font-size/weight/margin to inherit,
                   so this is visually identical to the previous span. */}
-              <h1 className="capitalize">{genreName} Stations</h1>
+              <h1 className="capitalize">{genreName} {labels.stations}</h1>
             </div>
           </div>
         </div>
@@ -155,14 +115,17 @@ export default function GenreLanding({ selectedCountry, onCountryChange }: Genre
             {/* Stations Grid */}
             <div className="mb-12">
 
-            {stationsLoading ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+            {genreError || stationsError || !slug ? (
+              <p role="alert" className="py-5 text-white/70">{labels.error} <button disabled={genreFetching || stationsFetching || !slug} onClick={() => { void retryGenre(); void retryStations(); }} className="underline">{labels.retry}</button></p>
+            ) : stationsLoading ? (
+              <div role="status" aria-label={labels.loading} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
                 {Array.from({ length: 9 }).map((_, i) => (
                   <div key={i} className="bg-[#1A1A1A] animate-pulse rounded-lg h-48" />
                 ))}
               </div>
             ) : (
               <>
+                {stations.length === 0 && <p role="status" className="py-5 text-white/70">{labels.emptyStations}</p>}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
                   {stations.map((station: any) => (
                     <StationCard
@@ -189,7 +152,7 @@ export default function GenreLanding({ selectedCountry, onCountryChange }: Genre
                       <div className="w-10 h-8 md:w-[51px] md:h-[38px] flex items-center justify-center">
                         <img 
                           src={arrowLeftIcon} 
-                          alt="Previous" 
+                          alt={labels.previous}
                           className="w-5 h-5 md:w-[26px] md:h-[26px]"
                         />
                       </div>
@@ -341,7 +304,7 @@ export default function GenreLanding({ selectedCountry, onCountryChange }: Genre
                       <div className="w-10 h-8 md:w-[51px] md:h-[38px] flex items-center justify-center">
                         <img 
                           src={arrowRightIcon} 
-                          alt="Next" 
+                          alt={labels.next}
                           className="w-5 h-5 md:w-[26px] md:h-[26px]"
                         />
                       </div>

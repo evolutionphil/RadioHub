@@ -15,7 +15,7 @@ import { pgCountryCounts, pgDiscoverableGenres, pgGenreBySlug, pgPublicGenres, p
 
 // Keep cached navigation aligned with admin whitelist edits without shortening
 // the existing taxonomy TTL or invalidating it on an unchanged periodic refresh.
-const publicGenreWhitelistVersion = () => createHash('sha256')
+const publicGenreWhitelistVersion = () => 'navigation-v2:' + createHash('sha256')
   .update([...getMergedWhitelist()].sort().join('\0')).digest('hex').slice(0, 16);
 
 export function registerGenresCountriesRoutes(app: Express, deps: any) {
@@ -337,7 +337,7 @@ export function registerGenresCountriesRoutes(app: Express, deps: any) {
     try {
       const { slug } = req.params;
 
-      const cacheKey = `genre-slug:${slug}`;
+      const cacheKey = `genre-slug:membership-v2:${slug}`;
       const cached = await CacheManager.get(cacheKey);
       if (cached) {
         return void res.json(cached);
@@ -552,15 +552,29 @@ export function registerGenresCountriesRoutes(app: Express, deps: any) {
 
   app.get("/api/genres/:slug/stations", async (req, res) => {
     const { slug } = req.params;
-    const page = parseInt(req.query.page as string) || 1;
-    const limit = Math.min(parseInt(req.query.limit as string) || 20, 100);
-    const skip = (page - 1) * limit;
+    const paginationInteger = (value: unknown, fallback: number, maximum: number) => {
+      if (value === undefined) return fallback;
+      if (typeof value !== 'string' || !/^\d+$/.test(value)) return null;
+      const number = Number(value);
+      return Number.isSafeInteger(number) && number > 0 ? Math.min(number, maximum) : null;
+    };
+    // Match native pagination bounds before constructing the response/cache key.
+    // parseInt previously accepted malformed values and returned negative pages
+    // even though the native reader silently clamped them to page one.
+    const page = paginationInteger(req.query.page, 1, 1_000_000);
+    const limit = paginationInteger(req.query.limit, 20, 100);
+    if (page === null || limit === null) {
+      res.set('Cache-Control', 'no-store');
+      return void res.status(400).json({ error: 'page and limit must be positive integers' });
+    }
     const rawCountry = (req.query.country as string) || null;
     const country = (rawCountry && rawCountry !== 'undefined' && rawCountry !== 'null')
       ? (resolveToDbName(rawCountry) || rawCountry)
       : null;
 
-    const cacheKey = `genre-stations:${slug}:${country || 'all'}:${page}:${limit}`;
+    // Do not reuse the old display-name-keyed empty result, including on a
+    // transient database failure during the first request after this repair.
+    const cacheKey = `genre-stations:slug-v2:${slug}:${country || 'all'}:${page}:${limit}`;
     try {
       // INCIDENT 2026-05-16 v12 — was hard-500 on timeout, breaking SSR
       // genre pages. Single-flight + 8s maxTimeMS + soft-fail catch.
@@ -574,7 +588,9 @@ export function registerGenresCountriesRoutes(app: Express, deps: any) {
       const result = await CacheManager.getOrSetSingleFlight(cacheKey, async () => {
         {
           const listed = await listStationsFromPostgres({
-            genre: (genre as any).name,
+            // The editorial name may change ("Jazz Music") while indexed
+            // membership remains on its canonical slug ("jazz").
+            genre: (genre as any).slug,
             country: country || undefined,
             sort: 'votes', page, limit,
           });

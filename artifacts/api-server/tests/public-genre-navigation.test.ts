@@ -43,25 +43,25 @@ beforeEach(() => {
 });
 const get = async (path: string) => { const response = await fetch(base + path); assert.equal(response.status, 200); return response.json() as Promise<any>; };
 
-it('filters raw numeric/frequency tags and explicitly hidden curated rows before country pagination', async () => {
+it('lists populated non-featured genres but filters raw frequency tags before country pagination', async () => {
   const result = await get('/api/genres/precomputed?country=Austria&limit=2');
   assert.equal(lastCountry, 'Austria');
-  assert.deepEqual(result.data.map((r: any) => r.slug), ['custom-genre', 'rock']);
-  assert.equal(result.total, 3); assert.equal(result.totalPages, 2);
+  assert.deepEqual(result.data.map((r: any) => r.slug), ['jazz', 'custom-genre']);
+  assert.equal(result.total, 4); assert.equal(result.totalPages, 2);
   assert.deepEqual(result.genres, result.data);
-  assert.deepEqual((await get('/api/genres/precomputed?country=Austria&limit=2&page=2')).data.map((r: any) => r.slug), ['pop']);
+  assert.deepEqual((await get('/api/genres/precomputed?country=Austria&limit=2&page=2')).data.map((r: any) => r.slug), ['rock', 'pop']);
 });
 it('public global/country browser and discoverable endpoints apply the same whitelist', async () => {
   for (const path of ['/api/genres?country=Austria', '/api/genres?limit=20', '/api/genres/discoverable?country=Austria', '/api/genres/discoverable']) {
     const result = await get(path); const list = Array.isArray(result) ? result : result.data;
-    assert.deepEqual(list.map((r: any) => r.slug).sort(), ['custom-genre', 'pop', 'rock']);
+    assert.deepEqual(list.map((r: any) => r.slug).sort(), path.includes('/discoverable') ? ['custom-genre', 'pop', 'rock'] : ['custom-genre', 'jazz', 'pop', 'rock']);
   }
 });
 it('honors current admin additions/removals and does not change internal raw taxonomy', async () => {
   assert.equal((await taxonomy.pgGenres('Austria', true)).length, rows.length);
   allowed.delete('rock'); allowed.add('105');
   const result = await get('/api/genres/precomputed?country=Austria');
-  assert.deepEqual(result.data.map((r: any) => r.slug), ['105', 'custom-genre', 'pop']);
+  assert.deepEqual(result.data.map((r: any) => r.slug), ['105', 'jazz', 'custom-genre', 'pop']);
   assert.equal((await taxonomy.pgGenres('Austria', true)).length, rows.length);
 });
 it('cached browser/discovery navigation follows whitelist changes without flushing unrelated caches', async () => {
@@ -69,7 +69,7 @@ it('cached browser/discovery navigation follows whitelist changes without flushi
   allowed.delete('rock'); allowed.add('105');
   for (const path of ['/api/genres?limit=20', '/api/genres/discoverable']) {
     const result = await get(path); const list = Array.isArray(result) ? result : result.data;
-    assert.deepEqual(list.map((r: any) => r.slug).sort(), ['105', 'custom-genre', 'pop']);
+    assert.deepEqual(list.map((r: any) => r.slug).sort(), path.includes('/discoverable') ? ['105', 'custom-genre', 'pop'] : ['105', 'custom-genre', 'jazz', 'pop']);
   }
   assert.equal(cache.size, 4, 'Both whitelist versions keep their independent cached results');
 });
@@ -79,10 +79,22 @@ it('keeps display order and custom names/images, and never promotes an alias int
   assert.equal(list[0].name, 'Editorial Pop'); assert.equal(list[0].posterImage, '/existing-pop.webp');
   assert.ok(!list.some((r: any) => r.slug === 'alias-only'));
 });
-it('search applies after qualification so hidden or unknown matches cannot bypass it', async () => {
+it('search finds non-featured public genres but not unknown or cleanup-demoted rows', async () => {
   assert.equal((await get('/api/genres/precomputed?country=Austria&search=105')).total, 0);
-  assert.equal((await get('/api/genres/precomputed?country=Austria&search=jazz')).total, 0);
+  assert.equal((await get('/api/genres/precomputed?country=Austria&search=jazz')).total, 1);
   assert.deepEqual((await get('/api/genres/precomputed?country=Austria&search=pop')).data.map((r: any) => r.slug), ['pop']);
+});
+it('preserves homepage selection and excludes cleanup demotions and empty genres from public navigation', async () => {
+  rows.push(row('demoted', 30, false, 'Demoted', { cleanupDemotion: { reason: 'collision' } }), row('empty', 0));
+  allowed.add('demoted'); allowed.add('empty');
+  const original = structuredClone(rows);
+  const publicList = await taxonomy.pgPublicGenres();
+  assert.ok(publicList.some(genre => genre.slug === 'jazz' && genre.isDiscoverable === false));
+  assert.ok(!publicList.some(genre => ['demoted', 'empty'].includes(genre.slug)));
+  assert.ok(!(await taxonomy.pgDiscoverableGenres(undefined, 50)).some(genre => genre.slug === 'jazz'));
+  allowed.delete('jazz');
+  assert.ok(!(await taxonomy.pgPublicGenres()).some(genre => genre.slug === 'jazz'));
+  assert.deepEqual(rows, original, 'No editorial flags, whitelist rows or data are rewritten');
 });
 it('reuses the native aggregate across pagination/search while separating country and whitelist versions', async () => {
   await get('/api/genres/precomputed?country=Austria&limit=2');

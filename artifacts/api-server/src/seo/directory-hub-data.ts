@@ -8,14 +8,14 @@ import { canonicalizeCountry, countrySlug, getRegionSlugForCountry } from '@work
 export const DIRECTORY_GENRE_LIMIT = 60;
 export const DIRECTORY_COUNTRIES_PER_REGION = 8;
 export const genreDirectoryCacheRevision = (): string => createHash('sha256')
-  .update([...getMergedWhitelist()].sort().join('\0')).digest('hex').slice(0, 16);
+  .update('membership-v2\0' + [...getMergedWhitelist()].sort().join('\0')).digest('hex').slice(0, 16);
 export const DIRECTORY_REGIONS = [
   { slug: 'africa', name: 'Africa' }, { slug: 'asia', name: 'Asia' },
   { slug: 'europe', name: 'Europe' }, { slug: 'north-america', name: 'North America' },
   { slug: 'south-america', name: 'South America' }, { slug: 'oceania', name: 'Oceania' },
 ] as const;
 
-/** Read only the curated taxonomy table, never dynamic station tags/catalogue. */
+/** Curated, whitelisted genres with live indexed counts; no raw tag URLs. */
 export async function loadGenreDirectoryHub(): Promise<Array<{ slug: string; name: string; stationCount: number }>> {
   return (await pgPublicGenres())
     .filter(genre => /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(genre.slug) && genre.stationCount >= MIN_STATIONS_FOR_GENRE_INDEX)

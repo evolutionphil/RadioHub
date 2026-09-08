@@ -48,11 +48,15 @@ export async function pgGenres(country?: string, includeDynamic = false): Promis
   return result.rows.map(genreShape);
 }
 
-/** Public navigation must obey the same admin-managed whitelist as canonical
- * genre pages. Raw station tags remain available to internal taxonomy work. */
+/** The whitelist controls public genre navigation; is_discoverable selects
+ * homepage feature tiles, not whether a populated genre can be browsed. Keep
+ * cleanup-demoted rows excluded without rewriting any administrator choices. */
 export async function pgPublicGenres(country?: string, includeDynamic = false): Promise<any[]> {
-  return (await pgGenres(country, includeDynamic)).filter(genre =>
-    genre.isDiscoverable !== false && isWhitelistedGenreSlug(genre.slug),
+  // Use the same indexed membership counts for the directory and country
+  // pages; the scheduled genres.station_count snapshot can be stale.
+  return (await pgGenres(country, true)).filter(genre =>
+    (includeDynamic || country || !genre.isDynamic)
+      && isWhitelistedGenreSlug(genre.slug) && !genre.cleanupDemotion && genre.stationCount > 0,
   );
 }
 
@@ -66,11 +70,15 @@ export async function pgDiscoverableGenres(country: string | undefined, limit: n
 
 export async function pgGenreBySlug(slug: string): Promise<any | null> {
   const result = await getPostgresPool().query(
-    `SELECT * FROM genres WHERE slug=$1
+    `WITH genre_count AS (
+       SELECT count(*)::int station_count FROM station_genres WHERE genre_slug=$1
+     )
+     SELECT g.id,g.name,g.slug,g.is_discoverable,c.station_count,g.source,g.created_at,g.updated_at
+     FROM genres g CROSS JOIN genre_count c WHERE g.slug=$1
      UNION ALL
-     SELECT 'dynamic-' || $1,initcap(replace($1,'-',' ')),$1,true,count(*)::int,
-       '{}'::jsonb,now(),now() FROM station_genres WHERE genre_slug=$1
-       AND NOT EXISTS(SELECT 1 FROM genres WHERE slug=$1)
+     SELECT 'dynamic-' || $1,initcap(replace($1,'-',' ')),$1,true,c.station_count,
+       '{}'::jsonb,now(),now() FROM genre_count c
+       WHERE NOT EXISTS(SELECT 1 FROM genres WHERE slug=$1)
      LIMIT 1`,
     [slug],
   );

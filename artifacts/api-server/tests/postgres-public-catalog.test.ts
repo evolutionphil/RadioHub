@@ -284,6 +284,7 @@ describe('Native PostgreSQL public catalog', { skip: !process.env.PG_TEST_DATABA
     await assert.rejects(read.getNearbyStationsFromPostgres({ latitude: 100, longitude: 0, radiusKm: 100, limit: 5 }), TypeError);
   });
   it('native genre CRUD preserves rich fields, clears demotion and rejects duplicate slugs atomically', async () => {
+    await catalog.insertMany([station('rock-member', { tags: 'rock' })]);
     const created = await taxonomy.pgCreateGenre({ name: 'Rock', slug: 'rock', isDiscoverable: true, description: 'Original', displayOrder: 0 });
     await pool.query('UPDATE genres SET source=source||$1::jsonb WHERE id=$2', [JSON.stringify({ cleanupDemotion: { cause: 'test' }, posterImage: '/poster.png' }), created._id]);
     const updated = await taxonomy.pgUpdateGenre(created._id, { name: 'Rock Music' }, true);
@@ -318,6 +319,46 @@ describe('Native PostgreSQL public catalog', { skip: !process.env.PG_TEST_DATABA
     assert.equal((await fetch(base + '/api/genres', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: 'Jazz', slug: 'jazz' }) })).status, 401);
     const response = await fetch(base + '/api/genres', { method: 'POST', headers: { 'content-type': 'application/json', 'x-test-admin': 'true' }, body: JSON.stringify({ name: 'Jazz', slug: 'jazz' }) });
     assert.equal(response.status, 201);
+  });
+  it('lists all three indexed Jazz members after an editorial rename without matching Jazz Music instead', async () => {
+    await catalog.insertMany([
+      station('jazz-one', { tags: 'jazz', votes: 30, country: 'Austria' }),
+      station('jazz-two', { tags: 'jazz', votes: 20, country: 'Austria' }),
+      station('jazz-three', { tags: 'jazz', votes: 10 }),
+      station('jazz-music-other', { tags: 'jazz music', votes: 100 }),
+    ]);
+    await taxonomy.pgCreateGenre({ name: 'Jazz Music', slug: 'jazz', stationCount: 3, isDiscoverable: true });
+    const request = async (suffix = '') => {
+      const response = await fetch(base + '/api/genres/jazz/stations' + suffix);
+      assert.equal(response.status, 200); return await response.json() as any;
+    };
+    const first = await request('?limit=2');
+    assert.equal(first.genre.name, 'Jazz Music'); assert.equal(first.genre.slug, 'jazz');
+    assert.equal(first.total, 3); assert.equal(first.pages, 2);
+    assert.deepEqual(first.stations.map((s: any) => s._id), ['jazz-one', 'jazz-two']);
+    assert.equal(first.genre.stationCount, 3);
+    assert.deepEqual((await request('?limit=2&page=2')).stations.map((s: any) => s._id), ['jazz-three']);
+    const detail = await (await fetch(base + '/api/genres/slug/jazz')).json() as any;
+    assert.equal(detail.stationCount, first.total);
+    assert.equal((await request('?country=Austria')).total, 2);
+  });
+  it('browses populated non-featured genres without changing homepage selections or trusting stale counters', async () => {
+    await catalog.insertMany([
+      station('pop-at', { tags: 'pop', country: 'Austria' }),
+      station('pop-de', { tags: 'pop' }),
+      station('dance-at', { tags: 'dance', country: 'Austria' }),
+      station('classical-at', { tags: 'classical', country: 'Austria' }),
+    ]);
+    for (const slug of ['pop', 'dance', 'classical']) await taxonomy.pgCreateGenre({ name: slug, slug, isDiscoverable: false });
+    const before = (await pool.query('SELECT slug,is_discoverable,station_count,source FROM genres ORDER BY slug')).rows;
+    const response = await fetch(base + '/api/genres/precomputed?country=Austria&limit=200');
+    assert.equal(response.status, 200);
+    const listed = (await response.json() as any).data;
+    assert.deepEqual(listed.map((genre: any) => [genre.slug, genre.stationCount]), [['classical', 1], ['dance', 1], ['pop', 1]]);
+    assert.ok(listed.every((genre: any) => genre.isDiscoverable === false));
+    assert.equal((await taxonomy.pgPublicGenres()).find(genre => genre.slug === 'pop').stationCount, 2);
+    assert.deepEqual(await taxonomy.pgDiscoverableGenres('Austria', 50), []);
+    assert.deepEqual((await pool.query('SELECT slug,is_discoverable,station_count,source FROM genres ORDER BY slug')).rows, before);
   });
   it('returns unavailable status on a cold database failure instead of a fabricated empty success', async () => {
     const fault = mock.method(pool, 'query', async () => { throw new Error('Injected PostgreSQL catalog outage'); });

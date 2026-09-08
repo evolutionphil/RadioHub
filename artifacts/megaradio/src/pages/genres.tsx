@@ -1,8 +1,10 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link, useLocation } from "wouter";
+import { Link } from "wouter";
 import { useSeoRouting } from "@/hooks/useSeoRouting";
 import { useTranslation } from "@/hooks/useTranslation";
+import { useGenreMobileViewport, useGenrePagination } from '@/hooks/useGenrePageState';
+import { getGenrePageLabels } from '@/utils/genre-page-labels';
 import { Swiper, SwiperSlide } from 'swiper/react';
 import { FreeMode } from 'swiper/modules';
 import 'swiper/css';
@@ -47,54 +49,26 @@ export default function GenresPage({
   onCountryChange?: (country: string) => void; 
 }) {
   const { getLocalizedUrl } = useSeoRouting();
-  const { t } = useTranslation();
-  const [location] = useLocation();
+  const { t, language, localeTranslations } = useTranslation();
+  const labels = getGenrePageLabels(language, localeTranslations);
   const [searchQuery, setSearchQuery] = useState("");
-  const [currentPage, setCurrentPage] = useState(1);
-  const [isMobile, setIsMobile] = useState(() => {
-    // SSR-safe initial value
-    if (typeof window !== 'undefined') {
-      return window.innerWidth < 768;
-    }
-    return false;
-  });
-
-  // Detect mobile device and handle resize
-  useEffect(() => {
-    const checkMobile = () => {
-      setIsMobile(window.innerWidth < 768);
-    };
-    
-    checkMobile();
-    window.addEventListener('resize', checkMobile);
-    
-    return () => window.removeEventListener('resize', checkMobile);
-  }, []);
-  
-  // Parse page from URL
-  useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const pageParam = urlParams.get('page');
-    if (pageParam) {
-      setCurrentPage(parseInt(pageParam));
-    }
-  }, [location]);
+  const isMobile = useGenreMobileViewport();
+  const limit = isMobile ? 9 : 27;
+  const countryParam = getPreferredCountryCode(selectedCountry) || 'global';
+  const { currentPage, changePage: handlePageChange } = useGenrePagination(JSON.stringify([countryParam, searchQuery, limit]));
 
   // Fetch genres from 7-day cache (precomputed endpoint)
-  const { data: genresResponse, isLoading: genresLoading } = useQuery({
-    queryKey: ['/api/genres/precomputed', currentPage, searchQuery, selectedCountry],
-    queryFn: async () => {
-      const limit = isMobile ? '9' : '27';
-      const countryParam = getPreferredCountryCode(selectedCountry) || 'global';
-      
+  const { data: genresResponse, isLoading: genresLoading, isError: genresError, refetch: retryGenres, isFetching: genresFetching } = useQuery({
+    queryKey: ['/api/genres/precomputed', currentPage, searchQuery, countryParam, limit],
+    queryFn: async ({ signal }) => {
       const params = new URLSearchParams({
         countryName: countryParam,
         page: currentPage.toString(),
-        limit: limit,
+        limit: String(limit),
         search: searchQuery || ''
       });
       
-      const response = await fetch(`/api/genres/precomputed?${params}`);
+      const response = await fetch(`/api/genres/precomputed?${params}`, { signal });
       if (!response.ok) throw new Error('Failed to fetch genres');
       return await response.json() as GenresResponse;
     },
@@ -102,18 +76,16 @@ export default function GenresPage({
   });
 
   // Fetch popular genres from 7-day cache (top 5 by station count)
-  const { data: popularGenresResponse } = useQuery({
-    queryKey: ['/api/genres/popular', selectedCountry],
-    queryFn: async () => {
-      const countryParam = getPreferredCountryCode(selectedCountry) || 'global';
-      
+  const { data: popularGenresResponse, isLoading: popularLoading, isError: popularError, refetch: retryPopular, isFetching: popularFetching } = useQuery({
+    queryKey: ['/api/genres/popular', countryParam],
+    queryFn: async ({ signal }) => {
       const params = new URLSearchParams({
         countryName: countryParam,
         page: '1',
         limit: '5'
       });
       
-      const response = await fetch(`/api/genres/precomputed?${params}`);
+      const response = await fetch(`/api/genres/precomputed?${params}`, { signal });
       if (!response.ok) throw new Error('Failed to fetch popular genres');
       const data = await response.json();
       return data.data; // Return just the genres array
@@ -126,24 +98,6 @@ export default function GenresPage({
   const totalGenres = genresResponse?.count || 0;
   const totalPages = genresResponse?.totalPages || 1;
 
-  // Handle search changes
-  useEffect(() => {
-    setCurrentPage(1); // Reset to page 1 when search changes
-  }, [searchQuery]);
-
-  // Handle page changes and update URL
-  const handlePageChange = (newPage: number) => {
-    setCurrentPage(newPage);
-    const url = new URL(window.location.href);
-    if (newPage > 1) {
-      url.searchParams.set('page', newPage.toString());
-    } else {
-      url.searchParams.delete('page');
-    }
-    window.history.pushState({}, '', url.toString());
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
-
   return (
     <div>
       {/* Header - Mobile: no background, compact spacing. Desktop: with background */}
@@ -154,7 +108,7 @@ export default function GenresPage({
               via getH1Text). Promote the existing localized title to the page
               <h1>; classes/layout preserved so there's no visual change. */}
           <h1 className="mx-auto max-w-[1206px] w-full flex items-center text-white">
-            {t('genres')}
+            {labels.genres}
           </h1>
         </div>
       </div>
@@ -289,12 +243,16 @@ export default function GenresPage({
                       </Link>
                     ))}
                   </div>
-                ) : (
+                ) : popularLoading ? (
                   <div className="flex gap-2 overflow-x-auto md:justify-end">
                     {Array(4).fill(0).map((_, index) => (
                       <div key={index} className="animate-pulse bg-[#454545] rounded-[5px]" style={{ width: '147px', height: '45px' }}></div>
                     ))}
                   </div>
+                ) : popularError ? (
+                  <p role="alert" className="text-sm text-white/70">{labels.error} <button disabled={popularFetching} onClick={() => void retryPopular()} className="underline">{labels.retry}</button></p>
+                ) : (
+                  <p role="status" className="text-sm text-white/70">{labels.emptyGenres}</p>
                 )}
                 </div>
               </div>
@@ -302,6 +260,13 @@ export default function GenresPage({
           </div>
 
           {/* Genres Grid - exact layout from original */}
+          {genresError ? (
+            <p role="alert" className="py-5 text-white/70">{labels.error} <button disabled={genresFetching} onClick={() => void retryGenres()} className="underline">{labels.retry}</button></p>
+          ) : genresLoading ? (
+            <p role="status" className="py-5 text-white/70">{labels.loading}</p>
+          ) : genres.length === 0 ? (
+            <p role="status" className="py-5 text-white/70">{labels.emptyGenres}</p>
+          ) : null}
           <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
             {genres.map((genre: Genre, i: number) => (
               <Link
@@ -312,9 +277,9 @@ export default function GenresPage({
                 <h2 className="text-[24px] font-medium capitalize">
                   {genre.name}
                 </h2>
-                <h4 className="text-[15px] font-light">
-                  {(genre.total_stations || genre.stationCount || 0).toLocaleString()} {t('stations', 'stations')}
-                </h4>
+                <p className="text-[15px] font-light">
+                  {(genre.total_stations || genre.stationCount || 0).toLocaleString()} {labels.stations}
+                </p>
               </Link>
             ))}
           </div>
@@ -335,7 +300,7 @@ export default function GenresPage({
                 <div className="w-10 h-8 md:w-[51px] md:h-[38px] flex items-center justify-center">
                   <img 
                     src={arrowLeftIcon} 
-                    alt="Previous" 
+                    alt={labels.previous}
                     className="w-5 h-5 md:w-[26px] md:h-[26px]"
                   />
                 </div>
@@ -487,7 +452,7 @@ export default function GenresPage({
                 <div className="w-10 h-8 md:w-[51px] md:h-[38px] flex items-center justify-center">
                   <img 
                     src={arrowRightIcon} 
-                    alt="Next" 
+                    alt={labels.next}
                     className="w-5 h-5 md:w-[26px] md:h-[26px]"
                   />
                 </div>
