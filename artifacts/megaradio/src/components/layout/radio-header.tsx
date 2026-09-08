@@ -1062,7 +1062,7 @@ export default function RadioHeader({
                       onClick={toggleCountryDropdown}
                       className="country-selector flex items-center text-white bg-[#1D1D1D] hover:bg-[#2A2A2A] transition-colors overflow-hidden whitespace-nowrap"
                       style={{ width: '147px', height: '38px', borderRadius: '5px' }}
-                      aria-label={t('general_select_country', 'Select country')}
+                      aria-label={`${selectedCountryDisplayName}: ${t('general_select_country', 'Select country')}`}
                       aria-haspopup="listbox"
                       aria-expanded={isCountryDropdownOpen}
                       title={selectedCountryDisplayName}
@@ -1103,7 +1103,7 @@ export default function RadioHeader({
                   <button
                     onClick={() => setIsSearchOpen(true)}
                     className="hidden xl:flex items-center justify-center gap-2 h-[38px] px-2 rounded-[5px] bg-[#1D1D1D] hover:bg-[#2A2A2A] transition-colors"
-                    aria-label={t('general_search', 'Search')}
+                    aria-label={`${t('general_search', 'Search')}: ${isMac ? '⌘K' : 'Ctrl K'}`}
                     title={isMac ? '⌘K' : 'Ctrl+K'}
                   >
                     <svg className="w-[20px] h-[20px] text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1149,7 +1149,7 @@ export default function RadioHeader({
                       onClick={toggleCountryDropdown}
                       className="country-selector flex items-center text-white bg-[#1D1D1D] hover:bg-[#2A2A2A] transition-colors overflow-hidden"
                       style={{ width: '147px', height: '38px', borderRadius: '5px' }}
-                      aria-label={t('general_select_country', 'Select country')}
+                      aria-label={`${selectedCountryDisplayName}: ${t('general_select_country', 'Select country')}`}
                       aria-haspopup="listbox"
                       aria-expanded={isCountryDropdownOpen}
                       title={selectedCountryDisplayName}
@@ -1190,7 +1190,7 @@ export default function RadioHeader({
                   <button
                     onClick={() => setIsSearchOpen(true)}
                     className="hidden xl:flex items-center justify-center gap-2 h-[38px] px-2 rounded-[5px] bg-[#1D1D1D] hover:bg-[#2A2A2A] transition-colors"
-                    aria-label={t('general_search', 'Search')}
+                    aria-label={`${t('general_search', 'Search')}: ${isMac ? '⌘K' : 'Ctrl K'}`}
                     title={isMac ? '⌘K' : 'Ctrl+K'}
                   >
                     <svg className="w-[20px] h-[20px] text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">

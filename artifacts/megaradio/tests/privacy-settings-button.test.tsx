@@ -13,19 +13,19 @@ it('waits without loading scripts, timers, or changing visitor consent', () => {
   render(<PrivacySettingsButton language="de" />);
   expect(screen.queryByRole('button')).toBeNull();
   expect(document.scripts.length).toBe(scripts);
-  expect(host.googlefc.callbackQueue).toHaveLength(1);
+  expect(host.googlefc.callbackQueue).toHaveLength(2);
 });
 
 it('uses the documented queue only after a visitor clicks, keeping the Google instance', () => {
   const show = vi.fn();
-  const queue = { push: vi.fn((entry: any) => typeof entry === 'function' ? entry() : entry.CONSENT_API_READY()) };
+  const queue = { push: vi.fn((entry: any) => typeof entry === 'function' ? entry() : Object.values(entry).forEach((callback: any) => callback())) };
   const api = host.googlefc = { callbackQueue: queue, showRevocationMessage: show };
   render(<PrivacySettingsButton language="de" />);
   expect(show).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('button', { name: PRIVACY_SETTINGS_LABELS.de }));
   expect(host.googlefc).toBe(api);
   expect(show).toHaveBeenCalledTimes(1);
-  expect(queue.push).toHaveBeenCalledTimes(2);
+  expect(queue.push).toHaveBeenCalledTimes(3);
 });
 
 it('covers every supported site locale without English fallback', () => {
@@ -39,16 +39,16 @@ it('handles a delayed API and StrictMode cleanup without automatically reopening
   host.googlefc = { callbackQueue: [] };
   const view = render(<StrictMode><PrivacySettingsButton language="tr" /></StrictMode>);
   const show = host.googlefc.showRevocationMessage = vi.fn();
-  act(() => host.googlefc.callbackQueue.forEach((entry: any) => entry.CONSENT_API_READY()));
+  act(() => host.googlefc.callbackQueue.forEach((entry: any) => Object.values(entry).forEach((callback: any) => callback())));
   expect(screen.getByRole('button', { name: PRIVACY_SETTINGS_LABELS.tr })).toBeVisible();
   expect(show).not.toHaveBeenCalled();
   view.unmount();
-  act(() => host.googlefc.callbackQueue.forEach((entry: any) => entry.CONSENT_API_READY()));
+  act(() => host.googlefc.callbackQueue.forEach((entry: any) => Object.values(entry).forEach((callback: any) => callback())));
   expect(show).not.toHaveBeenCalled();
 });
 
 it('does not expose a broken action when the consent API is unavailable', () => {
-  host.googlefc = { callbackQueue: { push: (entry: any) => entry.CONSENT_API_READY() } };
+  host.googlefc = { callbackQueue: { push: (entry: any) => Object.values(entry).forEach((callback: any) => callback()) } };
   render(<PrivacySettingsButton language="de" />);
   expect(screen.queryByRole('button')).toBeNull();
 });
@@ -57,10 +57,32 @@ it('can reopen at API readiness without waiting for consent data or a previous d
   const show = vi.fn();
   const pendingData: unknown[] = [];
   host.googlefc = { showRevocationMessage: show, callbackQueue: {
-    push(entry: any) { if (typeof entry === 'function') pendingData.push(entry); else entry.CONSENT_API_READY(); },
+    push(entry: any) { if (typeof entry === 'function') pendingData.push(entry); else entry.CONSENT_API_READY?.(); },
   } };
   render(<PrivacySettingsButton language="tr" />);
   fireEvent.click(screen.getByTestId('privacy-settings'));
   expect(show).toHaveBeenCalledTimes(1);
   expect(pendingData).toHaveLength(0);
+});
+
+it('handles revocation registration after API readiness, when consent data becomes available', () => {
+  const dataReady: Array<() => void> = [];
+  host.googlefc = { callbackQueue: { push(entry: any) {
+    entry.CONSENT_API_READY?.();
+    if (entry.CONSENT_DATA_READY) dataReady.push(entry.CONSENT_DATA_READY);
+  } } };
+  render(<PrivacySettingsButton language="de" />);
+  expect(screen.queryByRole('button')).toBeNull();
+  const show = host.googlefc.showRevocationMessage = vi.fn();
+  act(() => dataReady.forEach(callback => callback()));
+  expect(screen.getByTestId('privacy-settings')).toBeVisible();
+  expect(show).not.toHaveBeenCalled();
+});
+
+it('recognizes an already callable revocation API even before its queue drains', () => {
+  const show = vi.fn();
+  host.googlefc = { showRevocationMessage: show, callbackQueue: [] };
+  render(<PrivacySettingsButton language="de" />);
+  expect(screen.getByTestId('privacy-settings')).toBeVisible();
+  expect(show).not.toHaveBeenCalled();
 });

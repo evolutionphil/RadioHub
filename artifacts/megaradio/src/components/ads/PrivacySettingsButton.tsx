@@ -11,7 +11,7 @@ export const PRIVACY_SETTINGS_LABELS: Record<string, string> = {
 };
 
 interface ConsentApi {
-  callbackQueue?: { push(callback: (() => void) | { CONSENT_API_READY: () => void }): unknown };
+  callbackQueue?: { push(callback: (() => void) | { CONSENT_API_READY: () => void } | { CONSENT_DATA_READY: () => void }): unknown };
   showRevocationMessage?: () => void;
 }
 type ConsentWindow = Window & { googlefc?: ConsentApi };
@@ -24,9 +24,14 @@ export default function PrivacySettingsButton({ language }: { language: string }
     const host = window as ConsentWindow;
     const api = host.googlefc ||= {};
     api.callbackQueue ||= [];
-    api.callbackQueue.push({ CONSENT_API_READY: () => {
+    const updateReady = () => {
       if (mounted) setReady(typeof host.googlefc?.showRevocationMessage === 'function');
-    } });
+    };
+    // Google can register revocation after its framework API becomes callable.
+    // Check both documented lifecycle phases, including an already-loaded SDK.
+    updateReady();
+    api.callbackQueue.push({ CONSENT_API_READY: updateReady });
+    api.callbackQueue.push({ CONSENT_DATA_READY: updateReady });
     return () => { mounted = false; };
   }, []);
 

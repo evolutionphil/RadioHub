@@ -20,6 +20,10 @@ const authState: { current: AuthState } = {
   current: { user: null, isAuthenticated: false, isLoading: false },
 };
 const routingState = { language: 'en' };
+const headerLabels: Record<string, Record<string, string>> = {
+  de: { general_select_country: 'Land auswählen', general_search: 'Suche' },
+  tr: { general_select_country: 'Ülke seç', general_search: 'Ara' },
+};
 
 vi.mock("@/hooks/useAuth", () => ({
   useAuth: () => authState.current,
@@ -31,7 +35,7 @@ vi.mock("@/hooks/useGlobalPlayer", () => ({
 
 vi.mock("@/hooks/useTranslation", () => ({
   useTranslation: () => ({
-    t: (_key: string, fallback?: string) => fallback ?? _key,
+    t: (key: string, fallback?: string) => headerLabels[routingState.language]?.[key] ?? fallback ?? key,
     setLanguage: vi.fn(),
   }),
 }));
@@ -171,10 +175,10 @@ afterEach(() => {
 function getTriggers(): HTMLButtonElement[] {
   // Multiple trigger buttons exist (mobile + desktop variants for both auth
   // and unauth states). The contract under test is the ARIA semantics, so
-  // we select by aria-haspopup + the shared aria-label rather than by a
+  // we select by aria-haspopup + a nonempty accessible label rather than by a
   // data-* attribute that only the mobile variants happen to carry.
   const list = document.querySelectorAll<HTMLButtonElement>(
-    'button[aria-haspopup="listbox"][aria-label="Select country"]'
+    'button[aria-haspopup="listbox"][aria-label]:not([aria-label=""])'
   );
   return Array.from(list);
 }
@@ -291,6 +295,7 @@ describe.each(VARIANTS)(
         const { onCountryChange } = renderHeader('Austria');
         expect(getDesktopTrigger()).toHaveTextContent(displayName);
         expect(getDesktopTrigger()).toHaveAttribute('title', displayName);
+        expect(getDesktopTrigger()).toHaveAccessibleName(`${displayName}: ${headerLabels[language].general_select_country}`);
         for (const trigger of getTriggers()) {
           expect(trigger).toHaveAttribute('title', displayName);
           expect(within(trigger).getByRole('img')).toHaveAttribute('alt', displayName);
@@ -310,6 +315,27 @@ describe.each(VARIANTS)(
         expect(onCountryChange).toHaveBeenLastCalledWith('Austria', true);
         expect(localStorage.getItem('selectedCountry')).toBe('Austria');
         expect(localStorage.getItem('countryPreference')).toBe('manual');
+      },
+    );
+
+    it('includes the visible Global choice in the country trigger accessible name', () => {
+      renderHeader();
+      expect(getDesktopTrigger()).toHaveTextContent('Global');
+      expect(getDesktopTrigger()).toHaveAccessibleName('Global: Select country');
+    });
+
+    it.each([['Win32', 'Ctrl K'], ['MacIntel', '⌘K']])(
+      'includes the visible %s keyboard hint and localized search purpose without changing activation',
+      async (platform, hint) => {
+        vi.spyOn(navigator, 'platform', 'get').mockReturnValue(platform);
+        routingState.language = 'de';
+        renderHeader();
+        const button = screen.getByRole('button', { name: `Suche: ${hint}` });
+        expect(within(button).getByText(hint)).toBeVisible();
+        const user = userEvent.setup();
+        button.focus();
+        await user.keyboard('{Enter}');
+        expect(screen.getByRole('combobox')).toBeVisible();
       },
     );
 
