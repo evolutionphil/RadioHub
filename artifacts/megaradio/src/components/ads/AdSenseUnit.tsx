@@ -29,11 +29,20 @@ function AdSensePlacement({ adSlot = '3609188113', adFormat = 'auto', fullWidthR
     if (!allowed) return;
     let active = true;
     const load = () => { void ensureAdSenseScript().then(ready => { if (active) setSdkReady(ready); }); };
+    const reconnect = () => {
+      void ensureAdSenseScript(true).then(ready => { if (active) setSdkReady(ready); });
+    };
+    window.addEventListener('online', reconnect);
     // Yield noncritical advertising to startup for every visitor, with a
     // bounded delay. Auto ads also load before the footer enters the viewport.
     const idle = window.requestIdleCallback?.(load, { timeout: 2000 });
     const timer = idle === undefined ? setTimeout(load, 500) : undefined;
-    return () => { active = false; if (idle !== undefined) window.cancelIdleCallback?.(idle); clearTimeout(timer); };
+    return () => {
+      active = false;
+      window.removeEventListener('online', reconnect);
+      if (idle !== undefined) window.cancelIdleCallback?.(idle);
+      clearTimeout(timer);
+    };
   }, [allowed]);
 
   useEffect(() => {

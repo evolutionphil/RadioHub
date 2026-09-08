@@ -1,13 +1,9 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-
-interface FavoriteUserResponse {
-  authenticated?: boolean;
-  user?: { _id: string } | null;
-}
+import { authQueryOptions, type AuthQueryResponse } from '@/lib/auth-query';
 
 interface FavoriteState {
-  user: FavoriteUserResponse['user'];
+  user: AuthQueryResponse['user'];
   favoriteStationIds: ReadonlySet<string>;
 }
 
@@ -18,18 +14,7 @@ const NO_FAVORITES: ReadonlySet<string> = new Set();
 // allocate three QueryObservers and their browser timers just to draw a heart.
 export function FavoriteStateProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
-  const { data: userResponse } = useQuery<FavoriteUserResponse | null>({
-    queryKey: ['/api/auth/me'],
-    queryFn: async () => {
-      const response = await fetch('/api/auth/me', { credentials: 'include' });
-      if (!response.ok) {
-        if (response.status === 401) return null;
-        throw new Error('Failed to fetch user');
-      }
-      return response.json();
-    },
-    retry: false,
-  });
+  const { data: userResponse } = useQuery(authQueryOptions);
   const user = userResponse?.authenticated ? userResponse.user : null;
   const userId = user?._id ?? null;
   // Existing cache is valid for the initial signed-in session. Thereafter only

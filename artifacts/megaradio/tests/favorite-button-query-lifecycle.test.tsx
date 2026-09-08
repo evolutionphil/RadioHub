@@ -9,7 +9,9 @@ const effects = vi.hoisted(() => ({
 vi.mock('@/hooks/useTranslation', () => ({ useTranslation: () => ({ t: (_key: string, fallback: string) => fallback }) }));
 vi.mock('@/hooks/use-toast', () => ({ useToast: () => ({ toast: effects.toast }) }));
 vi.mock('@/services/NotificationService', () => ({ useNotificationService: () => ({ addedToFavorites: effects.added, removedFromFavorites: effects.removed }) }));
-vi.mock('@/lib/queryClient', () => ({ apiRequest: effects.request }));
+vi.mock('@/lib/queryClient', async importOriginal => ({
+  ...await importOriginal<typeof import('../src/lib/queryClient')>(), apiRequest: effects.request,
+}));
 vi.mock('@/lib/analytics', () => ({ trackStationFavorite: effects.analytics }));
 vi.mock('@/components/auth/auth-modal', () => ({ default: ({ isOpen, onClose }: any) => <div data-testid="favorite-login" hidden={!isOpen}><button onClick={onClose}>Cancel login</button></div> }));
 import FavoriteButton from '../src/components/ui/favorite-button';
@@ -147,11 +149,11 @@ it('cancelled anonymous intent is not replayed on later login, and logout return
 
 it('does not fetch favorites on a 401 auth response', async () => {
   client.removeQueries({ queryKey: ['/api/auth/me'] });
-  network.mockResolvedValue({ ok: false, status: 401 });
+  network.mockImplementation(async () => new Response('Unauthorized', { status: 401 }));
   const view = render(wrap(5));
-  await waitFor(() => expect(client.getQueryData(['/api/auth/me'])).toBeNull());
+  await waitFor(() => expect(client.getQueryState(['/api/auth/me'])?.status).toBe('error'));
   expect(network).toHaveBeenCalledTimes(1);
-  expect(network).toHaveBeenCalledWith('/api/auth/me', { credentials: 'include' });
+  expect(network).toHaveBeenCalledWith('/api/auth/me', expect.objectContaining({ credentials: 'include', signal: expect.any(AbortSignal) }));
   expect(view.getAllByRole('button', { name: 'Add to favorites' })).toHaveLength(5);
 });
 

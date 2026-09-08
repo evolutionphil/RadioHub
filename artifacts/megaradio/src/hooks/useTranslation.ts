@@ -6,6 +6,7 @@ import { CRITICAL_TRANSLATION_KEYS } from "@workspace/seo-shared/critical-transl
 import { getBrowserLanguage, saveBrowserLanguage, syncBrowserLanguageFromUrl } from '@/lib/browser-language';
 import { logger } from '@/lib/logger';
 import { getMergedTranslationDictionary } from '@/lib/translation-dictionary-cache';
+import { authQueryOptions } from '@/lib/auth-query';
 
 // TypeScript declarations for server-preloaded translations
 declare global {
@@ -126,10 +127,7 @@ function useTranslationRuntime() {
   });
 
   // Fetch current user to check admin status
-  const { data: currentUser } = useQuery({
-    queryKey: ["/api/auth/me"],
-    retry: false
-  });
+  const { data: currentUser } = useQuery(authQueryOptions);
 
   // Only fetch admin translation keys if user is authenticated and admin
   const { data: translationKeys } = useQuery<TranslationKey[]>({

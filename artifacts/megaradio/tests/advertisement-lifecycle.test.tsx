@@ -116,6 +116,76 @@ it('handles blocked SDKs without retry loops or page failures', async () => {
   expect(document.querySelectorAll('script[src*="adsbygoogle.js"]')).toHaveLength(1);
 });
 
+it('accepts a real SDK load after 15 seconds without adding another script or refreshing ads', async () => {
+  const { default: Unit } = await import('../src/components/ads/AdSenseUnit');
+  const view = render(<Unit />); enter();
+  await act(async () => { vi.advanceTimersByTime(20000); });
+  expect(window.adsbygoogle).toHaveLength(0);
+  const script = document.querySelector('script[src*="adsbygoogle.js"]')!;
+  await act(async () => { script.dispatchEvent(new Event('load')); });
+  expect(window.adsbygoogle).toHaveLength(1);
+  view.rerender(<Unit />); enter(false); enter(true);
+  expect(window.adsbygoogle).toHaveLength(1);
+  expect(document.querySelectorAll('script[src*="adsbygoogle.js"]')).toHaveLength(1);
+});
+
+it('shares one bounded failed-script recovery after reconnect across placements', async () => {
+  const { default: Unit } = await import('../src/components/ads/AdSenseUnit');
+  render(<><Unit adSlot="one" /><Unit adSlot="two" /></>); enter();
+  await act(async () => { vi.advanceTimersByTime(500); });
+  const failed = document.querySelector('script[src*="adsbygoogle.js"]')!;
+  await act(async () => { failed.dispatchEvent(new Event('error')); });
+  await act(async () => { window.dispatchEvent(new Event('online')); });
+  const replacement = document.querySelector('script[src*="adsbygoogle.js"]')!;
+  expect(replacement).not.toBe(failed);
+  expect(failed.isConnected).toBe(false);
+  expect(document.querySelectorAll('script[src*="adsbygoogle.js"]')).toHaveLength(1);
+  await act(async () => { replacement.dispatchEvent(new Event('load')); });
+  expect(window.adsbygoogle).toHaveLength(2);
+  const slots = [...document.querySelectorAll('ins')];
+  slots.forEach(slot => slot.setAttribute('data-ad-status', 'unfilled'));
+  await act(async () => { window.dispatchEvent(new Event('online')); vi.advanceTimersByTime(60000); });
+  expect([...document.querySelectorAll('ins')]).toEqual(slots);
+  expect(window.adsbygoogle).toHaveLength(2);
+  expect(document.querySelector('script[src*="adsbygoogle.js"]')).toBe(replacement);
+});
+
+it('does not turn blocked scripts into retries on every reconnect', async () => {
+  const { default: Unit } = await import('../src/components/ads/AdSenseUnit');
+  render(<Unit />); enter(); await act(async () => { vi.advanceTimersByTime(500); });
+  await act(async () => { document.querySelector('script[src*="adsbygoogle.js"]')!.dispatchEvent(new Event('error')); });
+  await act(async () => { window.dispatchEvent(new Event('online')); });
+  const second = document.querySelector('script[src*="adsbygoogle.js"]')!;
+  await act(async () => { second.dispatchEvent(new Event('error')); });
+  for (let i = 0; i < 4; i++) await act(async () => { window.dispatchEvent(new Event('online')); });
+  expect(document.querySelector('script[src*="adsbygoogle.js"]')).toBe(second);
+  expect(window.adsbygoogle).toHaveLength(0);
+});
+
+it('never replaces an externally supplied failed SDK on reconnect', async () => {
+  const external = document.createElement('script');
+  external.src = 'https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-8771434485570434';
+  document.head.appendChild(external);
+  const { default: Unit } = await import('../src/components/ads/AdSenseUnit');
+  render(<Unit />); enter(); await act(async () => { vi.advanceTimersByTime(500); });
+  await act(async () => { external.dispatchEvent(new Event('error')); window.dispatchEvent(new Event('online')); });
+  expect(document.querySelector('script[src*="adsbygoogle.js"]')).toBe(external);
+  expect(window.adsbygoogle).toHaveLength(0);
+});
+
+it.each(['premium', 'unmounted', 'admin'])('does not reconnect an ad SDK after the placement becomes %s', async kind => {
+  const { default: Unit } = await import('../src/components/ads/AdSenseUnit');
+  const view = render(<Unit />); enter(); await act(async () => { vi.advanceTimersByTime(500); });
+  const failed = document.querySelector('script[src*="adsbygoogle.js"]')!;
+  await act(async () => { failed.dispatchEvent(new Event('error')); });
+  if (kind === 'unmounted') view.unmount();
+  if (kind === 'premium') { premium.isPremium = true; view.rerender(<Unit />); }
+  if (kind === 'admin') { window.history.replaceState({}, '', '/admin'); view.rerender(<Unit />); }
+  await act(async () => { window.dispatchEvent(new Event('online')); });
+  expect(document.querySelector('script[src*="adsbygoogle.js"]')).toBe(failed);
+  expect(window.adsbygoogle).toHaveLength(0);
+});
+
 const ad = (id: string, isActive = true) => ({ _id: id, title: id, imageUrl: `https://images.example/${id}.webp`, altText: id, url: 'https://advertiser.example', position: 'desktop_sidebar' as const, isActive });
 it('keeps carousel safe when its selected item is deactivated or removed', () => {
   const view = render(<AdCarousel ads={[ad('one'), ad('two'), ad('three')]} position="desktop_sidebar" />);
