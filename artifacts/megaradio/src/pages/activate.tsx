@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -6,61 +6,36 @@ import { Badge } from "@/components/ui/badge";
 import { Loader2, Tv, CheckCircle, Zap, Crown, AlertCircle } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { apiRequest } from "@/lib/queryClient";
-
-interface PlanInfo {
-  planId: string;
-  label: string;
-  description: string;
-  currency: string;
-  amount: number;
-}
-
-const PLAN_BADGE: Record<string, string | null> = {
-  premium_monthly: null,
-  premium_yearly: "Best Value",
-  premium_lifetime: "One-Time",
-};
-
-const FALLBACK_PLANS: PlanInfo[] = [
-  { planId: "premium_monthly", label: "Monthly", description: "Billed monthly, cancel anytime", currency: "usd", amount: 0 },
-  { planId: "premium_yearly", label: "Annual", description: "Best value — save vs monthly", currency: "usd", amount: 0 },
-  { planId: "premium_lifetime", label: "Lifetime", description: "One-time payment, never pay again", currency: "usd", amount: 0 },
-];
-
-function fmtPrice(amount: number, currency: string): string {
-  if (!amount) return "";
-  return new Intl.NumberFormat("en-US", { style: "currency", currency: currency.toUpperCase(), minimumFractionDigits: 2 }).format(amount / 100);
-}
+import { useSubscriptionCheckout } from '@/hooks/useSubscriptionCheckout';
+import { useSubscriptionPlans } from '@/hooks/useSubscriptionPlans';
+import { useTranslation } from '@/hooks/useTranslation';
+import { subscriptionCopy } from '@/lib/subscription-copy';
+import { fmtPrice as formatPrice, isAdFreeSubscription } from '@/lib/premium';
+import { ManageSubscriptionButton } from '@/components/ManageSubscriptionButton';
 
 export default function ActivatePage() {
   const { user, isLoading: authLoading } = useAuth();
+  const { language } = useTranslation();
+  const copy = subscriptionCopy(language);
+  const alreadySubscribed = isAdFreeSubscription((user as any)?.subscription);
 
   const params = new URLSearchParams(window.location.search);
-  const tvCode = params.get("code") || "";
+  const tvCode = (params.get("code") || "").trim().toUpperCase();
 
   const [selectedPlan, setSelectedPlan] = useState<string>("premium_monthly");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const { data: plansData } = useQuery<{ plans: PlanInfo[] }>({
-    queryKey: ["/api/subscription/plans"],
-    staleTime: 5 * 60 * 1000,
-  });
+  const returnTo = `/${language}/activate?code=${encodeURIComponent(tvCode)}`;
+  const { loading, error, checkout } = useSubscriptionCheckout({ extraBody: { tvCode }, returnTo });
+  const catalog = useSubscriptionPlans();
 
   // Idempotency: check whether this code has already been activated or expired
   // before showing the checkout UI. Avoids a double-charge scenario.
-  const { data: codeStatus, isLoading: statusLoading } = useQuery<{
+  const { data: codeStatus, isLoading: statusLoading, isError: statusError } = useQuery<{
     status: "pending" | "activated" | "expired" | "not_found";
   }>({
-    queryKey: [`/api/subscription/tv/code/${tvCode}/status`, tvCode],
-    queryFn: async () => {
+    queryKey: ['/api/subscription/tv/code/status', tvCode],
+    queryFn: async ({ signal }) => {
       if (!tvCode || tvCode.length !== 6) return { status: "not_found" as const };
-      const res = await fetch(
-        `/api/subscription/tv/code/${tvCode}/status?deviceId=web-activate`,
-        { headers: { "Content-Type": "application/json" } }
-      );
-      // 404 = wrong deviceId — treat as not found
-      if (res.status === 404) return { status: "not_found" as const };
+      const res = await apiRequest('GET', `/api/subscription/tv/code/${encodeURIComponent(tvCode)}/status?deviceId=web-activate`, { signal });
       return res.json();
     },
     enabled: !!tvCode && tvCode.length === 6,
@@ -68,26 +43,13 @@ export default function ActivatePage() {
     retry: false,
   });
 
-  const plans: PlanInfo[] = plansData?.plans?.length ? plansData.plans : FALLBACK_PLANS;
+  const plans = catalog.plans;
+  useEffect(() => {
+    if (plans.length && !plans.some(plan => plan.planId === selectedPlan)) setSelectedPlan(plans[0].planId);
+  }, [plans, selectedPlan]);
 
   async function handleCheckout() {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await apiRequest("POST", "/api/subscription/checkout", {
-        body: { plan: selectedPlan, tvCode },
-      });
-      const data: { success: boolean; checkoutUrl?: string; error?: string } = await res.json();
-      if (data.checkoutUrl) {
-        window.location.href = data.checkoutUrl;
-      } else {
-        setError(data.error || "Failed to start checkout");
-        setLoading(false);
-      }
-    } catch (err: any) {
-      setError(err?.message || "Network error. Please try again.");
-      setLoading(false);
-    }
+    if (codeStatus?.status === 'pending' && catalog.canCheckout(selectedPlan)) await checkout(selectedPlan);
   }
 
   if (authLoading || (tvCode && statusLoading)) {
@@ -123,7 +85,7 @@ export default function ActivatePage() {
   }
 
   // Expired — tell them to go back to the TV
-  if (codeStatus?.status === "expired" || codeStatus?.status === "not_found") {
+  if (!/^[A-Z0-9]{6}$/.test(tvCode) || codeStatus?.status === "expired" || codeStatus?.status === "not_found") {
     return (
       <div className="min-h-screen bg-[#0E0E0E] flex items-center justify-center p-4">
         <Card className="w-full max-w-md bg-[#1a1a1a] border-[#333] text-white text-center">
@@ -168,13 +130,13 @@ export default function ActivatePage() {
             )}
             <Button
               className="w-full bg-[#FF6B35] hover:bg-[#e55a24] text-white"
-              onClick={() => window.location.href = `/login?redirect=${encodeURIComponent(window.location.href)}`}
+              onClick={() => window.location.href = `/${language}/login?returnTo=${encodeURIComponent(returnTo)}`}
             >
               Sign In to Continue
             </Button>
             <p className="text-center text-sm text-gray-500">
               Don't have an account?{" "}
-              <a href={`/signup?redirect=${encodeURIComponent(window.location.href)}`} className="text-[#FF6B35] hover:underline">
+              <a href={`/${language}/signup?returnTo=${encodeURIComponent(returnTo)}`} className="text-[#FF6B35] hover:underline">
                 Sign up free
               </a>
             </p>
@@ -210,8 +172,8 @@ export default function ActivatePage() {
 
           <div className="space-y-3">
             {plans.map((plan) => {
-              const badge = PLAN_BADGE[plan.planId];
-              const price = fmtPrice(plan.amount, plan.currency);
+              const badge = null;
+              const price = formatPrice(plan.amount, plan.currency, language);
               return (
                 <button
                   key={plan.planId}
@@ -257,7 +219,7 @@ export default function ActivatePage() {
             </div>
             <div className="flex items-center gap-2">
               <Zap className="w-4 h-4 text-[#FF6B35] flex-shrink-0" />
-              <span>Premium quality streams</span>
+              <span>{copy.broadcastAds}</span>
             </div>
             <div className="flex items-center gap-2">
               <Zap className="w-4 h-4 text-[#FF6B35] flex-shrink-0" />
@@ -276,11 +238,12 @@ export default function ActivatePage() {
               {error}
             </div>
           )}
+          {(statusError || !catalog.canCheckout(selectedPlan)) && <p role="status" className="text-sm text-amber-400">{copy.unavailable}</p>}
 
           <Button
             className="w-full bg-[#FF6B35] hover:bg-[#e55a24] text-white h-12 text-base font-semibold"
             onClick={handleCheckout}
-            disabled={loading}
+            disabled={loading || alreadySubscribed || !catalog.canCheckout(selectedPlan) || codeStatus?.status !== 'pending'}
           >
             {loading ? (
               <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Redirecting to payment...</>
@@ -289,13 +252,14 @@ export default function ActivatePage() {
             )}
           </Button>
 
+          {alreadySubscribed && <div className="space-y-2"><p className="text-sm text-green-400">{copy.active}</p><ManageSubscriptionButton /></div>}
           <p className="text-center text-xs text-gray-500">
             Cancel anytime — manage your subscription at{" "}
-            <a href="/account" className="underline hover:text-gray-300">themegaradio.com/account</a>.
+            <a href={`/${language}/premium`} className="underline hover:text-gray-300">{copy.manage}</a>.
           </p>
           <p className="text-center text-xs text-gray-600">
             By continuing you agree to our{" "}
-            <a href="/legal/terms" className="underline hover:text-gray-400">Subscription Terms</a>.
+            <a href={`/${language}/terms-and-conditions`} className="underline hover:text-gray-400">Subscription Terms</a>.
           </p>
         </CardContent>
       </Card>

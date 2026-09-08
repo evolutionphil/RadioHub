@@ -7,18 +7,22 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Bell, CheckCircle, User, Heart, Radio, Calendar, MessageSquare, Settings } from 'lucide-react';
 import { useTranslation } from '@/hooks/useTranslation';
+import { useAuth } from '@/hooks/useAuth';
+import { apiRequest, oauthBearerHeader } from '@/lib/queryClient';
+import { notificationTarget } from '@/lib/notification-target';
 import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
 
 interface UserNotification {
   _id: string;
-  type: 'new_station' | 'favorite_update' | 'favorite_station' | 'comment_reply' | 'system' | 'promotional' | 'follow' | 'unfollow';
+  type: 'new_station' | 'favorite_update' | 'favorite_station' | 'comment_reply' | 'system' | 'promotional' | 'follow' | 'unfollow' | 'new_message';
   title: string;
   message: string;
   data?: Record<string, any>;
-  isRead: boolean;
+  read?: boolean;
+  isRead?: boolean;
   createdAt: string;
-  fromUserId?: {
+  fromUserId?: string | {
     _id: string;
     fullName?: string;
     username?: string;
@@ -35,10 +39,17 @@ interface NotificationsResponse {
     pages: number;
   };
   unreadCount: number;
+  categoryCounts?: Record<string, number>;
 }
 
 export default function NotificationsView() {
-  const { t } = useTranslation();
+  const { user } = useAuth();
+  const userId = String(user?._id || (user as any)?.id || '');
+  return <NotificationsSession key={userId} userId={userId} />;
+}
+
+function NotificationsSession({ userId }: { userId: string }) {
+  const { t, language } = useTranslation();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [, setLocation] = useLocation();
@@ -46,15 +57,11 @@ export default function NotificationsView() {
   const [selectedTab, setSelectedTab] = useState<string>('all');
   const limit = 20;
 
-  const { data, isLoading, refetch } = useQuery({
-    queryKey: ['/api/user/notifications', page, limit],
-    queryFn: async () => {
-      const response = await fetch(`/api/user/notifications?page=${page}&limit=${limit}`, {
-        credentials: 'include'
-      });
-      if (!response.ok) {
-        throw new Error('Failed to fetch notifications');
-      }
+  const { data, isLoading, isError, refetch } = useQuery({
+    queryKey: ['/api/user/notifications', userId, page, limit, selectedTab],
+    enabled: !!userId,
+    queryFn: async ({ signal }) => {
+      const response = await apiRequest('GET', `/api/user/notifications?page=${page}&limit=${limit}&category=${selectedTab}`, { signal, headers: oauthBearerHeader() });
       return response.json() as Promise<NotificationsResponse>;
     },
     staleTime: 30000,
@@ -62,13 +69,7 @@ export default function NotificationsView() {
 
   const markAsReadMutation = useMutation({
     mutationFn: async (notificationId: string) => {
-      const response = await fetch(`/api/user/notifications/${notificationId}/read`, {
-        method: 'PATCH',
-        credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
+      const response = await apiRequest('PATCH', `/api/user/notifications/${notificationId}/read`, { headers: oauthBearerHeader() });
       if (!response.ok) {
         throw new Error('Failed to mark notification as read');
       }
@@ -90,13 +91,7 @@ export default function NotificationsView() {
 
   const markAllAsReadMutation = useMutation({
     mutationFn: async () => {
-      const response = await fetch('/api/user/notifications/read-all', {
-        method: 'PATCH',
-        credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
+      const response = await apiRequest('PATCH', '/api/user/notifications/read-all', { headers: oauthBearerHeader() });
       if (!response.ok) {
         throw new Error('Failed to mark all notifications as read');
       }
@@ -139,6 +134,7 @@ export default function NotificationsView() {
 
   const formatTimeAgo = (dateString: string) => {
     const date = new Date(dateString);
+    if (!Number.isFinite(date.getTime())) return '';
     const now = new Date();
     const diff = now.getTime() - date.getTime();
     const days = Math.floor(diff / (1000 * 60 * 60 * 24));
@@ -146,79 +142,42 @@ export default function NotificationsView() {
     const minutes = Math.floor(diff / (1000 * 60));
 
     if (days > 0) {
-      return `${days} day${days > 1 ? 's' : ''} ago`;
+      return new Intl.RelativeTimeFormat(language, { numeric: 'auto' }).format(-days, 'day');
     } else if (hours > 0) {
-      return `${hours} hour${hours > 1 ? 's' : ''} ago`;
+      return new Intl.RelativeTimeFormat(language, { numeric: 'auto' }).format(-hours, 'hour');
     } else if (minutes > 0) {
-      return `${minutes} minute${minutes > 1 ? 's' : ''} ago`;
+      return new Intl.RelativeTimeFormat(language, { numeric: 'auto' }).format(-minutes, 'minute');
     } else {
-      return 'Just now';
+      return new Intl.RelativeTimeFormat(language, { numeric: 'auto' }).format(0, 'second');
     }
   };
 
   const handleNotificationClick = (notification: UserNotification) => {
     // Mark as read if unread
-    if (!notification.isRead) {
+    if (!(notification.read ?? notification.isRead ?? false)) {
       markAsReadMutation.mutate(notification._id);
     }
 
-    // Navigate based on notification type
-    switch (notification.type) {
-      case 'follow':
-      case 'unfollow':
-        // Navigate to the user's profile page
-        if (notification.fromUserId?.username) {
-          setLocation(`/u/${notification.fromUserId.username}`);
-        }
-        break;
-        
-      case 'favorite_station':
-      case 'new_station':
-        // Navigate to station detail page
-        if (notification.data?.stationId) {
-          setLocation(`/station/${notification.data.stationId}`);
-        } else if (notification.data?.stationSlug) {
-          setLocation(`/station/${notification.data.stationSlug}`);
-        }
-        break;
-        
-      case 'system':
-      case 'promotional':
-        // For system notifications, maybe navigate to settings or stay on notifications
-        // Could add specific navigation based on notification.data if needed
-        break;
-        
-      default:
-        // For other types, just mark as read (already handled above)
-        break;
-    }
+    const destination = notificationTarget(notification, language);
+    if (destination) setLocation(destination);
   };
 
-  const allNotifications = data?.notifications || [];
+  const allNotifications = (data?.notifications || []).map(notification => ({ ...notification,
+    isRead: notification.read ?? notification.isRead ?? false,
+    fromUserId: typeof notification.fromUserId === 'object' ? notification.fromUserId : undefined,
+    senderId: typeof notification.fromUserId === 'string' ? notification.fromUserId : notification.fromUserId?._id,
+  }));
   const pagination = data?.pagination;
   const unreadCount = data?.unreadCount || 0;
 
   // Filter notifications based on selected tab
-  const notifications = selectedTab === 'all' 
-    ? allNotifications
-    : allNotifications.filter(n => {
-        switch (selectedTab) {
-          case 'social':
-            return ['follow', 'unfollow'].includes(n.type);
-          case 'stations':
-            return ['favorite_station', 'favorite_update', 'new_station'].includes(n.type);
-          case 'system':
-            return ['system', 'promotional', 'comment_reply'].includes(n.type);
-          default:
-            return true;
-        }
-      });
+  const notifications = allNotifications;
 
   const tabs = [
-    { id: 'all', label: 'All', count: allNotifications.length },
-    { id: 'social', label: 'Followers', count: allNotifications.filter(n => ['follow', 'unfollow'].includes(n.type)).length },
-    { id: 'stations', label: 'Stations', count: allNotifications.filter(n => ['favorite_station', 'favorite_update', 'new_station'].includes(n.type)).length },
-    { id: 'system', label: 'System', count: allNotifications.filter(n => ['system', 'promotional', 'comment_reply'].includes(n.type)).length },
+    { id: 'all', label: t('all', 'All'), count: data?.categoryCounts?.all },
+    { id: 'social', label: t('notifications_social', 'Social'), count: data?.categoryCounts?.social },
+    { id: 'stations', label: t('stations', 'Stations'), count: data?.categoryCounts?.stations },
+    { id: 'system', label: t('notifications_system', 'System'), count: data?.categoryCounts?.system },
   ];
 
   return (
@@ -267,7 +226,7 @@ export default function NotificationsView() {
             }`}
           >
             <span>{tab.label}</span>
-            {tab.count > 0 && (
+            {(tab.count ?? 0) > 0 && (
               <span className={`px-2 py-0.5 rounded-full text-xs ${
                 selectedTab === tab.id
                   ? 'bg-blue-400 text-white'
@@ -283,7 +242,7 @@ export default function NotificationsView() {
       {/* Notifications List */}
       <Card className="bg-[#1D1D1D] border-[#2F2F2F]">
         <CardContent className="p-0">
-          {isLoading ? (
+          {isError ? <div role="alert" className="p-6"><p>{t('notifications_load_failed', 'Notifications could not be loaded.')}</p><Button onClick={() => refetch()}>{t('retry', 'Try again')}</Button></div> : isLoading ? (
             <div className="space-y-4 p-6">
               {[...Array(5)].map((_, i) => (
                 <div key={i} className="flex space-x-4">
@@ -321,7 +280,7 @@ export default function NotificationsView() {
                       ? 'hover:bg-[#1A1A1A]' 
                       : 'bg-[#0F1419] hover:bg-[#14191F] border-l-4 border-[#FF4199]'
                   }`}
-                  onClick={() => handleNotificationClick(notification)}
+                  onClick={() => handleNotificationClick({ ...notification, fromUserId: notification.fromUserId ?? notification.senderId })}
                 >
                   <div className="flex space-x-3">
                     <div className="flex-shrink-0">
@@ -333,11 +292,6 @@ export default function NotificationsView() {
                           onError={(e) => {
                             const img = e.target as HTMLImageElement;
                             img.style.display = 'none';
-                            const parent = img.parentElement;
-                            if (parent) {
-                              const letter = (notification.fromUserId!.fullName || notification.fromUserId!.username || 'U').charAt(0).toUpperCase();
-                              parent.innerHTML = `<div class="h-10 w-10 rounded-full bg-[#2A2A2A] flex items-center justify-center text-white text-sm font-medium">${letter}</div>`;
-                            }
                           }}
                         />
                       ) : (

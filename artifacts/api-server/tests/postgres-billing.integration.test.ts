@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { randomBytes, randomUUID } from "node:crypto";
+import { createHmac, randomBytes, randomUUID } from "node:crypto";
 import { readFile, readdir } from "node:fs/promises";
 import path from "node:path";
 import { after, before, describe, it, type TestContext } from "node:test";
@@ -24,6 +24,7 @@ describe("PostgreSQL billing transactions", { skip: !connectionString }, async (
   process.env.STRIPE_WEBHOOK_SECRET = "whsec_offline_integration";
   process.env.PADDLE_API_KEY = "pdl_sdbx_apikey_offline_integration";
   process.env.PADDLE_WEBHOOK_SECRET = "offline_paddle_integration";
+  process.env.PADDLE_PRICE_MONTHLY = "pri_offline_monthly";
   process.env.GOOGLE_PLAY_RTDN_SECRET = "offline_google_integration";
   delete process.env.GOOGLE_PLAY_PUBSUB_AUDIENCE;
   const { getPostgresPool, closePostgres } = await import("../src/postgres-runtime");
@@ -76,6 +77,10 @@ describe("PostgreSQL billing transactions", { skip: !connectionString }, async (
       stripeHeader: (body: unknown) => stripe.webhooks.generateTestHeaderString({
         payload: JSON.stringify(body), secret: "whsec_offline_integration",
       }),
+      paddleHeader: (body: unknown) => {
+        const timestamp = Math.floor(Date.now() / 1000);
+        return `ts=${timestamp};h1=${createHmac("sha256", "offline_paddle_integration").update(`${timestamp}:${JSON.stringify(body)}`).digest("hex")}`;
+      },
     };
   }
 
@@ -194,6 +199,7 @@ describe("PostgreSQL billing transactions", { skip: !connectionString }, async (
       id: `evt_${randomUUID()}`, object: "event", type: "checkout.session.completed", created: 1000,
       data: { object: {
         id: `cs_${randomUUID()}`, customer: "cus_test", subscription: `sub_${randomUUID()}`,
+        payment_status: "paid", mode: "subscription",
         metadata: { userId: id, plan: "premium_monthly" }, amount_total: 999, currency: "eur",
       } },
     };
@@ -235,5 +241,112 @@ describe("PostgreSQL billing transactions", { skip: !connectionString }, async (
     assert.equal((await pgGetSubscription(secondId))?.isActive, false);
     const receipts = await pool.query("SELECT count(*)::int count FROM payment_events WHERE event_type='voided' AND user_id=ANY($1::text[])", [[id, secondId]]);
     assert.equal(receipts.rows[0].count, 2);
+  });
+
+  function paddleEvent(userId: string, timestamp: number, eventType = "subscription.updated") {
+    return { provider: "paddle" as const, providerEventId: `evt_${randomUUID()}`, userId,
+      eventType, status: "processed", occurredAt: new Date(timestamp), payload: {} };
+  }
+  const paddleOrder = (timestamp: number, isDowngrade = false) => ({ field: "lastPaddleSubscriptionTime" as const, timestamp, isDowngrade });
+
+  it("waits for deferred Stripe payment success and bounds zero-payment trial access", async (t) => {
+    const id = await user(t), trialUser = await user(t), server = await webhookServer(t);
+    const post = (body: any) => server.post("/api/webhooks/stripe", body, { "stripe-signature": server.stripeHeader(body) });
+    const checkout = { id: `evt_${randomUUID()}`, object: "event", type: "checkout.session.completed", created: Math.floor(Date.now() / 1000),
+      data: { object: { id: `cs_${randomUUID()}`, customer: "cus_deferred", subscription: null, payment_status: "unpaid", mode: "payment",
+        metadata: { userId: id, plan: "premium_lifetime" }, amount_total: 999, currency: "eur" } } };
+    assert.equal((await post(checkout)).body.skipped, "awaiting_payment");
+    assert.equal(await pgGetSubscription(id), null);
+    const success = { ...checkout, id: `evt_${randomUUID()}`, type: "checkout.session.async_payment_succeeded", data: { object: { ...checkout.data.object, payment_status: "paid" } } };
+    assert.equal((await post(success)).status, 200); assert.equal((await pgGetSubscription(id))?.isActive, true);
+    assert.equal((await post(success)).status, 200);
+    assert.equal((await pool.query("SELECT count(*)::int count FROM payment_events WHERE provider_event_id=$1", [success.id])).rows[0].count, 1);
+    const trialEnd = Math.floor(Date.now() / 1000) + 86400;
+    const trial = { ...checkout, id: `evt_${randomUUID()}`, data: { object: { ...checkout.data.object, payment_status: "no_payment_required", mode: "subscription",
+      metadata: { userId: trialUser, plan: "premium_monthly" }, subscription: { id: "sub_trial", status: "trialing", trial_end: trialEnd } } } };
+    assert.equal((await post(trial)).status, 200);
+    const sub = await pgGetSubscription(trialUser);
+    assert.equal(sub?.isActive, true); assert.equal(sub?.isTrial, true); assert.equal(sub?.expiresAt.getTime(), trialEnd * 1000);
+    const setup = { ...trial, id: `evt_${randomUUID()}`, data: { object: { ...trial.data.object, mode: "setup" } } };
+    assert.equal((await post(setup)).body.skipped, "awaiting_payment");
+  });
+
+  it("serializes first Paddle identity claims across two different users", async (t) => {
+    const ids = [await user(t), await user(t)];
+    const customerId = `ctm_${randomUUID()}`, subscriptionId = `sub_${randomUUID()}`;
+    const results = await Promise.all(ids.map(id => pgApplySubscriptionEvent(id, {
+      plan: "premium_monthly", platform: "paddle", paddleCustomerId: customerId, paddleSubscriptionId: subscriptionId, isActive: true,
+    }, paddleEvent(id, 1000), { order: paddleOrder(1000), paddle: { customerId, subscriptionId, allowBinding: true, kind: "subscription" } })));
+    assert.deepEqual(results.sort(), ["applied", "stale"]);
+    assert.equal((await pool.query("SELECT count(*)::int count FROM subscriptions WHERE paddle_customer_id=$1", [customerId])).rows[0].count, 1);
+  });
+
+  it("ignores out-of-order Paddle downgrades while preserving other providers' late-revoke contract", async (t) => {
+    const id = await user(t), customerId = `ctm_${randomUUID()}`, subscriptionId = `sub_${randomUUID()}`;
+    await pgUpsertSubscription(id, { platform: "paddle", paddleCustomerId: customerId, paddleSubscriptionId: subscriptionId });
+    const paddle = { customerId, subscriptionId, allowBinding: false, kind: "subscription" as const };
+    await pgApplySubscriptionEvent(id, { isActive: true }, paddleEvent(id, 5000), { order: paddleOrder(5000), paddle });
+    assert.equal(await pgApplySubscriptionEvent(id, { isActive: false }, paddleEvent(id, 4000, "subscription.canceled"), { order: paddleOrder(4000, true), paddle }), "stale");
+    assert.equal((await pgGetSubscription(id))?.isActive, true);
+  });
+
+  it("cannot reactivate canceled recurring access from a later transaction completion", async (t) => {
+    const id = await user(t), customerId = `ctm_${randomUUID()}`, subscriptionId = `sub_${randomUUID()}`;
+    await pgUpsertSubscription(id, { platform: "paddle", paddleCustomerId: customerId, paddleSubscriptionId: subscriptionId, plan: "premium_monthly" });
+    await pgApplySubscriptionEvent(id, { isActive: false, subscriptionStatus: "canceled" }, paddleEvent(id, 5000, "subscription.canceled"), {
+      order: paddleOrder(5000, true), paddle: { customerId, subscriptionId, allowBinding: false, kind: "subscription" },
+    });
+    const transactionId = `txn_${randomUUID()}`;
+    await pgApplySubscriptionEvent(id, { isActive: true, subscriptionStatus: "active", transactionId, expiresAt: new Date(Date.now() + 86400000) }, paddleEvent(id, 6000, "transaction.completed"), {
+      order: { field: "lastPaddleTransactionTime", timestamp: 6000, isDowngrade: false },
+      paddle: { customerId, subscriptionId, transactionId, allowBinding: false, kind: "transaction" },
+    });
+    const sub = await pgGetSubscription(id);
+    assert.equal(sub?.isActive, false); assert.equal(sub?.subscriptionStatus, "canceled"); assert.equal(sub?.transactionId, transactionId);
+  });
+
+  it("does not let an obsolete subscription or refund overwrite the user's newer purchase", async (t) => {
+    const id = await user(t), customerId = `ctm_${randomUUID()}`, subscriptionId = `sub_${randomUUID()}`;
+    await pgUpsertSubscription(id, { platform: "paddle", paddleCustomerId: customerId, paddleSubscriptionId: subscriptionId, transactionId: "txn_current", plan: "premium_yearly", isActive: true });
+    for (const paddle of [
+      { customerId, subscriptionId: "sub_old", allowBinding: false, kind: "subscription" as const },
+      { customerId, subscriptionId, transactionId: "txn_old", allowBinding: false, kind: "adjustment" as const },
+    ]) assert.equal(await pgApplySubscriptionEvent(id, { isActive: false }, paddleEvent(id, 6000), { order: paddleOrder(6000, true), paddle }), "stale");
+    assert.equal((await pgGetSubscription(id))?.isActive, true);
+  });
+
+  it("keeps approved full refunds revoked through same-subscription updates until another payment", async (t) => {
+    const id = await user(t), customerId = `ctm_${randomUUID()}`, subscriptionId = `sub_${randomUUID()}`, transactionId = `txn_${randomUUID()}`;
+    await pgUpsertSubscription(id, { platform: "paddle", paddleCustomerId: customerId, paddleSubscriptionId: subscriptionId, transactionId, isActive: true });
+    const paddle = { customerId, subscriptionId, transactionId, allowBinding: false };
+    await pgApplySubscriptionEvent(id, { isActive: false, paddleRefundedTransactionId: transactionId }, paddleEvent(id, 5000, "adjustment.updated"), {
+      order: { field: "lastPaddleAdjustmentTime", timestamp: 5000, isDowngrade: true }, paddle: { ...paddle, kind: "adjustment" },
+    });
+    await pgApplySubscriptionEvent(id, { isActive: true, subscriptionStatus: "active", expiresAt: new Date(Date.now() + 86400000) }, paddleEvent(id, 6000), { order: paddleOrder(6000), paddle: { ...paddle, kind: "subscription" } });
+    assert.equal((await pgGetSubscription(id))?.isActive, false);
+    const nextTransaction = `txn_${randomUUID()}`;
+    await pgApplySubscriptionEvent(id, { isActive: true, transactionId: nextTransaction }, paddleEvent(id, 7000, "transaction.completed"), {
+      order: { field: "lastPaddleTransactionTime", timestamp: 7000, isDowngrade: false }, paddle: { ...paddle, transactionId: nextTransaction, kind: "transaction" },
+    });
+    assert.equal((await pgGetSubscription(id))?.isActive, true);
+  });
+
+  it("processes real locally signed Paddle checkout/lifecycle/replay events without client-plan escalation", async (t) => {
+    const id = await user(t), server = await webhookServer(t);
+    const { signedPaddleCustomData } = await import("../src/services/paddle-billing");
+    const transactionId = `txn_${randomUUID()}`, customerId = `ctm_${randomUUID()}`, subscriptionId = `sub_${randomUUID()}`;
+    const checkout = { event_id: `evt_${randomUUID()}`, event_type: "transaction.completed", occurred_at: new Date().toISOString(), data: {
+      id: transactionId, customer_id: customerId, subscription_id: subscriptionId, status: "completed", origin: "web",
+      items: [{ price: { id: "pri_offline_monthly", status: "active", billing_cycle: { interval: "month", frequency: 1 } }, quantity: 1 }],
+      billing_period: { ends_at: new Date(Date.now() + 86400000).toISOString() },
+      custom_data: signedPaddleCustomData("offline_paddle_integration", { userId: id, plan: "premium_monthly", priceId: "pri_offline_monthly" }),
+    } };
+    const post = (body: any) => server.post("/api/webhooks/paddle", body, { "paddle-signature": server.paddleHeader(body) });
+    assert.equal((await post(checkout)).status, 200); assert.equal((await pgGetSubscription(id))?.isActive, true);
+    const cancel = { ...checkout, event_id: `evt_${randomUUID()}`, event_type: "subscription.canceled", occurred_at: new Date(Date.now() + 1000).toISOString(),
+      data: { id: subscriptionId, customer_id: customerId, status: "canceled", items: checkout.data.items } };
+    assert.equal((await post(cancel)).status, 200); assert.equal((await pgGetSubscription(id))?.isActive, false);
+    assert.equal((await post(checkout)).status, 200); assert.equal((await pgGetSubscription(id))?.isActive, false);
+    assert.equal((await pool.query("SELECT count(*)::int count FROM payment_events WHERE provider='paddle' AND provider_event_id=$1", [checkout.event_id])).rows[0].count, 1);
   });
 });

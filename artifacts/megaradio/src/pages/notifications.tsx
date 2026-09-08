@@ -1,4 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { apiRequest, oauthBearerHeader } from '@/lib/queryClient';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
@@ -12,6 +14,16 @@ import { useTranslation } from '@/hooks/useTranslation';
 
 export default function NotificationSettings() {
   const { user, isAuthenticated } = useAuth();
+  const userId = String(user?._id || (user as any)?.id || '');
+  return <NotificationSettingsSession key={userId} user={user} isAuthenticated={isAuthenticated} />;
+}
+
+function NotificationSettingsSession({ user, isAuthenticated }: Pick<ReturnType<typeof useAuth>, 'user' | 'isAuthenticated'>) {
+  const queryClient = useQueryClient();
+  const savingRef = useRef(false);
+  const mountedRef = useRef(true);
+  const [saving, setSaving] = useState(false);
+  useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
   const { toast } = useToast();
   const { t } = useTranslation();
   const {
@@ -114,19 +126,17 @@ export default function NotificationSettings() {
   };
 
   const handleSettingChange = async (setting: string, value: boolean) => {
+    if (!isAuthenticated || savingRef.current) return;
+    savingRef.current = true; setSaving(true);
     const newSettings = { ...settings, [setting]: value };
     setSettings(newSettings);
 
     // Save to backend
     try {
-      const response = await fetch('/api/user/notification-settings', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(newSettings)
-      });
+      await apiRequest('PATCH', '/api/user/notification-settings', { body: newSettings, headers: oauthBearerHeader() });
 
-      if (response.ok) {
+      if (mountedRef.current) {
+        queryClient.invalidateQueries({ queryKey: ['/api/auth/me'] });
         toast({
           title: "Settings Updated",
           description: "Your notification preferences have been saved",
@@ -135,13 +145,14 @@ export default function NotificationSettings() {
     } catch (error) {
       // Failed to save notification settings
       // Revert the change
+      if (!mountedRef.current) return;
       setSettings(settings);
       toast({
         title: "Save Failed",
         description: "Could not save your preferences",
         variant: "destructive"
       });
-    }
+    } finally { savingRef.current = false; if (mountedRef.current) setSaving(false); }
   };
 
   if (!isAuthenticated) {
@@ -244,6 +255,7 @@ export default function NotificationSettings() {
                         <Switch
                           id="favorites"
                           checked={settings.favorites}
+                          disabled={saving}
                           onCheckedChange={(value) => handleSettingChange('favorites', value)}
                           data-testid="switch-favorites"
                         />
@@ -262,6 +274,7 @@ export default function NotificationSettings() {
                         <Switch
                           id="nowPlaying"
                           checked={settings.nowPlaying}
+                          disabled={saving}
                           onCheckedChange={(value) => handleSettingChange('nowPlaying', value)}
                           data-testid="switch-now-playing"
                         />
@@ -280,6 +293,7 @@ export default function NotificationSettings() {
                         <Switch
                           id="newStations"
                           checked={settings.newStations}
+                          disabled={saving}
                           onCheckedChange={(value) => handleSettingChange('newStations', value)}
                           data-testid="switch-new-stations"
                         />
@@ -298,6 +312,7 @@ export default function NotificationSettings() {
                         <Switch
                           id="recommendations"
                           checked={settings.recommendations}
+                          disabled={saving}
                           onCheckedChange={(value) => handleSettingChange('recommendations', value)}
                           data-testid="switch-recommendations"
                         />

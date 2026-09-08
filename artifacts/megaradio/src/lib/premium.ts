@@ -7,21 +7,10 @@ export interface PlanInfo {
   description: string;
   currency: string;
   amount: number;
+  checkoutAvailable?: boolean;
+  billingInterval?: 'month' | 'year' | null;
+  billingFrequency?: number;
 }
-
-export const FALLBACK_PLANS: PlanInfo[] = [
-  { planId: "remove_ads",      label: "Remove Ads", description: "Ad-free listening, no premium extras", currency: "eur", amount: 499  },
-  { planId: "premium_yearly",  label: "Annual",     description: "Best value — save vs monthly",         currency: "eur", amount: 2999 },
-  { planId: "premium_lifetime",label: "Lifetime",   description: "One-time payment, never pay again",    currency: "eur", amount: 5999 },
-  { planId: "premium_monthly", label: "Monthly",    description: "Billed monthly, cancel anytime",       currency: "eur", amount: 399  },
-];
-
-export const PLAN_BADGE: Record<string, string | null> = {
-  remove_ads:       null,
-  premium_yearly:   "Best Value",
-  premium_lifetime: "One-Time",
-  premium_monthly:  null,
-};
 
 export const PLAN_LABEL: Record<string, string> = {
   remove_ads:       "Remove Ads",
@@ -30,11 +19,21 @@ export const PLAN_LABEL: Record<string, string> = {
   premium_lifetime: "Lifetime",
 };
 
-export function fmtPrice(amount: number, currency: string): string {
-  if (!amount) return "";
-  return new Intl.NumberFormat("en-US", {
+export function fmtPrice(amount: number, currency: string, locale = 'en'): string {
+  if (!Number.isFinite(amount) || amount <= 0) return "";
+  try {
+    const formatter = new Intl.NumberFormat(locale, {
     style: "currency",
     currency: currency.toUpperCase(),
-    minimumFractionDigits: 2,
-  }).format(amount / 100);
+    });
+    return formatter.format(amount / 10 ** (formatter.resolvedOptions().maximumFractionDigits ?? 2));
+  } catch { return ''; }
+}
+
+export const PAID_PLANS = ['remove_ads', 'premium_monthly', 'premium_yearly', 'premium_lifetime'] as const;
+export function isAdFreeSubscription(sub: unknown, now = Date.now()): boolean {
+  if (!sub || typeof sub !== 'object') return false;
+  const value = sub as { isActive?: boolean; plan?: string; expiresAt?: string | null };
+  if (value.isActive !== true || !PAID_PLANS.includes(value.plan as typeof PAID_PLANS[number])) return false;
+  return !value.expiresAt || (Number.isFinite(Date.parse(value.expiresAt)) && Date.parse(value.expiresAt) > now);
 }

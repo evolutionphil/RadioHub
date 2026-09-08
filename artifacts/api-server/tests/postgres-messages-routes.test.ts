@@ -27,6 +27,8 @@ const broadcasts: Array<{ userIds: string[]; payload: any }> = [];
 const socketHandlers: Record<string, (...args: any[]) => any> = {};
 let connectionHandler: (...args: any[]) => any;
 let requestedLimit: number;
+let follows = true;
+let hasHistory = false;
 
 const mongoMustNotRun = new Proxy({}, {
   get(_target, key) { throw new Error(`MongoDB call in PostgreSQL chat mode: ${String(key)}`); },
@@ -42,6 +44,9 @@ mock.module("fs/promises", { defaultExport: { mkdir: async () => {} } });
 mock.module(new URL("../src/utils/logger.ts", import.meta.url).href, {
   namedExports: { logger: { log() {}, warn() {}, error() {} } },
 });
+mock.module(new URL('../src/cache.ts', import.meta.url).href, {
+  namedExports: { CacheManager: { clearByPattern: async () => {} } },
+});
 mock.module(new URL("../src/data/postgres-user-store.ts", import.meta.url).href, {
   namedExports: { userStore: "postgres", pgFindUserById: async (id: string) => ({ ...privateUser, _id: id }) },
 });
@@ -50,7 +55,7 @@ mock.module(new URL("../src/services/user-engagement-service.ts", import.meta.ur
 });
 mock.module(new URL("../src/data/postgres-engagement-store.ts", import.meta.url).href, {
   namedExports: {
-    pgIsFollowing: async () => true,
+    pgIsFollowing: async () => follows,
     pgFollowPage: async (...args: any[]) => {
       followPageCalls.push(args);
       const [, direction, page] = args;
@@ -64,13 +69,14 @@ mock.module(new URL("../src/data/postgres-message-store.ts", import.meta.url).hr
     messageStore: "postgres",
     pgConversationMessages: async (_user: string, _partner: string, _before: any, limit: number) => {
       requestedLimit = limit;
-      return [{ _id: "507f1f77bcf86cd799439014", content: "Hello" }];
+      return [{ _id: '507f1f77bcf86cd799439010', content: 'Older' }, { _id: "507f1f77bcf86cd799439014", content: "Hello" }];
     },
     pgConversations: async () => [],
     pgCreateMessage: async (input: any) => ({ ...input, _id: "507f1f77bcf86cd799439014", createdAt: new Date() }),
     pgMarkMessagesRead: async (...args: unknown[]) => { readCalls.push(args); return 1; },
     pgMessageContacts: async () => [],
     pgUnreadMessageCount: async () => 0,
+    pgHasConversation: async () => hasHistory,
   },
 });
 mock.module(new URL("../src/data/postgres-notification-store.ts", import.meta.url).href, {
@@ -135,12 +141,14 @@ test("conversation responses expose only public partner fields and preserve pagi
   const response = await fetch(`${baseUrl}/api/messages/conversation/${partnerId}?limit=-3`);
   assert.equal(response.status, 200);
   const body: any = await response.json();
-  assert.equal(requestedLimit, 1);
+  assert.equal(requestedLimit, 2, 'one lookahead record determines hasMore without a phantom final page');
   assert.equal(body.hasMore, true);
   assert.equal(body.partner.online, true);
   assert.deepEqual(Object.keys(body.partner).sort(), [...publicFields, "online"].sort());
   assert.equal(body.partner._id, partnerId);
   assert.deepEqual(notificationReadCalls.at(-1), [userId, partnerId]);
+  assert.deepEqual(readCalls.at(-1), [userId, partnerId, ['507f1f77bcf86cd799439014']]);
+  assert.equal(response.headers.get('cache-control'), 'private, no-store');
 });
 
 test("message WebSocket sender payload never exposes credentials or source fields", async () => {
@@ -170,9 +178,35 @@ test("PostgreSQL WebSocket read receipts persist without calling MongoDB", async
   }, { url: `/ws/chat?ticket=${ticket}`, headers: { host: "localhost" } });
   readCalls.length = 0;
   await socketHandlers.message(Buffer.from(JSON.stringify({ type: "chat:read", fromUserId: partnerId })));
-  assert.deepEqual(readCalls, [[userId, partnerId]]);
+  assert.deepEqual(readCalls, [[userId, partnerId, undefined]]);
   await socketHandlers.message(Buffer.from(JSON.stringify({ type: "chat:read", fromUserId: { bad: "id" } })));
   assert.equal(readCalls.length, 1, "invalid IDs must not reach persistence");
+});
+
+test('conversation access does not disclose unrelated private users; past participants retain their history', async () => {
+  follows = false; hasHistory = false;
+  try {
+    let response = await fetch(`${baseUrl}/api/messages/conversation/${partnerId}`);
+    assert.equal(response.status, 403); await response.json();
+    hasHistory = true;
+    response = await fetch(`${baseUrl}/api/messages/conversation/${partnerId}`);
+    assert.equal(response.status, 200); assert.equal((await response.json() as any).hasMore, false);
+  } finally { follows = true; hasHistory = false; }
+});
+
+test('invalid cursors and remote image URLs are rejected before persistence', async () => {
+  for (const query of ['before=invalid', 'before=bad&before=also-bad']) {
+    const response = await fetch(`${baseUrl}/api/messages/conversation/${partnerId}?${query}`);
+    assert.equal(response.status, 400); await response.json();
+  }
+  const response = await fetch(`${baseUrl}/api/messages/send`, { method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({toUserId:partnerId, content:'Photo',messageType:'image',imageUrl:'https://tracker.example/pixel.png'}) });
+  assert.equal(response.status, 400); await response.json();
+});
+
+test('presence lookup never enumerates non-contact users', async () => {
+  const response = await fetch(`${baseUrl}/api/messages/online-status?userIds=${partnerId}`);
+  assert.equal(response.status, 200); assert.deepEqual((await response.json() as any).status, {});
 });
 
 test("PostgreSQL presence broadcasts include subsequent contact pages", async () => {

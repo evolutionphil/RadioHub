@@ -1,203 +1,124 @@
-import { useState } from "react";
-import { useLocation } from "wouter";
-import { useAuth } from "@/hooks/useAuth";
+import { useEffect, useRef, useState } from 'react';
+import { useLocation } from 'wouter';
+import { useAuth } from '@/hooks/useAuth';
+import { apiRequest } from '@/lib/queryClient';
+import { useTranslation } from '@/hooks/useTranslation';
+import { openPaddleCheckout, releaseCheckout, reserveCheckout } from '@/lib/paddle-checkout';
 
 interface CheckoutOptions {
-  /** Called when the user is not logged in, before redirecting to login. */
   onUnauthenticated?: () => void;
-  /** Extra body fields forwarded to the checkout endpoint (e.g. tvCode). */
   extraBody?: Record<string, string>;
+  returnTo?: string;
 }
 
-interface CheckoutResult {
-  loading: boolean;
-  error: string | null;
-  checkout: (plan: string) => Promise<void>;
-}
-
-// Minimal Paddle.js v2 global type — only the fields we use.
-declare global {
-  interface Window {
-    Paddle?: {
-      Environment: {
-        set: (env: "sandbox" | "production") => void;
-      };
-      Initialize: (opts: {
-        token: string;
-        eventCallback?: (event: { name: string; data?: unknown }) => void;
-      }) => void;
-      Checkout: {
-        open: (opts: {
-          items?: Array<{ priceId: string; quantity: number }>;
-          transactionId?: string;
-          customData?: Record<string, string>;
-          settings?: { successUrl?: string; displayMode?: string };
-        }) => void;
-      };
-    };
-  }
-}
-
-// Module-level dedup so multiple rapid calls share the same script load.
-let paddleScriptLoading: Promise<void> | null = null;
-
-function loadPaddleJs(): Promise<void> {
-  if (window.Paddle) return Promise.resolve();
-  if (paddleScriptLoading) return paddleScriptLoading;
-  paddleScriptLoading = new Promise<void>((resolve, reject) => {
-    const script = document.createElement("script");
-    script.src = "https://cdn.paddle.com/paddle/v2/paddle.js";
-    script.onload = () => resolve();
-    script.onerror = () => {
-      paddleScriptLoading = null;
-      reject(new Error("Failed to load Paddle.js"));
-    };
-    document.head.appendChild(script);
-  });
-  return paddleScriptLoading;
-}
-
-/**
- * Handles checkout for both Stripe (redirect) and Paddle (Paddle.js overlay).
- * Used by PaywallModal, /premium, and /activate pages.
- *
- * - Stripe: server returns { checkoutUrl } → window.location redirect
- * - Paddle: server returns { paddleCheckout: { priceId, customData, successUrl } }
- *           → Paddle.js opens overlay using items[] (no pre-created transaction needed)
- */
-export function useSubscriptionCheckout(opts: CheckoutOptions = {}): CheckoutResult {
-  const { user } = useAuth();
+export function useSubscriptionCheckout(opts: CheckoutOptions = {}) {
+  const { user, isLoading: authLoading, error: authError } = useAuth();
+  const { language: currentLanguage } = useTranslation();
   const [, setLocation] = useLocation();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const owner = useRef(Symbol('checkout'));
+  const busy = useRef(false);
+  const mounted = useRef(false);
+  const controller = useRef<AbortController | null>(null);
+  const account = useRef(user?._id);
+  account.current = user?._id;
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      controller.current?.abort();
+      releaseCheckout(owner.current, true);
+      busy.current = false;
+    };
+  }, []);
+  useEffect(() => {
+    setLoading(false);
+    setError(null);
+    return () => {
+      controller.current?.abort();
+      releaseCheckout(owner.current, true);
+      busy.current = false;
+    };
+  }, [user?._id]);
 
   async function checkout(plan: string) {
+    if (busy.current || authLoading) return;
+    if (authError) { setError('Please reload your account before starting checkout.'); return; }
     if (!user) {
       opts.onUnauthenticated?.();
-      setLocation(`/login?returnTo=${encodeURIComponent("/premium")}`);
+      const returnTo = opts.returnTo || `/${currentLanguage}/premium`;
+      setLocation(`/${currentLanguage}/login?returnTo=${encodeURIComponent(returnTo)}`);
       return;
     }
+    const userId = user._id;
+    const lease = Symbol('checkout-attempt');
+    const request = new AbortController();
+    const isCurrent = () => mounted.current && owner.current === lease && account.current === userId && !request.signal.aborted;
+    const finish = (message?: string) => {
+      releaseCheckout(lease);
+      if (owner.current !== lease) return;
+      busy.current = false;
+      if (mounted.current && account.current === userId) {
+        setLoading(false);
+        if (message) setError(message);
+      }
+    };
+    let successUrl: string | undefined;
+    if (!reserveCheckout(lease, event => {
+      if (!isCurrent()) return;
+      if (event.name === 'checkout.completed' && successUrl) {
+        // Browser events and localStorage never grant premium. The return page
+        // waits for the entitlement verified by the server webhook.
+        window.location.assign(successUrl);
+      } else if (event.name === 'checkout.closed') finish();
+      else if (event.name === 'checkout.error') finish('Payment could not be completed. Please try again.');
+    })) {
+      setError('A payment window is already open. Please finish or close it first.');
+      return;
+    }
+    busy.current = true;
+    owner.current = lease;
+    controller.current = request;
     setLoading(true);
     setError(null);
     try {
-      // Include OAuth Bearer fallback so checkout works even when the session
-      // cookie is blocked by strict browser cookie policies after OAuth login.
-      const bearerToken = (() => { try { return sessionStorage.getItem('_mrt_oat'); } catch { return null; } })();
-      const res = await fetch("/api/subscription/checkout", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(bearerToken ? { Authorization: `Bearer ${bearerToken}` } : {}),
-        },
-        credentials: "include",
-        body: JSON.stringify({ plan, ...opts.extraBody }),
+      const res = await apiRequest('POST', '/api/subscription/checkout', {
+        body: { ...opts.extraBody, plan, locale: currentLanguage },
+        signal: request.signal,
       });
-
-      let data: {
-        checkoutUrl?: string;
-        paddleCheckout?: {
-          priceId: string;
-          customData: Record<string, string>;
-          successUrl: string;
-          clientToken?: string;
-          environment?: "sandbox" | "production";
-        };
-        error?: string;
-      } = {};
-      try {
-        data = await res.json();
-      } catch {
-        setError(`Server error (${res.status}). Please try again.`);
-        setLoading(false);
-        return;
-      }
-
-      // ── Paddle.js items-based overlay checkout ──────────────────────────────
-      // The backend returns priceId + customData instead of pre-creating a
-      // transaction. Pre-created transactions are in "draft" status which
-      // Paddle's checkout page rejects with 404.
+      const data = await res.json();
+      if (!isCurrent() || request.signal.aborted) return;
       if (data.paddleCheckout) {
-        // Prefer the token returned by the server (no build-time env var needed).
-        // Fall back to the VITE_ build-time var for local dev.
-        const paddleToken =
-          data.paddleCheckout.clientToken ||
-          (import.meta.env as Record<string, string | undefined>).VITE_PADDLE_CLIENT_TOKEN;
-        if (!paddleToken) {
-          setError("Payment provider not configured. Please contact support.");
-          setLoading(false);
-          return;
+        const config = data.paddleCheckout;
+        const token = config.clientToken || import.meta.env.VITE_PADDLE_CLIENT_TOKEN;
+        if (!token || (!config.priceId && !config.transactionId)) throw new Error('Payment provider is not configured.');
+        const target = new URL(config.successUrl, window.location.origin);
+        if (target.origin !== window.location.origin || !/^\/(?:[a-z]{2}\/)?(?:premium|activate)\/success\/?$/.test(target.pathname)) {
+          throw new Error('Invalid payment return address.');
         }
-        try {
-          await loadPaddleJs();
-        } catch {
-          setError("Failed to load payment widget. Please refresh and try again.");
-          setLoading(false);
-          return;
-        }
-        const { priceId, customData, successUrl, environment } = data.paddleCheckout;
-        // Debug: log config in DEV only — a payment page must not print
-        // checkout internals (token prefix, price IDs, customData with user
-        // ids) to every visitor's production console. (2026-07-05)
-        if (import.meta.env.DEV) console.log("[Paddle] checkout config:", {
-          environment,
-          priceId,
-          clientTokenPrefix: paddleToken?.slice(0, 12) + "...",
-          successUrl,
-          customData,
+        target.pathname = `/${currentLanguage}/${target.pathname.includes('/activate/') ? 'activate' : 'premium'}/success`;
+        successUrl = target.href;
+        await openPaddleCheckout(lease, token, config.environment === 'sandbox' ? 'sandbox' : 'production', {
+          ...(config.transactionId ? { transactionId: config.transactionId } : { items: [{ priceId: config.priceId, quantity: 1 }] }),
+          customData: config.customData,
+          settings: { successUrl, displayMode: 'overlay',
+            // Paddle does not support every language offered by MegaRadio.
+            locale: currentLanguage === 'zh' ? 'zh-Hans' :
+              ['ar', 'da', 'nl', 'en', 'fr', 'de', 'it', 'ja', 'ko', 'no', 'pl', 'pt', 'tr', 'ru', 'es', 'sv'].includes(currentLanguage) ? currentLanguage : 'en' },
         });
-        // Paddle.js v2 requires Environment.set() BEFORE Initialize() in sandbox mode.
-        // Omitting this call causes "Something went wrong" when using test_ tokens.
-        if (environment === "sandbox") {
-          window.Paddle!.Environment.set("sandbox");
-        }
-        window.Paddle!.Initialize({
-          token: paddleToken,
-          eventCallback: (event) => {
-            if (event.name === "checkout.closed") {
-              // User dismissed the overlay without completing payment
-              setLoading(false);
-            }
-            if (event.name === "checkout.completed") {
-              // Mark premium BEFORE navigating so index.html skips the AdSense script load.
-              try { localStorage.setItem("_mrt_is_premium", "1"); } catch {}
-              window.location.href = successUrl;
-              // Don't reset loading — page is navigating away
-            }
-            if (event.name === "checkout.error") {
-              if (import.meta.env.DEV) console.error("[Paddle] checkout.error full event:", JSON.stringify(event));
-              const data = event.data as any;
-              const detail = data?.detail || data?.message || data?.type || data?.code
-                || (typeof data === "string" ? data : null)
-                || "Unknown error — check console for [Paddle] checkout.error details";
-              setError(`Payment error: ${detail}`);
-              setLoading(false);
-            }
-          },
-        });
-        window.Paddle!.Checkout.open({
-          items: [{ priceId, quantity: 1 }],
-          customData,
-          settings: { successUrl, displayMode: "overlay" },
-        });
-        // Keep loading=true while the overlay is open; reset via eventCallback
         return;
       }
-
-      // ── Stripe redirect checkout ────────────────────────────────────────────
       if (data.checkoutUrl) {
-        window.location.href = data.checkoutUrl;
-        // Don't reset loading — the page is navigating away.
+        const target = new URL(data.checkoutUrl);
+        if (target.protocol !== 'https:' || target.hostname !== 'checkout.stripe.com') throw new Error('Invalid payment address.');
+        window.location.assign(target.href);
         return;
       }
-
-      setError(data.error || `Checkout failed (${res.status}). Please try again.`);
-      setLoading(false);
+      finish('Checkout is currently unavailable. Please try again later.');
     } catch {
-      // Only reaches here on a genuine network failure (no connection, DNS, etc.).
-      setError("Network error. Please check your connection and try again.");
-      setLoading(false);
+      if (!request.signal.aborted && isCurrent()) finish('Checkout could not be started. Please try again later.');
     }
   }
-
   return { loading, error, checkout };
 }

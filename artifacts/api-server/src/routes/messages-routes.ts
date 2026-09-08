@@ -7,11 +7,12 @@ import { rateLimit, ipKeyGenerator } from "express-rate-limit";
 import { type WebSocketServer, type WebSocket } from 'ws';
 import { chatService } from "../services/chat-service";
 import { logger } from "../utils/logger";
+import { CacheManager } from '../cache';
 import { notificationStore, pgMarkConversationNotificationsRead, pgUpsertMessageNotification, } from "../data/postgres-notification-store";
 import { pgFindUserById, userStore } from "../data/postgres-user-store";
 import { engagementStore } from "../services/user-engagement-service";
 import { pgFollowPage, pgIsFollowing } from "../data/postgres-engagement-store";
-import { messageStore, pgConversationMessages, pgConversations, pgCreateMessage, pgMarkMessagesRead, pgMessageContacts, pgUnreadMessageCount, } from "../data/postgres-message-store";
+import { messageStore, pgConversationMessages, pgConversations, pgCreateMessage, pgMarkMessagesRead, pgMessageContacts, pgUnreadMessageCount, pgHasConversation } from "../data/postgres-message-store";
 function normalizeIp(ip: string | undefined): string {
     if (!ip)
         return 'unknown';
@@ -93,7 +94,7 @@ if (typeof (_ticketCleanupTimer as any).unref === 'function')
     (_ticketCleanupTimer as any).unref();
 // ─── Session userId helper ─────────────────────────────────────────────────────
 function getSessionUserId(req: any): string | null {
-    return req.session?.user?.userId || null;
+    return req.session?.user?.userId || req.session?.userId || null;
 }
 // PostgreSQL identity rows also contain credentials and billing data. Chat
 // responses must use the same public projection as the former Mongo queries.
@@ -111,6 +112,7 @@ function publicChatUser(user: any): any | null {
 async function markConversationNotificationsRead(userId: string, partnerId: string): Promise<void> {
     {
         await pgMarkConversationNotificationsRead(userId, partnerId);
+        await CacheManager.clearByPattern(`notifications:postgres:${userId}:`).catch(() => {});
     }
 }
 // ─── Follow check helper ───────────────────────────────────────────────────────
@@ -122,9 +124,16 @@ async function canChat(userA: string, userB: string): Promise<boolean> {
         return aFollowsB || bFollowsA;
     }
 }
+async function canReadConversation(userId: string, partnerId: string): Promise<boolean> {
+    return await canChat(userId, partnerId) || await pgHasConversation(userId, partnerId);
+}
 // ─── Route registration ───────────────────────────────────────────────────────
 export function registerMessagesRoutes(app: Express, chatWss: WebSocketServer, deps: any) {
     const { requireAuth } = deps;
+    app.use('/api/messages', (_req, res, next) => {
+        res.setHeader('Cache-Control', 'private, no-store');
+        next();
+    });
     // ── GET /api/messages/ws-ticket ─────────────────────────────────────────────
     // Returns a one-time ticket for WebSocket auth (expires in 60s)
     app.get("/api/messages/ws-ticket", requireAuth, (req, res) => {
@@ -192,24 +201,27 @@ export function registerMessagesRoutes(app: Express, chatWss: WebSocketServer, d
             if (!rawId)
                 return void res.status(401).json({ error: "Not authenticated" });
             {
-                const partnerId = req.params.partnerId;
+                const partnerId = req.params.partnerId.toLowerCase();
                 if (!/^[0-9a-f]{24}$/i.test(partnerId))
                     return void res.status(400).json({ error: "Invalid partner ID" });
                 const limit = Math.max(1, Math.min(parseInt(req.query.limit as string) || 50, 100));
-                const before = req.query.before as string | undefined;
-                const [messages, partner] = await Promise.all([
-                    pgConversationMessages(rawId, partnerId, before, limit),
+                const before = req.query.before;
+                if (before !== undefined && (typeof before !== 'string' || !/^[0-9a-f]{24}$/i.test(before)))
+                    return void res.status(400).json({ error: 'Invalid message cursor' });
+                if (!await canReadConversation(rawId, partnerId))
+                    return void res.status(403).json({ error: 'Conversation not available' });
+                const [pageMessages, partner] = await Promise.all([
+                    pgConversationMessages(rawId, partnerId, before as string | undefined, limit + 1),
                     pgFindUserById(partnerId),
                 ]);
-                await Promise.all([
-                    pgMarkMessagesRead(rawId, partnerId),
-                    markConversationNotificationsRead(rawId, partnerId),
-                ]);
+                const messages = pageMessages.slice(-limit);
+                await pgMarkMessagesRead(rawId, partnerId, messages.map(message => message._id));
+                await markConversationNotificationsRead(rawId, partnerId);
                 chatService.sendToUser(partnerId, { type: "chat:read", byUserId: rawId });
                 return void res.json({
                     messages,
                     partner: partner ? { ...publicChatUser(partner), online: chatService.isOnline(partnerId) } : null,
-                    hasMore: messages.length === limit,
+                    hasMore: pageMessages.length > limit,
                 });
             }
         }
@@ -268,7 +280,7 @@ export function registerMessagesRoutes(app: Express, chatWss: WebSocketServer, d
             const fromUserId = getSessionUserId(req);
             if (!fromUserId)
                 return void res.status(401).json({ error: "Not authenticated" });
-            const { toUserId, content, messageType, imageUrl } = req.body;
+            const { toUserId, content, messageType, imageUrl } = req.body || {};
             if (!toUserId || typeof content !== 'string' || !content.trim()) {
                 return void res.status(400).json({ error: "toUserId and content are required" });
             }
@@ -289,10 +301,12 @@ export function registerMessagesRoutes(app: Express, chatWss: WebSocketServer, d
                 });
             }
             const targetUser: any = await pgFindUserById(targetId.toString());
-            if (!targetUser) {
+            if (!targetUser || (targetUser.status && targetUser.status !== 'active')) {
                 return void res.status(404).json({ error: "User not found" });
             }
             const validType = ['text', 'image', 'emoji'].includes(messageType) ? messageType : 'text';
+            if (validType === 'image' && (typeof imageUrl !== 'string' || !/^\/uploads\/chat\/[a-z0-9_-]+\.(?:jpe?g|png|gif|webp)$/i.test(imageUrl)))
+                return void res.status(400).json({ error: 'Invalid uploaded image URL' });
             const messageInput = {
                 fromUserId, toUserId: targetId.toString(), content: content.trim(),
                 messageType: validType, imageUrl: validType === 'image' && imageUrl ? imageUrl : undefined,
@@ -342,6 +356,7 @@ export function registerMessagesRoutes(app: Express, chatWss: WebSocketServer, d
                         await pgUpsertMessageNotification({
                             ...notificationInput,
                         });
+                        await CacheManager.clearByPattern(`notifications:postgres:${targetId}:`).catch(() => {});
                     }
                     // WEB PUSH (2026-07-04): also notify the recipient's browser when
                     // they're not viewing the conversation — until now new messages
@@ -394,10 +409,16 @@ export function registerMessagesRoutes(app: Express, chatWss: WebSocketServer, d
     // ── GET /api/messages/online-status ─────────────────────────────────────────
     app.get("/api/messages/online-status", requireAuth, async (req, res) => {
         try {
-            const userIds = ((req.query.userIds as string) || "").split(",").filter(Boolean);
+            const rawIds = req.query.userIds;
+            if (rawIds !== undefined && typeof rawIds !== 'string')
+                return void res.status(400).json({ error: 'Invalid user IDs' });
+            const userIds = [...new Set((rawIds || '').split(',').filter(Boolean))];
+            if (userIds.length > 100 || userIds.some(id => !/^[a-f0-9]{24}$/i.test(id)))
+                return void res.status(400).json({ error: 'Invalid user IDs' });
+            const contacts = new Set((await pgMessageContacts(getSessionUserId(req)!)).map(contact => String(contact._id)));
             const status: Record<string, boolean> = {};
             for (const uid of userIds)
-                status[uid] = chatService.isOnline(uid);
+                if (contacts.has(uid)) status[uid] = chatService.isOnline(uid);
             res.json({ status });
         }
         catch (error) {
@@ -424,19 +445,20 @@ export function registerMessagesRoutes(app: Express, chatWss: WebSocketServer, d
             }
             const userId = ticketData.userId;
             deleteWsTicket(ticket);
+            const onlineContacts = (await pgMessageContacts(userId)).filter(contact => chatService.isOnline(String(contact._id))).map(contact => String(contact._id));
             const client = chatService.addClient(userId, socket);
             broadcastOnlineStatus(userId, true);
             socket.send(JSON.stringify({
                 type: "chat:connected",
                 userId,
-                onlineUsers: chatService.getOnlineUsers(),
+                onlineUsers: onlineContacts,
             }));
             socket.on("message", async (rawData) => {
                 try {
                     const msg = JSON.parse(rawData.toString());
                     switch (msg.type) {
                         case "chat:typing": {
-                            if (!msg.toUserId)
+                            if (typeof msg.toUserId !== 'string' || !/^[0-9a-f]{24}$/i.test(msg.toUserId) || !await canChat(userId, msg.toUserId))
                                 break;
                             chatService.sendToUser(msg.toUserId, {
                                 type: "chat:typing",
@@ -447,8 +469,11 @@ export function registerMessagesRoutes(app: Express, chatWss: WebSocketServer, d
                         case "chat:read": {
                             if (typeof msg.fromUserId !== "string" || !/^[0-9a-f]{24}$/i.test(msg.fromUserId))
                                 break;
+                            if (msg.messageIds !== undefined && (!Array.isArray(msg.messageIds) || msg.messageIds.length > 100 || msg.messageIds.some((id: unknown) => typeof id !== 'string' || !/^[0-9a-f]{24}$/i.test(id))))
+                                break;
                             {
-                                await pgMarkMessagesRead(userId, msg.fromUserId);
+                                await pgMarkMessagesRead(userId, msg.fromUserId, msg.messageIds);
+                                await markConversationNotificationsRead(userId, msg.fromUserId);
                             }
                             chatService.sendToUser(msg.fromUserId, {
                                 type: "chat:read",
@@ -459,12 +484,14 @@ export function registerMessagesRoutes(app: Express, chatWss: WebSocketServer, d
                         case "chat:active": {
                             // User opened/closed a conversation — track it to suppress duplicate notifications
                             const withId = msg.withUserId || null;
+                            if (withId !== null && (typeof withId !== 'string' || !/^[0-9a-f]{24}$/i.test(withId) || !await canReadConversation(userId, withId)))
+                                break;
                             chatService.setActiveConversation(userId, withId);
                             // Immediately mark any pending notifications from that partner as read
                             if (withId) {
                                 try {
                                     {
-                                        await pgMarkConversationNotificationsRead(userId, withId);
+                                        await markConversationNotificationsRead(userId, withId);
                                     }
                                 }
                                 catch { }

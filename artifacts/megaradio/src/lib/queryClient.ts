@@ -15,8 +15,18 @@ export function oauthBearerHeader(): Record<string, string> {
 }
 
 export function resolveApiUrl(path: string): string {
-  if (!API_BASE || !path.startsWith('/api')) return path;
-  return `${API_BASE}${path}`;
+  if (!API_BASE || !/^\/api(?:\/|\?|$)/.test(path)) return path;
+  return `${API_BASE.replace(/\/$/, '')}${path}`;
+}
+
+// Never forward the OAuth session token to an arbitrary absolute URL.
+export function apiAuthHeaders(path: string): Record<string, string> {
+  try {
+    const target = new URL(resolveApiUrl(path), window.location.origin);
+    const apiOrigin = new URL(API_BASE || window.location.origin).origin;
+    return target.origin === apiOrigin && /^\/api(?:\/|$)/.test(target.pathname)
+      ? oauthBearerHeader() : {};
+  } catch { return {}; }
 }
 
 async function throwIfResNotOk(res: Response) {
@@ -37,13 +47,14 @@ export async function apiRequest(
 ): Promise<Response> {
   const { body, headers = {}, signal } = options;
 
-  const res = await fetch(url, {
+  const res = await fetch(resolveApiUrl(url), {
     method,
     headers: {
-      ...(body ? { "Content-Type": "application/json" } : {}),
+      ...apiAuthHeaders(url),
+      ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
       ...headers,
     },
-    body: body ? JSON.stringify(body) : undefined,
+    body: body !== undefined ? JSON.stringify(body) : undefined,
     credentials: "include",
     signal,
   });
@@ -96,10 +107,10 @@ export const getQueryFn: <T>(options: {
     // race-fix in lib/oauth-token-exchange.ts is a no-op for any query that
     // uses this default queryFn (notably /api/auth/me read by 16+ components
     // via useAuth.ts).
-    const res = await fetch(url, {
+    const res = await fetch(resolveApiUrl(url), {
       credentials: "include",
       signal,
-      headers: oauthBearerHeader(),
+      headers: apiAuthHeaders(url),
     });
 
     if (unauthorizedBehavior === "returnNull" && res.status === 401) {
@@ -124,7 +135,9 @@ export const queryClient = new QueryClient({
       refetchOnReconnect: false, // Don't refetch on reconnect
     },
     mutations: {
-      retry: 1,
+      // A lost response does not mean a message/payment/write was not applied.
+      // Only explicitly idempotent mutations may opt into automatic retries.
+      retry: 0,
     },
   },
 });

@@ -3,6 +3,7 @@ import Stripe from "stripe";
 import { Paddle, Environment } from "@paddle/paddle-node-sdk";
 import { listSubscriptionPlans, saveSubscriptionPlan, type StripePlanId } from "../data/postgres-tv-store";
 import { logger } from "../utils/logger";
+import { publicPaddlePlanCatalog } from "../services/paddle-plan-catalog";
 
 const DEFAULT_PLANS: Array<{ planId: StripePlanId; label: string; description: string }> = [
   { planId: "remove_ads",      label: "Remove Ads", description: "Ad-free listening, no premium extras" },
@@ -44,17 +45,22 @@ export function registerStripePlanAdminRoutes(app: Express, deps: any) {
   // ── Public: /activate page fetches plan list ───────────────────────────────
   app.get("/api/subscription/plans", async (_req: Request, res: Response) => {
     try {
+      if (process.env.PAYMENT_PROVIDER === "paddle") {
+        return void res.json(await publicPaddlePlanCatalog(await listSubscriptionPlans()));
+      }
       const plans = (await listSubscriptionPlans(true)).map(({ _id, planId, label, description, currency, amount }) => ({ _id, planId, label, description, currency, amount }));
       res.json({ plans });
     } catch (err: any) {
       // Fallback to hardcoded defaults so /activate always works
       res.json({
+        ...(process.env.PAYMENT_PROVIDER === "paddle" ? { providerConfigured: !!(process.env.PADDLE_API_KEY && process.env.PADDLE_WEBHOOK_SECRET && (process.env.PADDLE_CLIENT_TOKEN || process.env.VITE_PADDLE_CLIENT_TOKEN)), providerAvailable: false } : {}),
         plans: DEFAULT_PLANS.map(p => ({
           planId: p.planId,
           label: p.label,
           description: p.description,
           currency: "usd",
           amount: 0,
+          ...(process.env.PAYMENT_PROVIDER === "paddle" ? { checkoutAvailable: false, billingInterval: null, billingFrequency: null } : {}),
         })),
       });
     }

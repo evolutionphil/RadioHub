@@ -1,6 +1,6 @@
 import express from 'express';
 import { engagementStore, UserEngagementService } from '../services/user-engagement-service';
-import { pgResolveUserId } from '../data/postgres-engagement-store';
+import { pgResolveUserId, pgPublicProfileCacheIdentity } from '../data/postgres-engagement-store';
 import CacheManager from '../cache';
 import { findActiveAuthToken } from '../data/auth-token-store';
 import { PushNotificationService } from '../services/pushNotificationService';
@@ -15,7 +15,9 @@ router.get('/profile/:slug', async (req, res) => {
         const { slug } = req.params;
         const session = (req as any).session;
         const currentUserId = session?.user?.userId || null;
-        const cacheKey = `user-engagement-profile:${slug}:${currentUserId || 'anon'}`;
+        const identity = await pgPublicProfileCacheIdentity(slug);
+        if (!identity) return void res.status(404).json({ error: 'Profile not found' });
+        const cacheKey = `user-engagement-profile:${slug}:${identity}:${currentUserId || 'anon'}`;
         const cached = await CacheManager.get(cacheKey);
         if (cached) {
             return void res.json(cached);
@@ -37,7 +39,9 @@ router.get('/profile/:slug/favorites', async (req, res) => {
     try {
         const { slug } = req.params;
         const { page = '1', limit = '20' } = req.query;
-        const cacheKey = `user-engagement-favs:${slug}:p${page}:l${limit}`;
+        const identity = await pgPublicProfileCacheIdentity(slug);
+        if (!identity) return void res.status(404).json({ error: 'Profile not found or favorites private' });
+        const cacheKey = `user-engagement-favs:${slug}:${identity}:p${page}:l${limit}`;
         const cached = await CacheManager.get(cacheKey);
         if (cached) {
             return void res.json(cached);
@@ -62,7 +66,9 @@ router.get('/profile/:slug/full', async (req, res) => {
         const { favLimit = '20', recentLimit = '20' } = req.query;
         const session = (req as any).session;
         const currentUserId = session?.user?.userId || null;
-        const cacheKey = `user-engagement-full:${slug}:${currentUserId || 'anon'}:fl${favLimit}:rl${recentLimit}`;
+        const identity = await pgPublicProfileCacheIdentity(slug);
+        if (!identity) return void res.status(404).json({ error: 'Profile not found' });
+        const cacheKey = `user-engagement-full:${slug}:${identity}:${currentUserId || 'anon'}:fl${favLimit}:rl${recentLimit}`;
         const cached = await CacheManager.get(cacheKey);
         if (cached)
             return void res.json(cached);
@@ -94,7 +100,9 @@ router.get('/profile/:slug/recently-played', async (req, res) => {
     try {
         const { slug } = req.params;
         const { limit = '20' } = req.query;
-        const cacheKey = `user-engagement-recent:${slug}:l${limit}`;
+        const identity = await pgPublicProfileCacheIdentity(slug);
+        if (!identity) return void res.status(404).json({ error: 'Profile not found' });
+        const cacheKey = `user-engagement-recent:${slug}:${identity}:l${limit}`;
         const cached = await CacheManager.get(cacheKey);
         if (cached)
             return void res.json(cached);
@@ -103,7 +111,7 @@ router.get('/profile/:slug/recently-played', async (req, res) => {
         res.json(result);
     }
     catch (error) {
-        res.json([]);
+        res.status(503).json({ error: 'Listening history unavailable' });
     }
 });
 // Get trending stations

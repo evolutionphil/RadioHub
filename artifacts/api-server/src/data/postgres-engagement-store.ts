@@ -34,6 +34,16 @@ export async function pgResolveUserId(value: string): Promise<string | null> {
   return result.rows[0]?.id ?? null;
 }
 
+/** Recheck privacy before serving cached public profile data; revision isolates prior edits. */
+export async function pgPublicProfileCacheIdentity(value: string): Promise<string | null> {
+  const result = await pool().query<{ id: string; revision: string }>(
+    `SELECT id,updated_at::text AS revision FROM users
+     WHERE (id=$1 OR slug=$1 OR username=$1) AND is_public_profile=true LIMIT 1`, [value],
+  );
+  const row = result.rows[0];
+  return row ? `${row.id}:${row.revision}` : null;
+}
+
 export async function pgPublicProfile(value: string, currentUserId?: string): Promise<any | null> {
   const result = await pool().query(
     `SELECT u.*,
@@ -68,20 +78,24 @@ export async function pgPublicProfile(value: string, currentUserId?: string): Pr
       .sort((a, b) => b.count - a.count)
       .slice(0, 10);
   return {
+    _id: user.id,
     displayName: user.full_name || user.username || user.email?.split("@")[0] || "Anonymous User",
     bio: user.bio || `Radio enthusiast with ${total} favorite stations`,
     slug: user.slug || user.id,
     avatar: user.avatar,
+    createdAt: user.created_at,
+    favoriteStationsCount: total,
     isPublic: user.is_public_profile,
     followersCount: user.followers_count,
     followingCount: user.following_count,
     isFollowing: user.is_following,
     listeningStats: {
-      totalListenHours: Math.max(total * 2.5, 10),
-      uniqueStationsListened: Math.max(total, 1),
+      // Favorites are not playback telemetry. Do not invent durations/activity.
+      totalListenHours: null,
+      uniqueStationsListened: null,
       favoriteGenres: ranked(genres, "genre"),
       favoriteCountries: ranked(countries, "country"),
-      peakListeningHours: [9, 10, 11, 14, 15, 18, 19, 20],
+      peakListeningHours: [],
       joinedDate: new Date(user.created_at).toISOString(),
       lastActiveDate: new Date(user.updated_at).toISOString(),
     },
@@ -400,7 +414,7 @@ export async function pgPopularProfiles(limit: number): Promise<any[]> {
 
 export async function pgRecentlyPlayed(value: string, limit: number): Promise<any[]> {
   const result = await pool().query<{ source: any }>(
-    "SELECT source FROM users WHERE id=$1 OR slug=$1 OR username=$1 LIMIT 1",
+    "SELECT source FROM users WHERE (id=$1 OR slug=$1 OR username=$1) AND is_public_profile=true LIMIT 1",
     [value],
   );
   const recent = result.rows[0]?.source?.recentlyPlayedStations;

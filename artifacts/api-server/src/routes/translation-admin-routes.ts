@@ -27,7 +27,7 @@ import { pgAddRecentlyPlayed, pgFavoriteStationsForUser, pgFindStationRating, pg
 import { ensurePostgresUser } from "../data/auth-token-store";
 import { getStationByIdentifier } from "../data/station-read-store";
 import { incrementStationClick, incrementStationVote } from "../data/station-write-store";
-import { pgCreateNotification, pgListNotifications, pgMarkAllNotificationsRead, pgMarkNotificationRead, } from "../data/postgres-notification-store";
+import { pgCreateNotification, pgListNotifications, pgMarkAllNotificationsRead, pgMarkNotificationRead, notificationCategories, type NotificationCategory } from "../data/postgres-notification-store";
 import { pgFindUserByEmail, pgFindUserByIdOrSlug, pgUpdateUser, pgUserFavoriteCount, pgUserFollowCounts, pgUsersNeedingProfileFix, newPublicUserId } from "../data/postgres-user-store";
 // Module-scoped lock for the auto-translate route. The translation pipeline
 // reads existing rows, calls OpenAI in batches, then writes results — running
@@ -56,7 +56,7 @@ export function registerTranslationAdminRoutes(app: Express, deps: any) {
         {
             result = await pgCreateNotification({ id, ...input } as any);
         }
-        await CacheManager.clearByPattern(`notifications:*:${input.userId}:`);
+        await CacheManager.clearByPattern(`notifications:postgres:${input.userId}:`).catch(() => {});
         return result;
     }
     // Remove duplicate endpoint - using the one below that includes auto-population
@@ -1731,6 +1731,7 @@ ${keysText}`;
     });
     // GET CURRENT USER'S NOTIFICATIONS (Authenticated)
     app.get("/api/user/notifications", async (req, res) => {
+        res.setHeader('Cache-Control', 'private, no-store');
         try {
             let currentUserId = (req.session as any)?.userId || (req.session as any)?.user?.userId;
             if (!currentUserId) {
@@ -1742,18 +1743,21 @@ ${keysText}`;
                         currentUserId = tokenDoc.userId;
                 }
             }
-            const page = parseInt(req.query.page as string) || 1;
-            const limit = parseInt(req.query.limit as string) || 10;
+            const page = Math.max(1, Math.min(1000000, parseInt(req.query.page as string) || 1));
+            const limit = Math.max(1, Math.min(100, parseInt(req.query.limit as string) || 10));
             const skip = (page - 1) * limit;
             if (!currentUserId) {
                 return void res.status(401).json({ error: 'Authentication required' });
             }
-            const cacheKey = `notifications:postgres:${currentUserId}:${page}:${limit}`;
+            const category = req.query.category ?? 'all';
+            if (typeof category !== 'string' || !Object.hasOwn(notificationCategories, category))
+                return void res.status(400).json({ error: 'Invalid notification category' });
+            const cacheKey = `notifications:postgres:${currentUserId}:${page}:${limit}:${category}`;
             const cached = await CacheManager.get(cacheKey);
             if (cached)
                 return void res.json(cached);
             {
-                const pgResult = await pgListNotifications(currentUserId, page, Math.min(limit, 100));
+                const pgResult = await pgListNotifications(currentUserId, page, limit, category as NotificationCategory);
                 const result = { ...pgResult, pagination: {
                         ...pgResult.pagination, pages: pgResult.pagination.totalPages,
                     } };
@@ -1768,6 +1772,7 @@ ${keysText}`;
     });
     // MARK NOTIFICATION AS READ (Authenticated)
     app.patch("/api/user/notifications/:id/read", async (req, res) => {
+        res.setHeader('Cache-Control', 'private, no-store');
         try {
             let currentUserId = (req.session as any)?.userId || (req.session as any)?.user?.userId;
             if (!currentUserId) {
@@ -1790,7 +1795,7 @@ ${keysText}`;
             if (!notification) {
                 return void res.status(404).json({ error: 'Notification not found' });
             }
-            await CacheManager.clearByPattern(`notifications:*:${currentUserId}:`);
+            await CacheManager.clearByPattern(`notifications:postgres:${currentUserId}:`).catch(() => {});
             // logger.log(`📖 Marked notification ${notificationId} as read for user ${currentUserId}`);
             res.json({ success: true, notification });
         }
@@ -1801,6 +1806,7 @@ ${keysText}`;
     });
     // MARK ALL NOTIFICATIONS AS READ (Authenticated)
     app.patch("/api/user/notifications/read-all", async (req, res) => {
+        res.setHeader('Cache-Control', 'private, no-store');
         try {
             let currentUserId = (req.session as any)?.userId || (req.session as any)?.user?.userId;
             if (!currentUserId) {
@@ -1817,7 +1823,7 @@ ${keysText}`;
             }
             let markedCount = 0;
             markedCount = await pgMarkAllNotificationsRead(currentUserId);
-            await CacheManager.clearByPattern(`notifications:*:${currentUserId}:`);
+            await CacheManager.clearByPattern(`notifications:postgres:${currentUserId}:`).catch(() => {});
             // logger.log(`📖 Marked ${result.modifiedCount} notifications as read for user ${currentUserId}`);
             res.json({ success: true, markedCount });
         }

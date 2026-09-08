@@ -6,7 +6,8 @@ import StationCard from "@/components/ui/station-card";
 import UserAvatar from "@/components/ui/user-avatar";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, getQueryFn } from "@/lib/queryClient";
+import { useAuth } from '@/hooks/useAuth';
 import NotFound from "@/pages/not-found";
 import { useSeoRouting } from "@/hooks/useSeoRouting";
 import { useTranslation } from "@/hooks/useTranslation";
@@ -24,6 +25,8 @@ interface UserProfile {
   recentlyPlayedStations?: any[];
   createdAt: string;
   followersCount?: number;
+  favoriteStationsCount?: number;
+  listeningStats?: { totalListenHours?: number | null; peakListeningHours?: number[]; joinedDate?: string };
 }
 
 interface Station {
@@ -45,10 +48,11 @@ interface Station {
 
 export default function UserProfile() {
   const params = useParams<{ id: string }>();
-  const { cleanPath } = useSeoRouting();
+  const { cleanPath, getLocalizedUrl } = useSeoRouting();
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const { t } = useTranslation();
+  const { t, language } = useTranslation();
+  const { user: currentUser, isAuthenticated } = useAuth();
   const [activeTab, setActiveTab] = useState('favorites');
 
   // Extract user ID from cleanPath for language-aware routing
@@ -59,20 +63,13 @@ export default function UserProfile() {
   // Auto-scroll to top when entering the page
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
+    setActiveTab('favorites');
   }, [userId]);
-
-  if (!userId) {
-    return <NotFound />;
-  }
-
-  // Fetch current user for authentication state
-  const { data: currentUser } = useQuery({
-    queryKey: ["/api/auth/me"],
-  });
 
   // Fetch user profile data using user-engagement API
   const { data: userProfile, isLoading: isLoadingProfile, error: profileError } = useQuery<UserProfile>({
-    queryKey: [`/api/user-engagement/profile/${userId}`],
+    queryKey: [`/api/user-engagement/profile/${userId}`, { viewer: currentUser?._id || 'anonymous' }],
+    queryFn: context => getQueryFn<UserProfile>({ on401: 'throw' })({ ...context, queryKey: [`/api/user-engagement/profile/${encodeURIComponent(userId || '')}`] }),
     enabled: !!userId
   });
 
@@ -100,25 +97,18 @@ export default function UserProfile() {
   
 
   // Check if current user is following this user
-  const isFollowing = (currentUser as any)?.user?.following?.includes(userId) || false;
+  const targetUserId = userProfile?._id || userId;
+  const isFollowing = (currentUser as any)?.following?.includes(targetUserId) || false;
   
   // Check if user is viewing their own profile
-  const isOwnProfile = (currentUser as any)?.user?._id === userId;
+  const isOwnProfile = currentUser?._id === targetUserId;
   
   // Follow state check
 
   // Follow mutation
   const followMutation = useMutation({
     mutationFn: async (targetUserId: string) => {
-      const response = await fetch(`/api/user/follow/${targetUserId}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-      if (!response.ok) {
-        throw new Error(`${response.status}: ${response.statusText}`);
-      }
+      const response = await apiRequest('POST', `/api/user/follow/${encodeURIComponent(targetUserId)}`);
       return response.json();
     },
     onSuccess: async () => {
@@ -128,9 +118,7 @@ export default function UserProfile() {
       });
       // Force refetch user data after follow
       await queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
-      await queryClient.invalidateQueries({ queryKey: [`/api/user-profile/${userId}`] });
-      await queryClient.refetchQueries({ queryKey: ["/api/auth/me"] });
-      await queryClient.refetchQueries({ queryKey: [`/api/user-profile/${userId}`] });
+      await queryClient.invalidateQueries({ queryKey: [`/api/user-engagement/profile/${userId}`] });
     },
     onError: (error: any) => {
       if (error.message.includes('401')) {
@@ -138,7 +126,7 @@ export default function UserProfile() {
           title: t('profile_login_required') || "You must be logged in to follow",
           variant: "destructive",
         });
-        window.location.href = '/login';
+        window.location.href = getLocalizedUrl('/login');
       } else {
         toast({
           title: t('general_error') || "Something went wrong",
@@ -151,15 +139,7 @@ export default function UserProfile() {
   // Unfollow mutation
   const unfollowMutation = useMutation({
     mutationFn: async (targetUserId: string) => {
-      const response = await fetch(`/api/user/unfollow/${targetUserId}`, {
-        method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-      if (!response.ok) {
-        throw new Error(`${response.status}: ${response.statusText}`);
-      }
+      const response = await apiRequest('DELETE', `/api/user/unfollow/${encodeURIComponent(targetUserId)}`);
       return response.json();
     },
     onSuccess: async () => {
@@ -169,9 +149,7 @@ export default function UserProfile() {
       });
       // Force refetch user data after unfollow
       await queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
-      await queryClient.invalidateQueries({ queryKey: [`/api/user-profile/${userId}`] });
-      await queryClient.refetchQueries({ queryKey: ["/api/auth/me"] });
-      await queryClient.refetchQueries({ queryKey: [`/api/user-profile/${userId}`] });
+      await queryClient.invalidateQueries({ queryKey: [`/api/user-engagement/profile/${userId}`] });
     },
     onError: () => {
       toast({
@@ -182,31 +160,36 @@ export default function UserProfile() {
   });
 
   const handleFollow = () => {
-    if (!(currentUser as any)?.authenticated) {
+    if (!isAuthenticated) {
       toast({
         title: t('profile_login_required') || "You must be logged in to follow",
         variant: "destructive",
       });
-      window.location.href = '/login';
+      window.location.href = getLocalizedUrl('/login');
       return;
     }
-    followMutation.mutate(userId);
+    followMutation.mutate(targetUserId);
   };
 
   const handleUnfollow = () => {
-    unfollowMutation.mutate(userId);
+    unfollowMutation.mutate(targetUserId);
   };
 
-  const handleShare = () => {
-    const profileUrl = `${window.location.origin}/users/${userId}`;
-    if (navigator.clipboard) {
-      navigator.clipboard.writeText(profileUrl);
+  const handleShare = async () => {
+    const profileUrl = `${window.location.origin}${getLocalizedUrl(`/users/${encodeURIComponent(userId || '')}`)}`;
+    try {
+      if (!navigator.clipboard) throw new Error('Clipboard unavailable');
+      await navigator.clipboard.writeText(profileUrl);
       toast({
         title: t('profile_copied') || "Copied to clipboard",
         description: t('profile_link_copied') || "Profile link copied to clipboard.",
       });
+    } catch {
+      toast({ title: t('general_error', 'Error'), description: t('profile_copy_failed', 'Could not copy the profile link.'), variant: 'destructive' });
     }
   };
+
+  if (!userId) return <NotFound />;
 
   if (isLoadingProfile) {
     return (
@@ -234,6 +217,11 @@ export default function UserProfile() {
   // Extract proper display name - use displayName from API response
   const displayName = userProfile.displayName || userProfile.fullName || userProfile.name || userProfile.email?.split('@')[0] || 'User';
   const followersCount = userProfile.followersCount || 0;
+  const unknown = t('not_available', '—');
+  const joined = new Date(userProfile.createdAt || userProfile.listeningStats?.joinedDate || '');
+  const joinedLabel = Number.isFinite(joined.getTime()) ? joined.toLocaleDateString(language, { year: 'numeric', month: 'long', day: 'numeric' }) : unknown;
+  const listenHours = userProfile.listeningStats?.totalListenHours;
+  const listenLabel = typeof listenHours === 'number' && Number.isFinite(listenHours) && listenHours >= 0 ? `${listenHours.toFixed(1)}h` : unknown;
 
   return (
     <div className="min-h-screen bg-[#0E0E0E] text-white">
@@ -346,6 +334,7 @@ export default function UserProfile() {
               )}
               <Button 
                 onClick={handleShare}
+                aria-label={t('profile_share', 'Share profile')}
                 variant="outline"
                 size="sm"
                 className="border-white/30 text-white hover:bg-white/10"
@@ -364,7 +353,7 @@ export default function UserProfile() {
                 <Clock className="w-5 h-5 text-blue-400" />
               </div>
               <div>
-                <div className="text-2xl font-bold text-white">10.0h</div>
+                <div className="text-2xl font-bold text-white">{listenLabel}</div>
                 <div className="text-xs text-gray-400">Total Listen Time</div>
               </div>
             </div>
@@ -376,7 +365,7 @@ export default function UserProfile() {
                 <Music className="w-5 h-5 text-green-400" />
               </div>
               <div>
-                <div className="text-2xl font-bold text-white">{favoriteStations.length}</div>
+                <div className="text-2xl font-bold text-white">{userProfile.favoriteStationsCount ?? favoriteStations.length}</div>
                 <div className="text-xs text-gray-400">Favorite Stations</div>
               </div>
             </div>
@@ -388,7 +377,7 @@ export default function UserProfile() {
                 <Heart className="w-5 h-5 text-purple-400" />
               </div>
               <div>
-                <div className="text-2xl font-bold text-white">August 15, 2025</div>
+                <div className="text-2xl font-bold text-white">{joinedLabel}</div>
                 <div className="text-xs text-gray-400">Member Since</div>
               </div>
             </div>
@@ -402,7 +391,7 @@ export default function UserProfile() {
                 </svg>
               </div>
               <div>
-                <div className="text-2xl font-bold text-white">5:00 AM - 8:00 PM</div>
+                <div className="text-2xl font-bold text-white">{unknown}</div>
                 <div className="text-xs text-gray-400">Peak Hours</div>
               </div>
             </div>

@@ -10,7 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { useNotificationService } from "@/services/NotificationService";
 import { useNotifications } from "@/hooks/useNotifications";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, getQueryFn } from "@/lib/queryClient";
 import { getAvatarUrl } from "@/lib/utils";
 import { 
   User, 
@@ -52,7 +52,7 @@ function ProfileContent() {
     
     const refreshInterval = setInterval(() => {
       // Force refetch user data to get fresh listening time from database
-      queryClient.invalidateQueries({ queryKey: ['user'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/auth/me'] });
     }, 30000); // Refresh every 30 seconds
     
     return () => clearInterval(refreshInterval);
@@ -60,7 +60,8 @@ function ProfileContent() {
 
   // Fetch user favorites with loading state
   const { data: favorites = [], isLoading: favoritesLoading } = useQuery({
-    queryKey: ['/api/user/favorites'],
+    queryKey: ['/api/user/favorites', { profileOwner: user?._id }],
+    queryFn: context => getQueryFn<any[]>({ on401: 'throw' })({ ...context, queryKey: ['/api/user/favorites'] }),
     enabled: !!user?.email,
   });
 
@@ -93,6 +94,7 @@ function ProfileContent() {
   // Fetch user's social connections
   const { data: socialData = { followers: [], following: [] }, isLoading: socialLoading } = useQuery<{followers: any[], following: any[]}>({
     queryKey: ['/api/user/social', user?.email],
+    queryFn: context => getQueryFn<{ followers: any[]; following: any[] }>({ on401: 'throw' })({ ...context, queryKey: [`/api/user/social/${encodeURIComponent(user?.email || '')}`] }),
     enabled: !!user?.email,
     staleTime: 2 * 60 * 1000,
   });
@@ -118,13 +120,12 @@ function ProfileContent() {
 
   // Follow/Unfollow mutations
   const followMutation = useMutation({
-    mutationFn: (targetUserId: string) => apiRequest(`/api/user/follow/${targetUserId}`, 'POST'),
+    mutationFn: (targetUserId: string) => apiRequest('POST', `/api/user/follow/${encodeURIComponent(targetUserId)}`),
     onSuccess: (data, targetUserId) => {
       queryClient.invalidateQueries({ queryKey: ['/api/user/social'] });
       toast({ title: t('general_success', 'Success'), description: t('success_user_followed', 'User followed successfully') });
       
       // Show rich notification for new follow
-      notificationService.newFollower("New Friend"); // In a real app, you'd get the user's name from the response
     },
     onError: () => {
       toast({ title: t('general_error', 'Error'), description: t('error_failed_to_follow', 'Failed to follow user'), variant: "destructive" });
@@ -132,7 +133,7 @@ function ProfileContent() {
   });
 
   const unfollowMutation = useMutation({
-    mutationFn: (targetUserId: string) => apiRequest(`/api/user/unfollow/${targetUserId}`, 'DELETE'),
+    mutationFn: (targetUserId: string) => apiRequest('DELETE', `/api/user/unfollow/${encodeURIComponent(targetUserId)}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/user/social'] });
       toast({ title: t('general_success', 'Success'), description: t('success_user_unfollowed', 'User unfollowed successfully') });

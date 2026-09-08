@@ -71,10 +71,18 @@ export async function pgUpsertSubscription(userId: string, patch: Record<string,
 async function withLockedSubscription<T>(
   userId: string,
   operation: (client: PoolClient, current: Record<string, any>) => Promise<T>,
+  paddle?: PaddleEventIdentity,
 ): Promise<T> {
   const client = await getPostgresPool().connect();
   try {
     await client.query("BEGIN");
+    await client.query("SET LOCAL lock_timeout='5s'");
+    await client.query("SET LOCAL statement_timeout='15s'");
+    // Serialize claims on provider identities across different application users.
+    // The per-user row lock alone cannot protect the first cross-user insert.
+    if (paddle) for (const key of [paddle.customerId, paddle.subscriptionId, paddle.transactionId].filter(Boolean).sort()) {
+      await client.query("SELECT pg_advisory_xact_lock(hashtext('paddle-billing'),hashtext($1))", [key]);
+    }
     // The parent row exists even before the first subscription is inserted.
     // Locking it serializes the read/merge/write path for every billing writer.
     const owner = await client.query("SELECT id FROM users WHERE id=$1 FOR UPDATE", [userId]);
@@ -128,9 +136,26 @@ async function writeSubscription(
 }
 
 export interface SubscriptionEventOrder {
-  field: "lastSignedDate" | "lastGoogleEventTime" | "lastStripeEventTime";
+  field: "lastSignedDate" | "lastGoogleEventTime" | "lastStripeEventTime" | "lastPaddleSubscriptionTime" | "lastPaddleTransactionTime" | "lastPaddleAdjustmentTime";
   timestamp: number;
   isDowngrade: boolean;
+}
+
+interface PaddleEventIdentity {
+  customerId: string;
+  subscriptionId?: string;
+  transactionId?: string;
+  allowBinding: boolean;
+  kind: "subscription" | "transaction" | "adjustment";
+}
+
+export async function pgFindPaddleSubscriptionUser(identity: { customerId: string; subscriptionId?: string; transactionId?: string }): Promise<string | null> {
+  const result = await getPostgresPool().query(`SELECT DISTINCT user_id FROM subscriptions
+    WHERE paddle_customer_id=$1 OR (NULLIF($2,'') IS NOT NULL AND paddle_subscription_id=$2)
+      OR (NULLIF($3,'') IS NOT NULL AND platform='paddle' AND transaction_id=$3) LIMIT 2`,
+  [identity.customerId, identity.subscriptionId || "", identity.transactionId || ""]);
+  // Ambiguous legacy data must be reviewed, never choose an arbitrary owner.
+  return result.rows.length === 1 ? result.rows[0].user_id : null;
 }
 
 /**
@@ -141,7 +166,7 @@ export async function pgApplySubscriptionEvent(
   userId: string,
   patch: Record<string, any>,
   event: BillingEvent,
-  options: { order?: SubscriptionEventOrder } = {},
+  options: { order?: SubscriptionEventOrder; paddle?: PaddleEventIdentity } = {},
 ): Promise<"applied" | "duplicate" | "stale"> {
   if (!event.providerEventId) throw new Error("Billing delivery requires a stable provider event ID");
   if (event.userId && event.userId !== userId) throw new Error("Billing event owner does not match subscription");
@@ -150,9 +175,30 @@ export async function pgApplySubscriptionEvent(
     const recorded = await insertBillingEvent(client, { ...event, userId });
     if (recorded === "duplicate") return "duplicate";
 
+    const markStale = async () => {
+      await client.query("UPDATE payment_events SET status='stale' WHERE provider=$1 AND provider_event_id=$2", [event.provider, event.providerEventId]);
+      return "stale" as const;
+    };
+    const paddle = options.paddle;
+    if (paddle) {
+      if (event.provider !== "paddle") throw new Error("Paddle identity guard requires a Paddle event");
+      const conflicts = await client.query(`SELECT 1 FROM subscriptions WHERE user_id<>$1 AND
+        (paddle_customer_id=$2 OR (NULLIF($3,'') IS NOT NULL AND paddle_subscription_id=$3)
+        OR (NULLIF($4,'') IS NOT NULL AND platform='paddle' AND transaction_id=$4)) LIMIT 1`,
+      [userId, paddle.customerId, paddle.subscriptionId || "", paddle.transactionId || ""]);
+      if (conflicts.rowCount) return markStale();
+      if (current.paddleCustomerId && current.paddleCustomerId !== paddle.customerId && !paddle.allowBinding) return markStale();
+      if (!paddle.allowBinding && (current.platform !== "paddle" || current.paddleCustomerId !== paddle.customerId ||
+          (paddle.subscriptionId && current.paddleSubscriptionId !== paddle.subscriptionId) ||
+          (paddle.kind === "adjustment" && current.transactionId !== paddle.transactionId))) return markStale();
+      // A delayed initial transaction must not replace a newer purchase/provider.
+      if (paddle.allowBinding && current.startedAt && event.occurredAt &&
+          new Date(current.startedAt).getTime() > event.occurredAt.getTime()) return markStale();
+    }
+
     const order = options.order;
     const storedTime = order ? new Date(current[order.field] || 0).getTime() : 0;
-    if (order && !order.isDowngrade && order.timestamp > 0 && storedTime > order.timestamp) {
+    if (order && (event.provider === "paddle" || !order.isDowngrade) && order.timestamp > 0 && storedTime > order.timestamp) {
       await client.query(
         "UPDATE payment_events SET status='stale' WHERE provider=$1 AND provider_event_id=$2",
         [event.provider, event.providerEventId],
@@ -160,6 +206,32 @@ export async function pgApplySubscriptionEvent(
       return "stale";
     }
     const orderedPatch = { ...patch };
+    if (paddle?.kind === "transaction") {
+      // Transaction processing can finish after subscription.canceled. Once a
+      // lifecycle event exists, it alone owns recurring entitlement state.
+      if (paddle.subscriptionId && current.paddleSubscriptionId === paddle.subscriptionId && current.lastPaddleSubscriptionTime) {
+        for (const key of ["isActive", "isTrial", "subscriptionStatus", "expiresAt", "renewsAt", "cancelAtPeriodEnd", "cancelledAt", "startedAt", "plan", "productId"]) delete orderedPatch[key];
+      }
+      if (paddle.transactionId !== current.transactionId) {
+        orderedPatch.paddleRefundedTransactionId = null;
+        // Renewal lifecycle and payment events can arrive in either order. If
+        // the new period is already verified active, a *different paid* transaction
+        // can release the previous period's refund hold, never a canceled plan.
+        if (current.paddleRefundedTransactionId && current.paddleSubscriptionId === paddle.subscriptionId &&
+            ["active", "trialing", "past_due"].includes(current.subscriptionStatus) &&
+            current.expiresAt && new Date(current.expiresAt).getTime() > Date.now()) orderedPatch.isActive = true;
+      }
+      // A refund may precede the original payment webhook. Its verified receipt
+      // is durable even when there was no linked local subscription at that time.
+      const refunded = await client.query(`SELECT 1 FROM payment_events WHERE provider='paddle'
+        AND event_type IN ('adjustment.created','adjustment.updated')
+        AND payload->'data'->>'transaction_id'=$1 AND payload->'data'->>'status'='approved'
+        AND payload->'data'->>'type'='full' AND payload->'data'->>'action' IN ('refund','chargeback') LIMIT 1`, [paddle.transactionId]);
+      if (refunded.rowCount) Object.assign(orderedPatch, { isActive: false, subscriptionStatus: "canceled", renewsAt: null, paddleRefundedTransactionId: paddle.transactionId });
+    }
+    if (paddle?.kind === "subscription" && current.paddleRefundedTransactionId && current.paddleRefundedTransactionId === current.transactionId) {
+      orderedPatch.isActive = false;
+    }
     // A late revocation still removes access, but never rewinds the high-water
     // timestamp and thereby allows an even older upgrade on its next delivery.
     if (order && Number.isFinite(order.timestamp) && order.timestamp > 0) {
@@ -167,7 +239,7 @@ export async function pgApplySubscriptionEvent(
     }
     await writeSubscription(client, userId, current, orderedPatch);
     return "applied";
-  });
+  }, options.paddle);
 }
 
 export async function pgRecordBillingEvent(event: BillingEvent): Promise<"inserted" | "duplicate"> {

@@ -2,10 +2,12 @@ import { useState } from "react";
 import { Link } from "wouter";
 import { useSeoRouting } from "@/hooks/useSeoRouting";
 import { useTranslation } from "@/hooks/useTranslation";
+import { safeAuthReturnTo, withAuthReturnTo } from '@/lib/safe-auth-return';
 
 export default function Login() {
   const { getLocalizedUrl } = useSeoRouting();
   const { t } = useTranslation();
+  const returnTo = safeAuthReturnTo(new URLSearchParams(window.location.search).get('returnTo'));
   const [loginForm, setLoginForm] = useState({
     email: '',
     password: '',
@@ -36,16 +38,7 @@ export default function Login() {
 
       if (response.ok) {
         const data = await response.json();
-        const urlParams = new URLSearchParams(window.location.search);
-        const returnTo = urlParams.get('returnTo');
-        if (returnTo && returnTo.startsWith('/')) {
-          window.location.href = returnTo;
-        } else {
-          const currentPath = window.location.pathname;
-          const segments = currentPath.split('/').filter(Boolean);
-          const countryCode = segments.length > 0 && segments[0].length === 2 ? segments[0] : '';
-          window.location.href = countryCode ? `/${countryCode}` : '/';
-        }
+        window.location.href = returnTo || getLocalizedUrl('/');
       } else {
         const errorData = await response.json();
         setError(errorData.error || t('auth_invalid_credentials'));
@@ -77,7 +70,7 @@ export default function Login() {
             {/* Facebook Button */}
             <button
               type="button"
-              onClick={() => window.location.href = '/api/auth/facebook'}
+              onClick={() => window.location.href = withAuthReturnTo('/api/auth/facebook', returnTo)}
               className="w-[60px] h-[60px] min-w-[60px] min-h-[60px] aspect-square flex-shrink-0 rounded-[30px] bg-transparent flex items-center justify-center hover:opacity-80 transition-opacity"
               style={{ borderWidth: '2px', borderStyle: 'solid', borderColor: '#545454' }}
               title="Facebook ile devam et"
@@ -93,9 +86,7 @@ export default function Login() {
             <button
               type="button"
               onClick={() => {
-                const urlParams = new URLSearchParams(window.location.search);
-                const returnTo = urlParams.get('returnTo');
-                const googleUrl = returnTo ? `/api/auth/google?returnTo=${encodeURIComponent(returnTo)}` : '/api/auth/google';
+                const googleUrl = withAuthReturnTo('/api/auth/google', returnTo);
                 window.location.href = googleUrl;
               }}
               className="w-[60px] h-[60px] min-w-[60px] min-h-[60px] aspect-square flex-shrink-0 rounded-[30px] bg-transparent flex items-center justify-center hover:opacity-80 transition-opacity"
@@ -112,7 +103,7 @@ export default function Login() {
             {/* Apple Button */}
             <button
               type="button"
-              onClick={() => window.location.href = '/api/auth/apple'}
+              onClick={() => window.location.href = withAuthReturnTo('/api/auth/apple', returnTo)}
               className="w-[60px] h-[60px] min-w-[60px] min-h-[60px] aspect-square flex-shrink-0 rounded-[30px] bg-transparent flex items-center justify-center hover:opacity-80 transition-opacity"
               style={{ borderWidth: '2px', borderStyle: 'solid', borderColor: '#545454' }}
               title="Apple ile devam et"

@@ -2,7 +2,9 @@ import { useState, useEffect, useRef, useMemo, useCallback, Suspense, lazy } fro
 import { createPortal } from "react-dom";
 import { fetchStationCardList } from '@/lib/station-card-list-request';
 import { getLocalizedCountryDisplayName } from '@/utils/localized-country';
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { apiRequest } from '@/lib/queryClient';
+import { notificationTarget } from '@/lib/notification-target';
 import { Link, useLocation } from "wouter";
 import { User } from "lucide-react";
 import notificationIcon from "@assets/notification1.png";
@@ -12,6 +14,8 @@ import { UserMenuDropdown } from "@/components/ui/UserMenuDropdown";
 // 🚀 LAZY: modal only loads on first open
 const AddYourStationModal = lazy(() => import("@/components/modals/AddYourStationModal"));
 import { useTranslation } from "@/hooks/useTranslation";
+import { logoutAccount } from '@/lib/logout';
+import { toast } from '@/hooks/use-toast';
 import { useSeoRouting } from "@/hooks/useSeoRouting";
 import { URL_TRANSLATIONS } from "@workspace/seo-shared/url-translations";
 import { getImageUrl, getUserDisplayName } from "@/lib/utils";
@@ -190,20 +194,17 @@ export default function RadioHeader({
   const { playStation } = useGlobalPlayer();
   const { user, isAuthenticated, isLoading: authLoading } = useAuth();
   const { isPremium } = usePremiumStatus();
+  const notificationQueryClient = useQueryClient();
+  const notificationUserId = user?._id || (user as any)?.id || '';
 
   // Fetch user notifications (with 30s polling for real-time message notifications)
-  const { data: notificationsData, isLoading: notificationsLoading } = useQuery({
-    queryKey: ['/api/user/notifications'],
-    queryFn: async () => {
-      const response = await fetch('/api/user/notifications?page=1&limit=10', {
-        credentials: 'include'
-      });
-      if (!response.ok) {
-        throw new Error('Failed to fetch notifications');
-      }
+  const { data: notificationsData, isLoading: notificationsLoading, isError: notificationsError } = useQuery({
+    queryKey: ['/api/user/notifications', notificationUserId, 1, 10, 'all'],
+    queryFn: async ({ signal }) => {
+      const response = await apiRequest('GET', '/api/user/notifications?page=1&limit=10', { signal });
       return response.json();
     },
-    enabled: !!isAuthenticated,
+    enabled: !!isAuthenticated && !!notificationUserId,
     refetchInterval: 30_000,
     staleTime: 10_000,
   });
@@ -1843,28 +1844,24 @@ export default function RadioHeader({
           
           {/* Notifications List - Figma: item layout 248x32px, left 19px - scrollbar hidden */}
           <div className="overflow-y-auto scrollbar-hide" style={{ maxHeight: 'calc(312px - 42px)', scrollbarWidth: 'none', msOverflowStyle: 'none' } as React.CSSProperties}>
-            {notificationsLoading ? (
+            {notificationsError ? <p role="alert">{t('notifications_load_failed', 'Notifications could not be loaded.')}</p> : notificationsLoading ? (
               <div className="flex items-center justify-center py-8">
                 <div className="animate-spin rounded-full h-5 w-5 border-2 border-gray-500 border-t-white"></div>
               </div>
             ) : notifications.length > 0 ? (
               notifications.map((notification: any, index: number) => {
-                const fromUser = notification.fromUserId;
+                const fromUser = typeof notification.fromUserId === 'object' ? notification.fromUserId : null;
                 const isMessage = notification.type === 'new_message';
                 const isFollow = notification.type === 'follow' || notification.type === 'unfollow';
                 const isStation = notification.type === 'new_station';
                 const isUnread = !notification.read && !notification.isRead;
 
                 const handleNotifClick = async () => {
-                  if (isMessage && fromUser?._id) {
-                    setLocation(`/en/profile/messages?partner=${fromUser._id}`);
-                  } else if (isFollow && fromUser?.username) {
-                    setLocation(`/en/user/${fromUser.username}`);
-                  } else if (isStation && notification.data?.stationSlug) {
-                    setLocation(`/en/station/${notification.data.stationSlug}`);
-                  }
-                  if (notification._id) {
-                    fetch(`/api/user/notifications/${notification._id}/read`, { method: 'PATCH', credentials: 'include' }).catch(() => {});
+                  const destination = notificationTarget(notification, currentLanguage);
+                  if (destination) { setIsNotificationDropdownOpen(false); setLocation(destination); }
+                  if (notification._id && isUnread) {
+                    apiRequest('PATCH', `/api/user/notifications/${encodeURIComponent(notification._id)}/read`)
+                      .then(() => notificationQueryClient.invalidateQueries({ queryKey: ['/api/user/notifications'] })).catch(() => {});
                   }
                 };
 
@@ -2047,9 +2044,9 @@ export default function RadioHeader({
           <button
             onClick={() => {
               setIsMobileProfileMenuOpen(false);
-              fetch('/api/auth/logout', { method: 'POST' })
-                .then(() => { window.location.href = '/'; })
-                .catch(() => { window.location.href = '/'; });
+              logoutAccount()
+                .then(() => { window.location.href = getLocalizedUrl('/'); })
+                .catch(() => { toast({ title: t('auth_logout_failed', 'Logout failed. Please try again.'), variant: 'destructive' }); });
             }}
             className="flex items-center w-full px-4 py-3 hover:bg-[#2D2D2D] transition-colors text-left"
           >

@@ -3,7 +3,8 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Search, Send, Circle, CheckCheck, Users, MessageCircle, ArrowLeft, Smile, ImagePlus, X } from "lucide-react";
 
 import { useAuth } from "@/hooks/useAuth";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, oauthBearerHeader, resolveApiUrl } from "@/lib/queryClient";
+import { useTranslation } from '@/hooks/useTranslation';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -94,20 +95,21 @@ function Avatar({ user, size = 40 }: { user: UserInfo | null; size?: number }) {
   );
 }
 
-function formatTime(iso: string) {
+function formatTime(iso: string, language: string) {
   if (!iso) return "";
   const d = new Date(iso);
+  if (!Number.isFinite(d.getTime())) return '';
   const diff = (Date.now() - d.getTime()) / 1000;
-  if (diff < 60) return "now";
-  if (diff < 3600) return `${Math.floor(diff / 60)}m`;
-  if (diff < 86400) return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  if (diff < 604800) return d.toLocaleDateString([], { weekday: "short" });
-  return d.toLocaleDateString([], { month: "short", day: "numeric" });
+  if (diff < 60) return new Intl.RelativeTimeFormat(language, {numeric:'auto',style:'short'}).format(0,'second');
+  if (diff < 3600) return new Intl.RelativeTimeFormat(language, {numeric:'auto',style:'short'}).format(-Math.floor(diff/60),'minute');
+  if (diff < 86400) return d.toLocaleTimeString(language, { hour: "2-digit", minute: "2-digit" });
+  if (diff < 604800) return d.toLocaleDateString(language, { weekday: "short" });
+  return d.toLocaleDateString(language, { month: "short", day: "numeric" });
 }
 
 // ─── Conversation Item ────────────────────────────────────────────────────────
 
-function ConvItem({ conv, active, onClick }: { conv: Conversation; active: boolean; onClick: () => void }) {
+function ConvItem({ conv, active, onClick, language }: { conv: Conversation; active: boolean; onClick: () => void; language: string }) {
   const name = conv.partner?.fullName || conv.partner?.username || "Unknown";
   return (
     <div
@@ -125,7 +127,7 @@ function ConvItem({ conv, active, onClick }: { conv: Conversation; active: boole
         <div className="flex items-center justify-between">
           <span className="text-white font-semibold text-sm truncate">{name}</span>
           {conv.lastMessageAt && (
-            <span className="text-gray-500 text-[11px] flex-shrink-0 ml-1">{formatTime(conv.lastMessageAt)}</span>
+            <span className="text-gray-500 text-[11px] flex-shrink-0 ml-1">{formatTime(conv.lastMessageAt, language)}</span>
           )}
         </div>
         <div className="flex items-center justify-between mt-0.5">
@@ -143,7 +145,7 @@ function ConvItem({ conv, active, onClick }: { conv: Conversation; active: boole
 
 // ─── Message Bubble ───────────────────────────────────────────────────────────
 
-function Bubble({ msg, isOwn, isLast }: { msg: Message; isOwn: boolean; isLast: boolean }) {
+function Bubble({ msg, isOwn, isLast, language }: { msg: Message; isOwn: boolean; isLast: boolean; language: string }) {
   const isEmoji = msg.messageType === 'emoji';
   const isImage = msg.messageType === 'image' && msg.imageUrl;
 
@@ -153,7 +155,7 @@ function Bubble({ msg, isOwn, isLast }: { msg: Message; isOwn: boolean; isLast: 
         <div className="flex flex-col items-center">
           <span className="text-5xl leading-none">{msg.content}</span>
           <span className="text-[10px] mt-1" style={{ color: "#5a5a6a" }}>
-            {new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+            {new Date(msg.createdAt).toLocaleTimeString(language, { hour: "2-digit", minute: "2-digit" })}
           </span>
         </div>
       </div>
@@ -176,7 +178,7 @@ function Bubble({ msg, isOwn, isLast }: { msg: Message; isOwn: boolean; isLast: 
           )}
           <div className={`flex items-center gap-1 mt-1 px-1 ${isOwn ? "justify-end" : "justify-start"}`}>
             <span className="text-[10px]" style={{ color: "#5a5a6a" }}>
-              {new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+              {new Date(msg.createdAt).toLocaleTimeString(language, { hour: "2-digit", minute: "2-digit" })}
             </span>
             {isOwn && isLast && msg.read && <CheckCheck size={10} className="text-white/50" />}
           </div>
@@ -198,7 +200,7 @@ function Bubble({ msg, isOwn, isLast }: { msg: Message; isOwn: boolean; isLast: 
         <p className="text-white text-sm leading-relaxed break-words whitespace-pre-wrap">{msg.content}</p>
         <div className={`flex items-center gap-1 mt-1 ${isOwn ? "justify-end" : "justify-start"}`}>
           <span className="text-[10px]" style={{ color: isOwn ? "rgba(255,255,255,0.55)" : "#5a5a6a" }}>
-            {new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+            {new Date(msg.createdAt).toLocaleTimeString(language, { hour: "2-digit", minute: "2-digit" })}
           </span>
           {isOwn && isLast && msg.read && <CheckCheck size={10} className="text-white/50" />}
         </div>
@@ -229,6 +231,16 @@ function TypingIndicator() {
 
 export default function MessagesPage() {
   const { user } = useAuth();
+  const myId = String((user as any)?._id || (user as any)?.id || '');
+  return <MessagesSession key={myId} myId={myId} />;
+}
+
+async function messageJson(url: string, signal?: AbortSignal) {
+  return (await apiRequest('GET', url, { signal, headers: oauthBearerHeader() })).json();
+}
+
+function MessagesSession({ myId }: { myId: string }) {
+  const { t, language } = useTranslation();
   const qc = useQueryClient();
 
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -246,6 +258,13 @@ export default function MessagesPage() {
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [uploadingImage, setUploadingImage] = useState(false);
+  const [sendError, setSendError] = useState('');
+  const [olderMessages, setOlderMessages] = useState<Message[]>([]);
+  const [olderHasMore, setOlderHasMore] = useState<boolean | null>(null);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const busyRef = useRef(false);
+  const mountedRef = useRef(true);
+  useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
 
   const wsRef = useRef<WebSocket | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -260,52 +279,59 @@ export default function MessagesPage() {
   // Use a ref for the latest onWsEvent to avoid stale closures in the WS handler
   const onWsEventRef = useRef<(ev: WsEvent) => void>(() => {});
 
-  const myId: string = (user as any)?._id || (user as any)?.id || "";
-
-  useEffect(() => { activeIdRef.current = activeId; }, [activeId]);
+  activeIdRef.current = activeId;
 
   // Auto-open conversation from ?partner= URL param (e.g. when clicking a message notification)
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const partner = params.get("partner");
-    if (partner) setActiveId(partner);
+    if (partner && /^[a-f0-9]{24}$/i.test(partner)) { setActiveId(partner.toLowerCase()); setMobileView('chat'); }
   }, []);
 
   // When opening a conversation, invalidate notifications (server marks them read on fetch)
   useEffect(() => {
     setLocalMsgs([]);
+    setOlderMessages([]); setOlderHasMore(null); setLoadingOlder(false);
+    setInput(''); setSendError(''); setImageFile(null); setImagePreview(null);
     // Tell server which conversation we're viewing so it skips notifications for active chats
     const ws = wsRef.current;
     if (ws?.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: "chat:active", withUserId: activeId || null }));
     }
     if (activeId) {
-      setTimeout(() => qc.invalidateQueries({ queryKey: ["/api/user/notifications"] }), 800);
+      const timer = setTimeout(() => qc.invalidateQueries({ queryKey: ["/api/user/notifications"] }), 800);
+      return () => clearTimeout(timer);
     }
+    return undefined;
   }, [activeId, qc]);
 
   // ─── Queries ───────────────────────────────────────────────────────────────
 
-  const { data: convsData, isLoading: convsLoading } = useQuery<{ conversations: Conversation[] }>({
-    queryKey: ["/api/messages/conversations"],
+  const { data: convsData, isLoading: convsLoading, isError: convsError } = useQuery<{ conversations: Conversation[] }>({
+    queryKey: ["/api/messages/conversations", myId],
+    queryFn: ({ signal }) => messageJson('/api/messages/conversations', signal),
+    enabled: !!myId,
     staleTime: 0,
     refetchInterval: wsOk ? 30_000 : 8_000,
     retry: 1,
   });
 
-  const { data: contactsData } = useQuery<{ contacts: UserInfo[] }>({
-    queryKey: ["/api/messages/contacts"],
+  const { data: contactsData, isLoading: contactsLoading, isError: contactsError } = useQuery<{ contacts: UserInfo[] }>({
+    queryKey: ["/api/messages/contacts", myId],
+    queryFn: ({ signal }) => messageJson('/api/messages/contacts', signal),
+    enabled: !!myId,
     refetchInterval: 60_000,
     retry: 1,
   });
 
-  const { data: chatData, isLoading: chatLoading } = useQuery<{
+  const { data: chatData, isLoading: chatLoading, isError: chatError } = useQuery<{
     messages: Message[];
     partner: UserInfo | null;
     hasMore: boolean;
   }>({
-    queryKey: ["/api/messages/conversation", activeId],
-    enabled: !!activeId,
+    queryKey: ["/api/messages/conversation", myId, activeId],
+    queryFn: ({ signal }) => messageJson(`/api/messages/conversation/${activeId}`, signal),
+    enabled: !!myId && !!activeId,
     staleTime: 0,
     refetchInterval: wsOk ? false : 5_000,
     retry: 1,
@@ -315,14 +341,21 @@ export default function MessagesPage() {
   const contacts = contactsData?.contacts ?? [];
   const dbMsgs = chatData?.messages ?? [];
   const partner = chatData?.partner ?? convs.find(c => c.partnerId === activeId)?.partner ?? null;
+  useEffect(() => {
+    if (!chatData) return;
+    qc.invalidateQueries({ queryKey: ['/api/messages/conversations', myId] });
+    qc.invalidateQueries({ queryKey: ['/api/messages/unread-count'] });
+    qc.invalidateQueries({ queryKey: ['/api/user/notifications'] });
+  }, [chatData, myId, qc]);
 
   // Merge DB + local WS messages (deduplicated, chronological)
   const messages = (() => {
-    const known = new Set(dbMsgs.map(m => m._id));
-    const extra = localMsgs.filter(m => !known.has(m._id));
-    return [...dbMsgs, ...extra].sort(
-      (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-    );
+    const unique = new Map<string, Message>();
+    for (const message of [...olderMessages, ...localMsgs, ...dbMsgs]) {
+      if ((message.fromUserId === myId && message.toUserId === activeId) ||
+          (message.toUserId === myId && message.fromUserId === activeId)) unique.set(message._id, message);
+    }
+    return [...unique.values()].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime() || a._id.localeCompare(b._id));
   })();
 
   // ─── WebSocket event handler (kept in a ref so the WS handler never goes stale) ─
@@ -345,9 +378,9 @@ export default function MessagesPage() {
           if (m.fromUserId !== myId) {
             const ws = wsRef.current;
             if (ws?.readyState === WebSocket.OPEN) {
-              ws.send(JSON.stringify({ type: "chat:read", fromUserId: m.fromUserId }));
+              ws.send(JSON.stringify({ type: "chat:read", fromUserId: m.fromUserId, messageIds: [m._id] }));
             }
-            qc.invalidateQueries({ queryKey: ["/api/messages/conversation", activeIdRef.current] });
+            qc.invalidateQueries({ queryKey: ["/api/messages/conversation", myId, activeIdRef.current] });
           }
         }
 
@@ -368,7 +401,7 @@ export default function MessagesPage() {
         break;
 
       case "chat:read":
-        if (ev.byUserId) qc.invalidateQueries({ queryKey: ["/api/messages/conversation", ev.byUserId] });
+        if (ev.byUserId) qc.invalidateQueries({ queryKey: ["/api/messages/conversation", myId, ev.byUserId] });
         break;
 
       case "chat:online_status":
@@ -388,14 +421,16 @@ export default function MessagesPage() {
   // ─── WebSocket ─────────────────────────────────────────────────────────────
 
   useEffect(() => {
-    if (!user) return;
+    if (!myId) return;
     let destroyed = false;
     let ws: WebSocket;
+    let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
 
     const connect = async () => {
       try {
+        if (destroyed) return;
         // credentials: "include" ensures session cookie is always sent (critical for auth)
-        const res = await fetch("/api/messages/ws-ticket", { credentials: "include" });
+        const res = await apiRequest('GET', '/api/messages/ws-ticket', { headers: oauthBearerHeader() });
         if (!res.ok || destroyed) return;
         const { ticket } = await res.json();
         if (destroyed) return;
@@ -405,6 +440,7 @@ export default function MessagesPage() {
         wsRef.current = ws;
 
         ws.onopen = () => {
+          if (destroyed) { ws.close(); return; }
           setWsOk(true);
           clearInterval(hbInterval.current);
           hbInterval.current = setInterval(() => {
@@ -419,25 +455,26 @@ export default function MessagesPage() {
         ws.onclose = () => {
           setWsOk(false);
           clearInterval(hbInterval.current);
-          if (!destroyed) setTimeout(connect, 3_500);
+          if (!destroyed) reconnectTimer = setTimeout(connect, 3_500);
         };
 
         ws.onerror = () => ws.close();
 
         // Always call the latest version of onWsEvent via the ref
         ws.onmessage = ({ data }) => {
-          try { onWsEventRef.current(JSON.parse(data)); } catch {}
+          if (!destroyed) try { onWsEventRef.current(JSON.parse(data)); } catch {}
         };
-      } catch {}
+      } catch { if (!destroyed) reconnectTimer = setTimeout(connect, 3_500); }
     };
 
     connect();
     return () => {
       destroyed = true;
+      clearTimeout(reconnectTimer);
       clearInterval(hbInterval.current);
       wsRef.current?.close();
     };
-  }, [user]);
+  }, [myId]);
 
   const sendWs = useCallback((payload: object) => {
     const ws = wsRef.current;
@@ -455,19 +492,21 @@ export default function MessagesPage() {
   // ─── Send mutation ─────────────────────────────────────────────────────────
 
   const sendMut = useMutation({
-    mutationFn: (data: { content: string; messageType: 'text' | 'image' | 'emoji'; imageUrl?: string }) =>
-      apiRequest("POST", "/api/messages/send", { body: { toUserId: activeId, content: data.content, messageType: data.messageType, imageUrl: data.imageUrl } }),
-    onSuccess: () => {
-      setInput("");
-      qc.invalidateQueries({ queryKey: ["/api/messages/conversation", activeId] });
-      qc.invalidateQueries({ queryKey: ["/api/messages/conversations"] });
-    },
-    onError: (err: any) => {
-      const msg: string = err?.message || "";
-      if (msg.toLowerCase().includes("follow")) {
-        alert("You can only message people you follow or who follow you.");
+    mutationFn: (data: { toUserId: string; content: string; messageType: 'text' | 'image' | 'emoji'; imageUrl?: string }) =>
+      apiRequest("POST", "/api/messages/send", { body: data, headers: oauthBearerHeader() }),
+    retry: false,
+    onSuccess: (_response, data) => {
+      if (mountedRef.current && activeIdRef.current === data.toUserId) {
+        setInput(current => current.trim() === data.content ? '' : current);
       }
+      qc.invalidateQueries({ queryKey: ["/api/messages/conversation", myId, data.toUserId] });
+      qc.invalidateQueries({ queryKey: ["/api/messages/conversations", myId] });
     },
+    onError: (_err, data) => {
+      if (mountedRef.current && activeIdRef.current === data.toUserId)
+        setSendError(t('messages_send_failed', 'Message could not be confirmed. Check the conversation before trying again.'));
+    },
+    onSettled: () => { busyRef.current = false; },
   });
 
   // ─── Auto-scroll ───────────────────────────────────────────────────────────
@@ -478,36 +517,38 @@ export default function MessagesPage() {
 
   useEffect(() => {
     setLocalMsgs([]);
-    if (activeId) sendWs({ type: "chat:read", fromUserId: activeId });
   }, [activeId]);
 
   // ─── User search ───────────────────────────────────────────────────────────
 
   useEffect(() => {
     clearTimeout(searchTimer.current);
-    if (!searchQ.trim() || searchQ.length < 2) { setSearchRes([]); return; }
+    const controller = new AbortController();
+    if (!myId || !searchQ.trim() || searchQ.length < 2) { setSearchRes([]); setSearching(false); return; }
     setSearching(true);
     searchTimer.current = setTimeout(async () => {
       try {
-        const r = await fetch(`/api/messages/search-users?q=${encodeURIComponent(searchQ)}`, { credentials: "include" });
-        const d = await r.json();
-        setSearchRes(d.users ?? []);
-      } catch { setSearchRes([]); }
-      setSearching(false);
+        const d = await messageJson(`/api/messages/search-users?q=${encodeURIComponent(searchQ)}`, controller.signal);
+        if (!controller.signal.aborted) setSearchRes(d.users ?? []);
+      } catch { if (!controller.signal.aborted) setSearchRes([]); }
+      if (!controller.signal.aborted) setSearching(false);
     }, 350);
-  }, [searchQ]);
+    return () => { clearTimeout(searchTimer.current); controller.abort(); };
+  }, [searchQ, myId]);
 
   // ─── Handlers ──────────────────────────────────────────────────────────────
 
   const doSend = () => {
     const t = input.trim();
-    if (!t || !activeId || sendMut.isPending) return;
-    sendMut.mutate({ content: t, messageType: 'text' as const });
+    if (!t || !activeId || busyRef.current) return;
+    busyRef.current = true; setSendError('');
+    sendMut.mutate({ toUserId: activeId, content: t, messageType: 'text' as const });
   };
 
   const doSendEmoji = (emoji: string) => {
-    if (!activeId || sendMut.isPending) return;
-    sendMut.mutate({ content: emoji, messageType: 'emoji' as const });
+    if (!activeId || busyRef.current) return;
+    busyRef.current = true; setSendError('');
+    sendMut.mutate({ toUserId: activeId, content: emoji, messageType: 'emoji' as const });
     setShowEmoji(false);
   };
 
@@ -517,34 +558,52 @@ export default function MessagesPage() {
     if (!file.type.startsWith('image/')) return;
     if (file.size > 5 * 1024 * 1024) { alert('Max 5MB'); return; }
     setImageFile(file);
+    const partnerId = activeIdRef.current;
     const reader = new FileReader();
-    reader.onload = (ev) => setImagePreview(ev.target?.result as string);
+    reader.onload = (ev) => { if (mountedRef.current && activeIdRef.current === partnerId) setImagePreview(ev.target?.result as string); };
     reader.readAsDataURL(file);
   };
 
   const cancelImage = () => { setImageFile(null); setImagePreview(null); if (fileInputRef.current) fileInputRef.current.value = ''; };
 
   const doSendImage = async () => {
-    if (!imageFile || !activeId || uploadingImage) return;
+    if (!imageFile || !activeId || busyRef.current) return;
+    const toUserId = activeId;
+    busyRef.current = true; setSendError('');
     setUploadingImage(true);
     try {
       const formData = new FormData();
       formData.append('image', imageFile);
-      const uploadRes = await fetch('/api/messages/upload-image', { method: 'POST', body: formData, credentials: 'include' });
+      const uploadRes = await fetch(resolveApiUrl('/api/messages/upload-image'), { method: 'POST', body: formData, credentials: 'include', headers: oauthBearerHeader() });
       if (!uploadRes.ok) throw new Error('Upload failed');
       const { imageUrl } = await uploadRes.json();
-      sendMut.mutate({ content: '📷 Photo', messageType: 'image' as const, imageUrl });
+      if (!mountedRef.current || activeIdRef.current !== toUserId) { busyRef.current = false; setUploadingImage(false); return; }
+      sendMut.mutate({ toUserId, content: '📷 Photo', messageType: 'image' as const, imageUrl });
       cancelImage();
-    } catch { alert('Image upload failed'); }
+    } catch { busyRef.current = false; setSendError(t('messages_upload_failed', 'Image upload failed')); }
     setUploadingImage(false);
   };
 
   const openConv = (userId: string) => {
+    activeIdRef.current = userId;
     setActiveId(userId);
     setSearchQ("");
     setSearchRes([]);
     setTab("chats");
     setMobileView('chat');
+  };
+
+  const loadOlder = async () => {
+    if (!activeId || loadingOlder || !messages.length) return;
+    const partnerId = activeId;
+    setLoadingOlder(true); setSendError('');
+    try {
+      const page = await messageJson(`/api/messages/conversation/${partnerId}?before=${messages[0]._id}`);
+      if (mountedRef.current && activeIdRef.current === partnerId) {
+        setOlderMessages(previous => [...page.messages, ...previous]); setOlderHasMore(page.hasMore);
+      }
+    } catch { if (activeIdRef.current === partnerId) setSendError(t('messages_load_failed', 'Messages could not be loaded. Please try again.')); }
+    finally { if (activeIdRef.current === partnerId) setLoadingOlder(false); }
   };
 
   const partnerOnline = partner ? online.has(partner._id) : false;
@@ -596,7 +655,7 @@ export default function MessagesPage() {
           {/* Header */}
           <div className="px-4 pt-4 pb-2 border-b flex-shrink-0" style={{ borderColor: "#222" }}>
             <div className="flex items-center justify-between mb-3">
-              <span className="text-white font-bold text-base">Messages</span>
+              <span className="text-white font-bold text-base">{t('messages_title', 'Messages')}</span>
               <div className="flex items-center gap-1">
                 <div
                   className="w-2 h-2 rounded-full"
@@ -672,21 +731,22 @@ export default function MessagesPage() {
                     ))}
                   </div>
                 )}
-                {!convsLoading && enrichedConvs.length === 0 && !searchRes.length && (
+                {convsError && <p role="alert">{t('messages_load_failed', 'Messages could not be loaded. Please try again.')}</p>}
+                {!convsLoading && !convsError && enrichedConvs.length === 0 && !searchRes.length && (
                   <div className="flex flex-col items-center justify-center h-32 text-center px-4">
                     <MessageCircle size={22} className="text-gray-700 mb-2" />
                     <p className="text-gray-600 text-xs">No conversations yet. Follow someone to start chatting.</p>
                   </div>
                 )}
                 {enrichedConvs.map(c => (
-                  <ConvItem key={c.partnerId} conv={c} active={activeId === c.partnerId} onClick={() => openConv(c.partnerId)} />
+                  <ConvItem key={c.partnerId} conv={c} active={activeId === c.partnerId} onClick={() => openConv(c.partnerId)} language={language} />
                 ))}
               </>
             )}
 
             {tab === "contacts" && (
               <>
-                {enrichedContacts.length === 0 ? (
+                {contactsLoading ? <p role="status">{t('loading', 'Loading…')}</p> : contactsError ? <p role="alert">{t('messages_load_failed', 'Messages could not be loaded. Please try again.')}</p> : enrichedContacts.length === 0 ? (
                   <div className="flex flex-col items-center justify-center h-32 text-center px-4">
                     <Users size={22} className="text-gray-700 mb-2" />
                     <p className="text-gray-600 text-xs">Follow or be followed to see contacts here.</p>
@@ -750,7 +810,8 @@ export default function MessagesPage() {
 
               {/* Messages area */}
               <div className="flex-1 overflow-y-auto px-4 py-4">
-                {chatLoading ? (
+                {(olderHasMore ?? chatData?.hasMore) && <button onClick={loadOlder} disabled={loadingOlder}>{t('messages_load_older', 'Load earlier messages')}</button>}
+                {chatError ? <p role="alert">{t('messages_load_failed', 'Messages could not be loaded. Please try again.')}</p> : chatLoading ? (
                   <div className="flex flex-col gap-3">
                     {[80, 140, 60, 110].map((w, i) => (
                       <div key={i} className={`flex ${i % 2 ? "justify-end" : "justify-start"}`}>
@@ -770,6 +831,7 @@ export default function MessagesPage() {
                       msg={m}
                       isOwn={m.fromUserId === myId}
                       isLast={i === messages.length - 1}
+                      language={language}
                     />
                   ))
                 )}
@@ -810,6 +872,7 @@ export default function MessagesPage() {
                 </div>
               )}
 
+              {sendError && <p role="alert" className="px-3 text-sm text-red-400">{sendError}</p>}
               {/* Input */}
               <div
                 className="flex-shrink-0 flex items-center gap-1.5 px-2 py-2 border-t"
@@ -849,6 +912,7 @@ export default function MessagesPage() {
                 </div>
                 <button
                   onClick={imagePreview ? doSendImage : doSend}
+                  aria-label={t('messages_send', 'Send message')}
                   disabled={imagePreview ? uploadingImage : (!input.trim() || sendMut.isPending)}
                   className="flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center transition-all"
                   style={{

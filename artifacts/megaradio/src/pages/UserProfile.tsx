@@ -6,7 +6,8 @@ import StationCard from "@/components/ui/station-card";
 import UserAvatar from "@/components/ui/user-avatar";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, getQueryFn } from "@/lib/queryClient";
+import { useAuth } from '@/hooks/useAuth';
 import NotFound from "@/pages/not-found";
 import { useSeoRouting } from "@/hooks/useSeoRouting";
 import { useTranslation } from "@/hooks/useTranslation";
@@ -31,12 +32,14 @@ interface UserProfile {
   recentlyPlayedStations?: any[];
   createdAt: string;
   followersCount?: number;
+  favoriteStationsCount?: number;
   slug?: string;
   bio?: string;
   isFollowing?: boolean;
   listeningStats?: {
     uniqueStationsListened?: number;
     totalListeningTime?: number;
+    joinedDate?: string;
   };
 }
 
@@ -63,7 +66,8 @@ export default function UserProfile() {
   const { cleanPath, navigateWithLanguage } = useSeoRouting();
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const { t } = useTranslation();
+  const { t, language } = useTranslation();
+  const { user: currentUser, isAuthenticated } = useAuth();
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [pendingAction, setPendingAction] = useState<'follow' | 'unfollow' | null>(null);
   // Removed activeTab state since we only show favorites now
@@ -77,19 +81,12 @@ export default function UserProfile() {
   // Auto-scroll to top when entering the page
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
-  }, [userIdOrSlug]);
-
-  if (!userIdOrSlug) {
-    return <NotFound />;
-  }
+    setShowAuthModal(false);
+    setPendingAction(null);
+  }, [userIdOrSlug, currentUser?._id]);
 
   // Check if this is a MongoDB ID (24 hex characters)
-  const isMongoId = /^[0-9a-fA-F]{24}$/.test(userIdOrSlug);
-
-  // Fetch current user for authentication state
-  const { data: currentUser } = useQuery({
-    queryKey: ["/api/auth/me"],
-  });
+  const isMongoId = /^[0-9a-fA-F]{24}$/.test(userIdOrSlug || '');
 
   // Single combined request: profile + favorites + recently-played in ONE round trip.
   // No more waterfall where favorites/recently-played were blocked until profile loaded.
@@ -98,7 +95,8 @@ export default function UserProfile() {
     favorites: Station[];
     recentlyPlayed: Station[];
   }>({
-    queryKey: [`/api/user-engagement/profile/${userIdOrSlug}/full`],
+    queryKey: [`/api/user-engagement/profile/${userIdOrSlug}/full`, { viewer: currentUser?._id || 'anonymous' }],
+    queryFn: context => getQueryFn<any>({ on401: 'throw' })({ ...context, queryKey: [`/api/user-engagement/profile/${encodeURIComponent(userIdOrSlug || '')}/full`] }),
     enabled: !!userIdOrSlug,
     retry: false,
     staleTime: 60000,
@@ -126,16 +124,16 @@ export default function UserProfile() {
   const recentlyPlayedStations: Station[] = recentlyPlayed || [];
 
   // Check authentication and permissions
-  const isAuthenticated = (currentUser as any)?.authenticated;
-  const isOwnProfile = (currentUser as any)?.user?._id === userIdOrSlug;
+  const targetUserId = userProfile?._id || userIdOrSlug;
+  const isOwnProfile = currentUser?._id === targetUserId;
   const favoriteStationsList = favoriteStations || [];
 
   // Following functionality
   const followMutation = useMutation({
-    mutationFn: () => apiRequest('POST', `/api/user-engagement/follow/${userIdOrSlug}`),
+    mutationFn: () => apiRequest('POST', `/api/user-engagement/follow/${encodeURIComponent(targetUserId || '')}`),
     onSuccess: () => {
-      queryClient.removeQueries({ queryKey: [`/api/user-engagement/profile/${userIdOrSlug}/full`] });
-      queryClient.refetchQueries({ queryKey: [`/api/user-engagement/profile/${userIdOrSlug}/full`] });
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+      queryClient.invalidateQueries({ queryKey: [`/api/user-engagement/profile/${userIdOrSlug}/full`] });
       toast({ title: "Success", description: "User followed successfully" });
     },
     onError: () => {
@@ -144,10 +142,10 @@ export default function UserProfile() {
   });
 
   const unfollowMutation = useMutation({
-    mutationFn: () => apiRequest('POST', `/api/user-engagement/unfollow/${userIdOrSlug}`),
+    mutationFn: () => apiRequest('POST', `/api/user-engagement/unfollow/${encodeURIComponent(targetUserId || '')}`),
     onSuccess: () => {
-      queryClient.removeQueries({ queryKey: [`/api/user-engagement/profile/${userIdOrSlug}/full`] });
-      queryClient.refetchQueries({ queryKey: [`/api/user-engagement/profile/${userIdOrSlug}/full`] });
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+      queryClient.invalidateQueries({ queryKey: [`/api/user-engagement/profile/${userIdOrSlug}/full`] });
       toast({ title: "Success", description: "User unfollowed successfully" });
     },
     onError: () => {
@@ -232,7 +230,9 @@ export default function UserProfile() {
   };
 
   // Check if user is following this profile
-  const isFollowing = userProfile?.isFollowing || false;
+  const isFollowing = isAuthenticated ? !!(currentUser as any)?.following?.includes(targetUserId) : false;
+
+  if (!userIdOrSlug) return <NotFound />;
 
   if (isLoadingProfile) {
     return (
@@ -264,6 +264,9 @@ export default function UserProfile() {
   // Extract proper display name - use displayName from API response
   const displayName = userProfile.displayName || userProfile.fullName || userProfile.name || userProfile.email?.split('@')[0] || 'User';
   const followersCount = userProfile.followersCount || 0;
+  const favoriteCount = userProfile.favoriteStationsCount ?? favoriteStationsList.length;
+  const joined = new Date(userProfile.createdAt || userProfile.listeningStats?.joinedDate || '');
+  const joinedLabel = Number.isFinite(joined.getTime()) ? joined.toLocaleDateString(language, { month: 'short', day: 'numeric', year: 'numeric' }) : t('not_available', '—');
 
   return (
     <div className="min-h-screen bg-[#0E0E0E] text-white">
@@ -532,7 +535,7 @@ export default function UserProfile() {
                 <Music className="w-5 h-5 text-green-400" />
               </div>
               <div>
-                <div className="text-2xl font-bold text-white">{userProfile.listeningStats?.uniqueStationsListened || favoriteStationsList.length}</div>
+                <div className="text-2xl font-bold text-white">{favoriteCount}</div>
                 <div className="text-xs text-gray-400">{t('profile_favorite_stations', 'Favorite Stations')}</div>
               </div>
             </div>
@@ -544,7 +547,7 @@ export default function UserProfile() {
                 <Heart className="w-5 h-5 text-purple-400" />
               </div>
               <div>
-                <div className="text-2xl font-bold text-white">{favoriteStationsList.length}</div>
+                <div className="text-2xl font-bold text-white">{favoriteCount}</div>
                 <div className="text-xs text-gray-400">{t('profile_favorite_stations', 'Favorite Stations')}</div>
               </div>
             </div>
@@ -559,11 +562,7 @@ export default function UserProfile() {
               </div>
               <div>
                 <div className="text-lg font-bold text-white">
-                  {new Date(userProfile.createdAt).toLocaleDateString('en-US', { 
-                    month: 'short', 
-                    day: 'numeric',
-                    year: 'numeric'
-                  })}
+                  {joinedLabel}
                 </div>
                 <div className="text-xs text-gray-400">{t('profile_member_since', 'Member Since')}</div>
               </div>

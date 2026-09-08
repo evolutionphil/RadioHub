@@ -1,7 +1,7 @@
 import type { Express, Request, Response } from "express";
 import Stripe from "stripe";
 import { Paddle, Environment } from "@paddle/paddle-node-sdk";
-import { completeTvSubscription, createTvCode, getSubscriptionPlan, getTvCode, tvSubscriptionToken } from "../data/postgres-tv-store";
+import { completeTvSubscription, createTvCode, getSubscriptionPlan, getTvCode, tvSubscriptionToken, listSubscriptionPlans } from "../data/postgres-tv-store";
 import { logger } from "../utils/logger";
 import {
   pgApplySubscriptionEvent,
@@ -11,6 +11,9 @@ import {
   pgUpsertSubscription,
 } from "../data/postgres-billing-store";
 import { pgFindUserById } from "../data/postgres-user-store";
+import { ACTIVE_SITEMAP_LANGUAGES } from "@workspace/seo-shared/seo-config";
+import { processPaddleEvent, signedPaddleCustomData, validPaddlePrice } from "../services/paddle-billing";
+import { configuredPaddlePriceId } from "../services/paddle-plan-catalog";
 
 const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
 const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET;
@@ -36,18 +39,7 @@ function getPaddle(): Paddle | null {
 // DB-first Paddle price ID lookup (mirrors Stripe's stripePriceId approach).
 // Falls back to env vars so Railway secrets still work as a safety net.
 async function getPaddlePriceId(plan: string): Promise<string | null> {
-  try {
-    const doc = await getSubscriptionPlan(plan);
-    if ((doc as any)?.paddlePriceId) return (doc as any).paddlePriceId as string;
-  } catch {}
-  // env var fallback
-  switch (plan) {
-    case "remove_ads":       return process.env.PADDLE_PRICE_REMOVE_ADS || null;
-    case "premium_monthly":  return process.env.PADDLE_PRICE_MONTHLY    || null;
-    case "premium_yearly":   return process.env.PADDLE_PRICE_ANNUAL     || null;
-    case "premium_lifetime": return process.env.PADDLE_PRICE_LIFETIME   || null;
-    default:                 return null;
-  }
+  return configuredPaddlePriceId(plan, await listSubscriptionPlans());
 }
 
 // Stripe plan → IAP plan value mapping. Keys are the Stripe price IDs from env.
@@ -96,9 +88,11 @@ async function persistSubscription(
   await pgUpsertSubscription(userId, plainSubscriptionPatch(update));
 }
 
-function formatSubscriptionStatus(sub: Record<string, any>): Record<string, unknown> {
-  const isPremium = !!sub.isActive && sub.plan && sub.plan !== "none" && sub.plan !== "remove_ads";
-  if (!isPremium) return { tier: "free", status: "active" };
+export function formatSubscriptionStatus(sub: Record<string, any>): Record<string, unknown> {
+  const expiry = sub.expiresAt == null ? null : new Date(sub.expiresAt).getTime();
+  const active = !!sub.isActive && (expiry === null || Number.isFinite(expiry) && expiry > Date.now());
+  const isPremium = active && ["premium_monthly", "premium_yearly", "premium_lifetime"].includes(sub.plan);
+  if (!isPremium) return { tier: "free", status: "active", adFree: active && sub.plan === "remove_ads" };
   const plan = sub.plan === "premium_monthly" ? "monthly" : sub.plan === "premium_yearly"
     ? "annual" : sub.plan === "premium_lifetime" ? "lifetime" : sub.plan;
   const valid = ["active", "past_due", "canceled", "trialing"];
@@ -106,7 +100,7 @@ function formatSubscriptionStatus(sub: Record<string, any>): Record<string, unkn
     ? sub.subscriptionStatus : sub.isActive ? "active" : "canceled";
   const cancelAtPeriodEnd = !!sub.cancelAtPeriodEnd;
   const response: Record<string, unknown> = {
-    tier: "premium", plan, status, validUntil: sub.expiresAt ?? null, cancelAtPeriodEnd,
+    tier: "premium", plan, status, validUntil: sub.expiresAt ?? null, cancelAtPeriodEnd, adFree: true,
   };
   if (!cancelAtPeriodEnd && status !== "canceled") response.renewsAt = sub.renewsAt ?? sub.expiresAt ?? null;
   return response;
@@ -127,9 +121,7 @@ export function registerStripeSubscriptionRoutes(app: Express, deps: any) {
       PAYMENT_PROVIDER,
       PADDLE_ENVIRONMENT: process.env.PADDLE_ENVIRONMENT || "production",
       apiKeyConfigured: !!apiKey,
-      apiKeyPrefix: apiKey ? apiKey.slice(0, 16) + "..." : null,
       clientTokenConfigured: !!clientToken,
-      clientTokenPrefix: clientToken ? clientToken.slice(0, 12) + "..." : null,
       plans,
     });
   });
@@ -222,8 +214,8 @@ export function registerStripeSubscriptionRoutes(app: Express, deps: any) {
 
         const user = await pgFindUserById(String(tvCode.userId));
 
-        const plan = user?.subscription?.plan || tvCode.plan || "none";
-        const normalized = normalizePlanForTv(plan);
+        const subscription = await pgGetSubscription(String(tvCode.userId));
+        const normalized = formatSubscriptionStatus(subscription || {});
 
         // Mint a long-lived TV bearer token (90 days, same as mobile TV login)
         let token: string | undefined;
@@ -236,11 +228,7 @@ export function registerStripeSubscriptionRoutes(app: Express, deps: any) {
 
         return void res.json({
           status: "activated",
-          subscription: {
-            tier: normalized.tier,
-            plan: normalized.period ?? plan,
-            validUntil: user?.subscription?.expiresAt ?? null,
-          },
+          subscription: normalized,
           user: {
             id: String(tvCode.userId),
             email: user?.email ?? "",
@@ -261,7 +249,15 @@ export function registerStripeSubscriptionRoutes(app: Express, deps: any) {
   // Stripe remains registered and available; switch back by unsetting the var.
   app.post("/api/subscription/checkout", requireAuth, async (req: Request, res: Response) => {
     const userId = (req.session as any)?.user?.userId || (req as any).userId;
-    const { plan, tvCode } = req.body;
+    const { plan, tvCode, locale } = req.body;
+    if (!userId) return void res.status(401).json({ error: "Authentication required" });
+    if (locale !== undefined && (typeof locale !== "string" || !(ACTIVE_SITEMAP_LANGUAGES as readonly string[]).includes(locale))) {
+      return void res.status(400).json({ error: "Invalid checkout locale" });
+    }
+    if (tvCode !== undefined && tvCode !== "" && (typeof tvCode !== "string" || !/^\d{6}$/.test(tvCode))) {
+      return void res.status(400).json({ error: "Invalid TV code" });
+    }
+    const localePath = locale ? `/${locale}` : "";
 
     const VALID_PLANS = ["remove_ads", "premium_monthly", "premium_yearly", "premium_lifetime"];
     if (!plan || !VALID_PLANS.includes(plan)) {
@@ -270,21 +266,28 @@ export function registerStripeSubscriptionRoutes(app: Express, deps: any) {
 
     // Bind the checkout to this specific code issuance, not a reusable six-digit PIN.
     let validatedTvCodeId = '';
-    if (tvCode) {
-      const code = await getTvCode('subscription', tvCode);
-      if (!code || code.status !== 'pending') {
-        return void res.status(400).json({ error: "TV code is invalid or expired" });
+    try {
+      const existing = formatSubscriptionStatus(await pgGetSubscription(String(userId)) || {});
+      if (existing.adFree) return void res.status(409).json({ error: "An active subscription is already linked. Manage the existing subscription instead.", code: "already_subscribed" });
+      if (tvCode) {
+        const code = await getTvCode('subscription', tvCode);
+        if (!code || code.status !== 'pending') {
+          return void res.status(400).json({ error: "TV code is invalid or expired" });
+        }
+        validatedTvCodeId = code.id;
       }
-      validatedTvCodeId = code.id;
+    } catch {
+      return void res.status(503).json({ error: "Subscription checkout is temporarily unavailable" });
     }
 
     // ── Paddle branch ────────────────────────────────────────────────────────
     if (PAYMENT_PROVIDER === "paddle") {
       try {
         const paddle = getPaddle();
-        if (!paddle) {
+        if (!paddle || !PADDLE_WEBHOOK_SECRET || !(process.env.PADDLE_CLIENT_TOKEN || process.env.VITE_PADDLE_CLIENT_TOKEN)) {
           return void res.status(503).json({ error: "Paddle is not configured on this server. Set PADDLE_API_KEY." });
         }
+        if (!await pgFindUserById(String(userId))) return void res.status(404).json({ error: "User not found" });
 
         const priceId = await getPaddlePriceId(plan);
         if (!priceId) {
@@ -295,31 +298,29 @@ export function registerStripeSubscriptionRoutes(app: Express, deps: any) {
         // before sending it to the frontend. This surfaces "wrong price ID"
         // as a clear server-side error instead of a silent 400 inside the overlay.
         try {
-          await paddle.prices.get(priceId);
+          const price = await paddle.prices.get(priceId);
+          if (!validPaddlePrice(plan, price)) return void res.status(503).json({ error: "Configured Paddle price does not match the selected plan" });
         } catch (priceErr: any) {
           const env = process.env.PADDLE_ENVIRONMENT === "sandbox" ? "SANDBOX" : "PRODUCTION";
-          logger.error(`[PADDLE] Price ID '${priceId}' not found in ${env} catalog:`, priceErr?.message);
+          logger.error(`[PADDLE] Configured price could not be verified in ${env}`);
           return void res.status(503).json({
-            error: `Paddle price ID '${priceId}' not found in ${env} catalog. ` +
-              `Check Admin → Paddle Plans and make sure the price IDs come from the ` +
-              `${env} catalog at paddle.com (Catalog → Prices).`,
+            error: "Payment provider is currently unavailable. Please contact support.",
+            code: "provider_unavailable",
           });
         }
 
-        // Paddle.js items-based checkout: do NOT pre-create a transaction.
-        // Pre-created transactions start in "draft" status and Paddle's hosted
-        // checkout page returns 404 for them. Passing the priceId to Paddle.js
-        // directly lets Paddle.js create + complete the transaction in one step.
+        // Keep items-based Paddle.js checkout, with a server-signed binding.
+        // The webhook derives entitlement from the actual catalog line item.
         const successUrl = tvCode
-          ? `${WEB_BASE_URL}/activate/success?code=${tvCode}`
-          : `${WEB_BASE_URL}/premium/success`;
+          ? `${WEB_BASE_URL}${localePath}/activate/success?code=${tvCode}`
+          : `${WEB_BASE_URL}${localePath}/premium/success`;
 
         logger.log(`[PADDLE] Returning priceId for Paddle.js checkout: user=${userId}, plan=${plan}, priceId=${priceId}`);
         return void res.json({
           success: true,
           paddleCheckout: {
             priceId,
-            customData: { userId: String(userId), plan, tvCode: tvCode || "", tvCodeId: validatedTvCodeId },
+            customData: signedPaddleCustomData(PADDLE_WEBHOOK_SECRET, { userId: String(userId), plan, priceId, tvCode, tvCodeId: validatedTvCodeId }),
             successUrl,
             // Include the client-side token so the frontend never needs to
             // bake VITE_PADDLE_CLIENT_TOKEN into a build-time env var.
@@ -395,11 +396,11 @@ export function registerStripeSubscriptionRoutes(app: Express, deps: any) {
         mode,
         line_items: [{ price: priceId, quantity: 1 }],
         success_url: tvCode
-          ? `${WEB_BASE_URL}/activate/success?code=${tvCode}&session_id={CHECKOUT_SESSION_ID}`
-          : `${WEB_BASE_URL}/premium/success?session_id={CHECKOUT_SESSION_ID}`,
+          ? `${WEB_BASE_URL}${localePath}/activate/success?code=${tvCode}&session_id={CHECKOUT_SESSION_ID}`
+          : `${WEB_BASE_URL}${localePath}/premium/success?session_id={CHECKOUT_SESSION_ID}`,
         cancel_url: tvCode
-          ? `${WEB_BASE_URL}/activate?code=${tvCode}`
-          : `${WEB_BASE_URL}/premium`,
+          ? `${WEB_BASE_URL}${localePath}/activate?code=${tvCode}`
+          : `${WEB_BASE_URL}${localePath}/premium`,
         metadata: { userId: String(userId), plan, tvCode: tvCode || "", tvCodeId: validatedTvCodeId },
       };
       if (mode === "subscription") {
@@ -420,9 +421,7 @@ export function registerStripeSubscriptionRoutes(app: Express, deps: any) {
   });
 
   // ── Stripe Webhook ─────────────────────────────────────────────────────────
-  // Must be registered BEFORE the JSON body-parser so we can read the raw body
-  // for signature verification. Express raw body is available via req.body when
-  // content-type is application/json and express.raw() runs first.
+  // The global express.json verify callback preserves req.rawBody unchanged.
   app.post(
     "/api/webhooks/stripe",
     async (req: Request, res: Response) => {
@@ -446,27 +445,46 @@ export function registerStripeSubscriptionRoutes(app: Express, deps: any) {
         return void res.status(400).json({ error: "Invalid signature" });
       }
 
-      if (event.type === "checkout.session.completed") {
+      if (event.type === "checkout.session.completed" || event.type === "checkout.session.async_payment_succeeded") {
         const session = event.data.object as Stripe.Checkout.Session;
         const { userId, plan, tvCode, tvCodeId } = session.metadata || {};
 
-        if (!userId || !plan) {
+        if (!userId || !["remove_ads", "premium_monthly", "premium_yearly", "premium_lifetime"].includes(plan || "")) {
           logger.warn("[TV SUB] Webhook missing userId or plan in metadata");
           return void res.status(200).json({ received: true });
+        }
+
+        // Checkout may complete while a bank/deferred payment is still unpaid.
+        // Its separate async_payment_succeeded delivery can fulfill it later.
+        const noPaymentRequired = session.payment_status === "no_payment_required" &&
+          (session.mode === "subscription" && !!session.subscription || session.mode === "payment" && session.amount_total === 0);
+        if (session.mode === "setup" || session.payment_status !== "paid" && !noPaymentRequired) {
+          return void res.json({ received: true, skipped: "awaiting_payment" });
         }
 
         try {
           // For Stripe subscriptions, renewal is managed by Stripe webhooks.
           // We don't store a local expiresAt — subscription status is determined
           // by isActive + the Stripe customer portal / renewal events.
-          const expiresAt: Date | null = null;
+          let expiresAt: Date | null = null;
+          let isTrial = false;
+          if (noPaymentRequired && session.mode === "subscription") {
+            const sub: any = typeof session.subscription === "string" ? await stripe.subscriptions.retrieve(session.subscription) : session.subscription;
+            if (!sub || !["active", "trialing"].includes(sub.status)) return void res.json({ received: true, skipped: "awaiting_subscription" });
+            const periodEnd = sub.status === "trialing" ? sub.trial_end : sub.current_period_end ?? sub.items?.data?.[0]?.current_period_end;
+            if (!Number.isFinite(periodEnd) || periodEnd <= 0) throw new Error("Stripe trial/zero-payment subscription period is unavailable");
+            expiresAt = new Date(periodEnd * 1000);
+            isTrial = sub.status === "trialing";
+          }
 
           const subscriptionUpdate = {
                 "subscription.plan": plan,
                 "subscription.platform": "stripe",
-                "subscription.stripeCustomerId": session.customer as string,
-                "subscription.stripeSubscriptionId": session.subscription as string || undefined,
-                "subscription.isActive": true,
+                "subscription.stripeCustomerId": typeof session.customer === "string" ? session.customer : session.customer?.id,
+                "subscription.stripeSubscriptionId": typeof session.subscription === "string" ? session.subscription : session.subscription?.id,
+                "subscription.isActive": !expiresAt || expiresAt.getTime() > Date.now(),
+                "subscription.isTrial": isTrial,
+                "subscription.subscriptionStatus": isTrial ? "trialing" : "active",
                 "subscription.startedAt": new Date(),
                 "subscription.expiresAt": expiresAt,
                 "subscription.lastVerifiedAt": new Date(),
@@ -550,7 +568,8 @@ export function registerStripeSubscriptionRoutes(app: Express, deps: any) {
 
       const sig = req.headers["paddle-signature"] as string;
       // rawBody is captured by the global express.json() verify callback.
-      const rawBody = (req as any).rawBody || JSON.stringify(req.body || {});
+    const rawBody = (req as any).rawBody;
+    if (typeof rawBody !== "string" || !rawBody) return void res.status(400).json({ error: "Raw webhook body is required" });
 
       if (!PADDLE_WEBHOOK_SECRET) {
         logger.error("[PADDLE] PADDLE_WEBHOOK_SECRET not configured");
@@ -572,59 +591,54 @@ export function registerStripeSubscriptionRoutes(app: Express, deps: any) {
         return void res.status(400).json({ error: "Invalid JSON" });
       }
 
-      const eventType: string = event?.event_type || "";
-      const txnData = event?.data || {};
-      logger.log(`[PADDLE] Webhook received: event_type=${eventType}, txn=${txnData?.id || "n/a"}`);
-
-      if (eventType === "transaction.completed") {
-        const customData = txnData.custom_data || {};
-        const userId: string = customData.userId || "";
-        const plan: string = customData.plan || "";
-        const tvCode: string = customData.tvCode || "";
-
-        if (!userId || !plan) {
-          logger.warn("[PADDLE] transaction.completed missing userId/plan in custom_data");
-          return void res.status(200).json({ received: true });
-        }
-
-        try {
-          const subscriptionUpdate = {
-                "subscription.plan": plan,
-                "subscription.platform": "paddle",
-                "subscription.paddleCustomerId": txnData.customer_id || undefined,
-                "subscription.paddleSubscriptionId": txnData.subscription_id || undefined,
-                "subscription.isActive": true,
-                "subscription.startedAt": new Date(),
-                "subscription.expiresAt": null,
-                "subscription.lastVerifiedAt": new Date(),
-          };
-          {
-            await pgApplySubscriptionEvent(userId, plainSubscriptionPatch(subscriptionUpdate), {
-              provider: "paddle", providerEventId: String(event?.event_id || txnData.id), userId,
-              eventType, status: "processed", plan,
-              amountMinor: txnData.details?.totals?.total ? parseInt(txnData.details.totals.total, 10) : null,
-              currency: txnData.currency_code || null, occurredAt: event.occurred_at ? new Date(event.occurred_at) : new Date(),
-              payload: event,
-            });
+      try {
+        const plans = await listSubscriptionPlans();
+        const result = await processPaddleEvent(event, { secret: PADDLE_WEBHOOK_SECRET, getPriceId: async plan => configuredPaddlePriceId(plan, plans) });
+        if (result.tv) {
+          const tv = result.tv;
+          const current = await pgGetSubscription(tv.userId);
+          if (current?.isActive && (current.transactionId === tv.transactionId || current.paddleSubscriptionId === tv.transactionId)) {
+            await completeTvSubscription(tv.code, tv.userId, tv.plan, tv.transactionId, tv.codeId);
           }
-
-          logger.log(`[PADDLE] Checkout notification processed: user=${userId}, plan=${plan}, txn=${txnData.id}`);
-
-          // The atomic payment receipt above also feeds the revenue dashboard.
-
-          if (tvCode && (customData.tvCodeId || txnData.created_at)) {
-            await completeTvSubscription(tvCode, userId, plan, txnData.id, customData.tvCodeId, txnData.created_at ? new Date(txnData.created_at) : undefined);
-            logger.log(`[PADDLE] TV code ${tvCode} marked completed`);
-          }
-        } catch (err: any) {
-          logger.error("[PADDLE] Webhook processing error:", err.message);
-          return void res.status(503).set("Retry-After", "30").json({ error: "Webhook processing failed" });
         }
+        res.json({ received: true, outcome: result.outcome });
+      } catch {
+        logger.error("[PADDLE] Webhook processing failed; provider delivery may retry");
+        res.status(503).set("Retry-After", "30").json({ error: "Webhook processing failed" });
       }
-
-      res.status(200).json({ received: true });
     }
   );
+
+  // ── Current subscription status ────────────────────────────────────────────
+  // Portal URLs are short-lived credentials. Create only on an authenticated
+  // user's explicit request, using stored ownership, and never cache/log them.
+  app.post("/api/subscription/portal", requireAuth, async (req: Request, res: Response) => {
+    res.set({ "Cache-Control": "private, no-store", "CDN-Cache-Control": "no-store", "Cloudflare-CDN-Cache-Control": "no-store" });
+    const userId = (req.session as any)?.user?.userId || (req as any).userId;
+    if (!userId) return void res.status(401).json({ error: "Authentication required" });
+    try {
+      const subscription = await pgGetSubscription(userId);
+      if (subscription?.platform === "paddle" && subscription.paddleCustomerId) {
+        const paddle = getPaddle();
+        if (!paddle) return void res.status(503).json({ error: "Billing portal is unavailable" });
+        const portal = await paddle.customerPortalSessions.create(subscription.paddleCustomerId, subscription.paddleSubscriptionId ? [subscription.paddleSubscriptionId] : []);
+        const portalUrl = portal.urls?.general?.overview;
+        const parsed = portalUrl ? new URL(portalUrl) : null;
+        if (!parsed || parsed.protocol !== "https:" || !["customer-portal.paddle.com", "sandbox-customer-portal.paddle.com"].includes(parsed.hostname)) throw new Error("Unexpected provider portal URL");
+        return void res.json({ success: true, portalUrl });
+      }
+      if (subscription?.platform === "stripe" && subscription.stripeCustomerId) {
+        const stripe = getStripe();
+        if (!stripe) return void res.status(503).json({ error: "Billing portal is unavailable" });
+        const portal = await stripe.billingPortal.sessions.create({ customer: subscription.stripeCustomerId, return_url: `${WEB_BASE_URL}/premium` });
+        return void res.json({ success: true, portalUrl: portal.url });
+      }
+      res.status(404).json({ error: "No web billing account is linked to this user" });
+    } catch {
+      logger.error("[BILLING] Customer portal unavailable");
+      res.status(503).json({ error: "Billing portal is unavailable" });
+    }
+  });
 
   // ── Current subscription status ────────────────────────────────────────────
   // TV polls this every 5 minutes (silent background refresh). Must be <100 ms

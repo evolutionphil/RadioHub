@@ -1,18 +1,18 @@
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { useState, useEffect } from "react";
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, CheckCircle, Crown, Sparkles, X } from "lucide-react";
 import { useSubscriptionCheckout } from "@/hooks/useSubscriptionCheckout";
-import { FALLBACK_PLANS, PLAN_BADGE, fmtPrice, type PlanInfo } from "@/lib/premium";
+import { fmtPrice } from "@/lib/premium";
+import { useSubscriptionPlans } from '@/hooks/useSubscriptionPlans';
+import { useTranslation } from '@/hooks/useTranslation';
+import { subscriptionCopy } from '@/lib/subscription-copy';
 
 const FEATURES = [
-  "Ad-free listening",
-  "HD quality streams",
-  "Car Mode",
-  "Unlimited stream recording",
-  "Works on Samsung TV, LG TV, iOS & Android",
+  "MegaRadio website ads removed",
+  "Linked to your MegaRadio account",
+  "Stream quality depends on the station",
 ];
 
 interface PaywallModalProps {
@@ -26,18 +26,18 @@ interface PaywallModalProps {
 
 export function PaywallModal({ open, onClose, title = "Go Premium", feature }: PaywallModalProps) {
   const [selectedPlan, setSelectedPlan] = useState("premium_yearly");
+  const { language, t } = useTranslation();
+  const copy = subscriptionCopy(language);
 
   const { loading, error, checkout } = useSubscriptionCheckout({
     onUnauthenticated: onClose,
   });
 
-  const { data: plansData } = useQuery<{ plans: PlanInfo[] }>({
-    queryKey: ["/api/subscription/plans"],
-    staleTime: 5 * 60 * 1000,
-    enabled: open,
-  });
-
-  const plans = plansData?.plans?.length ? plansData.plans : FALLBACK_PLANS;
+  const catalog = useSubscriptionPlans(open);
+  const plans = catalog.plans;
+  useEffect(() => {
+    if (plans.length && !plans.some(plan => plan.planId === selectedPlan)) setSelectedPlan(plans[0].planId);
+  }, [plans, selectedPlan]);
 
   return (
     <Dialog open={open} onOpenChange={v => { if (!v) onClose(); }}>
@@ -52,6 +52,7 @@ export function PaywallModal({ open, onClose, title = "Go Premium", feature }: P
             </div>
             <button
               onClick={onClose}
+              aria-label={t('close', 'Close')}
               className="absolute top-3 right-3 w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors"
             >
               <X className="w-4 h-4 text-white" />
@@ -60,10 +61,11 @@ export function PaywallModal({ open, onClose, title = "Go Premium", feature }: P
 
           <div className="px-5 pb-6 space-y-5 -mt-1">
             <div className="text-center">
-              <h2 className="text-xl font-bold text-white">{title}</h2>
+              <DialogTitle className="text-xl font-bold text-white">{title}</DialogTitle>
+              <DialogDescription className="text-sm text-gray-400 mt-1">{copy.broadcastAds}</DialogDescription>
               {feature && (
                 <p className="text-sm text-gray-400 mt-1">
-                  Unlock <span className="text-[#FF4199]">{feature}</span> and more
+                  <span className="text-[#FF4199]">{feature}</span>
                 </p>
               )}
             </div>
@@ -79,8 +81,8 @@ export function PaywallModal({ open, onClose, title = "Go Premium", feature }: P
 
             <div className="space-y-2">
               {plans.map(plan => {
-                const badge = PLAN_BADGE[plan.planId];
-                const price = fmtPrice(plan.amount, plan.currency);
+                const badge = null;
+                const price = fmtPrice(plan.amount, plan.currency, language);
                 const isSelected = selectedPlan === plan.planId;
                 return (
                   <button
@@ -109,7 +111,7 @@ export function PaywallModal({ open, onClose, title = "Go Premium", feature }: P
                           <p className="text-xs text-gray-400">{plan.description}</p>
                         </div>
                       </div>
-                      {price && <span className="text-sm font-bold text-white">{price}</span>}
+                      <span className="text-sm font-bold text-white">{price || copy.price}</span>
                     </div>
                   </button>
                 );
@@ -117,19 +119,20 @@ export function PaywallModal({ open, onClose, title = "Go Premium", feature }: P
             </div>
 
             {error && <p className="text-red-400 text-xs text-center">{error}</p>}
+            {!catalog.isPending && !catalog.canCheckout(selectedPlan) && <p role="status" className="text-amber-400 text-sm">{copy.unavailable}</p>}
 
             <Button
               className="w-full h-12 text-base font-bold rounded-xl bg-gradient-to-r from-[#FF4199] to-[#FF6B35] hover:opacity-90 border-0 text-white shadow-lg shadow-[#FF4199]/30"
               onClick={() => checkout(selectedPlan)}
-              disabled={loading}
+              disabled={loading || !catalog.canCheckout(selectedPlan)}
             >
               {loading
                 ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Redirecting...</>
-                : <><Sparkles className="w-4 h-4 mr-2" /> Subscribe Now</>}
+                : <><Sparkles className="w-4 h-4 mr-2" /> {copy.continuePayment}</>}
             </Button>
 
             <p className="text-center text-[11px] text-gray-500">
-              Secure payment by Stripe · Cancel anytime
+              {t('premium_secure_checkout', 'Secure checkout. Review the final price and billing terms before paying.')}
             </p>
           </div>
         </div>

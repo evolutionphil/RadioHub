@@ -109,7 +109,7 @@ function makeQueryClient(notifications: any[] = []) {
   });
   qc.setQueryData(["/api/filters/countries"], ["Turkey", "Germany"]);
   qc.setQueryData(["/api/countries", "rich"], [{ name: "Turkey", stationCount: 100 }]);
-  qc.setQueryData(["/api/user/notifications"], {
+  qc.setQueryData(["/api/user/notifications", authState.current.user?.id || '', 1, 10, 'all'], {
     notifications,
     unreadCount: notifications.length,
   });

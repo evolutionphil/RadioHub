@@ -30,18 +30,29 @@ export async function pgConversationMessages(
   const result = await getPostgresPool().query(
     `SELECT * FROM direct_messages WHERE
        ((from_user_id=$1 AND to_user_id=$2) OR (from_user_id=$2 AND to_user_id=$1))
-       AND ($3='' OR (created_at,id)<(SELECT created_at,id FROM direct_messages WHERE id=$3))
+       AND ($3='' OR (created_at,id)<(SELECT created_at,id FROM direct_messages WHERE id=$3
+         AND ((from_user_id=$1 AND to_user_id=$2) OR (from_user_id=$2 AND to_user_id=$1))))
        ORDER BY created_at DESC,id DESC LIMIT $4`,
     [userId, partnerId, before || "", limit],
   );
   return result.rows.map(shape).reverse();
 }
 
-export async function pgMarkMessagesRead(userId: string, partnerId: string): Promise<number> {
+export async function pgHasConversation(userId: string, partnerId: string): Promise<boolean> {
+  const result = await getPostgresPool().query(
+    `SELECT 1 FROM direct_messages WHERE
+      ((from_user_id=$1 AND to_user_id=$2) OR (from_user_id=$2 AND to_user_id=$1)) LIMIT 1`,
+    [userId, partnerId],
+  );
+  return result.rows.length > 0;
+}
+
+export async function pgMarkMessagesRead(userId: string, partnerId: string, messageIds?: string[]): Promise<number> {
   const result = await getPostgresPool().query(
     `UPDATE direct_messages SET is_read=true,read_at=COALESCE(read_at,now())
-     WHERE from_user_id=$2 AND to_user_id=$1 AND is_read=false`,
-    [userId, partnerId],
+     WHERE from_user_id=$2 AND to_user_id=$1 AND is_read=false
+       AND ($3::text[] IS NULL OR id=ANY($3::text[]))`,
+    [userId, partnerId, messageIds ?? null],
   );
   return result.rowCount || 0;
 }
@@ -86,7 +97,7 @@ export async function pgConversations(userId: string, limit = 50): Promise<any[]
      )
      SELECT r.*,u.username,u.full_name,u.avatar,u.source->>'profileImageUrl' profile_image_url
      FROM ranked r JOIN users u ON u.id=r.partner_id WHERE rn=1
-     ORDER BY r.created_at DESC LIMIT $2`,
+     ORDER BY r.created_at DESC,r.id DESC LIMIT $2`,
     [userId, limit],
   );
   return result.rows.map((row) => ({

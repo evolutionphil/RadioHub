@@ -37,39 +37,46 @@ export async function pgCreateNotification(input: NotificationInput): Promise<an
   return shape(result.rows[0]);
 }
 
-export async function pgListNotifications(userId: string, page: number, limit: number): Promise<any> {
+export const notificationCategories = {
+  all: null,
+  social: ['follow', 'unfollow', 'new_message'],
+  stations: ['new_station', 'favorite_station', 'favorite_update'],
+  system: ['system', 'promotional', 'comment_reply'],
+} as const;
+export type NotificationCategory = keyof typeof notificationCategories;
+// Explicit known types only. Preserve the existing 10-day social/station,
+// 7-day message, and 30-day system retention windows plus expires_at.
+const visibleNotificationSql = `user_id=$1 AND (
+  (type IN ('new_station','follow','unfollow','favorite_station','favorite_update') AND created_at>=now()-interval '10 days')
+  OR (type='new_message' AND created_at>=now()-interval '7 days')
+  OR (type IN ('system','promotional','comment_reply') AND created_at>=now()-interval '30 days'))
+  AND (expires_at IS NULL OR expires_at>now())`;
+
+export async function pgListNotifications(userId: string, page: number, limit: number, category: NotificationCategory = 'all'): Promise<any> {
+  if (!Object.hasOwn(notificationCategories, category)) throw new Error('Invalid notification category');
+  page = Number.isFinite(page) ? Math.max(1, Math.floor(page)) : 1;
+  limit = Number.isFinite(limit) ? Math.max(1, Math.min(100, Math.floor(limit))) : 10;
   const offset = Math.max(0, page - 1) * limit;
-  const [rows, total, unread] = await Promise.all([
+  const [rows, totals] = await Promise.all([
     getPostgresPool().query(
-      `SELECT * FROM user_notifications WHERE user_id=$1
-       AND ((type IN ('new_station','follow') AND created_at>=now()-interval '10 days')
-         OR (type='new_message' AND created_at>=now()-interval '7 days')
-         OR (type='system' AND created_at>=now()-interval '30 days'))
-       AND (expires_at IS NULL OR expires_at>now())
-       ORDER BY created_at DESC LIMIT $2 OFFSET $3`,
-      [userId, limit, offset],
+      `SELECT * FROM user_notifications WHERE ${visibleNotificationSql}
+       AND ($4::text[] IS NULL OR type=ANY($4::text[]))
+       ORDER BY created_at DESC,id DESC LIMIT $2 OFFSET $3`,
+      [userId, limit, offset, notificationCategories[category]],
     ),
-    getPostgresPool().query<{ count: string }>(
-      `SELECT count(*)::text count FROM user_notifications WHERE user_id=$1
-       AND ((type IN ('new_station','follow') AND created_at>=now()-interval '10 days')
-         OR (type='new_message' AND created_at>=now()-interval '7 days')
-         OR (type='system' AND created_at>=now()-interval '30 days'))
-       AND (expires_at IS NULL OR expires_at>now())`,
-      [userId],
-    ),
-    getPostgresPool().query<{ count: string }>(
-      `SELECT count(*)::text count FROM user_notifications WHERE user_id=$1 AND is_read=false
-       AND ((type IN ('new_station','follow') AND created_at>=now()-interval '10 days')
-         OR (type='new_message' AND created_at>=now()-interval '7 days')
-         OR (type='system' AND created_at>=now()-interval '30 days'))
-       AND (expires_at IS NULL OR expires_at>now())`,
+    getPostgresPool().query<{ type: string; count: string; unread: string }>(
+      `SELECT type,count(*)::text count,count(*) FILTER (WHERE is_read=false)::text unread
+       FROM user_notifications WHERE ${visibleNotificationSql} GROUP BY type`,
       [userId],
     ),
   ]);
+  const categoryCounts = Object.fromEntries(Object.entries(notificationCategories).map(([key, types]) => [key,
+    totals.rows.filter(row => types === null || (types as readonly string[]).includes(row.type)).reduce((sum,row) => sum + Number(row.count),0),
+  ]));
+  const total = categoryCounts[category];
   return { notifications: rows.rows.map(shape), pagination: {
-    page, limit, total: Number(total.rows[0]?.count || 0),
-    totalPages: Math.ceil(Number(total.rows[0]?.count || 0) / limit),
-  }, unreadCount: Number(unread.rows[0]?.count || 0) };
+    page, limit, total, totalPages: Math.ceil(total / limit),
+  }, categoryCounts, unreadCount: totals.rows.reduce((sum,row) => sum + Number(row.unread),0) };
 }
 
 export async function pgMarkNotificationRead(userId: string, id: string): Promise<any | null> {
@@ -91,7 +98,8 @@ export async function pgMarkAllNotificationsRead(userId: string): Promise<number
 export async function pgMarkConversationNotificationsRead(userId: string, fromUserId: string): Promise<number> {
   const result = await getPostgresPool().query(
     `UPDATE user_notifications SET is_read=true,read_at=COALESCE(read_at,now())
-     WHERE user_id=$1 AND from_user_id=$2 AND type='new_message' AND is_read=false`,
+     WHERE user_id=$1 AND from_user_id=$2 AND type='new_message' AND is_read=false
+       AND NOT EXISTS (SELECT 1 FROM direct_messages WHERE to_user_id=$1 AND from_user_id=$2 AND is_read=false)`,
     [userId, fromUserId],
   );
   return result.rowCount || 0;

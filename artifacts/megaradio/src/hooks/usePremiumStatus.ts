@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { useAuth } from "@/hooks/useAuth";
+import { isAdFreeSubscription } from '@/lib/premium';
 
 export interface PremiumStatus {
   isPremium: boolean;
@@ -22,9 +23,9 @@ export function usePremiumStatus(): PremiumStatus {
   const { user, isLoading, error } = useAuth();
   const sub = (user as any)?.subscription;
   const plan: string = sub?.plan ?? "none";
-  const isActive: boolean = sub?.isActive === true;
-  const isPremium = isActive && plan !== "none";
-  const isLifetime = plan === "premium_lifetime";
+  const isActive = isAdFreeSubscription(sub);
+  const isPremium = isActive;
+  const isLifetime = isActive && plan === "premium_lifetime";
 
   useEffect(() => {
     try {

@@ -1,5 +1,4 @@
-import { useState, useRef } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence, useInView, MotionConfig } from "framer-motion";
 import {
   Crown, Sparkles, Check, ChevronDown, Loader2,
@@ -11,48 +10,44 @@ import { usePremiumStatus } from "@/hooks/usePremiumStatus";
 import { useSubscriptionCheckout } from "@/hooks/useSubscriptionCheckout";
 import { useLocation } from "wouter";
 import { useTranslation } from "@/hooks/useTranslation";
-import { FALLBACK_PLANS, PLAN_LABEL, fmtPrice, type PlanInfo } from "@/lib/premium";
+import { PLAN_LABEL, fmtPrice, type PlanInfo } from "@/lib/premium";
+import { useSubscriptionPlans } from '@/hooks/useSubscriptionPlans';
+import { subscriptionCopy } from '@/lib/subscription-copy';
+import { ManageSubscriptionButton } from '@/components/ManageSubscriptionButton';
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
 const PLAN_ORDER = ["premium_yearly", "premium_monthly", "premium_lifetime", "remove_ads"];
 const RECOMMENDED = "premium_yearly";
 
-const PLAN_PERIOD: Record<string, string> = {
-  remove_ads:       "/mo",
-  premium_monthly:  "/mo",
-  premium_yearly:   "/yr",
-  premium_lifetime: "",
-};
-
 const PLAN_FEATURES: Record<string, string[]> = {
   remove_ads: [
-    "Ad-free on all devices",
-    "iOS · Android · Web · TV",
+    "MegaRadio website ads removed",
+    "Linked to your account",
     "Same stream quality as free",
   ],
   premium_monthly: [
-    "Ad-free on all devices",
-    "HD quality · highest bitrate",
-    "Car Mode & stream recording",
-    "iOS · Android · Web · TV",
+    "MegaRadio website ads removed",
+    "Stream quality depends on the station",
+    "App features vary by device",
+    "Linked to your account",
     "Cancel anytime",
   ],
   premium_yearly: [
-    "Ad-free on all devices",
-    "HD quality · highest bitrate",
-    "Car Mode & stream recording",
-    "iOS · Android · Web · TV",
-    "Save ~37% vs monthly",
+    "MegaRadio website ads removed",
+    "Stream quality depends on the station",
+    "App features vary by device",
+    "Linked to your account",
+    "Annual billing",
     "Cancel anytime",
   ],
   premium_lifetime: [
-    "Ad-free on all devices",
-    "HD quality · highest bitrate",
-    "Car Mode & stream recording",
-    "iOS · Android · Web · TV",
-    "Pay once, own forever",
-    "All future features included",
+    "MegaRadio website ads removed",
+    "Stream quality depends on the station",
+    "App features vary by device",
+    "Linked to your account",
+    "One-time purchase",
+    "See subscription terms for details",
   ],
 };
 
@@ -63,15 +58,15 @@ const FAQ_ITEMS = [
   },
   {
     q: "What devices are supported?",
-    a: "Premium works on iOS, Android, Samsung TV (Tizen), LG TV (webOS), and the web. One subscription covers every device — no separate purchases.",
+    a: "Use the same MegaRadio account on supported devices. Available features vary by app and device; check the app before purchasing for a specific feature.",
   },
   {
     q: "What's the difference between Remove Ads and Premium?",
-    a: "Remove Ads strips all advertising from your experience. Premium adds HD streams, Car Mode for safe driving, stream recording, and every new premium feature we ship in the future.",
+    a: "Remove Ads removes MegaRadio website advertising without premium extras. Ads included in a station's broadcast may remain. Stream quality depends on the station, and extra app features depend on your device.",
   },
   {
     q: "Is Lifetime really a one-time payment?",
-    a: "Yes — pay once and you're covered forever, including all future app updates and premium features we add.",
+    a: "The Lifetime plan is a one-time purchase, not a recurring subscription. Review the current subscription terms and final checkout details before paying.",
   },
   {
     q: "What payment methods are accepted?",
@@ -80,12 +75,12 @@ const FAQ_ITEMS = [
 ];
 
 const FEATURES = [
-  { icon: Zap,     title: "Instant Ad-Free",     desc: "No pre-rolls, no banners. Music starts the moment you press play." },
-  { icon: Volume2, title: "HD Quality Streams",  desc: "Always the highest available bitrate — crystal clear, zero buffering." },
-  { icon: Radio,   title: "Car Mode",            desc: "Large buttons, minimal UI — safe to use while driving." },
-  { icon: Music,   title: "Stream Recording",    desc: "Record your favourite stations and listen offline later." },
-  { icon: Tv,      title: "All Your Devices",    desc: "Samsung TV, LG TV, iOS, Android, Web — one sub covers everything." },
-  { icon: Star,    title: "Future Features",     desc: "Every new premium feature we ship is included automatically." },
+  { icon: Zap,     title: "Website Ads", desc: "Remove advertising served by MegaRadio on the website. Station broadcast ads may remain." },
+  { icon: Volume2, title: "Stream Quality", desc: "Audio quality and availability depend on the station's source stream and your connection." },
+  { icon: Radio,   title: "Your Account", desc: "Your purchase is linked to your MegaRadio account. Sign in to access it." },
+  { icon: Music,   title: "Your Stations", desc: "Continue enjoying your stations and favourites without changing your listening habits." },
+  { icon: Tv,      title: "Supported Devices", desc: "Use the same account. Extra features vary by application and device." },
+  { icon: Star,    title: "Your Subscription", desc: "Review your plan and manage supported recurring subscriptions from your account." },
 ];
 
 // ── Animations ────────────────────────────────────────────────────────────────
@@ -143,9 +138,11 @@ interface PlanCardProps {
 }
 
 function PlanCard({ plan, selected, recommended, onSelect }: PlanCardProps) {
+  const { language, t } = useTranslation();
+  const copy = subscriptionCopy(language);
   const features = PLAN_FEATURES[plan.planId] ?? [];
-  const price = fmtPrice(plan.amount, plan.currency);
-  const period = PLAN_PERIOD[plan.planId] ?? "";
+  const price = fmtPrice(plan.amount, plan.currency, language);
+  const period = plan.billingInterval === 'month' ? '/mo' : plan.billingInterval === 'year' ? '/yr' : '';
   const isLifetime = plan.planId === "premium_lifetime";
 
   return (
@@ -186,12 +183,12 @@ function PlanCard({ plan, selected, recommended, onSelect }: PlanCardProps) {
       <div className="flex items-start justify-between mb-4">
         <div>
           <span className="text-sm font-semibold text-white/60 uppercase tracking-widest">
-            {plan.label}
+            {t(`premium_plan_${plan.planId}`, plan.label)}
           </span>
           {recommended && (
             <div className="mt-1.5">
               <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider bg-gradient-to-r from-[#FF4199] to-[#FF6B35] text-white px-2.5 py-0.5 rounded-full">
-                ⭐ Best Value
+                {t('premium_plan_annual', 'Annual')}
               </span>
             </div>
           )}
@@ -226,15 +223,15 @@ function PlanCard({ plan, selected, recommended, onSelect }: PlanCardProps) {
                 <span className="text-white/35 text-sm mb-1">{period}</span>
               )}
             </div>
-            {plan.planId === "premium_yearly" && (
+            {plan.billingInterval === "year" && (plan.billingFrequency ?? 1) === 1 && (
               <p className="text-[#FF4199] text-xs mt-1.5 font-medium">
-                ~{fmtPrice(Math.round(plan.amount / 12), plan.currency)}/mo · save 37%
+                ~{fmtPrice(Math.round(plan.amount / 12), plan.currency, language)}/mo
               </p>
             )}
           </>
         ) : (
           <div className="h-12 flex items-center">
-            <Loader2 className="w-5 h-5 text-white/20 animate-spin" />
+            <span className="text-sm text-white/50">{plan.checkoutAvailable === false ? copy.unavailable : copy.price}</span>
           </div>
         )}
       </div>
@@ -273,6 +270,8 @@ function Reveal({ children, delay = 0 }: { children: React.ReactNode; delay?: nu
 
 function AlreadyPremium({ plan }: { plan: string }) {
   const [, setLocation] = useLocation();
+  const { language } = useTranslation();
+  const copy = subscriptionCopy(language);
   const label = PLAN_LABEL[plan] ?? "Premium";
   return (
     <div className="min-h-screen bg-[#080808] flex items-center justify-center p-6">
@@ -289,18 +288,18 @@ function AlreadyPremium({ plan }: { plan: string }) {
           <Crown className="w-10 h-10 text-white" />
         </div>
         <div>
-          <h1 className="text-3xl font-extrabold text-white mb-2">You're all set 🎉</h1>
+          <h1 className="text-3xl font-extrabold text-white mb-2">{copy.active}</h1>
           <p className="text-white/50">
-            Active <span className="text-[#FF4199] font-semibold">{label}</span> plan.
-            Enjoy ad-free listening!
+            <span className="text-[#FF4199] font-semibold">{label}</span>
           </p>
         </div>
         <button
-          onClick={() => setLocation("/")}
+          onClick={() => setLocation(`/${language}`)}
           className="w-full h-11 rounded-xl bg-white/[0.07] hover:bg-white/[0.12] border border-white/[0.08] text-white text-sm font-medium transition-colors"
         >
           Back to Radio
         </button>
+        <ManageSubscriptionButton />
       </motion.div>
     </div>
   );
@@ -309,31 +308,25 @@ function AlreadyPremium({ plan }: { plan: string }) {
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function PremiumPage() {
-  const { t } = useTranslation();
-  const { user, isLoading: authLoading } = useAuth();
+  const { t, language } = useTranslation();
+  const copy = subscriptionCopy(language);
+  const { user, isLoading: authLoading, error: authError } = useAuth();
   const { isPremium, plan: currentPlan } = usePremiumStatus();
   const [selectedPlan, setSelectedPlan] = useState(RECOMMENDED);
   const { loading, error, checkout } = useSubscriptionCheckout();
 
-  const { data: plansData } = useQuery<{ plans: PlanInfo[] }>({
-    queryKey: ["/api/subscription/plans"],
-    staleTime: 5 * 60 * 1000,
-    enabled: !isPremium,
-  });
-
-  const rawPlans = plansData?.plans?.length
-    ? plansData.plans.map(p => {
-        if (p.amount > 0) return p;
-        const fb = FALLBACK_PLANS.find(f => f.planId === p.planId);
-        return fb ? { ...p, amount: fb.amount, currency: p.currency || fb.currency } : p;
-      })
-    : FALLBACK_PLANS;
+  const catalog = useSubscriptionPlans(!isPremium);
+  const rawPlans = catalog.plans;
+  useEffect(() => {
+    if (rawPlans.length && !rawPlans.some(plan => plan.planId === selectedPlan)) setSelectedPlan(rawPlans[0].planId);
+  }, [rawPlans, selectedPlan]);
 
   const plans = PLAN_ORDER
     .map(id => rawPlans.find(p => p.planId === id))
     .filter(Boolean) as PlanInfo[];
 
   const selectedPlanInfo = plans.find(p => p.planId === selectedPlan);
+  const checkoutDisabled = loading || !!authError || !catalog.canCheckout(selectedPlan);
 
   if (!authLoading && isPremium) return <AlreadyPremium plan={currentPlan} />;
   if (authLoading) {
@@ -445,7 +438,7 @@ export default function PremiumPage() {
           >
             <button
               onClick={() => checkout(selectedPlan)}
-              disabled={loading}
+              disabled={checkoutDisabled}
               className="w-full h-14 rounded-2xl font-bold text-base text-white bg-gradient-to-r from-[#FF4199] to-[#FF6B35] hover:opacity-90 active:opacity-80 transition-opacity disabled:opacity-50 flex items-center justify-center gap-2.5 shadow-2xl shadow-[#FF4199]/30"
             >
               {loading
@@ -460,7 +453,7 @@ export default function PremiumPage() {
               <p className="text-center text-xs text-white/30 mt-3">
                 {t("premium_have_account", "Already have an account?")}{" "}
                 <a
-                  href={`/login?returnTo=${encodeURIComponent("/premium")}`}
+                  href={`/${language}/login?returnTo=${encodeURIComponent(`/${language}/premium`)}`}
                   className="text-[#FF4199] hover:underline"
                 >
                   {t("premium_signin", "Sign in")}
@@ -477,6 +470,10 @@ export default function PremiumPage() {
                 {error}
               </motion.p>
             )}
+            {!catalog.isPending && !catalog.canCheckout(selectedPlan) && (
+              <p role="status" className="mt-3 text-center text-sm text-amber-400">{copy.unavailable}</p>
+            )}
+            <p className="mt-3 text-center text-xs text-white/50">{copy.broadcastAds}</p>
 
             {/* Payment trust row — a payment page must answer "is this safe?"
                 at the exact moment of commitment. All claims are true: Paddle
@@ -496,9 +493,9 @@ export default function PremiumPage() {
             </div>
             <p className="text-center text-[11px] text-white/25 mt-3 leading-relaxed">
               {t("premium_legal_processor", "Payments are processed by Paddle.com as Merchant of Record — your card details never reach our servers.")}{" "}
-              <a href="/terms-and-conditions" className="underline hover:text-white/50 transition-colors">{t("footer_terms", "Terms")}</a>
+              <a href={`/${language}/terms-and-conditions`} className="underline hover:text-white/50 transition-colors">{t("footer_terms", "Terms")}</a>
               {" · "}
-              <a href="/privacy-policy" className="underline hover:text-white/50 transition-colors">{t("footer_privacy", "Privacy")}</a>
+              <a href={`/${language}/privacy-policy`} className="underline hover:text-white/50 transition-colors">{t("footer_privacy", "Privacy")}</a>
             </p>
           </motion.div>
         </section>
@@ -577,7 +574,7 @@ export default function PremiumPage() {
               </p>
               <button
                 onClick={() => checkout(selectedPlan)}
-                disabled={loading}
+                disabled={checkoutDisabled}
                 className="w-full h-14 rounded-2xl font-bold text-base text-white bg-gradient-to-r from-[#FF4199] to-[#FF6B35] hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-2 shadow-xl shadow-[#FF4199]/25"
               >
                 {loading
@@ -604,13 +601,13 @@ export default function PremiumPage() {
               {selectedPlanInfo?.label ?? "Premium"}
             </p>
             <p className="text-white/40 text-xs">
-              {fmtPrice(selectedPlanInfo?.amount ?? 0, selectedPlanInfo?.currency ?? "eur")}
-              {PLAN_PERIOD[selectedPlan] ?? ""}
+              {fmtPrice(selectedPlanInfo?.amount ?? 0, selectedPlanInfo?.currency ?? "eur", language) || copy.price}
+              {selectedPlanInfo?.billingInterval === 'month' ? '/mo' : selectedPlanInfo?.billingInterval === 'year' ? '/yr' : ''}
             </p>
           </div>
           <button
             onClick={() => checkout(selectedPlan)}
-            disabled={loading}
+            disabled={checkoutDisabled}
             className="h-11 px-5 rounded-xl font-bold text-sm text-white bg-gradient-to-r from-[#FF4199] to-[#FF6B35] hover:opacity-90 disabled:opacity-50 flex items-center gap-1.5 flex-shrink-0 transition-opacity"
           >
             {loading

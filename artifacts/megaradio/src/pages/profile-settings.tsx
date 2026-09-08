@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -13,13 +13,16 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import { useNotificationService } from "@/services/NotificationService";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, oauthBearerHeader, resolveApiUrl } from "@/lib/queryClient";
 import { PushNotificationSettings } from "@/components/PushNotificationSettings";
+import { useTranslation } from '@/hooks/useTranslation';
+import { ACTIVE_SITEMAP_LANGUAGES, SEO_LANGUAGES } from '@workspace/seo-shared/seo-config';
+import { ManageSubscriptionButton } from '@/components/ManageSubscriptionButton';
 
 const profileSettingsSchema = z.object({
-  name: z.string().min(1, "Name is required"),
-  email: z.string().email("Invalid email address"),
-  password: z.string().optional(),
+  name: z.string().trim().min(1, "Name is required").max(200),
+  email: z.string().trim().email("Invalid email address").max(254),
+  password: z.string().refine(value => !value.trim() || (value.length >= 8 && new TextEncoder().encode(value).length <= 72), 'Password must be at least 8 characters and at most 72 bytes').optional(),
   country: z.string().optional(),
   language: z.string().optional(),
   is_public_profile: z.boolean().default(false),
@@ -31,21 +34,31 @@ type ProfileSettingsData = z.infer<typeof profileSettingsSchema>;
 
 function SettingsContent() {
   const { user } = useAuth();
+  return <ProfileSettingsForm key={String(user?._id || 'anonymous')} user={user} />;
+}
+
+function ProfileSettingsForm({ user }: { user: ReturnType<typeof useAuth>['user'] }) {
   const { toast } = useToast();
   const notificationService = useNotificationService();
   const queryClient = useQueryClient();
-  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const { t } = useTranslation();
+  const active = useRef(true);
+  const avatarObjectUrl = useRef('');
+  const savePending = useRef(false);
+  const avatarPending = useRef(false);
+  const subscriptionPlan = (user as (typeof user & { subscription?: { plan?: string } }))?.subscription?.plan;
   const [avatarPreview, setAvatarPreview] = useState<string>("");
+  useEffect(() => {
+    active.current = true;
+    return () => { active.current = false; if (avatarObjectUrl.current) URL.revokeObjectURL(avatarObjectUrl.current); };
+  }, []);
 
   // Fetch countries
   const { data: countries = [] } = useQuery<string[]>({
     queryKey: ["/api/filters/countries"],
   });
 
-  // Fetch languages - we'll need to add this endpoint
-  const { data: languages = [] } = useQuery<{key: string, name: string}[]>({
-    queryKey: ["/api/languages"],
-  });
+  const languages = SEO_LANGUAGES.filter(item => ACTIVE_SITEMAP_LANGUAGES.some(code => code === item.code));
 
   const form = useForm<ProfileSettingsData>({
     resolver: zodResolver(profileSettingsSchema),
@@ -57,13 +70,13 @@ function SettingsContent() {
       language: (user as any)?.preferences?.language || "en",
       is_public_profile: (user as any)?.isPublicProfile || false,
       is_autoplay_at_login: (user as any)?.preferences?.autoplay || false,
-      play_at_login: "LAST_PLAYED", // Not in current user schema
+      play_at_login: (user as any)?.preferences?.playAtLogin || 'LAST_PLAYED',
     },
   });
 
   // Update form when user data changes
   React.useEffect(() => {
-    if (user) {
+    if (user && !form.formState.isDirty && !savePending.current) {
       const userData = {
         name: user?.fullName || "",
         email: user?.email || "",
@@ -100,23 +113,27 @@ function SettingsContent() {
         payload.password = data.password;
       }
 
-      return apiRequest("PUT", "/api/auth/profile", { body: payload });
+      const response = await apiRequest("PUT", "/api/auth/profile", { body: payload });
+      return response.json();
     },
-    onSuccess: () => {
+    onSuccess: (_result, submitted) => {
+      if (!active.current) return;
       toast({
-        title: "Success",
-        description: "Profile updated successfully",
+        title: t('general_success', 'Success'),
+        description: t('profile_updated_successfully', 'Profile updated successfully'),
       });
       
       // Show rich notification for profile update
       notificationService.profileUpdated();
       
       queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
-      form.setValue("password", "");
+      if (JSON.stringify(form.getValues()) === JSON.stringify(submitted)) form.reset({ ...submitted, password: '' });
+      else if (form.getValues('password') === submitted.password) form.setValue('password', '');
     },
     onError: (error: any) => {
+      if (!active.current) return;
       toast({
-        title: "Error",
+        title: t('general_error', 'Error'),
         description: error.message || "Failed to update profile",
         variant: "destructive",
       });
@@ -124,6 +141,8 @@ function SettingsContent() {
       // Show profile update failure notification
       notificationService.profileUpdateFailed(error.message || "Failed to update your profile. Please try again.");
     },
+    onSettled: () => { savePending.current = false; },
+    retry: false,
   });
 
   // Avatar update mutation
@@ -132,10 +151,11 @@ function SettingsContent() {
       const formData = new FormData();
       formData.append("avatar", file);
 
-      const response = await fetch("/api/auth/avatar", {
+      const response = await fetch(resolveApiUrl("/api/user/avatar"), {
         method: "POST",
         body: formData,
         credentials: "include",
+        headers: oauthBearerHeader(),
       });
       
       if (!response.ok) {
@@ -146,6 +166,8 @@ function SettingsContent() {
       return response.json();
     },
     onSuccess: (data) => {
+      if (!active.current) return;
+      setAvatarPreview(data.avatar || '');
       toast({
         title: "Success",
         description: "Avatar updated successfully",
@@ -157,6 +179,8 @@ function SettingsContent() {
       queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
     },
     onError: (error: any) => {
+      if (!active.current) return;
+      setAvatarPreview('');
       toast({
         title: "Error",
         description: "Failed to update avatar",
@@ -166,29 +190,39 @@ function SettingsContent() {
       // Show avatar update failure notification
       notificationService.profileUpdateFailed("Failed to update your avatar. Please try again with a different image.");
     },
+    onSettled: () => {
+      avatarPending.current = false;
+      if (avatarObjectUrl.current) { URL.revokeObjectURL(avatarObjectUrl.current); avatarObjectUrl.current = ''; }
+    },
+    retry: false,
   });
 
   const selectProfileImage = () => {
+    if (avatarPending.current) return;
     const input = document.createElement("input");
     input.type = "file";
-    input.accept = "image/*";
+    input.accept = "image/jpeg,image/png,image/webp";
     input.click();
 
     input.onchange = () => {
       const file = input.files?.[0];
-      if (file) {
-        setAvatarFile(file);
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          setAvatarPreview(e.target?.result as string);
-        };
-        reader.readAsDataURL(file);
+      if (file && active.current && !avatarPending.current) {
+        if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 5 * 1024 * 1024) {
+          toast({ title: t('general_error', 'Error'), description: t('avatar_invalid_file', 'Choose a JPEG, PNG or WebP image up to 5 MB.'), variant: 'destructive' });
+          return;
+        }
+        avatarPending.current = true;
+        if (avatarObjectUrl.current) URL.revokeObjectURL(avatarObjectUrl.current);
+        avatarObjectUrl.current = URL.createObjectURL(file);
+        setAvatarPreview(avatarObjectUrl.current);
         updateAvatarMutation.mutate(file);
       }
     };
   };
 
   const onSubmit = (data: ProfileSettingsData) => {
+    if (savePending.current) return;
+    savePending.current = true;
     updateProfileMutation.mutate(data);
   };
 
@@ -216,6 +250,8 @@ function SettingsContent() {
                   type="button"
                   className="absolute bottom-[10px] right-0"
                   onClick={selectProfileImage}
+                  disabled={updateAvatarMutation.isPending}
+                  aria-label={t('profile_change_avatar', 'Change profile picture')}
                 >
                   <svg width="20" height="20" fill="none" xmlns="http://www.w3.org/2000/svg">
                     <path
@@ -250,7 +286,7 @@ function SettingsContent() {
                 <Switch
                   id="is_autoplay_at_login"
                   checked={form.watch("is_autoplay_at_login")}
-                  onCheckedChange={(checked) => form.setValue("is_autoplay_at_login", checked)}
+                  onCheckedChange={(checked) => form.setValue("is_autoplay_at_login", checked, { shouldDirty: true })}
                 />
                 <Label htmlFor="is_autoplay_at_login" className="text-white">Autoplay</Label>
               </div>
@@ -294,9 +330,10 @@ function SettingsContent() {
           <div className="col-span-full w-full rounded bg-[#151515] p-8 md:col-auto">
             <div className="grid grid-cols-2 gap-6">
               <div className="flex flex-col">
-                <Label className="mb-2 font-medium text-white">Your Name</Label>
+                <Label htmlFor="profile-name" className="mb-2 font-medium text-white">{t('auth_full_name', 'Your Name')}</Label>
                 <Input
                   type="text"
+                  id="profile-name"
                   className="h-12 rounded bg-primary text-white"
                   {...form.register("name")}
                 />
@@ -305,18 +342,22 @@ function SettingsContent() {
                 )}
               </div>
               <div className="flex flex-col">
-                <Label className="mb-2 font-medium text-white">Password</Label>
+                <Label htmlFor="profile-password" className="mb-2 font-medium text-white">{t('auth_password', 'Password')}</Label>
                 <Input
                   type="password"
+                  id="profile-password"
+                  autoComplete="new-password"
                   className="h-12 rounded bg-primary text-white"
                   placeholder="Leave blank to keep current password"
                   {...form.register("password")}
                 />
+                {form.formState.errors.password && <span role="alert" className="text-red-500 text-sm">{form.formState.errors.password.message}</span>}
               </div>
               <div className="col-span-full flex flex-col">
-                <Label className="mb-2 font-medium text-white">Email</Label>
+                <Label htmlFor="profile-email" className="mb-2 font-medium text-white">{t('auth_email_label', 'Email')}</Label>
                 <Input
                   type="email"
+                  id="profile-email"
                   className="h-12 rounded bg-primary text-white"
                   {...form.register("email")}
                 />
@@ -328,7 +369,7 @@ function SettingsContent() {
                 <Label className="mb-2 font-medium text-white">Country</Label>
                 <Select
                   value={form.watch("country")}
-                  onValueChange={(value) => form.setValue("country", value)}
+                  onValueChange={(value) => form.setValue("country", value, { shouldDirty: true })}
                 >
                   <SelectTrigger className="rounded-md bg-transparent py-3 text-white">
                     <SelectValue placeholder="-- Select Option --" />
@@ -346,17 +387,13 @@ function SettingsContent() {
                 <Label className="mb-2 font-medium text-white">Language</Label>
                 <Select
                   value={form.watch("language")}
-                  onValueChange={(value) => form.setValue("language", value)}
+                  onValueChange={(value) => form.setValue("language", value, { shouldDirty: true })}
                 >
                   <SelectTrigger className="rounded-md bg-transparent py-3 text-white">
                     <SelectValue placeholder="-- Select Option --" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="en">English</SelectItem>
-                    <SelectItem value="es">Spanish</SelectItem>
-                    <SelectItem value="fr">French</SelectItem>
-                    <SelectItem value="de">German</SelectItem>
-                    <SelectItem value="it">Italian</SelectItem>
+                    {languages.map(item => <SelectItem key={item.code} value={item.code}>{item.name}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
@@ -369,7 +406,7 @@ function SettingsContent() {
                 <h2 className="font-medium text-white">Public Profile</h2>
                 <Switch
                   checked={form.watch("is_public_profile")}
-                  onCheckedChange={(checked) => form.setValue("is_public_profile", checked)}
+                  onCheckedChange={(checked) => form.setValue("is_public_profile", checked, { shouldDirty: true })}
                   className={form.watch("is_public_profile") ? "bg-accent" : "bg-gray-700"}
                 />
               </div>
@@ -389,12 +426,13 @@ function SettingsContent() {
                 className="rounded bg-accent py-3 px-12"
                 disabled={updateProfileMutation.isPending}
               >
-                {updateProfileMutation.isPending ? "Saving..." : "Save Changes"}
+                {updateProfileMutation.isPending ? t('general_saving', 'Saving...') : t('general_save_changes', 'Save Changes')}
               </Button>
             </div>
           </div>
         </div>
       </form>
+      {subscriptionPlan && subscriptionPlan !== 'none' && <div className="mt-6"><ManageSubscriptionButton /></div>}
     </div>
   );
 }

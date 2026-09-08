@@ -1,4 +1,5 @@
 import type { Express } from "express";
+import { profileFieldsSchema, authProfileSchema, notificationSettingsSchema } from '@workspace/api-zod';
 import { getPostgresPool } from '../postgres-runtime';
 import { pgListAuthEvents } from '../data/postgres-api-access-store';
 import { logger } from '../utils/logger';
@@ -13,7 +14,7 @@ import { SEO_LANGUAGES } from '@workspace/seo-shared/seo-config';
 import CacheManager, { CacheKeys } from '../cache';
 import { logAuthEvent } from '../auth/auth-event-logger';
 import { deleteUserAuthTokens, findActiveAuthToken, revokeAuthToken } from '../data/auth-token-store';
-import { newPublicUserId, pgCreateUser, pgDeleteUser, pgFindUserByEmail, pgFindUserById, pgFindUserByIdentity, pgFindUserByResetToken, pgListUsers, pgRecentUserActivity, pgUpdateUser, pgUserManagementDetail, pgUserManagementStats, pgUserSocialByEmail, pgUserFollowState, pgUserSlugExists, userStore, } from '../data/postgres-user-store';
+import { newPublicUserId, pgCreateUser, pgDeleteUser, pgFindUserByEmail, pgFindUserById, pgFindUserByIdentity, pgFindUserByResetToken, pgResetUserPassword, pgListUsers, pgRecentUserActivity, pgUpdateUser, pgUserManagementDetail, pgUserManagementStats, pgUserSocialByEmail, pgUserFollowState, pgUserSlugExists, userStore, } from '../data/postgres-user-store';
 import { UserEngagementService, engagementStore } from '../services/user-engagement-service';
 import { pgFollowPage, pgIsFollowing } from '../data/postgres-engagement-store';
 import { notificationStore, pgCreateNotification } from '../data/postgres-notification-store';
@@ -21,6 +22,26 @@ import { notificationStore, pgCreateNotification } from '../data/postgres-notifi
 // Used to distinguish a real language prefix (`/en`, `/tr`) from a route name
 // that happens to be 2 letters (`/tv`).
 const ENABLED_LANGUAGE_CODES = new Set(SEO_LANGUAGES.filter((l: any) => l.enabled).map((l: any) => l.code.toLowerCase()));
+function notificationSettingsFor(user: any) {
+    const stored = user?.notificationSettings || {};
+    return Object.fromEntries(Object.entries({ favorites: true, nowPlaying: true, newStations: false, recommendations: false }).map(([key, fallback]) => [key, typeof stored[key] === 'boolean' ? stored[key] : fallback]));
+}
+async function invalidateProfileCaches(user: any): Promise<void> {
+    for (const key of [user?._id, user?.id, user?.slug, user?.username].filter(Boolean)) {
+        for (const prefix of ['user-engagement-profile:', 'user-engagement-favs:', 'user-engagement-full:', 'user-engagement-recent:', 'user_profile_', 'user-profile:']) await CacheManager.clearByPattern(`${prefix}${key}`);
+    }
+    if (user?.email) await CacheManager.del(CacheKeys.userSocial(user.email));
+}
+function ownedAvatarKey(avatar: unknown, userId: string): string | null {
+    if (typeof avatar !== 'string' || !/^[a-f0-9]{24}$/i.test(userId)) return null;
+    try {
+        const url = new URL(avatar);
+        const host = `${process.env.AWS_BUCKET_NAME}.s3.${process.env.AWS_REGION || 'eu-north-1'}.amazonaws.com`;
+        if (!process.env.AWS_BUCKET_NAME || url.protocol !== 'https:' || url.hostname !== host || url.search || url.hash) return null;
+        const key = url.pathname.slice(1);
+        return new RegExp(`^avatars/user_(?:${userId}|${userId.slice(-8)})_[0-9]+\\.webp$`, 'i').test(key) ? key : null;
+    } catch { return null; }
+}
 /**
  * Extract the language prefix from an HTTP referer URL.
  * Returns the language code (e.g. "en", "tr") if the referer's first path
@@ -297,11 +318,13 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
         try {
             const { userId } = req.params;
             const sessionUserId = (req.session as any)?.user?.userId || (req.session as any)?.userId;
-            const isAdmin = !!(req.session as any)?.adminAuth;
+            const isAdmin = (req.session as any)?.adminAuth?.role === 'admin';
             if (!isAdmin && sessionUserId !== userId) {
                 return void res.status(403).json({ error: 'Forbidden' });
             }
-            const body = req.body || {};
+            const parsed = profileFieldsSchema.safeParse(req.body || {});
+            if (!parsed.success) return void res.status(400).json({ error: 'Invalid profile fields' });
+            const body: any = parsed.data;
             // User-editable fields
             const USER_FIELDS = ['fullName', 'username', 'email', 'avatar', 'location', 'isPublicProfile', 'preferences', 'bio'];
             // Admin-only fields
@@ -313,12 +336,19 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
             }
             if (isAdmin) {
                 for (const f of ADMIN_FIELDS) {
-                    if (body[f] !== undefined)
-                        updates[f] = body[f];
+                    if (req.body[f] !== undefined)
+                        updates[f] = req.body[f];
                 }
             }
             if (Object.keys(updates).length === 0) {
                 return void res.status(400).json({ error: 'No updatable fields provided' });
+            }
+            const existing = await pgFindUserById(String(userId));
+            if (!existing) return void res.status(404).json({ error: 'User not found' });
+            if (updates.email && updates.email !== existing.email?.toLowerCase()) {
+                const other = await pgFindUserByEmail(updates.email);
+                if (other && String(other._id) !== String(userId)) return void res.status(409).json({ error: 'Email is already in use' });
+                if (!isAdmin || req.body.emailVerified === undefined) updates.emailVerified = false;
             }
             const persistedUpdates = { ...updates, updatedAt: new Date() };
             let updatedUser: any;
@@ -328,13 +358,15 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
             if (!updatedUser) {
                 return void res.status(404).json({ error: 'User not found' });
             }
+            await invalidateProfileCaches(existing);
+            await invalidateProfileCaches(updatedUser);
             {
                 const { passwordHash, resetPasswordToken, resetPasswordExpires, emailVerificationToken, ...safe } = updatedUser;
                 return void res.json(safe);
             }
         }
-        catch (error) {
-            res.status(500).json({ error: 'Failed to update user' });
+        catch (error: any) {
+            res.status(error?.code === '23505' ? 409 : 500).json({ error: error?.code === '23505' ? 'Email or username is already in use' : 'Failed to update user' });
         }
     });
     // Legacy follow/unfollow endpoints — DEPRECATED, return 410 Gone
@@ -351,6 +383,9 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
     app.get("/api/user/social/:email", requireAuth, async (req, res) => {
         try {
             const { email } = req.params;
+            // An authenticated visitor must not enumerate another account's private graph/email addresses.
+            const owner = await pgFindUserById(String((req as any).user?._id || (req.session as any)?.user?.userId || (req.session as any)?.userId));
+            if (!owner || owner.email?.toLowerCase() !== String(email).trim().toLowerCase()) return void res.status(403).json({ error: 'Forbidden' });
             const cacheKey = CacheKeys.userSocial(email);
             const cached = await CacheManager.get(cacheKey);
             if (cached) {
@@ -1372,7 +1407,7 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
                             }
                         }
                     }
-                    catch { }
+                    catch { throw new Error('Authentication token lookup unavailable'); }
                 }
             }
             if (!userId) {
@@ -1385,6 +1420,7 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
                 }
                 return void res.json({ user: null, authenticated: false });
             }
+            if (['inactive', 'suspended', 'banned', 'deleted'].includes(user.status) || user.isActive === false) return void res.status(403).json({ error: 'Account is not active' });
             const following = followState.following;
             const actualFollowingCount = following.length;
             const actualFollowersCount = followState.followersCount;
@@ -1409,6 +1445,7 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
                 location: user.location,
                 isPublicProfile: user.isPublicProfile,
                 preferences: user.preferences,
+                notificationSettings: notificationSettingsFor(user),
                 followersCount: actualFollowersCount,
                 followingCount: actualFollowingCount,
                 favoriteStationsCount: user.favoriteStationsCount,
@@ -1420,7 +1457,7 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
             res.json({ user: userData, authenticated: true });
         }
         catch (error) {
-            res.json({ user: null, authenticated: false });
+            res.status(503).json({ error: 'Authentication service unavailable' });
         }
     });
     // User logout
@@ -1433,7 +1470,7 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
                 return h?.startsWith('Bearer ') ? h.slice(7) : null;
             })();
             if (bearerToken) {
-                revokeAuthToken(bearerToken).catch(() => { });
+                await revokeAuthToken(bearerToken);
             }
             if (req.session) {
                 req.session.destroy((err) => {
@@ -1455,35 +1492,29 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
     // Update user profile
     app.put("/api/auth/profile", requireAuth, async (req, res) => {
         try {
-            const userId = (req.session as any)?.userId;
-            const { fullName, email, location, preferences, password } = req.body;
-            let user: any = await pgFindUserById(userId);
-            if (!user) {
+            const userId = String((req as any).user?._id || (req.session as any)?.user?.userId || (req.session as any)?.userId || '');
+            const parsed = authProfileSchema.safeParse(req.body);
+            if (!parsed.success) return void res.status(400).json({ error: 'Invalid profile fields', fields: parsed.error.flatten().fieldErrors });
+            const { password, ...profilePatch } = parsed.data;
+            const existing: any = await pgFindUserById(userId);
+            if (!existing) {
                 return void res.status(404).json({ error: 'User not found' });
             }
-            if (fullName !== undefined)
-                user.fullName = fullName;
-            if (email !== undefined)
-                user.email = email;
-            if (location !== undefined)
-                user.location = location;
-            if (req.body.isPublicProfile !== undefined)
-                user.isPublicProfile = req.body.isPublicProfile;
-            if (preferences) {
-                user.preferences = { ...user.preferences, ...preferences };
+            const changes: Record<string, any> = { ...profilePatch };
+            if (changes.email && changes.email !== existing.email?.toLowerCase()) {
+                const other = await pgFindUserByEmail(changes.email);
+                if (other && String(other._id) !== userId) return void res.status(409).json({ error: 'Email is already in use' });
+                changes.emailVerified = false;
             }
             if (password && password.trim() !== '') {
                 const bcrypt = await import('bcrypt');
-                const saltRounds = 12;
-                user.passwordHash = await bcrypt.default.hash(password, saltRounds);
+                changes.passwordHash = await bcrypt.default.hash(password, 12);
             }
-            user.updatedAt = new Date();
-            const profilePatch = {
-                fullName: user.fullName, email: user.email, location: user.location,
-                isPublicProfile: user.isPublicProfile, preferences: user.preferences,
-                passwordHash: user.passwordHash,
-            };
-            await pgUpdateUser(String(user._id), profilePatch);
+            // Write only submitted fields; a concurrent avatar/preferences save must not be overwritten.
+            const user = await pgUpdateUser(userId, changes);
+            if (!user) return void res.status(404).json({ error: 'User not found' });
+            await invalidateProfileCaches(existing);
+            await invalidateProfileCaches(user);
             const userData = {
                 _id: user._id,
                 fullName: user.fullName,
@@ -1507,10 +1538,28 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
                 user: userData
             });
         }
-        catch (error) {
-            res.status(500).json({ error: 'Failed to update profile' });
+        catch (error: any) {
+            res.status(error?.code === '23505' ? 409 : 500).json({ error: error?.code === '23505' ? 'Email is already in use' : 'Failed to update profile' });
         }
     });
+    app.get('/api/user/notification-settings', requireAuth, async (req, res) => {
+        try {
+            const user = await pgFindUserById(String((req as any).user?._id || (req.session as any)?.user?.userId || (req.session as any)?.userId));
+            if (!user) return void res.status(404).json({ error: 'User not found' });
+            res.json({ notificationSettings: notificationSettingsFor(user) });
+        } catch { res.status(503).json({ error: 'Notification settings unavailable' }); }
+    });
+    const saveNotificationSettings: import('express').RequestHandler = async (req, res) => {
+        const parsed = notificationSettingsSchema.safeParse(req.body);
+        if (!parsed.success || !Object.keys(parsed.data).length) return void res.status(400).json({ error: 'Invalid notification settings' });
+        try {
+            const user = await pgUpdateUser(String((req as any).user?._id || (req.session as any)?.user?.userId || (req.session as any)?.userId), { notificationSettings: parsed.data });
+            if (!user) return void res.status(404).json({ error: 'User not found' });
+            res.json({ notificationSettings: notificationSettingsFor(user) });
+        } catch { res.status(503).json({ error: 'Could not save notification settings' }); }
+    };
+    app.patch('/api/user/notification-settings', requireAuth, saveNotificationSettings);
+    app.put('/api/user/notification-settings', requireAuth, saveNotificationSettings);
     // Forgot password
     app.post("/api/auth/forgot-password", async (req, res) => {
         try {
@@ -1563,7 +1612,7 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
     app.post("/api/auth/reset-password", async (req, res) => {
         try {
             const { token, newPassword } = req.body;
-            if (!token || !newPassword || newPassword.length < 6) {
+            if (typeof token !== 'string' || !token || token.length > 512 || typeof newPassword !== 'string' || newPassword.length < 8 || Buffer.byteLength(newPassword, 'utf8') > 72) {
                 return void res.status(400).json({ error: 'Invalid password' });
             }
             const crypto = await import('crypto');
@@ -1573,13 +1622,8 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
                 return void res.status(400).json({ error: 'Invalid or expired reset token' });
             }
             const bcrypt = await import('bcrypt');
-            user.passwordHash = await bcrypt.default.hash(newPassword, 12);
-            user.resetPasswordToken = undefined;
-            (user as any).resetPasswordExpires = undefined;
-            const passwordPatch = {
-                passwordHash: user.passwordHash, resetPasswordToken: undefined, resetPasswordExpires: undefined,
-            };
-            await pgUpdateUser(String(user._id), passwordPatch);
+            const passwordHash = await bcrypt.default.hash(newPassword, 12);
+            if (!await pgResetUserPassword(tokenHash, passwordHash)) return void res.status(400).json({ error: 'Invalid or expired reset token' });
             res.json({ message: 'Password has been reset successfully.' });
         }
         catch (error) {
@@ -1732,6 +1776,7 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
                 }
             }).single('avatar');
             upload(req, res, async (uploadErr: any) => {
+              try {
                 if (uploadErr) {
                     if (uploadErr.code === 'LIMIT_FILE_SIZE') {
                         return void res.status(413).json({ error: 'File too large. Maximum size: 5MB' });
@@ -1744,7 +1789,11 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
                 const userId = (req.session as any)?.user?.userId || (req as any).user?._id?.toString();
                 if (!userId)
                     return void res.status(401).json({ error: 'Not authenticated' });
-                const metadata = await sharp(req.file.buffer).metadata();
+                const user: any = await pgFindUserById(userId);
+                if (!user) return void res.status(404).json({ error: 'User not found' });
+                let metadata;
+                try { metadata = await sharp(req.file.buffer, { limitInputPixels: 40_000_000 }).metadata(); }
+                catch { return void res.status(400).json({ error: 'Invalid image file' }); }
                 if (!metadata.width || !metadata.height || metadata.width < 100 || metadata.height < 100) {
                     return void res.status(400).json({ error: 'Image too small. Minimum size: 100x100px' });
                 }
@@ -1752,25 +1801,26 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
                     .resize(400, 400, { fit: 'cover', position: 'centre' })
                     .webp({ quality: 80 })
                     .toBuffer();
-                const shortId = userId.slice(-8);
-                const s3Key = `avatars/user_${shortId}_${Date.now()}.webp`;
+                const s3Key = `avatars/user_${userId}_${Date.now()}.webp`;
                 const avatarUrl = await uploadToS3(s3Key, webpBuffer, 'image/webp');
-                const user: any = await pgFindUserById(userId);
-                if (!user)
-                    return void res.status(404).json({ error: 'User not found' });
                 const oldAvatar = user.avatar;
                 user.avatar = avatarUrl;
                 user.updatedAt = new Date();
-                await pgUpdateUser(String(user._id), { avatar: avatarUrl });
-                if (oldAvatar && oldAvatar.includes('.s3.') && oldAvatar.includes('/avatars/')) {
+                const updated = await pgUpdateUser(String(user._id), { avatar: avatarUrl });
+                if (!updated) return void res.status(404).json({ error: 'User not found' });
+                await invalidateProfileCaches(user);
+                const oldKey = ownedAvatarKey(oldAvatar, String(user._id));
+                if (oldKey) {
                     try {
-                        const oldKey = oldAvatar.split('.amazonaws.com/')[1];
-                        if (oldKey)
-                            await deleteFromS3(oldKey);
+                        await deleteFromS3(oldKey);
                     }
                     catch { }
                 }
                 res.json({ success: true, avatar: avatarUrl });
+              } catch (error: any) {
+                logger.error('Avatar upload failed');
+                if (!res.headersSent) res.status(500).json({ error: 'Avatar upload failed' });
+              }
             });
         }
         catch (error: any) {
@@ -1788,17 +1838,16 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
             if (!user)
                 return void res.status(404).json({ error: 'User not found' });
             const oldAvatar = user.avatar;
-            if (oldAvatar && oldAvatar.includes('.s3.') && oldAvatar.includes('/avatars/')) {
+            const updated = await pgUpdateUser(String(user._id), { avatar: null });
+            if (!updated) return void res.status(404).json({ error: 'User not found' });
+            await invalidateProfileCaches(user);
+            const oldKey = ownedAvatarKey(oldAvatar, String(user._id));
+            if (oldKey) {
                 try {
-                    const oldKey = oldAvatar.split('.amazonaws.com/')[1];
-                    if (oldKey)
-                        await deleteFromS3(oldKey);
+                    await deleteFromS3(oldKey);
                 }
                 catch { }
             }
-            user.avatar = undefined;
-            user.updatedAt = new Date();
-            await pgUpdateUser(String(user._id), { avatar: null });
             res.json({ success: true, message: 'Avatar removed' });
         }
         catch (error: any) {
@@ -1817,25 +1866,25 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
                 return void res.status(404).json({ success: false, message: 'User not found' });
             }
             const userIdStr = userId.toString();
-            if (user.avatar) {
+            const removed = await pgDeleteUser(userIdStr);
+            if (!removed) return void res.status(404).json({ success: false, message: 'User not found' });
+            const avatarKey = ownedAvatarKey(user.avatar, userIdStr);
+            if (avatarKey) {
                 try {
-                    const s3Module: any = await import('../services/s3-service' as any).catch(() => null);
-                    if (s3Module && typeof s3Module.deleteFromS3 === 'function') {
-                        const avatarKey = user.avatar.replace(/^https?:\/\/[^/]+\//, '');
-                        if (avatarKey)
-                            await s3Module.deleteFromS3(avatarKey);
-                    }
+                    const s3Module = await import('../services/s3-storage');
+                    await s3Module.deleteFromS3(avatarKey);
                 }
                 catch { }
             }
-            await pgDeleteUser(userIdStr);
+            await invalidateProfileCaches(user);
             const CacheManagerModule = (await import('../cache')).default;
             await CacheManagerModule.clearByPattern(`user-favorites:${userIdStr}`);
             await CacheManagerModule.del(`user_profile_${userIdStr}`);
             logger.log(`🗑️ Account deleted: user ${userIdStr} (PostgreSQL transaction)`);
             if (req.session) {
-                req.session.destroy(() => { });
+                await new Promise<void>((resolve, reject) => req.session.destroy(error => error ? reject(error) : resolve()));
             }
+            res.clearCookie('connect.sid');
             res.json({ success: true, message: 'Account deleted successfully' });
         }
         catch (error: any) {

@@ -4,30 +4,44 @@ import { CheckCircle, Crown, Sparkles, Loader2, AlertCircle } from "lucide-react
 import { useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { useAuth } from "@/hooks/useAuth";
+import { authQueryOptions } from '@/lib/auth-query';
+import { isAdFreeSubscription } from '@/lib/premium';
+import { useTranslation } from '@/hooks/useTranslation';
+import { subscriptionCopy } from '@/lib/subscription-copy';
 
 export default function PremiumSuccessPage() {
   const queryClient = useQueryClient();
   const [, setLocation] = useLocation();
   const { user, isLoading: authLoading } = useAuth();
+  const { language, t } = useTranslation();
+  const copy = subscriptionCopy(language);
   const [verified, setVerified] = useState<boolean | null>(null);
+  const [retry, setRetry] = useState(0);
 
   // Invalidate cache immediately, then poll until subscription shows active
   // (webhook may arrive a few seconds after the Paddle redirect).
   useEffect(() => {
+    if (!user?._id) { setVerified(false); return; }
+    const userId = user._id;
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    setVerified(null);
     let attempts = 0;
     const maxAttempts = 20;
 
     async function poll() {
-      await queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
-      await queryClient.refetchQueries({ queryKey: ["/api/auth/me"] });
-      const me = queryClient.getQueryData<any>(["/api/auth/me"]);
-      if (me?.user?.subscription?.isActive) {
-        setVerified(true);
-        return;
-      }
+      try {
+        const me = await queryClient.fetchQuery({ ...authQueryOptions, staleTime: 0, retry: false });
+        if (stopped) return;
+        if (me?.authenticated && me.user?._id === userId && isAdFreeSubscription(me.user.subscription)) {
+          setVerified(true);
+          return;
+        }
+      } catch { /* A provider/connection delay is not a payment confirmation. */ }
+      if (stopped) return;
       attempts++;
       if (attempts < maxAttempts) {
-        setTimeout(poll, 1500);
+        timer = setTimeout(poll, 1500);
       } else {
         // After 20s still not active — webhook may be delayed; show neutral state
         setVerified(false);
@@ -35,10 +49,11 @@ export default function PremiumSuccessPage() {
     }
 
     poll();
-  }, [queryClient]);
+    return () => { stopped = true; if (timer) clearTimeout(timer); };
+  }, [queryClient, user?._id, retry]);
 
   const sub = (user as any)?.subscription;
-  const isActive = sub?.isActive === true;
+  const isActive = verified === true && isAdFreeSubscription(sub);
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center p-4">
@@ -64,22 +79,22 @@ export default function PremiumSuccessPage() {
           <div className="space-y-2">
             <div className="flex items-center justify-center gap-2">
               <Loader2 className="w-5 h-5 text-[#FF4199] animate-spin" />
-              <p className="text-gray-400">Verifying your subscription…</p>
+              <p className="text-gray-400">{copy.checking}</p>
             </div>
           </div>
         ) : isActive ? (
           <div className="space-y-2">
-            <h1 className="text-3xl font-extrabold text-white">Welcome to Premium!</h1>
+            <h1 className="text-3xl font-extrabold text-white">{copy.active}</h1>
             <p className="text-gray-400">
-              Your subscription is active. Enjoy ad-free radio across all your devices.
+              {copy.broadcastAds}
             </p>
           </div>
         ) : (
           <div className="space-y-2">
-            <h1 className="text-2xl font-extrabold text-white">Payment received</h1>
+            <h1 className="text-2xl font-extrabold text-white">{user ? copy.checking : copy.signIn}</h1>
             <div className="flex items-center gap-2 justify-center text-amber-400">
               <AlertCircle className="w-4 h-4 flex-shrink-0" />
-              <p className="text-sm">Your account is being updated — this usually takes under a minute. Refresh if it doesn't activate soon.</p>
+              <p className="text-sm">{copy.pending}</p>
             </div>
           </div>
         )}
@@ -88,9 +103,7 @@ export default function PremiumSuccessPage() {
         {isActive && (
           <div className="bg-white/5 rounded-2xl border border-white/10 p-4 space-y-2.5 text-left">
             {[
-              "Ad-free listening enabled",
-              "HD streams unlocked",
-              "All devices synced",
+              t('premium_verified_adfree', 'MegaRadio website ads removed'),
             ].map(b => (
               <div key={b} className="flex items-center gap-2.5 text-sm text-gray-300">
                 <Sparkles className="w-4 h-4 text-[#FF4199] flex-shrink-0" />
@@ -103,15 +116,15 @@ export default function PremiumSuccessPage() {
         {/* CTA */}
         <Button
           className="w-full h-12 text-base font-bold rounded-2xl bg-gradient-to-r from-[#FF4199] to-[#FF6B35] hover:opacity-90 border-0 text-white shadow-lg shadow-[#FF4199]/30"
-          onClick={() => setLocation("/")}
+          onClick={() => setLocation(`/${language}`)}
         >
-          {isActive ? "Start Listening" : "Go to Home"}
+          {t('home', 'Home')}
         </Button>
 
         {!isActive && verified === false && (
-          <p className="text-xs text-gray-600">
-            If your account doesn't update within a few minutes, contact support.
-          </p>
+          <Button variant="outline" onClick={() => user ? setRetry(n => n + 1) : setLocation(`/${language}/login?returnTo=${encodeURIComponent(`/${language}/premium/success`)}`)}>
+            {user ? copy.retry : copy.signIn}
+          </Button>
         )}
       </div>
     </div>

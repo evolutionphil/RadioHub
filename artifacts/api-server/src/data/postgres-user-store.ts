@@ -174,6 +174,31 @@ export async function pgFindUserByResetToken(tokenHash: string): Promise<any | n
   return shape(result.rows[0]);
 }
 
+/** Consume a reset token exactly once and revoke prior sessions in the same transaction. */
+export async function pgResetUserPassword(tokenHash: string, passwordHash: string): Promise<boolean> {
+  const client = await getPostgresPool().connect();
+  try {
+    await client.query('BEGIN');
+    const result = await client.query<{ id: string }>(
+      `UPDATE users SET password_hash=$2,
+         source=(COALESCE(source,'{}'::jsonb)-'resetPasswordToken'-'resetPasswordExpires') || jsonb_build_object('passwordHash',$2::text),
+         updated_at=now()
+       WHERE source->>'resetPasswordToken'=$1
+         AND NULLIF(source->>'resetPasswordExpires','')::timestamptz>now() RETURNING id`, [tokenHash, passwordHash],
+    );
+    const id = result.rows[0]?.id;
+    if (id) {
+      await client.query('UPDATE auth_tokens SET is_revoked=true WHERE user_id=$1', [id]);
+      await client.query(`DELETE FROM user_sessions WHERE sess->>'userId'=$1 OR sess#>>'{user,userId}'=$1 OR sess#>>'{passport,user}'=$1`, [id]);
+    }
+    await client.query('COMMIT');
+    return !!id;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally { client.release(); }
+}
+
 export async function pgFindUserByIdentity(input: {
   email?: string; username?: string; googleId?: string; facebookId?: string; appleId?: string;
 }): Promise<any | null> {
@@ -232,6 +257,9 @@ export async function pgUpdateUser(id: string, patch: Record<string, any>): Prom
     }
     // Ignore undefined (an omitted field), but retain explicit null/removals.
     const changes = Object.fromEntries(Object.entries(patch).filter(([, value]) => value !== undefined));
+    if (changes.notificationSettings && typeof changes.notificationSettings === 'object') {
+      changes.notificationSettings = { ...(current.notificationSettings || {}), ...changes.notificationSettings };
+    }
     const next = { ...current, ...changes, preferences: changes.preferences
       ? { ...(current.preferences || {}), ...changes.preferences } : current.preferences };
     const source = { ...(locked.rows[0].source || {}), ...changes, _id: id };

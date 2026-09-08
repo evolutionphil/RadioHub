@@ -13,6 +13,8 @@ import { useToast } from "@/hooks/use-toast";
 import { useNotificationService } from "@/services/NotificationService";
 import { apiRequest } from "@/lib/queryClient";
 import { useTranslation } from "@/hooks/useTranslation";
+import { useSeoRouting } from '@/hooks/useSeoRouting';
+import { safeAuthReturnTo, withAuthReturnTo } from '@/lib/safe-auth-return';
 import { 
   Eye, 
   EyeOff, 
@@ -47,6 +49,8 @@ export default function SignupPage() {
   const notificationService = useNotificationService();
   const queryClient = useQueryClient();
   const { t } = useTranslation();
+  const { getLocalizedUrl } = useSeoRouting();
+  const returnTo = safeAuthReturnTo(new URLSearchParams(window.location.search).get('returnTo'));
 
   const form = useForm<SignupFormData>({
     resolver: zodResolver(signupSchema),
@@ -77,7 +81,7 @@ export default function SignupPage() {
       
       queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
       // Redirect to login or dashboard based on email verification requirement
-      setLocation("/auth/login");
+      setLocation(withAuthReturnTo(getLocalizedUrl('/login'), returnTo));
     },
     onError: (error: any) => {
       toast({
@@ -94,7 +98,7 @@ export default function SignupPage() {
   const handleSocialLogin = async (provider: 'google' | 'apple' | 'facebook') => {
     try {
       // Redirect to social auth endpoint
-      window.location.href = `/api/auth/${provider}`;
+      window.location.href = withAuthReturnTo(`/api/auth/${provider}`, returnTo);
     } catch (error) {
       toast({
         title: t('auth_error', 'Kimlik Doğrulama Hatası'),
@@ -313,7 +317,7 @@ export default function SignupPage() {
             {/* Login Link */}
             <div className="text-center text-sm text-gray-600">
               {t('auth_already_have_account', 'Zaten hesabınız var mı?')}{" "}
-              <Link href="/auth/login">
+              <Link href={withAuthReturnTo(getLocalizedUrl('/login'), returnTo)}>
                 <span className="text-blue-600 hover:text-blue-700 font-medium cursor-pointer">
                   {t('auth_sign_in_here', 'Buradan giriş yapın')}
                 </span>

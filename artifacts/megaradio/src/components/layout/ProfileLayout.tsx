@@ -1,9 +1,12 @@
 import { useAuth } from "@/hooks/useAuth";
+import { logoutAccount } from '@/lib/logout';
+import { toast } from '@/hooks/use-toast';
 import { useLocation } from "wouter";
 import { useState, useEffect, startTransition } from "react";
 import { Menu, X, Heart, Compass, User as UserIcon, MessageCircle, MessageSquareWarning, LogOut } from "lucide-react";
 import { useSeoRouting } from "@/hooks/useSeoRouting";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { apiRequest } from '@/lib/queryClient';
 
 function NavLink({ href, children, isActive }: { href: string; children: React.ReactNode; isActive: boolean }) {
   const [, navigate] = useLocation();
@@ -64,7 +67,8 @@ export default function ProfileLayout({ children }: ProfileLayoutProps) {
   }, [queryClient]);
 
   const { data: unreadData } = useQuery<{ count: number }>({
-    queryKey: ["/api/messages/unread-count"],
+    queryKey: ["/api/messages/unread-count", user?._id || (user as any)?.id || ''],
+    queryFn: async ({ signal }) => (await apiRequest('GET', '/api/messages/unread-count', { signal })).json(),
     enabled: !!user,
     refetchInterval: 15000,
   });
@@ -123,23 +127,23 @@ export default function ProfileLayout({ children }: ProfileLayoutProps) {
                 <div className="text-base font-bold">Feedback</div>
               </NavLink>
 
-              <div
+              <button
                 onClick={() => {
-                  fetch('/api/auth/logout', { method: 'POST' })
+                  logoutAccount()
                     .then(() => {
-                      window.location.href = '/';
+                      window.location.href = getLocalizedUrl('/');
                     })
                     .catch(() => {
-                      window.location.href = '/';
+                      toast({ title: 'Logout failed. Please try again.', variant: 'destructive' });
                     });
                 }}
-                className="flex cursor-pointer items-center rounded px-5 py-3"
+                className="flex w-full cursor-pointer items-center rounded px-5 py-3 text-left"
               >
                 <div className="mr-5">
                   <LogOut className="w-6 h-6 text-[#FF4199]" />
                 </div>
                 <div className="text-base font-bold">Logout</div>
-              </div>
+              </button>
             </div>
           </div>
         </div>
