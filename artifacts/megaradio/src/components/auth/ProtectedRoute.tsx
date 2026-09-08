@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
@@ -23,6 +23,7 @@ export function ProtectedRoute({
   const { t } = useTranslation();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
+  const redirectStarted = useRef(false);
   const transientError = !!error && isTransientAuthError(error);
   // Use the actual entry URL, not a translation-provider state that can still
   // be catching up during navigation. Keep the full safe path/query/hash.
@@ -32,7 +33,14 @@ export function ProtectedRoute({
   );
 
   useEffect(() => {
+    if (isAuthenticated) redirectStarted.current = false;
     if (!isLoading && !isAuthenticated && !transientError) {
+      // PublicRouter keeps the previous route mounted while its lazy login
+      // destination loads. Toast/URL rerenders must not redirect again and
+      // recursively wrap the login URL in its own returnTo parameter.
+      if (redirectStarted.current) return;
+      if (new URL(loginUrl, window.location.origin).pathname === window.location.pathname) return;
+      redirectStarted.current = true;
       if (showToast) {
         toast({
           title: t('auth_required', 'Authentication Required'),
