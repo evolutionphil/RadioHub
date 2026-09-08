@@ -115,6 +115,52 @@ export interface JunkDecision {
   reason?: string;
 }
 
+export const STREAM_HEALTH_FRESHNESS_MS = 72 * 60 * 60 * 1000;
+const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+function healthTimestamp(value: unknown): number {
+  return value instanceof Date || typeof value === 'string' && value.trim()
+    ? new Date(value as string).getTime() : NaN;
+}
+function freshHealthTimestamp(value: unknown, now: number): number {
+  const time = healthTimestamp(value);
+  return Number.isFinite(time) && time <= now && now - time <= STREAM_HEALTH_FRESHNESS_MS ? time : NaN;
+}
+
+/** Explicit ownership is required before automation can reverse a noindex.
+ * Unknown historical flags, manual decisions and duplicate redirects are never
+ * adopted by this policy. Provenance is additive runtime metadata, not a manual
+ * field marker; the immutable migration archive is not involved.
+ */
+export function automaticNoIndexPatch(station: any, verdict: JunkDecision, now = Date.now()): Record<string, any> {
+  if (station.manualEditFields?.noIndex || station.redirectToSlug) return {};
+  if (verdict.isJunk && station.noIndex !== true) {
+    if (verdict.reason === 'stream-dead-30d' && !Number.isFinite(freshHealthTimestamp(station.lastCheckTime, now))) return {};
+    return { noIndex: true, automaticNoIndex: {
+      owner: 'radiohub-junk-policy', version: 1, active: true,
+      reason: verdict.reason || 'unspecified-junk', markedAt: new Date(now).toISOString(),
+      ...(verdict.reason === 'stream-dead-30d' ? { failedCheckAt: new Date(station.lastCheckTime).toISOString() } : {}),
+    } };
+  }
+  const provenance = station.automaticNoIndex;
+  if (verdict.isJunk || station.noIndex !== true || !provenance ||
+      provenance.owner !== 'radiohub-junk-policy' || provenance.version !== 1 ||
+      provenance.active !== true || provenance.reason !== 'stream-dead-30d') return {};
+  const failed = healthTimestamp(provenance.failedCheckAt);
+  const checked = freshHealthTimestamp(station.lastCheckTime, now);
+  const succeeded = freshHealthTimestamp(station.lastCheckOkTime, now);
+  if (station.lastCheckOk !== true || !Number.isFinite(failed) || !Number.isFinite(checked) ||
+      !Number.isFinite(succeeded) || checked <= failed || succeeded <= failed) return {};
+  return { noIndex: false, automaticNoIndex: { ...provenance, active: false, recoveredAt: new Date(now).toISOString() } };
+}
+
+/** Guard the observed policy inputs under the catalog UPDATE's row lock. */
+export function automaticNoIndexExpectedFilter(station: any): Record<string, any> {
+  return Object.fromEntries([
+    'noIndex', 'automaticNoIndex', 'manualEditFields', 'redirectToSlug',
+    'name', 'slug', 'url', 'lastCheckOk', 'lastCheckTime', 'lastCheckOkTime',
+  ].map(key => [key, station[key] === undefined ? { $exists: false } : { $eq: station[key] }]));
+}
+
 /**
  * Decide whether a station record is junk and should never be indexed.
  * Returns the matched reason for audit/logging.
@@ -137,47 +183,16 @@ export function evaluateJunkStation(station: {
   if (!name) return { isJunk: true, reason: 'empty-name' };
   if (!station.url) return { isJunk: true, reason: 'empty-stream-url' };
 
-  // Broken stream rule (TR audit P1):
-  // If Radio-Browser has marked the stream as down (`lastCheckOk === false`)
-  // AND the station has not recovered in the last 30 days, treat the page
-  // as junk. A station detail page advertising "Listen Live" while the
-  // upstream URL has been dead for a month is a clear "thin/low-quality"
-  // signal and triggers Google's Crawled-not-indexed bucket.
-  // We DO NOT junk a station that just had a single failed health check —
-  // streams flap, and we want to avoid flushing legitimate stations from
-  // the index over a transient outage. The 30-day floor is conservative.
+  // A dated failure is not evidence of today's availability. Require a fresh
+  // failed check and a known successful check more than 30 days before it.
+  // Missing successful history cannot prove a continuous 30-day outage.
   if (station.lastCheckOk === false) {
-    const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
-    const lastOk = station.lastCheckOkTime
-      ? new Date(station.lastCheckOkTime as any).getTime()
-      : NaN;
-    const lastCheck = station.lastCheckTime
-      ? new Date(station.lastCheckTime as any).getTime()
-      : NaN;
     const now = Date.now();
-
-    // Case A: we know when it last worked, and that was 30+ days ago.
-    if (Number.isFinite(lastOk) && now - lastOk > THIRTY_DAYS_MS) {
+    const lastOk = healthTimestamp(station.lastCheckOkTime);
+    const lastCheck = freshHealthTimestamp(station.lastCheckTime, now);
+    if (Number.isFinite(lastOk) && Number.isFinite(lastCheck) && lastCheck - lastOk > THIRTY_DAYS_MS) {
       return { isJunk: true, reason: 'stream-dead-30d' };
     }
-
-    // Case B (TR audit P1 follow-up): we have no successful-check timestamp
-    // at all (`lastCheckOkTime` missing), but Radio-Browser HAS been health-
-    // checking the station (`lastCheckTime` exists) and the most recent
-    // check was 30+ days ago and still failed. This catches stations that
-    // were never observed in a healthy state — exactly the "broken-stream-
-    // but-indexable" bucket the TR audit flagged. Without this we fail-open
-    // forever for anything Radio-Browser has never seen working.
-    if (
-      !Number.isFinite(lastOk) &&
-      Number.isFinite(lastCheck) &&
-      now - lastCheck > THIRTY_DAYS_MS
-    ) {
-      return { isJunk: true, reason: 'stream-never-recovered-30d' };
-    }
-
-    // Otherwise fail-open: incomplete telemetry, keep it indexable and let
-    // the next Radio-Browser sync populate the timestamps.
   }
 
   // NOTE: We deliberately do NOT mark every `-N` slug as junk here. Many
@@ -473,6 +488,7 @@ export function getIndexableLanguagesForStation(
     bitrate?: number;
     lastCheckOk?: boolean;
     lastCheckOkTime?: Date | string | null;
+    lastCheckTime?: Date | string | null;
     country?: string;
     countryCode?: string;
     language?: string;

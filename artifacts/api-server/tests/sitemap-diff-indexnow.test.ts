@@ -190,12 +190,13 @@ test('computeStationsSitemapUrlsForChunk emits one URL per indexable, non-junk s
     [String(idNoIndex), { ...goodStation('delta-fm', 'Delta FM'), _id: idNoIndex, noIndex: true }],
     // missing slug
     [String(idNoSlug), { ...goodStation('placeholder', 'No Slug'), _id: idNoSlug, slug: undefined }],
-    // junk station: stream dead 31 days (lastCheckOk=false + lastCheckOkTime
-    // older than 30d) trips evaluateJunkStation's stream-dead-30d rule.
+    // A current failed check plus a successful check older than30days is
+    // required; stale failure history alone does not establish an outage.
     [String(idJunk), {
       ...goodStation('echo-fm', 'Echo FM'),
       _id: idJunk,
       lastCheckOk: false,
+      lastCheckTime: new Date(),
       lastCheckOkTime: new Date(Date.now() - 31 * 24 * 60 * 60 * 1000),
     }],
     // idMissing intentionally absent → silently dropped

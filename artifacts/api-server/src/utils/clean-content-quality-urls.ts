@@ -27,6 +27,8 @@ import {
   evaluateJunkStation,
   getEligibleLanguages,
   frequencyPrefixBaseSlug,
+  automaticNoIndexPatch,
+  automaticNoIndexExpectedFilter,
 } from '../seo/junk-station-rules';
 
 const DRY_RUN = process.argv.includes('--dry-run');
@@ -201,23 +203,18 @@ export async function runJunkCleanup(
       }
     }
 
-    const isJunk = verdict.isJunk || !!dupeOfBase;
-    const junkReason = verdict.isJunk
-      ? verdict.reason
-      : dupeOfBase
-        ? `duplicate-of:${dupeOfBase}`
-        : '';
-
-    if (isJunk && station.noIndex !== true) {
-      ops.noIndex = true;
+    // Duplicates must never acquire health-only provenance that a later
+    // successful stream check could reverse. Preserve manual/unknown flags.
+    const policyVerdict = dupeOfBase ? { isJunk: true, reason: `duplicate-of:${dupeOfBase}` } : verdict;
+    const policyPatch = automaticNoIndexPatch({ ...station, slug: ops.slug ?? currentSlug }, policyVerdict);
+    Object.assign(ops, policyPatch);
+    if (policyPatch.noIndex === true) {
       junkMarked++;
       updateActions.push('mark-noindex');
-      reasons.push(`junk:${junkReason}`);
-    } else if (!isJunk && station.noIndex === true) {
-      // Previously flagged but the new ruleset cleared it — un-flag.
-      ops.noIndex = false;
+      reasons.push(`junk:${policyVerdict.reason}`);
+    } else if (policyPatch.noIndex === false) {
       updateActions.push('clear-noindex');
-      reasons.push('reclassified-as-valid');
+      reasons.push('fresh-success-after-owned-health-failure');
     }
 
     if (Object.keys(ops).length === 0) continue;
@@ -245,7 +242,7 @@ export async function runJunkCleanup(
     // ---- 4) Write -----------------------------------------------------------
     if (!dryRun) {
       options.assertOwned?.();
-      await pgCatalog().update({ _id: station._id }, { $set: ops });
+      await pgCatalog().update({ _id: station._id, ...automaticNoIndexExpectedFilter(station) }, { $set: ops }, { respectManualFields: true });
     }
   }
 

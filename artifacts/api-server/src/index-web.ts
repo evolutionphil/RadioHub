@@ -211,9 +211,8 @@ function getHstsHeader(): string {
 }
 
 // 410 Gone for static assets removed during monorepo migration.
-// Google may still have these URLs in its index from earlier crawls; 410
-// removes them from the crawl queue immediately (faster than waiting for 404
-// recrawl cycles that can take months).
+// Google may still know these URLs from earlier crawls. 410 describes their
+// deliberate removal; Google treats 404 and 410 alike for indexing.
 const GONE_ASSET_PATHS = new Set([
   '/images/heroleft-300w.webp',
   '/images/heroleft-500w.webp',
@@ -1107,8 +1106,8 @@ app.use('/api/stream', streamServiceProxy);
         // Architect P0: junk station URLs (test feeds, codec-suffix slugs,
         // song-name slugs, frequency-prefix duplicates, or DB records with
         // noIndex:true) must return 410 Gone — NOT 200/noindex and NOT 301.
-        // Google de-indexes 410 responses dramatically faster than it drops
-        // noindex pages, and 410 removes the URL from the crawl queue entirely.
+        // This is the catalog's exclusion policy, not a guarantee that Google
+        // will remove the URL immediately or stop recrawling it.
         // Must mirror the same check in server/index.ts (dev/monolith).
         const stationIsJunk =
           !stationNotFound && !!seoData.pageData?.stationIsJunk;
@@ -1123,14 +1122,11 @@ app.use('/api/stream', streamServiceProxy);
 
         // Not-found station pages: deleted stations, renamed slugs, or
         // country-code prefixed URLs (/bh/, /cz/, /ir/…) where the station
-        // no longer exists in MongoDB. Return 410 Gone — Google removes 410
-        // URLs from its crawl queue immediately, whereas 404 gets re-crawled
-        // for months before the URL is dropped from the index. DB errors do
-        // NOT set stationNotFound (they fall through to a placeholder), so
-        // transient outages are safe.
+        // no longer exists in PostgreSQL. Keep the existing 410 response for
+        // absent catalog records. Google treats 404 and 410 alike. Transient
+        // database failures take the explicit 503 path above, never this path.
         if (stationNotFound) {
-          // Return 410 Gone for any not-found page regardless of pageType —
-          // Google de-indexes 410 immediately; 404 stays in the crawl queue for months.
+          // Return the same absent-record response for every station route.
           const { sendJunkGone } = await import('./seo/send-junk-gone');
           sendJunkGone(res);
           return;

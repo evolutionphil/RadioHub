@@ -9,6 +9,8 @@ import {
   evaluateJunkStation,
   slugifyStationName,
   frequencyPrefixBaseSlug,
+  automaticNoIndexPatch,
+  automaticNoIndexExpectedFilter,
 } from '../seo/junk-station-rules';
 
 // Cache for sync status
@@ -408,7 +410,7 @@ export class SyncService {
       const batchUuids = nonBlacklistedBatch.map(s => s.stationuuid);
       const existingStations = await pgCatalog().find({ stationuuid: { $in: batchUuids } });
 
-      const existingByUuid = new Map<string, { slug?: string; noIndex?: boolean }>(
+      const existingByUuid = new Map<string, any>(
         existingStations.map((s: any) => [s.stationuuid, s])
       );
 
@@ -472,7 +474,7 @@ export class SyncService {
             lastCheckTime: doc.lastCheckTime,
           });
           if (verdict.isJunk) {
-            doc.noIndex = true;
+            Object.assign(doc, automaticNoIndexPatch({ ...doc, slug: probeSlug }, verdict));
             batchAutoFlagged++;
           }
           return doc;
@@ -523,33 +525,24 @@ export class SyncService {
           const fields = this.getWhitelistedUpdateFields(apiStation, existing);
           // Re-evaluate junk for the merged view: incoming feed values plus
           // the persisted slug (which is what the sitemap actually emits).
-          const verdict = evaluateJunkStation({
-            name: apiStation.name,
-            slug: existing.slug || slugifyStationName(apiStation.name || ''),
-            url: apiStation.url,
-            homepage: apiStation.homepage,
-            tags: apiStation.tags,
-            bitrate: apiStation.bitrate,
-            lastCheckOk: apiStation.lastcheckok === 1,
-            lastCheckOkTime: apiStation.lastcheckoktime
-              ? new Date(apiStation.lastcheckoktime)
-              : undefined,
-            lastCheckTime: apiStation.lastchecktime
-              ? new Date(apiStation.lastchecktime)
-              : undefined,
-          });
-          let isJunk = verdict.isJunk;
-          if (!isJunk) {
-            const candidateBase = freqCandidates.get(apiStation.stationuuid);
-            if (candidateBase && existingBaseSlugs.has(candidateBase)) {
-              isJunk = true;
-            }
+          // Match what the native provider writer will actually retain, not
+          // unconditionally the incoming name/URL or manually protected fields.
+          const merged = { ...existing };
+          for (const [field, value] of Object.entries(fields)) {
+            if (!existing.manualEditFields?.[field]) merged[field] = value;
           }
-          if (isJunk && existing.noIndex !== true) {
-            fields.noIndex = true;
+          merged.slug ||= slugifyStationName(merged.name || '');
+          const candidateBase = freqCandidates.get(apiStation.stationuuid);
+          const verdict = candidateBase && existingBaseSlugs.has(candidateBase)
+            ? { isJunk: true, reason: `duplicate-of:${candidateBase}` }
+            : evaluateJunkStation(merged);
+          const policyPatch = automaticNoIndexPatch(merged, verdict);
+          Object.assign(fields, policyPatch);
+          if (policyPatch.noIndex === true) {
             autoFlagged++;
           }
           return {
+            policyFilter: Object.keys(policyPatch).length ? automaticNoIndexExpectedFilter(existing) : null,
             updateOne: {
               filter: { stationuuid: apiStation.stationuuid },
               update: { $set: fields }
@@ -560,7 +553,17 @@ export class SyncService {
         try {
           const updateResult = await this.withPostgresRetry(
             `bulkWrite.batch${Math.ceil((i + 1) / batchSize)}`,
-            () => pgCatalog().updateProviderBatch(bulkOps.map((op) => ({ uuid: op.updateOne.filter.stationuuid, patch: op.updateOne.update.$set })), syncLog._id),
+            async () => {
+              const ordinary = bulkOps.filter(op => !op.policyFilter);
+              let modifiedCount = (await pgCatalog().updateProviderBatch(ordinary.map(op => ({ uuid: op.updateOne.filter.stationuuid, patch: op.updateOne.update.$set })), syncLog._id)).modifiedCount;
+              for (const op of bulkOps.filter(op => op.policyFilter)) {
+                const result = await pgCatalog().update({ ...op.updateOne.filter, ...op.policyFilter }, op.updateOne.update, {
+                  respectManualFields: true, protectLocalCounters: true, fillMissingFaviconOnly: true, syncRunId: syncLog._id,
+                });
+                modifiedCount += result.modifiedCount;
+              }
+              return { modifiedCount };
+            },
           );
           updated += updateResult.modifiedCount;
           logger.log(`🔄 Batch ${Math.ceil((i + 1) / batchSize)}: Updated ${updateResult.modifiedCount} existing stations`);

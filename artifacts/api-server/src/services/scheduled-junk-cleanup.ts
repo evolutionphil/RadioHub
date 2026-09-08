@@ -23,6 +23,10 @@ import { runJunkCleanup, type JunkCleanupResult } from '../utils/clean-content-q
  *   still in flight is silently skipped — DB writes from `runJunkCleanup` are
  *   per-station updateOne, but a second concurrent cursor would double the
  *   read pressure and write contention.
+ *
+ * noIndex transitions are delegated to the shared provenance-aware policy:
+ * only fresh health evidence can recover an automatically health-flagged
+ * station. Manual/unknown flags and duplicate redirects remain untouched.
  */
 class ScheduledJunkCleanup {
   private static instance: ScheduledJunkCleanup;

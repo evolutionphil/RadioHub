@@ -7,9 +7,9 @@
  *
  * Architect P0: when the unified indexability gate
  * (`getIndexableLanguagesForStation`) returns empty because the station is
- * junk or noIndex:true, the handler MUST return HTTP 410 Gone so Google drops
- * the URL from the index aggressively. 200/noindex lets the URL linger for
- * months in "Crawled - currently not indexed".
+ * excluded by the catalog policy, the handler returns HTTP 410 Gone. Google
+ * treats 404 and 410 alike for indexing; neither guarantees immediate removal
+ * or an end to recrawling. Recovery must update the catalog decision itself.
  */
 
 import type { Response } from 'express';

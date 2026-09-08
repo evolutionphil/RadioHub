@@ -3,6 +3,7 @@ import { isDeepStrictEqual } from 'node:util';
 import type pg from "pg";
 import { getPostgresPool } from "../postgres-runtime";
 import type { StationDescriptionChange } from '../utils/station-description-patch';
+import { assertRecoverableStation, getStreamRecoverySnapshot } from '../utils/station-health-recovery';
 
 export type CatalogDocument = Record<string, any>;
 export type CatalogFilter = Record<string, any>;
@@ -452,6 +453,39 @@ export class PostgresCatalogStore {
   }
   async patchById(id: string, patch: CatalogDocument): Promise<CatalogDocument | null> {
     return (await this.update({ _id: id },patch,{ returnDocument: true })).document || null;
+  }
+  async recoverStreamHealth(id: string, expected: object, evidence: { checkedAt: string; contentType: string; bytesRead: number }): Promise<
+    { status: 'missing' } | { status: 'conflict' } | { status: 'rejected' } | { status: 'updated'; station: CatalogDocument }
+  > {
+    const checkedAt = Date.parse(evidence.checkedAt);
+    if (!/^[a-f0-9]{24}$/i.test(id) || !Number.isFinite(checkedAt) || checkedAt > Date.now() + 5000 ||
+        Date.now() - checkedAt > 5 * 60 * 1000 || typeof evidence.contentType !== 'string' ||
+        !/^(audio\/[a-z0-9.+-]+|application\/ogg)$/.test(evidence.contentType) || evidence.contentType.length > 256 ||
+        evidence.bytesRead !== 1024) return { status: 'rejected' };
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query("SET LOCAL lock_timeout='5s'");
+      await client.query("SET LOCAL statement_timeout='15s'");
+      const row = (await client.query('SELECT * FROM stations WHERE id=$1 FOR UPDATE', [id])).rows[0];
+      if (!row) { await client.query('ROLLBACK'); return { status: 'missing' }; }
+      const station = catalogShape(row);
+      if (!isDeepStrictEqual(getStreamRecoverySnapshot(station), expected)) {
+        await client.query('ROLLBACK'); return { status: 'conflict' };
+      }
+      try { assertRecoverableStation(station); }
+      catch { await client.query('ROLLBACK'); return { status: 'rejected' }; }
+      const sourcePatch = {
+        lastCheckOkTime: evidence.checkedAt, lastLocalCheckTime: evidence.checkedAt,
+        healthRecovery: { actor: 'admin-reviewed', checkedAt: evidence.checkedAt, previousSnapshot: expected,
+          contentType: evidence.contentType, bytesRead: evidence.bytesRead },
+      };
+      const saved = await client.query(`UPDATE stations SET no_index=false,last_check_ok=true,last_check_time=$2::timestamptz,
+        updated_at=now(),source=COALESCE(source,'{}'::jsonb)||$3::jsonb WHERE id=$1 RETURNING *`,
+        [id, evidence.checkedAt, JSON.stringify(sourcePatch)]);
+      await client.query('COMMIT');
+      return { status: 'updated', station: catalogShape(saved.rows[0]) };
+    } catch (error) { await client.query('ROLLBACK'); throw error; } finally { client.release(); }
   }
   async redirectDuplicates(primaryId: string, canonicalSlug: string, losers: Array<{ id:string; slug:string }>): Promise<number> {
     const client=await this.pool.connect();
