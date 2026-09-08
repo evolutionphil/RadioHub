@@ -1,4 +1,4 @@
-import { useRoute, Link, useLocation } from "wouter";
+import { useRoute, Link, useLocation, useSearch } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { useState, useEffect, lazy, Suspense, memo, useCallback, useMemo } from "react";
 import { Button } from "@/components/ui/button";
@@ -7,6 +7,8 @@ import { useAuth } from "@/hooks/useAuth";
 import { useStationRatings } from '@/hooks/useStationRatings';
 import { useStationRelatedStations, useStationDetailExpansion } from '@/hooks/useStationRelatedStations';
 import { usePremiumStatus } from "@/hooks/usePremiumStatus";
+import { getAdSensePageType } from '@/lib/adsense-runtime';
+import { AD_SLOTS, DIRECT_AD_ROTATION_MS } from '@/lib/advertising-placements';
 import { useTranslation } from "@/hooks/useTranslation";
 import { useGlobalPlayer } from "@/hooks/useGlobalPlayer";
 import FavoriteButton from "@/components/ui/favorite-button";
@@ -127,6 +129,7 @@ export default function StationDetails() {
   // Use useSeoRouting to get cleanPath which handles ALL translated URLs automatically
   const { cleanPath, getLocalizedUrl, navigateWithLanguage, currentLanguage } = useSeoRouting();
   const [, setLocation] = useLocation();
+  useSearch();
   
   // Extract station identifier from cleanPath (already reverse-translated to English)
   // This works for ALL 57 languages automatically: /bg/stantsiya/dance-wave-2 → /station/dance-wave-2
@@ -163,7 +166,8 @@ export default function StationDetails() {
   
   const { user, isAuthenticated } = useAuth();
   const { isPremium, isLoading: premiumLoading, error: premiumError } = usePremiumStatus();
-  const showAdvertisements = !isPremium && !premiumLoading && !premiumError;
+  const showAdvertisements = !isPremium && !premiumLoading && !premiumError
+    && getAdSensePageType(window.location.pathname + window.location.search) === 'station';
   const { t, language, localeTranslations } = useTranslation();
   const controlLabels = useMemo(() => getStationControlLabels(language, localeTranslations), [language, localeTranslations]);
   const { toast } = useToast();
@@ -800,14 +804,14 @@ export default function StationDetails() {
                         <AdCarousel
                           ads={advertisements}
                           position="desktop_sidebar"
-                          autoSwitchInterval={8000}
+                          autoSwitchInterval={DIRECT_AD_ROTATION_MS}
                           placeholderText={t('general_ad_space', 'Ad Space')}
-                          fallback={<AdSenseUnit adSlot="3609188113" adFormat="rectangle" className="min-h-[250px]" />}
+                          fallback={<AdSenseUnit adSlot={AD_SLOTS.stationSidebar} adFormat="rectangle" className="min-h-[250px]" />}
                         />
                       </Suspense>
                     ) : (
                       <Suspense fallback={<div className="bg-gray-800 rounded flex items-center justify-center text-gray-400 w-56 h-[250px] flex-none animate-pulse" />}>
-                        <AdSenseUnit adSlot="3609188113" adFormat="rectangle" className="min-h-[250px]" />
+                        <AdSenseUnit adSlot={AD_SLOTS.stationSidebar} adFormat="rectangle" className="min-h-[250px]" />
                       </Suspense>
                     ))}
                   </div>
@@ -1149,21 +1153,21 @@ export default function StationDetails() {
               </div>
             )}
 
-            {/* Middle Section Ad — hidden for premium users */}
+            {/* Desktop content ad: never stack this above the mobile slot. */}
             {showAdvertisements && (
-              <div className="py-6">
+              <div className="hidden md:block py-8" data-ad-section="station-content-desktop">
                 {advertisements && advertisements.some((ad: any) => ad.position === 'middle_section' && ad.isActive) ? (
                   <Suspense fallback={null}>
                     <AdCarousel
                       ads={advertisements}
                       position="middle_section"
-                      autoSwitchInterval={8000}
-                      fallback={<AdSenseUnit adSlot="3609188113" adFormat="horizontal" className="max-w-[1206px] mx-auto min-h-[90px]" />}
+                      autoSwitchInterval={DIRECT_AD_ROTATION_MS}
+                      fallback={<AdSenseUnit adSlot={AD_SLOTS.stationContent} adFormat="horizontal" className="max-w-[1206px] mx-auto min-h-[90px]" />}
                     />
                   </Suspense>
                 ) : (
                   <Suspense fallback={null}>
-                    <AdSenseUnit adSlot="3609188113" adFormat="horizontal" className="max-w-[1206px] mx-auto min-h-[90px]" />
+                    <AdSenseUnit adSlot={AD_SLOTS.stationContent} adFormat="horizontal" className="max-w-[1206px] mx-auto min-h-[90px]" />
                   </Suspense>
                 )}
               </div>
@@ -1171,19 +1175,19 @@ export default function StationDetails() {
 
             {/* Mobile Bottom Ad — hidden for premium users */}
             {showAdvertisements && (
-              <div className="md:hidden py-4">
+              <div className="md:hidden py-8" data-ad-section="station-content-mobile">
                 {advertisements && advertisements.some((ad: any) => ad.position === 'mobile_bottom' && ad.isActive) ? (
                   <Suspense fallback={null}>
                     <AdCarousel
                       ads={advertisements}
                       position="mobile_bottom"
-                      autoSwitchInterval={8000}
-                      fallback={<AdSenseUnit adSlot="3609188113" adFormat="auto" className="min-h-[100px]" />}
+                      autoSwitchInterval={DIRECT_AD_ROTATION_MS}
+                      fallback={<AdSenseUnit adSlot={AD_SLOTS.stationContent} adFormat="auto" className="min-h-[100px]" />}
                     />
                   </Suspense>
                 ) : (
                   <Suspense fallback={null}>
-                    <AdSenseUnit adSlot="3609188113" adFormat="auto" className="min-h-[100px]" />
+                    <AdSenseUnit adSlot={AD_SLOTS.stationContent} adFormat="auto" className="min-h-[100px]" />
                   </Suspense>
                 )}
               </div>

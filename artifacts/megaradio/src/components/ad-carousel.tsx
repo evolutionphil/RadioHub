@@ -1,4 +1,6 @@
-import { useState, useEffect, type ReactNode } from 'react';
+import { useState, useEffect, useRef, type ReactNode } from 'react';
+import { getLanguageFromPath } from '@workspace/seo-shared/seo-config';
+import { getAdvertisementLabel } from '@/lib/adsense-runtime';
 
 interface Advertisement {
   _id: string;
@@ -16,35 +18,87 @@ interface AdCarouselProps {
   position: 'desktop_sidebar' | 'mobile_bottom' | 'middle_section';
   autoSwitchInterval?: number;
   placeholderText?: string;
+  advertisementLabel?: string;
   fallback?: ReactNode;
+}
+
+function hasSafeTarget(url: string): boolean {
+  if (typeof url !== 'string' || !url.trim()) return false;
+  try {
+    // Preserve ordinary relative links while rejecting executable/non-web
+    // schemes. The same browser URL resolution is used when the link opens.
+    const target = new URL(url, typeof window === 'undefined' ? 'https://themegaradio.com' : window.location.href);
+    return target.protocol === 'https:' || target.protocol === 'http:';
+  } catch {
+    return false;
+  }
 }
 
 export function AdCarousel({ 
   ads, 
   position, 
-  autoSwitchInterval = 8000,
+  autoSwitchInterval = 30000,
   placeholderText = 'Ad Space',
+  advertisementLabel,
   fallback,
 }: AdCarouselProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [failedImages, setFailedImages] = useState<Set<string>>(new Set());
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [inView, setInView] = useState(false);
+  const [documentVisible, setDocumentVisible] = useState(() => typeof document === 'undefined' || document.visibilityState !== 'hidden');
+  const [reducedMotion, setReducedMotion] = useState(() => typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
+  const [hovered, setHovered] = useState(false);
+  const [focused, setFocused] = useState(false);
 
   // Filter ads by position and get active ones
-  const filteredAds = ads?.filter(ad => ad.position === position && ad.isActive && !failedImages.has(`${ad._id}:${ad.imageUrl}`)) || [];
+  const filteredAds = ads?.filter(ad => ad.position === position && ad.isActive && hasSafeTarget(ad.url) && !failedImages.has(`${ad._id}:${ad.imageUrl}`)) || [];
   // An admin edit/deactivation can shrink a live list while its old index is
   // still selected. Clamp during render, not in an effect after a crash.
   const safeIndex = filteredAds.length ? currentIndex % filteredAds.length : 0;
+  const hasMultipleAds = filteredAds.length > 1;
 
-  // Auto-switch ads
   useEffect(() => {
-    if (filteredAds.length <= 1) return;
+    setInView(false);
+    // Without a visibility observer, keep manual navigation available instead
+    // of guessing that a hidden placement is visible.
+    if (!hasMultipleAds || !containerRef.current || typeof IntersectionObserver === 'undefined') return;
+    const observer = new IntersectionObserver(entries => {
+      setInView(entries.some(entry => entry.target === containerRef.current && entry.isIntersecting));
+    });
+    observer.observe(containerRef.current);
+    return () => observer.disconnect();
+  }, [hasMultipleAds, position]);
+
+  useEffect(() => {
+    if (!hasMultipleAds) return;
+    const updateVisibility = () => setDocumentVisible(document.visibilityState !== 'hidden');
+    updateVisibility();
+    document.addEventListener('visibilitychange', updateVisibility);
+    const media = window.matchMedia?.('(prefers-reduced-motion: reduce)');
+    const updateMotion = () => setReducedMotion(!!media?.matches);
+    updateMotion();
+    if (media?.addEventListener) media.addEventListener('change', updateMotion);
+    else media?.addListener?.(updateMotion);
+    return () => {
+      document.removeEventListener('visibilitychange', updateVisibility);
+      if (media?.removeEventListener) media.removeEventListener('change', updateMotion);
+      else media?.removeListener?.(updateMotion);
+    };
+  }, [hasMultipleAds]);
+
+  // Only direct sponsors rotate; a Google fallback is never refreshed or
+  // remounted by this timer. Resuming starts a fresh, unhurried interval.
+  useEffect(() => {
+    if (!hasMultipleAds || !inView || !documentVisible || reducedMotion || hovered || focused
+      || !Number.isFinite(autoSwitchInterval) || autoSwitchInterval <= 0) return;
 
     const interval = setInterval(() => {
       setCurrentIndex(prev => (prev + 1) % filteredAds.length);
     }, autoSwitchInterval);
 
     return () => clearInterval(interval);
-  }, [filteredAds.length, autoSwitchInterval]);
+  }, [filteredAds.length, hasMultipleAds, autoSwitchInterval, inView, documentVisible, reducedMotion, hovered, focused]);
 
   // Position-specific styles
   const getContainerStyles = () => {
@@ -96,17 +150,22 @@ export function AdCarousel({
   }
 
   const currentAd = filteredAds[safeIndex];
-  const hasMultipleAds = filteredAds.length > 1;
   const isImageFailed = failedImages.has(`${currentAd._id}:${currentAd.imageUrl}`);
+  const label = advertisementLabel || getAdvertisementLabel(getLanguageFromPath(typeof window === 'undefined' ? '/en' : window.location.pathname).language);
 
   return (
-    <div className={`relative ${getContainerStyles()}`}>
+    <div ref={containerRef} className={`relative ${getContainerStyles()}`} role="group" aria-label={label}
+      onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}
+      onFocusCapture={() => setFocused(true)}
+      onBlurCapture={event => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setFocused(false);
+      }}>
       {/* Ad Card - Direct link to ad URL */}
       <a 
         href={currentAd.url}
         target="_blank"
         rel="sponsored noopener noreferrer"
-        className="block w-full h-full overflow-hidden hover:opacity-80 transition-opacity"
+        className="block w-full h-full overflow-hidden hover:opacity-80 transition-opacity motion-reduce:transition-none"
         data-testid="link-ad"
       >
         {!isImageFailed ? (
@@ -130,6 +189,10 @@ export function AdCarousel({
         )}
       </a>
 
+      <div className="absolute top-1 left-1 bg-black/70 text-white text-xs px-1.5 py-0.5 rounded pointer-events-none">
+        {label}
+      </div>
+
       {/* Navigation dots for multiple ads */}
       {hasMultipleAds && (
         <div className="absolute bottom-1 left-0 right-0 flex justify-center gap-1 pointer-events-none">
@@ -142,12 +205,13 @@ export function AdCarousel({
                 e.stopPropagation();
                 setCurrentIndex(idx);
               }}
-              className={`pointer-events-auto w-1.5 h-1.5 rounded-full transition-all ${
+              className={`pointer-events-auto w-1.5 h-1.5 rounded-full transition-all motion-reduce:transition-none ${
                 idx === safeIndex
                   ? 'bg-white w-4' 
                   : 'bg-white/50 hover:bg-white/75'
               }`}
-              aria-label={`Ad ${idx + 1}`}
+              aria-label={`${label} ${idx + 1}`}
+              aria-pressed={idx === safeIndex}
               data-testid={`button-ad-nav-${idx}`}
             />
           ))}

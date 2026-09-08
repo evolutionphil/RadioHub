@@ -1,4 +1,4 @@
-import { Link, useLocation } from "wouter";
+import { Link, useLocation, useSearch } from "wouter";
 import { useState, Suspense, lazy, useEffect, useRef } from "react";
 import { useGlobalPlayer } from "@/hooks/useGlobalPlayer";
 import { useTranslation } from "@/hooks/useTranslation";
@@ -11,6 +11,8 @@ const AddYourStationModal = lazy(() => import("@/components/modals/AddYourStatio
 const RequestStationModal = lazy(() => import("@/components/modals/RequestStationModal"));
 import { Globe } from "lucide-react";
 import AdSenseUnit from "@/components/ads/AdSenseUnit";
+import { getAdSensePageType } from '@/lib/adsense-runtime';
+import { AD_SLOTS } from '@/lib/advertising-placements';
 import PrivacySettingsButton from "@/components/ads/PrivacySettingsButton";
 
 interface FooterSocialLink {
@@ -64,6 +66,9 @@ const getSocialIcon = (platform: string) => {
 
 export default function Footer() {
   const [location, setLocation] = useLocation();
+  useSearch();
+  const adPageType = getAdSensePageType(window.location.pathname + window.location.search);
+  const showCatalogAdvertisement = adPageType === 'home' || adPageType === 'catalog';
   const isProfilePage = location.startsWith('/profile');
   const { currentStation } = useGlobalPlayer();
   const isPlayerEnabled = currentStation !== null;
@@ -170,6 +175,10 @@ export default function Footer() {
         backgroundImage: bgLoaded ? 'url(/images/footer-bg.webp)' : 'none'
       }}
     >
+      {/* One content-end placement, separated from footer navigation. Station
+          pages already own their capped placements; private pages get none. */}
+      {showCatalogAdvertisement && <AdSenseUnit adSlot={AD_SLOTS.catalogFooter} adFormat="horizontal"
+        fullWidthResponsive={true} className="w-full max-w-[1206px] mx-auto px-4 pt-8 mb-8" />}
       <div className={`container mx-auto ${isPlayerEnabled ? 'pb-36' : ''}`}>
         {/* Main footer grid - responsive from mobile to 4K */}
         <div className="relative flex flex-col gap-6 pb-6 pt-10 sm:pt-12 md:pt-16 lg:pt-20 xl:pt-24
@@ -462,11 +471,6 @@ export default function Footer() {
         </div>
       </div>
       
-      {/* AdSense Banner - Bottom of Footer */}
-      <div className="w-full mt-4 px-4">
-        <AdSenseUnit adSlot="9151849981" adFormat="auto" fullWidthResponsive={true} />
-      </div>
-
       {/* Modals — gated on isOpen so the lazy chunk only requests on first open */}
       {showAddStationModal && (
         <Suspense fallback={null}>

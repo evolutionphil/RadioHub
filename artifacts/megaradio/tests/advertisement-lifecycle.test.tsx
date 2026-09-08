@@ -7,6 +7,7 @@ const premium = vi.hoisted(() => ({ isPremium: false, isLoading: false, error: n
 vi.mock('../src/hooks/usePremiumStatus', () => ({ usePremiumStatus: () => premium }));
 let intersections: { callback: IntersectionObserverCallback; target?: Element; disconnect: ReturnType<typeof vi.fn> }[];
 let width = 320;
+let top = 0;
 
 beforeEach(() => {
   vi.useFakeTimers(); vi.resetModules();
@@ -14,8 +15,8 @@ beforeEach(() => {
   window.history.replaceState({}, '', '/de');
   document.querySelectorAll('script[src*="adsbygoogle.js"]').forEach(script => script.remove());
   window.adsbygoogle = [];
-  intersections = []; width = 320;
-  vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(() => ({ width, height: 90, top: 0, left: 0, bottom: 90, right: width, x: 0, y: 0, toJSON: () => ({}) }));
+  intersections = []; width = 320; top = 0;
+  vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(() => ({ width, height: 90, top, left: 0, bottom: top + 90, right: width, x: 0, y: top, toJSON: () => ({}) }));
   vi.stubGlobal('IntersectionObserver', class {
     item: typeof intersections[number];
     constructor(callback: IntersectionObserverCallback) { this.item = { callback, disconnect: vi.fn() }; intersections.push(this.item); }
@@ -50,10 +51,78 @@ it('starts one SDK for several placements, waits for SDK and width, and pushes o
 
 it('never creates a hidden zero-width ins; a later responsive resize enables it', async () => {
   const { default: Unit } = await import('../src/components/ads/AdSenseUnit');
-  width = 0; render(<Unit />); enter(); await loadSdk();
+  width = 0; render(<Unit />); enter(); await act(async () => { vi.advanceTimersByTime(5000); });
+  expect(document.querySelector('script[src*="adsbygoogle.js"]')).toBeNull();
   expect(document.querySelector('ins')).toBeNull(); expect(window.adsbygoogle).toHaveLength(0);
   width = 320; fireEvent.resize(window);
+  await loadSdk();
   expect(window.adsbygoogle).toHaveLength(1);
+});
+
+it('does not start a below-fold or hidden-tab SDK; viewport and document visibility jointly enable it', async () => {
+  const { default: Unit } = await import('../src/components/ads/AdSenseUnit');
+  const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
+  render(<Unit />); enter();
+  await act(async () => { vi.advanceTimersByTime(5000); window.dispatchEvent(new Event('online')); });
+  expect(document.querySelector('script[src*="adsbygoogle.js"]')).toBeNull();
+  enter(false); visibility.mockReturnValue('visible'); fireEvent(document, new Event('visibilitychange'));
+  await act(async () => { vi.advanceTimersByTime(5000); });
+  expect(document.querySelector('script[src*="adsbygoogle.js"]')).toBeNull();
+  enter(); await loadSdk(); expect(window.adsbygoogle).toHaveLength(1);
+});
+
+it('without IntersectionObserver loads only after real viewport entry and removes passive scroll/resize listeners', async () => {
+  vi.stubGlobal('IntersectionObserver', undefined);
+  const added = vi.spyOn(window, 'addEventListener');
+  const removed = vi.spyOn(window, 'removeEventListener');
+  const { default: Unit } = await import('../src/components/ads/AdSenseUnit');
+  top = window.innerHeight + 200;
+  const view = render(<Unit />);
+  await act(async () => { vi.advanceTimersByTime(5000); });
+  expect(document.querySelector('script[src*="adsbygoogle.js"]')).toBeNull();
+  expect(document.querySelector('ins')).toBeNull();
+  const scroll = added.mock.calls.find(([event]) => event === 'scroll')!;
+  expect(scroll[2]).toEqual({ passive: true });
+  top = 40; fireEvent.scroll(window); await loadSdk();
+  expect(window.adsbygoogle).toHaveLength(1);
+  top = -100; fireEvent.scroll(window); top = 40; fireEvent.resize(window);
+  await act(async () => { vi.advanceTimersByTime(5000); });
+  expect(window.adsbygoogle).toHaveLength(1);
+  view.unmount();
+  expect(removed).toHaveBeenCalledWith('scroll', scroll[1]);
+  expect(removed).toHaveBeenCalledWith('resize', scroll[1]);
+});
+
+it('reacts to the actual private SPA pathname while a deferred public component remains mounted', async () => {
+  const { default: Unit } = await import('../src/components/ads/AdSenseUnit');
+  render(<Unit />); enter(); await loadSdk();
+  expect(document.querySelector('ins')).not.toBeNull();
+  act(() => { window.history.pushState({}, '', '/de/profil/favoriten'); });
+  expect(document.querySelector('.adsense-container')).toBeNull();
+  await act(async () => { window.dispatchEvent(new Event('online')); vi.advanceTimersByTime(20000); });
+  expect(window.adsbygoogle).toHaveLength(1);
+});
+
+it('query-only personal navigation removes a mounted slot without requiring a parent render', async () => {
+  const { default: Unit } = await import('../src/components/ads/AdSenseUnit');
+  render(<Unit />); enter(); await loadSdk();
+  act(() => { window.history.pushState({}, '', '/de?tab=favorites'); });
+  expect(document.querySelector('ins')).toBeNull();
+  expect(document.querySelector('.adsense-container')).toBeNull();
+});
+
+it('late SDK completion cannot push after an eligible URL becomes private, and returning public is safe', async () => {
+  const { default: Unit } = await import('../src/components/ads/AdSenseUnit');
+  render(<Unit />); enter(); await act(async () => { vi.advanceTimersByTime(500); });
+  const script = document.querySelector('script[src*="adsbygoogle.js"]')!;
+  act(() => { window.history.pushState({}, '', '/tr/profil/mesajlar'); });
+  await act(async () => { script.dispatchEvent(new Event('load')); });
+  expect(window.adsbygoogle).toHaveLength(0); expect(document.querySelector('ins')).toBeNull();
+  act(() => { window.history.pushState({}, '', '/tr/istasyon/kral-fm'); });
+  enter(); await act(async () => { vi.advanceTimersByTime(500); });
+  expect(window.adsbygoogle).toHaveLength(1);
+  expect(document.querySelectorAll('script[src*="adsbygoogle.js"]')).toHaveLength(1);
+  expect(screen.getByText('Reklam')).toBeTruthy();
 });
 
 it.each(['loading', 'premium', 'error', 'admin', 'localized-admin', 'payment-confirmation', 'localized-payment-confirmation'])(
@@ -114,6 +183,15 @@ it('handles blocked SDKs without retry loops or page failures', async () => {
   await act(async () => { vi.advanceTimersByTime(60000); });
   expect(window.adsbygoogle).toHaveLength(0);
   expect(document.querySelectorAll('script[src*="adsbygoogle.js"]')).toHaveLength(1);
+});
+
+it('does not repeat a partially handled throwing SDK push on scroll, resize or reconnect', async () => {
+  const { default: Unit } = await import('../src/components/ads/AdSenseUnit');
+  const push = vi.spyOn(window.adsbygoogle, 'push').mockImplementation(() => { throw new Error('blocked'); });
+  render(<Unit />); enter(); await loadSdk(); expect(push).toHaveBeenCalledTimes(1);
+  enter(false); enter(true); fireEvent.resize(window);
+  await act(async () => { window.dispatchEvent(new Event('online')); vi.advanceTimersByTime(5000); });
+  expect(push).toHaveBeenCalledTimes(1);
 });
 
 it('accepts a real SDK load after 15 seconds without adding another script or refreshing ads', async () => {

@@ -4,6 +4,7 @@ import { expect, it } from 'vitest';
 import React, { Suspense } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import ts from 'typescript';
+import { AD_SLOTS, DIRECT_AD_ROTATION_MS } from '../src/lib/advertising-placements';
 
 const station = readFileSync(path.resolve(process.cwd(), 'src/pages/stations/[id].tsx'), 'utf8');
 const carousel = readFileSync(path.resolve(process.cwd(), 'src/components/ad-carousel.tsx'), 'utf8');
@@ -33,8 +34,9 @@ it.each(['auth-loading', 'auth-error', 'google', 'manual', 'failed-manual', 'laz
       if (state === 'lazy-loading') throw suspended;
       return state === 'failed-manual' ? fallback : React.createElement('div', { 'data-ad': 'manual', style: { width: '218px', height: '218px' } });
     };
-    new Function('exports', 'React', 'Suspense', 'AdCarousel', 'AdSenseUnit', 't', compiled)(
+    new Function('exports', 'React', 'Suspense', 'AdCarousel', 'AdSenseUnit', 't', 'AD_SLOTS', 'DIRECT_AD_ROTATION_MS', compiled)(
       exports, React, Suspense, manual, unit, (_key: string, fallback: string) => fallback,
+      AD_SLOTS, DIRECT_AD_ROTATION_MS,
     );
     const isPremium = state === 'premium';
     const showAdvertisements = !isPremium && !state.startsWith('auth-');
@@ -76,9 +78,21 @@ it('desktop ad placeholders match the existing resolved carousel and AdSense min
   expect(desktop).not.toMatch(/aspect-square h-56/);
   expect(desktop).toContain('hidden md:block');
   expect(desktop).toContain('showAdvertisements &&');
-  expect(station).toContain('const showAdvertisements = !isPremium && !premiumLoading && !premiumError;');
-  expect(desktop).toContain('autoSwitchInterval={8000}');
-  expect(desktop).toContain('adSlot="3609188113"');
+  expect(station).toContain('const showAdvertisements = !isPremium && !premiumLoading && !premiumError');
+  expect(station).toContain("getAdSensePageType(window.location.pathname + window.location.search) === 'station'");
+  expect(desktop).toContain('autoSwitchInterval={DIRECT_AD_ROTATION_MS}');
+  expect(desktop).toContain('adSlot={AD_SLOTS.stationSidebar}');
+  expect(DIRECT_AD_ROTATION_MS).toBe(30_000);
+});
+
+it('keeps mobile and desktop content ad blocks mutually exclusive and gives the content its own unit', () => {
+  const desktop = station.match(/<div className="([^"]+)" data-ad-section="station-content-desktop">/)?.[1];
+  const mobile = station.match(/<div className="([^"]+)" data-ad-section="station-content-mobile">/)?.[1];
+  expect(desktop).toContain('hidden md:block');
+  expect(mobile).toContain('md:hidden');
+  expect(station.match(/data-ad-section="station-content-/g)).toHaveLength(2);
+  expect(AD_SLOTS.stationContent).not.toBe(AD_SLOTS.stationSidebar);
+  expect(AD_SLOTS.catalogFooter).not.toBe(AD_SLOTS.stationContent);
 });
 
 for (const variable of ['linkedStation', 'similarStation', 'countryStation']) {

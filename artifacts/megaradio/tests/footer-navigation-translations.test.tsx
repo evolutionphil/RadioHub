@@ -7,7 +7,7 @@ vi.mock('@/hooks/useGlobalPlayer', () => ({ useGlobalPlayer: () => ({ currentSta
 vi.mock('@/hooks/useSeoRouting', () => ({ useSeoRouting: () => ({ getLocalizedUrl: (path: string) => `/de${path}`, currentLanguage: 'de', changeLanguage: state.changeLanguage }) }));
 vi.mock('@tanstack/react-query', () => ({ useQuery: () => ({ data: [] }) }));
 vi.mock('@/components/ads/AdSenseUnit', () => ({ default: () => null }));
-vi.mock('wouter', () => ({ Link: ({ children, to, href, ...props }: any) => <a {...props} href={to || href}>{children}</a>, useLocation: () => ['/de', vi.fn()] }));
+vi.mock('wouter', () => ({ Link: ({ children, to, href, ...props }: any) => <a {...props} href={to || href}>{children}</a>, useLocation: () => ['/de', vi.fn()], useSearch: () => '' }));
 import Footer from '../src/components/layout/footer';
 beforeEach(() => { state.values = { nav_for_you: 'Für Sie', users: 'Nutzer' }; state.changeLanguage.mockClear(); });
 
