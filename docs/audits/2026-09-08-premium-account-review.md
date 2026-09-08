@@ -35,6 +35,8 @@ Birleşik frontend koşusu: **66 dosya / 774 test başarılı**. Birleşik Paddl
 
 Canlı tarayıcı başlangıç incelemesi Almanca premium sayfasında uydurma fiyatları, sabit indirim ve İngilizce satış vaatlerini doğruladı. Canlı oturum anonim olduğundan gerçek giriş yapılmış hesabın uçtan uca değişiklik testi gerçekleştirilmedi; özel hesap işlemleri fixture'larla doğrulandı.
 
+İlk yayın sonrası canlı Almanca profil giriş korumasında ek hata bulundu: genel `/login` yönlendirmesi dili ve dönüş adresini kaybediyordu. Koruma artık 14 ana dilde güvenli dönüş URL'sini korur; geçici auth503/network hatası çıkışmış kullanıcı gibi ele alınmaz. Bu ek için 15 regresyon testi eklendi.
+
 Eski, süresiz işaretlenmiş abonelikler için sağlayıcıdan güvenilir reconciliation gerekir. Sandbox catalog erişimi engelliyken bunları topluca değiştirmek güvenli değildir. Ayrıca özel mesaj görsellerinin erişim mimarisi, çoklu sekme presence ayrıntıları ve gerçek push teslimatı için kalan sınırlar mesajlaşma raporundadır.
 
 ## İlgili raporlar ve kaynaklar
