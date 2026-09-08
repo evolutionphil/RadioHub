@@ -37,6 +37,8 @@ Canlı tarayıcı başlangıç incelemesi Almanca premium sayfasında uydurma fi
 
 İlk yayın sonrası canlı Almanca profil giriş korumasında ek hata bulundu: genel `/login` yönlendirmesi dili ve dönüş adresini kaybediyordu. Koruma artık 14 ana dilde güvenli dönüş URL'sini korur; geçici auth503/network hatası çıkışmış kullanıcı gibi ele alınmaz. Bu ek için 15 regresyon testi eklendi.
 
+Canlı Türkçe ödeme dönüşünde ikinci yönlendirme hatası bulundu: dış router'ın `/:countryCode/:rest*` deseni kurulu Wouter sürümünde yalnız tek alt segment eşliyordu. Çok segmentli dil ekli premium/TV sonuç sayfaları 200 shell sonrasında istemcide 404'e düşüyordu. Desteklenen `/:countryCode/*` deseniyle onarıldı; gerçek kaynak route desenleri ve kurulu router kullanılarak bütün etkin dil tanımlarında ödeme/TV/mesaj yolları ve bilinmeyen sayfa davranışı için 172 regresyon testi geçti.
+
 Eski, süresiz işaretlenmiş abonelikler için sağlayıcıdan güvenilir reconciliation gerekir. Sandbox catalog erişimi engelliyken bunları topluca değiştirmek güvenli değildir. Ayrıca özel mesaj görsellerinin erişim mimarisi, çoklu sekme presence ayrıntıları ve gerçek push teslimatı için kalan sınırlar mesajlaşma raporundadır.
 
 ## İlgili raporlar ve kaynaklar

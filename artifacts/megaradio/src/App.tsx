@@ -1176,7 +1176,9 @@ const SeoMainRouter = React.memo(() => {
       {/* CRITICAL: Catch-all for country-code + translated paths (e.g., /at/profil/favoriten)
           This MUST come before the 404 route. PlayerWrapper/PublicRouter will handle translation
           via useSeoRouting.englishPath and renderByCleanPath() */}
-      <Route path="/:countryCode/:rest*" component={PlayerWrapper} />
+      {/* Wouter uses a standalone * for multiple segments. :rest* only
+          matched one segment, so localized payment return URLs hit 404. */}
+      <Route path="/:countryCode/*" component={PlayerWrapper} />
       
       {/* 404 for any unmatched routes - Suspense needed since NotFound is lazy */}
       <Route component={() => (
