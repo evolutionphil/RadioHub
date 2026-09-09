@@ -115,15 +115,9 @@ export interface JunkDecision {
   reason?: string;
 }
 
-export const STREAM_HEALTH_FRESHNESS_MS = 72 * 60 * 60 * 1000;
-const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
 function healthTimestamp(value: unknown): number {
   return value instanceof Date || typeof value === 'string' && value.trim()
     ? new Date(value as string).getTime() : NaN;
-}
-function freshHealthTimestamp(value: unknown, now: number): number {
-  const time = healthTimestamp(value);
-  return Number.isFinite(time) && time <= now && now - time <= STREAM_HEALTH_FRESHNESS_MS ? time : NaN;
 }
 
 /** Explicit ownership is required before automation can reverse a noindex.
@@ -133,12 +127,13 @@ function freshHealthTimestamp(value: unknown, now: number): number {
  */
 export function automaticNoIndexPatch(station: any, verdict: JunkDecision, now = Date.now()): Record<string, any> {
   if (station.manualEditFields?.noIndex || station.redirectToSlug) return {};
+  // Stream availability controls playback/list membership, not the quality of
+  // the retained station information page. Also reject legacy caller verdicts.
+  if (verdict.reason === 'stream-dead-30d') return {};
   if (verdict.isJunk && station.noIndex !== true) {
-    if (verdict.reason === 'stream-dead-30d' && !Number.isFinite(freshHealthTimestamp(station.lastCheckTime, now))) return {};
     return { noIndex: true, automaticNoIndex: {
       owner: 'radiohub-junk-policy', version: 1, active: true,
       reason: verdict.reason || 'unspecified-junk', markedAt: new Date(now).toISOString(),
-      ...(verdict.reason === 'stream-dead-30d' ? { failedCheckAt: new Date(station.lastCheckTime).toISOString() } : {}),
     } };
   }
   const provenance = station.automaticNoIndex;
@@ -146,11 +141,11 @@ export function automaticNoIndexPatch(station: any, verdict: JunkDecision, now =
       provenance.owner !== 'radiohub-junk-policy' || provenance.version !== 1 ||
       provenance.active !== true || provenance.reason !== 'stream-dead-30d') return {};
   const failed = healthTimestamp(provenance.failedCheckAt);
-  const checked = freshHealthTimestamp(station.lastCheckTime, now);
-  const succeeded = freshHealthTimestamp(station.lastCheckOkTime, now);
-  if (station.lastCheckOk !== true || !Number.isFinite(failed) || !Number.isFinite(checked) ||
-      !Number.isFinite(succeeded) || checked <= failed || succeeded <= failed) return {};
-  return { noIndex: false, automaticNoIndex: { ...provenance, active: false, recoveredAt: new Date(now).toISOString() } };
+  if (!Number.isFinite(failed) || failed > now || evaluateJunkStation(station).isJunk) return {};
+  // Retire only our proven health-only decision, under the existing whole-row
+  // policy CAS. This does NOT claim the stream recovered or revive playback.
+  return { noIndex: false, automaticNoIndex: { ...provenance, active: false,
+    retiredAt: new Date(now).toISOString(), retiredReason: 'stream-health-is-not-content-quality' } };
 }
 
 /** Guard the observed policy inputs under the catalog UPDATE's row lock. */
@@ -183,17 +178,8 @@ export function evaluateJunkStation(station: {
   if (!name) return { isJunk: true, reason: 'empty-name' };
   if (!station.url) return { isJunk: true, reason: 'empty-stream-url' };
 
-  // A dated failure is not evidence of today's availability. Require a fresh
-  // failed check and a known successful check more than 30 days before it.
-  // Missing successful history cannot prove a continuous 30-day outage.
-  if (station.lastCheckOk === false) {
-    const now = Date.now();
-    const lastOk = healthTimestamp(station.lastCheckOkTime);
-    const lastCheck = freshHealthTimestamp(station.lastCheckTime, now);
-    if (Number.isFinite(lastOk) && Number.isFinite(lastCheck) && lastCheck - lastOk > THIRTY_DAYS_MS) {
-      return { isJunk: true, reason: 'stream-dead-30d' };
-    }
-  }
+  // A failed stream (even a prolonged outage) is not a content-quality verdict:
+  // retain its rich localized detail page; public playback/lists gate health.
 
   // NOTE: We deliberately do NOT mark every `-N` slug as junk here. Many
   // legitimate stations have numbers in their names ("Radio 100", "FM 89-1")
@@ -231,6 +217,16 @@ export function evaluateJunkStation(station: {
 
 export function isJunkStation(station: any): boolean {
   return evaluateJunkStation(station).isJunk;
+}
+
+/** An unknown old exclusion is not permission to reindex. Its rich offline
+ * information page can still be shown with noindex, without altering the row.
+ * Explicit manual decisions, actual quality junk and redirects stay excluded.
+ */
+export function canRenderLegacyOfflineInformation(station: any): boolean {
+  return station?.lastCheckOk === false && station.noIndex === true &&
+    station.manualEditFields?.noIndex === undefined && !station.redirectToSlug &&
+    !isNumericOnlySlug(station.slug) && !isJunkStation(station);
 }
 
 /** Slug is a bare number (with optional leading `-`), e.g. `1234` or `-911`. */

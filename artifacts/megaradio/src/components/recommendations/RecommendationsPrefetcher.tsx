@@ -31,7 +31,7 @@ export function RecommendationsPrefetcher() {
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
-    const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+    const STATION_FRESHNESS_MS = 5 * 60 * 1000;
 
     // Bail out for data-saver / very slow connections.
     const conn: any = (navigator as any).connection;
@@ -59,21 +59,21 @@ export function RecommendationsPrefetcher() {
         // the server slices the same cached pool, so the rows are
         // identical to the previous per-limit fetches.
         queryFn: async () => getPrecomputedStationsSlice('global', 200),
-        staleTime: SEVEN_DAYS_MS,
+        staleTime: STATION_FRESHNESS_MS,
       });
 
       // 2. Trending (50 stations, /api/stations/trending key).
       queryClient.prefetchQuery({
         queryKey: ['/api/stations/trending', selectedCountry],
         queryFn: async () => getPrecomputedStationsSlice(countryParam, 50),
-        staleTime: SEVEN_DAYS_MS,
+        staleTime: STATION_FRESHNESS_MS,
       });
 
       // 3. Discovery (100 stations, /api/stations/discovery key).
       queryClient.prefetchQuery({
         queryKey: ['/api/stations/discovery', selectedCountry],
         queryFn: async () => getPrecomputedStationsSlice(countryParam, 100),
-        staleTime: SEVEN_DAYS_MS,
+        staleTime: STATION_FRESHNESS_MS,
       });
 
       // 4. Default recommendations (12 stations shown when no mood is
@@ -81,7 +81,7 @@ export function RecommendationsPrefetcher() {
       queryClient.prefetchQuery({
         queryKey: ['/api/stations/default-recommendations', selectedCountry],
         queryFn: async () => getPrecomputedStationsSlice(countryParam, 12),
-        staleTime: SEVEN_DAYS_MS,
+        staleTime: STATION_FRESHNESS_MS,
       });
     };
 

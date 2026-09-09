@@ -1,4 +1,5 @@
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
+import { stationQueryFreshness } from '@/lib/station-query-policy';
 import { useState, useMemo } from "react";
 import { useLocation, Link } from "wouter";
 import { Swiper, SwiperSlide } from 'swiper/react';
@@ -121,7 +122,7 @@ export default function ProfileDiscover() {
   const { data: favoritesData = [] } = useQuery({
     queryKey: ["/api/user/favorites"],
     enabled: !!user?._id,
-    staleTime: 60 * 60 * 1000, // 1 hour - very stable
+    ...stationQueryFreshness,
   });
   
   const favoriteIds = useMemo(() => {
@@ -160,7 +161,7 @@ export default function ProfileDiscover() {
       return result.data || [];
     },
     enabled: !!countryCode,
-    staleTime: 7 * 24 * 60 * 60 * 1000,
+    ...stationQueryFreshness,
     placeholderData: keepPreviousData,
   });
   const popularStationsData = countryStationsData;
@@ -206,7 +207,7 @@ export default function ProfileDiscover() {
   const { data: lastPlayedStations = [], isLoading: lastPlayedLoading } = useQuery<any[]>({
     queryKey: ["/api/user/last-played"],
     enabled: !!user?._id,
-    staleTime: 30 * 60 * 1000,
+    ...stationQueryFreshness,
     retry: false,
     queryFn: async () => {
       try {
@@ -229,7 +230,7 @@ export default function ProfileDiscover() {
     // navigated here from home, the global list is already in memory and
     // this costs ZERO network (the old dedicated fetch was ~5s cold).
     queryFn: async () => (await getPrecomputedStationsSlice('global', 100)) as any[],
-    staleTime: 7 * 24 * 60 * 60 * 1000,
+    ...stationQueryFreshness,
     placeholderData: keepPreviousData,
   });
   const similarLoading = globalStationsLoading;

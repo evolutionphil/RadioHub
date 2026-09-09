@@ -7,6 +7,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ACTIVE_SITEMAP_LANGUAGES } from '@workspace/seo-shared/seo-config';
 import { getStationImageAlt } from '@workspace/seo-shared/station-image-alt';
 import { getStationControlLabels } from '../src/utils/station-control-labels';
+import { getStationStreamUnavailableNotice } from '@workspace/seo-shared/station-page-copy';
+import { StationStreamAvailability } from '@/components/StationStreamAvailability';
 
 const state = vi.hoisted(() => ({ isPlaying: false, currentStation: null as any,
   playStation: vi.fn(), pauseStation: vi.fn(), resumeStation: vi.fn(), previousStation: vi.fn(), nextStation: vi.fn(),
@@ -71,6 +73,38 @@ it('preserves custom dictionary labels and repairs only missing/empty/key-echo v
   }
 });
 
+it.each(ACTIVE_SITEMAP_LANGUAGES)('%s: unavailable notice and disabled play recover without removing other controls', language => {
+  const labels = getStationControlLabels(language), failed = { ...station, lastCheckOk: false };
+  const content = (record: any) => <QueryClientProvider client={client}>
+    <article>Preserved station article</article>
+    <StationControlButtonGroup currentPageStation={record} labels={labels} />
+    <StationStreamAvailability station={record} language={language} />
+  </QueryClientProvider>;
+  const view = render(content(failed));
+  expect(screen.getByRole('status')).toHaveTextContent(getStationStreamUnavailableNotice(language));
+  expect(screen.getByTestId('button-play-stop')).toBeDisabled();
+  expect(screen.getByTestId('button-play-stop')).toHaveAttribute('aria-describedby', 'station-stream-unavailable');
+  fireEvent.click(screen.getByTestId('button-play-stop'));
+  expect(state.playStation).not.toHaveBeenCalled();
+  expect(screen.getByRole('article')).toHaveTextContent('Preserved station article');
+  expect(screen.getByTestId('button-next-station')).toBeEnabled();
+  expect(screen.getByRole('button', { name: 'fixture favorite' })).toBeEnabled();
+  view.rerender(content({ ...station, lastCheckOk: true }));
+  expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  expect(screen.getByTestId('button-play-stop')).toBeEnabled();
+  fireEvent.click(screen.getByTestId('button-play-stop'));
+  expect(state.playStation).toHaveBeenCalledWith({ ...station, lastCheckOk: true });
+});
+
+it('keeps Stop enabled for an already playing failed station and normalizes notice locale variants', () => {
+  state.isPlaying = true; state.currentStation = station;
+  render(<QueryClientProvider client={client}><StationControlButtonGroup currentPageStation={{ ...station, lastCheckOk: false }} labels={getStationControlLabels('de')} /></QueryClientProvider>);
+  expect(screen.getByTestId('button-play-stop')).toBeEnabled();
+  fireEvent.click(screen.getByTestId('button-play-stop'));
+  expect(state.pauseStation).toHaveBeenCalledTimes(1);
+  expect(getStationStreamUnavailableNotice('DE_at')).toBe(getStationStreamUnavailableNotice('de'));
+});
+
 it('station details wires localized share/play/alt values while all existing player callers pass parent labels', () => {
   const source = readFileSync(path.resolve(process.cwd(), 'src/pages/stations/[id].tsx'), 'utf8');
   expect(source.match(/alt=\{controlLabels.share\}/g)).toHaveLength(2);
@@ -79,6 +113,7 @@ it('station details wires localized share/play/alt values while all existing pla
   expect(source).toContain('getStationImageAlt(similarStation, language, t)');
   expect(source).toContain('getStationImageAlt(countryStation, language, t)');
   expect(source).toContain('getStationImageAlt(linkedStation, language, t)');
+  expect(source).toContain('<StationStreamAvailability station={station} language={language} />');
   expect(/alt="Share"|aria-label="Share station"|alt=\{`Listen \$\{|>Play Radio</.test(source)).toBe(false);
   for (const filename of ['src/components/global-player.tsx', 'src/components/ui/bottom-player.tsx', 'src/pages/stations/[id].tsx']) {
     const caller = readFileSync(path.resolve(process.cwd(), filename), 'utf8');

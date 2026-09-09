@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef, useCallback, useMemo, Suspense, lazy } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { homeStationPageOptions, selectPopularHomeStations } from '@/lib/home-station-query';
+import { stationQueryFreshness } from '@/lib/station-query-policy';
+import { useAvailableStationSnapshots } from '@/hooks/useAvailableStationSnapshots';
 import { fetchStationCardList } from '@/lib/station-card-list-request';
 import { Link } from "wouter";
 import StationCard from "@/components/ui/station-card";
@@ -293,6 +295,7 @@ export default function RadioFrontend({
   // Load More functionality for "All Stations" section (matches original AllStations.vue)
   const [loadMorePage, setLoadMorePage] = useState(1);
   const [allLoadedStations, setAllLoadedStations] = useState<any[]>([]);
+  const availableLoadedStations = useAvailableStationSnapshots(allLoadedStations);
   const [isSearching, setIsSearching] = useState(false);
 
   
@@ -485,7 +488,7 @@ export default function RadioFrontend({
       const result = await response.json();
       return { stations: result.data, pagination: result.pagination };
     },
-    staleTime: 7 * 24 * 60 * 60 * 1000,
+    ...stationQueryFreshness,
     gcTime: 7 * 24 * 60 * 60 * 1000,
     enabled: !!stationsData && shouldLoadDiscoverableGenres, // DEFERRED: Load after page interactive
   });
@@ -615,6 +618,7 @@ export default function RadioFrontend({
   // DEFERRED: Load nearby stations after page interactive
   const { data: nearbyStationsData } = useQuery({
     queryKey: ['/api/stations/nearby', selectedCountry, userCoordinates, shouldShowNearbyStations, userDetectedCountry],
+    ...stationQueryFreshness,
     enabled: shouldLoadDiscoverableGenres && shouldShowNearbyStations, // DEFERRED
     queryFn: async () => {
       logger.log('🏘️ Nearby stations query starting:', { 
@@ -724,7 +728,7 @@ export default function RadioFrontend({
     queryKey: ['/api/user/favorites', { sort: 'newest' }],
     retry: false,
     enabled: !!isAuthenticated,
-    refetchOnWindowFocus: false,
+    ...stationQueryFreshness,
   });
 
   const genres = (genresResponse as any)?.data || [];
@@ -752,13 +756,14 @@ export default function RadioFrontend({
   // Handle play function with page stations
   const handlePlay = useCallback(async (station: any, _playlistName?: string) => {
     try {
-      const currentPageStations = allLoadedStations.length > 0 ? allLoadedStations :
+      if (allLoadedStations.some(row => row._id === station._id) && !availableLoadedStations.some(row => row._id === station._id)) return;
+      const currentPageStations = allLoadedStations.length > 0 ? availableLoadedStations :
         (extendedStationsData?.stations || stationsData?.stations || []);
       await playStation(station, currentPageStations);
     } catch (_error) {
       // silently ignore play errors
     }
-  }, [allLoadedStations, extendedStationsData, stationsData, playStation]);
+  }, [allLoadedStations, availableLoadedStations, extendedStationsData, stationsData, playStation]);
 
   // Handle stop function
   const handleStop = useCallback(() => {
@@ -783,7 +788,7 @@ export default function RadioFrontend({
 
 
   // In-memory search cache for instant repeat searches
-  const searchCacheRef = useRef<Map<string, any[]>>(new Map());
+  const searchCacheRef = useRef<Map<string, { stations: any[]; expiresAt: number }>>(new Map());
   const abortControllerRef = useRef<AbortController | null>(null);
   
   // Search functionality - DIRECT backend API call with cache + abort for speed
@@ -801,8 +806,9 @@ export default function RadioFrontend({
       const cacheKey = searchTerm.toLowerCase().replace(/\s+/g, '');
       
       // Check cache first for instant results
-      if (searchCacheRef.current.has(cacheKey)) {
-        setFilteredStations(searchCacheRef.current.get(cacheKey)!);
+      const cachedSearch = searchCacheRef.current.get(cacheKey);
+      if (cachedSearch && cachedSearch.expiresAt > Date.now()) {
+        setFilteredStations(cachedSearch.stations);
         setIsSearching(false);
         return;
       }
@@ -841,7 +847,7 @@ export default function RadioFrontend({
             const firstKey = searchCacheRef.current.keys().next().value;
             if (firstKey) searchCacheRef.current.delete(firstKey);
           }
-          searchCacheRef.current.set(cacheKey, rankedStations);
+          searchCacheRef.current.set(cacheKey, { stations: rankedStations, expiresAt: Date.now() + stationQueryFreshness.staleTime });
         } else {
           setFilteredStations([]);
         }
@@ -1324,7 +1330,7 @@ export default function RadioFrontend({
 
               {/* All Stations Grid - Always use 3-column grid layout for consistent design */}
               <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-x-[21px] gap-y-[20px]">
-                {allLoadedStations.map((station: any, i: number) => (
+                {availableLoadedStations.map((station: any, i: number) => (
                   <StationCard key={`all-stations-${station._id || i}`} station={station} onPlay={handlePlay} />
                 ))}
               </div>

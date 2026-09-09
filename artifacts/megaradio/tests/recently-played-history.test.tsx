@@ -1,7 +1,7 @@
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, focusManager, onlineManager } from '@tanstack/react-query';
 import { addRecentlyPlayed, hydrateRecentlyPlayed, mergeRecentlyPlayed, readRecentlyPlayed } from '../src/utils/recently-played';
 const auth = vi.hoisted(() => ({ isAuthenticated: false }));
 vi.mock('@/hooks/useAuth', () => ({ useAuth: () => auth }));
@@ -12,7 +12,7 @@ beforeEach(() => {
   auth.isAuthenticated = false; localStorage.clear();
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 });
-afterEach(() => { cleanup(); client.clear(); vi.unstubAllGlobals(); });
+afterEach(() => { cleanup(); client.clear(); vi.unstubAllGlobals(); vi.restoreAllMocks(); focusManager.setFocused(undefined); onlineManager.setOnline(true); });
 const wrapper = ({ children }: { children: React.ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>;
 const a = { _id: 'a', name: 'Radio A', favicon: '/old-a.png' };
 const b = { _id: 'b', name: 'Radio B', favicon: '/old-b.png' };
@@ -42,7 +42,7 @@ describe('recent history timestamps and catalogue refresh', () => {
     expect(result[0].localImagePath).toBeUndefined(); expect(result[1]).toBe(b);
     expect(history[0].favicon).toBe('/old-a.png');
   });
-  it('hydrates anonymous history once in a shared batch without rewriting localStorage or dropping missing rows', async () => {
+  it('hides authoritative batch omissions without deleting anonymous history', async () => {
     const stored = JSON.stringify([b, a]); localStorage.setItem('recentlyPlayed', stored);
     const fetcher = vi.fn(async (_url: string, init: RequestInit) => {
       expect(JSON.parse(String(init.body)).stationIds).toEqual(['b', 'a']);
@@ -50,9 +50,33 @@ describe('recent history timestamps and catalogue refresh', () => {
     });
     vi.stubGlobal('fetch', fetcher);
     const { result } = renderHook(() => useRecentlyPlayed(), { wrapper });
-    await waitFor(() => expect(result.current.recentlyPlayed[1]?.favicon).toBe('/fixed.png'));
-    expect(result.current.recentlyPlayed.map(row => row._id)).toEqual(['b', 'a']);
+    await waitFor(() => expect(result.current.recentlyPlayed[0]?.favicon).toBe('/fixed.png'));
+    expect(result.current.recentlyPlayed.map(row => row._id)).toEqual(['a']);
     expect(fetcher).toHaveBeenCalledTimes(1); expect(fetcher.mock.calls[0][0]).toBe('/api/stations/batch');
+    expect(localStorage.getItem('recentlyPlayed')).toBe(stored);
+  });
+  it('recovers a hidden station after a successful later batch without rewriting storage', async () => {
+    const stored = JSON.stringify([{ ...b, lastCheckOk: false }, a]); localStorage.setItem('recentlyPlayed', stored);
+    let map: Record<string, any> = { a };
+    let fail = false;
+    vi.stubGlobal('fetch', vi.fn(async () => fail ? { ok: false } : { ok: true, json: async () => map }));
+    const { result } = renderHook(() => useRecentlyPlayed(), { wrapper });
+    await waitFor(() => expect(client.getQueryCache().find({ queryKey: ['batch-stations', 'a,b'] })?.state.status).toBe('success'));
+    expect(result.current.recentlyPlayed.map(row => row._id)).toEqual(['a']);
+    fail = true;
+    await act(async () => { await client.invalidateQueries({ queryKey: ['batch-stations'] }); });
+    expect(result.current.recentlyPlayed.map(row => row._id)).toEqual(['a']);
+    fail = false; map = { a, b: { ...b, lastCheckOk: true } };
+    await act(async () => { await client.invalidateQueries({ queryKey: ['batch-stations'] }); });
+    await waitFor(() => expect(result.current.recentlyPlayed.map(row => row._id)).toEqual(['b', 'a']));
+    expect(localStorage.getItem('recentlyPlayed')).toBe(stored);
+  });
+  it('does not treat a malformed success body as authoritative empty history', async () => {
+    const stored = JSON.stringify([a, b]); localStorage.setItem('recentlyPlayed', stored);
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ error: 'unavailable' }) })));
+    const { result } = renderHook(() => useRecentlyPlayed(), { wrapper });
+    await waitFor(() => expect(client.getQueryCache().find({ queryKey: ['batch-stations', 'a,b'] })?.state.status).toBe('error'));
+    expect(result.current.recentlyPlayed.map(row => row._id)).toEqual(['a', 'b']);
     expect(localStorage.getItem('recentlyPlayed')).toBe(stored);
   });
   it('preserves local history during batch errors and handles later play events without stale API ordering', async () => {
@@ -79,5 +103,18 @@ describe('recent history timestamps and catalogue refresh', () => {
     expect(result.current[0].stations.map(row => row._id)).toEqual(['b', 'a']);
     expect(result.current[1].stations.map(row => row._id)).toEqual(['a', 'b']);
     expect(fetcher).toHaveBeenCalledTimes(1); expect(ids).toEqual(['b', 'a']);
+  });
+  it('shares one stale batch refresh on focus/reconnect without per-consumer polling', async () => {
+    const now = vi.spyOn(Date, 'now').mockReturnValue(1_800_000_000_000);
+    const fetcher = vi.fn(async () => ({ ok: true, json: async () => ({ a, b }) })); vi.stubGlobal('fetch', fetcher);
+    renderHook(() => [useBatchStations(['a', 'b']), useBatchStations(['b', 'a'])], { wrapper });
+    await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(client.getQueryData(['batch-stations', 'a,b'])).toEqual({ a, b }));
+    act(() => { focusManager.setFocused(false); now.mockReturnValue(1_800_000_300_001); focusManager.setFocused(true); });
+    await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(client.isFetching()).toBe(0));
+    act(() => { onlineManager.setOnline(false); now.mockReturnValue(1_800_000_600_002); onlineManager.setOnline(true); });
+    await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(3));
+    expect(client.getQueryCache().find({ queryKey: ['batch-stations', 'a,b'] })?.options).not.toHaveProperty('refetchInterval');
   });
 });

@@ -76,6 +76,20 @@ describe('Native PostgreSQL admin catalog HTTP contracts',{ skip:!connectionStri
     assert.equal((await request('/api/admin/bulk-import-stations','POST',{stations:[]})).status,400);
     assert.equal(await catalog.count(),3);
   });
+  it('public batch omits unhealthy stations while admin retains them and compact fields stay bounded', async()=>{
+    await pool.query('UPDATE stations SET last_check_ok=false WHERE id=$1',[ids[0]]);
+    const publicBatch:any = await (await request('/api/stations/batch','POST',{stationIds:ids},null)).json();
+    assert.deepEqual(Object.keys(publicBatch).sort(),ids.slice(1).sort());
+    const compact:any = await (await request('/api/stations/batch','POST',{stationIds:ids,slim:true},null)).json();
+    assert.deepEqual(Object.keys(compact).sort(),ids.slice(1).sort());
+    assert.equal(compact[ids[1]].lastCheckOk,true);
+    assert.equal(Object.hasOwn(compact[ids[1]],'descriptions'),false);
+    assert.equal(Object.hasOwn(publicBatch[ids[1]],'descriptions'),true);
+    const retained:any = await (await request('/api/admin/stations?search=Manual%20Edit')).json();
+    assert.equal(retained.stations[0]._id,ids[0]); assert.equal(retained.stations[0].lastCheckOk,false);
+    assert.equal((await request('/api/stations/batch','POST',{stationIds:[{}]},null)).status,400);
+    await pool.query('UPDATE stations SET last_check_ok=true WHERE id=$1',[ids[0]]);
+  });
   it('persists preferences per admin and enforces preset ownership over HTTP',async()=>{
     assert.equal((await request('/api/admin/preferences/view','PUT',{value:{country:'DE'}})).status,200);
     const other:any=await (await request('/api/admin/preferences/view','GET',undefined,'bob')).json();assert.equal(other.value,null);

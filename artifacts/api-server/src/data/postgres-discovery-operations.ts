@@ -11,7 +11,7 @@ export async function pgCityCounts(
   const rows = (
     await getPostgresPool().query(
       `WITH selected AS MATERIALIZED (
-    SELECT name,tags_raw FROM stations WHERE lower(country)=ANY($1::text[])
+    SELECT name,tags_raw FROM stations WHERE last_check_ok IS TRUE AND lower(country)=ANY($1::text[])
   ), specs AS (SELECT name,terms FROM jsonb_to_recordset($2::jsonb) AS x(name text,terms jsonb))
   SELECT specs.name,count(s.name)::int count FROM specs LEFT JOIN selected s ON EXISTS(
     SELECT 1 FROM jsonb_array_elements_text(specs.terms) t WHERE strpos(lower(s.name),lower(t))>0 OR strpos(lower(s.tags_raw),lower(t))>0)
@@ -42,7 +42,7 @@ export async function pgGlobalCityCounts(
       `SELECT c.name,c.country,count(s.id)::int "stationCount"
     FROM jsonb_to_recordset($1::jsonb) AS c(name text,country text,countries jsonb) JOIN stations s
     ON lower(s.country) IN(SELECT lower(value) FROM jsonb_array_elements_text(c.countries))
-    AND strpos(lower(s.state),lower(c.name))>0 GROUP BY c.name,c.country ORDER BY count(s.id) DESC,c.name LIMIT 20`,
+    AND s.last_check_ok IS TRUE AND strpos(lower(s.state),lower(c.name))>0 GROUP BY c.name,c.country ORDER BY count(s.id) DESC,c.name LIMIT 20`,
       [JSON.stringify(specs)],
     )
   ).rows;
@@ -61,11 +61,11 @@ export async function pgDiverseStations(
     FROM genres WHERE station_count>5 ORDER BY station_count DESC,id LIMIT 10
   ), sampled_ids AS MATERIALIZED (
     SELECT sampled.id,g.genre_rank FROM top_genres g CROSS JOIN LATERAL (
-    SELECT s.id FROM stations s WHERE ($1::text IS NULL OR lower(s.country)=lower($1))
+    SELECT s.id FROM stations s WHERE s.last_check_ok IS TRUE AND ($1::text IS NULL OR lower(s.country)=lower($1))
     AND (s.tags_raw ILIKE g.pattern OR lower(s.source->>'genre') LIKE lower(g.pattern))
     ORDER BY random() LIMIT greatest(2,ceil($2::numeric/greatest((SELECT count(*) FROM top_genres),1))::int)
   ) sampled)
-  SELECT s.id,s.name,s.slug,s.favicon,s.url,s.country,s.language,s.tags_raw,s.votes,s.codec,s.bitrate,
+  SELECT s.id,s.name,s.slug,s.favicon,s.url,s.country,s.language,s.tags_raw,s.votes,s.codec,s.bitrate,s.last_check_ok,
     CASE WHEN s.source ? 'genre' THEN jsonb_build_object('genre',s.source->'genre') ELSE '{}'::jsonb END AS source
   FROM sampled_ids sampled JOIN stations s ON s.id=sampled.id ORDER BY sampled.genre_rank`,
       [country, bounded],
@@ -84,6 +84,7 @@ export async function pgDiverseStations(
     "votes",
     "codec",
     "bitrate",
+    "lastCheckOk",
   ];
   const seen = new Set<string>();
   return rows

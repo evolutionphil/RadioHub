@@ -34,9 +34,9 @@ export class PostgresTaxonomyRuntimeStore {
     return new Map(rows.map(r => [r.slug,Number(r.count)]));
   }
 
-  async liveCounts(country: string | null = null): Promise<Map<string, number>> {
+  async liveCounts(country: string | null = null, publicOnly = false): Promise<Map<string, number>> {
     const { rows } = await this.pool.query(`SELECT tags.tag,count(*)::int count FROM stations s ${stationTags}
-      WHERE ($1::text IS NULL OR lower(s.country)=lower($1)) GROUP BY tags.tag`,[country]);
+      WHERE ($1::text IS NULL OR lower(s.country)=lower($1)) AND (NOT $2::boolean OR s.last_check_ok IS TRUE) GROUP BY tags.tag`,[country,publicOnly]);
     return new Map(rows.map(r => [r.tag,Number(r.count)]));
   }
 

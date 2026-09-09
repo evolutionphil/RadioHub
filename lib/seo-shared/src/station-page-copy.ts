@@ -24,6 +24,28 @@ const LISTENER_RATING: Record<string, string> = {
   ja: 'リスナー評価', ko: '청취자 평점', hi: 'श्रोताओं की रेटिंग', he: 'דירוג המאזינים',
 };
 
+const STREAM_UNAVAILABLE: Record<string, string> = {
+  en: 'This station’s stream is temporarily unavailable. Please try again later.',
+  es: 'La transmisión de esta emisora no está disponible temporalmente. Inténtalo de nuevo más tarde.',
+  fr: 'Le flux de cette station est temporairement indisponible. Veuillez réessayer plus tard.',
+  de: 'Der Stream dieses Senders ist vorübergehend nicht verfügbar. Bitte versuche es später erneut.',
+  pt: 'A transmissão desta estação está temporariamente indisponível. Tente novamente mais tarde.',
+  it: 'Lo streaming di questa stazione è temporaneamente non disponibile. Riprova più tardi.',
+  ru: 'Трансляция этой радиостанции временно недоступна. Попробуйте позже.',
+  ar: 'بث هذه المحطة غير متاح مؤقتًا. يُرجى المحاولة مرة أخرى لاحقًا.',
+  zh: '此电台的直播暂时不可用，请稍后重试。',
+  tr: 'Bu istasyonun yayını geçici olarak kullanılamıyor. Lütfen daha sonra tekrar deneyin.',
+  ja: 'この放送局のストリームは一時的に利用できません。しばらくしてからもう一度お試しください。',
+  ko: '이 방송국의 스트리밍을 일시적으로 이용할 수 없습니다. 나중에 다시 시도해 주세요.',
+  hi: 'इस स्टेशन का प्रसारण अस्थायी रूप से उपलब्ध नहीं है। कृपया बाद में फिर से प्रयास करें।',
+  he: 'השידור של תחנה זו אינו זמין זמנית. יש לנסות שוב מאוחר יותר.',
+};
+
+/** Identical public copy for server-rendered pages and the interactive player. */
+export function getStationStreamUnavailableNotice(language: string): string {
+  return STREAM_UNAVAILABLE[language.trim().toLowerCase().split(/[-_]/)[0]] || STREAM_UNAVAILABLE.en;
+}
+
 export function getStationPageCopy(language: string, translations: Record<string, string> = {}) {
   const [about, information, website, intro] = COPY[language] || COPY.en;
   const locale = language.toLowerCase().split(/[-_]/)[0];

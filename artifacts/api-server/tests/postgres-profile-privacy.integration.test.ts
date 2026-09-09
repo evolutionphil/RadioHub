@@ -29,7 +29,9 @@ before(async () => {
     created_at timestamptz DEFAULT now(),updated_at timestamptz DEFAULT now());
     CREATE TABLE subscriptions(user_id text PRIMARY KEY);
     CREATE TABLE auth_tokens(id text PRIMARY KEY,user_id text,is_revoked boolean DEFAULT false);
-    CREATE TABLE user_sessions(sid text PRIMARY KEY,sess jsonb);`);
+    CREATE TABLE user_sessions(sid text PRIMARY KEY,sess jsonb);
+    CREATE TABLE stations(id text PRIMARY KEY,last_check_ok boolean NOT NULL);
+    INSERT INTO stations VALUES('private-history',true);`);
   mock.module('../src/postgres-runtime', { namedExports: { getPostgresPool: () => pool } });
   users = await import('../src/data/postgres-user-store');
   engagement = await import('../src/data/postgres-engagement-store');
@@ -52,6 +54,7 @@ beforeEach(async () => {
   if (!pool) return;
   cache.clear(); profileReads = 0;
   await pool.query('TRUNCATE users,auth_tokens,user_sessions');
+  await pool.query("UPDATE stations SET last_check_ok=true WHERE id='private-history'");
   const source = { resetPasswordToken: 'fixture-token-hash', resetPasswordExpires: new Date(Date.now() + 60000).toISOString(),
     recentlyPlayedStations: [{ stationId: 'private-history' }], notificationSettings: { favorites: true, nowPlaying: true, newStations: false, recommendations: false } };
   await pool.query(`INSERT INTO users(id,username,email,slug,password_hash,is_public_profile,source)

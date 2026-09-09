@@ -70,6 +70,7 @@ mock.module(new URL('../src/seo/genre-whitelist.ts', import.meta.url).href, {
     GENRE_WHITELIST: new Set<string>(['rock']),
     GENRE_ALIASES: new Map<string, string>(),
     MIN_STATIONS_FOR_GENRE_INDEX: 3,
+    isWhitelistedGenreSlug: (slug: string) => slug === 'rock',
   },
 });
 mock.module(new URL('../src/seo/genre-whitelist-store.ts', import.meta.url).href, {

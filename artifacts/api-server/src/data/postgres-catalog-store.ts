@@ -4,6 +4,7 @@ import type pg from "pg";
 import { getPostgresPool } from "../postgres-runtime";
 import type { StationDescriptionChange } from '../utils/station-description-patch';
 import { assertRecoverableStation, getStreamRecoverySnapshot } from '../utils/station-health-recovery';
+import { providerHealthIsNewer, PROVIDER_HEALTH_FIELDS } from '../utils/provider-health-freshness';
 
 export type CatalogDocument = Record<string, any>;
 export type CatalogFilter = Record<string, any>;
@@ -221,7 +222,7 @@ export class PostgresCatalogStore {
         SELECT id,has_logo,votes FROM ranked WHERE country_rank<=$1
         ORDER BY has_logo DESC NULLS LAST,votes DESC NULLS LAST,id ASC LIMIT $2
       ) SELECT s.id,s.slug,s.name,s.url,s.url_resolved,s.favicon,s.country,s.state,
-        s.votes,s.has_logo,s.tags_raw,s.codec,s.bitrate,s.logo_assets,s.no_index,
+        s.votes,s.has_logo,s.tags_raw,s.codec,s.bitrate,s.logo_assets,s.no_index,s.last_check_ok,s.last_check_time,
         CASE WHEN s.source ? 'logo' THEN jsonb_build_object('logo',s.source->'logo')
           ELSE '{}'::jsonb END AS source
       FROM winners w JOIN stations s ON s.id=w.id
@@ -337,10 +338,13 @@ export class PostgresCatalogStore {
         const current = catalogShape(row);
         const patch = update.$set || update;
         const next = structuredClone(current);
+        const preserveHealth = (options.respectManualFields || options.syncRunId) &&
+          !providerHealthIsNewer(current,patch);
         const setPath = (field: string, value: any, remove = false) => {
           const parts = pathParts(field);
           if (["_id","createdAt"].includes(parts[0])) throw new Error(`Immutable catalog field: ${field}`);
           if (options.respectManualFields && current.manualEditFields?.[parts[0]]) return;
+          if (preserveHealth && PROVIDER_HEALTH_FIELDS.has(parts[0])) return;
           if (options.fillMissingFaviconOnly && parts[0] === 'favicon' && (
             current.hasLogo === true || current.faviconLocal ||
             (current.logoAssets && Object.keys(current.logoAssets).length > 0) ||

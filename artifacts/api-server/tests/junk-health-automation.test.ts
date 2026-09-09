@@ -3,15 +3,19 @@ import assert from 'node:assert/strict';
 
 let stations: any[] = [], updates: any[] = [], batches: any[] = [], inserts: any[] = [], reports: string[] = [];
 let SyncService: any, runJunkCleanup: any;
+let failSiblingLookup = false;
 const day = 86400000;
 const ago = (ms: number) => new Date(Date.now() - ms).toISOString();
 const row = (extra: any = {}) => ({ _id: 'station-a', stationuuid: 'uuid-a', name: 'Oriental', slug: 'oriental', url: 'https://example.invalid/radio', noIndex: false,
   manualEditFields: {}, lastCheckOk: false, lastCheckTime: ago(60000), lastCheckOkTime: ago(31 * day), ...extra });
 const recovered = (extra: any = {}) => row({ noIndex: true, lastCheckOk: true, lastCheckTime: ago(1000), lastCheckOkTime: ago(1000),
   automaticNoIndex: { owner: 'radiohub-junk-policy', version: 1, active: true, reason: 'stream-dead-30d', failedCheckAt: ago(day) }, ...extra });
-const reset = (rows: any[]) => { stations = rows; updates = []; batches = []; inserts = []; reports = []; };
+const reset = (rows: any[]) => { stations = rows; updates = []; batches = []; inserts = []; reports = []; failSiblingLookup = false; };
 const catalog = {
-  find: async (filter: any) => filter.stationuuid ? stations : [],
+  find: async (filter: any) => {
+    if (filter.slug && failSiblingLookup) throw new Error('Fixture sibling read unavailable');
+    return filter.stationuuid ? stations : [];
+  },
   findOne: async () => null,
   count: async () => stations.length,
   iterate: async function* () { for (const station of stations) yield station; },
@@ -44,21 +48,21 @@ async function sync(api: any) {
 const incoming = (extra: any = {}) => ({ stationuuid: 'uuid-a', name: 'Provider name', url: 'https://example.invalid/radio',
   lastcheckok: 0, lastchecktime: ago(60000), lastcheckoktime: ago(31 * day), ...extra });
 
-test('sync marks new current health failure with explicit provenance; stale records are not marked', async () => {
+test('sync never marks new current or stale stream failures as SEO junk', async () => {
   reset([]); await sync(incoming());
-  assert.equal(inserts[0].noIndex, true);
-  assert.equal(inserts[0].automaticNoIndex.reason, 'stream-dead-30d');
+  assert.equal(inserts[0].noIndex, undefined);
+  assert.equal(inserts[0].automaticNoIndex, undefined);
   reset([]); await sync(incoming({ lastchecktime: '2025-01-01T00:00:00Z' }));
   assert.equal(inserts[0].noIndex, undefined);
   assert.equal(inserts[0].automaticNoIndex, undefined);
 });
 
-test('sync automatic transition uses guarded row update with all provider/manual fences', async () => {
-  const existing = row(); reset([existing]); await sync(incoming());
+test('sync still marks actual content junk with all provider/manual fences', async () => {
+  const existing = row({ slug: 'radio-test-stream' }); reset([existing]); await sync(incoming());
   assert.equal(updates.length, 1); assert.equal(batches.length, 0);
   const write = updates[0];
   assert.equal(write.update.$set.noIndex, true);
-  assert.equal(write.update.$set.automaticNoIndex.reason, 'stream-dead-30d');
+  assert.equal(write.update.$set.automaticNoIndex.reason, 'test-feed:test-stream');
   assert.deepEqual(write.filter.noIndex, { $eq: false });
   assert.deepEqual(write.filter.manualEditFields, { $eq: {} });
   assert.deepEqual(write.options, { respectManualFields: true, protectLocalCounters: true, fillMissingFaviconOnly: true, syncRunId: 'test-sync' });
@@ -68,6 +72,10 @@ test('sync can recover owned health flag but never unknown/manual noindex', asyn
   reset([recovered({ lastCheckOk: false, lastCheckTime: ago(day), lastCheckOkTime: ago(40 * day) })]);
   await sync(incoming({ lastcheckok: 1, lastchecktime: ago(1000), lastcheckoktime: ago(1000) }));
   assert.equal(updates[0].update.$set.noIndex, false);
+  reset([recovered({ lastCheckOk: false, lastCheckTime: ago(day), lastCheckOkTime: ago(40 * day) })]);
+  await sync(incoming());
+  assert.equal(updates[0].update.$set.noIndex, false, 'offline information pages can retire an owned SEO-only exclusion');
+  assert.equal(updates[0].update.$set.automaticNoIndex.recoveredAt, undefined);
   for (const extra of [{ automaticNoIndex: undefined }, { manualEditFields: { noIndex: true } }, { redirectToSlug: 'original' }]) {
     reset([recovered(extra)]); await sync(incoming({ lastcheckok: 1, lastchecktime: ago(1000), lastcheckoktime: ago(1000) }));
     assert.equal(updates.length, 0);
@@ -83,6 +91,14 @@ test('sync evaluates persisted manual name and protected health instead of raw f
   assert.equal(batches[0].patch.noIndex, undefined);
 });
 
+test('sync never retires old health exclusion when a possible duplicate sibling lookup fails', async () => {
+  reset([recovered({ slug: '1046-oriental', lastCheckOk: false })]); failSiblingLookup = true;
+  await sync(incoming());
+  assert.equal(updates.length, 0);
+  assert.equal(batches[0].patch.noIndex, undefined);
+  assert.equal(batches[0].patch.automaticNoIndex, undefined);
+});
+
 test('nightly cleanup never clears unknown/manual/redirect/non-health flags', async () => {
   for (const extra of [{ automaticNoIndex: undefined }, { manualEditFields: { noIndex: true } }, { redirectToSlug: 'primary' },
     { automaticNoIndex: { owner: 'radiohub-junk-policy', version: 1, active: true, reason: 'codec-suffix:-aac' } }]) {
@@ -92,21 +108,24 @@ test('nightly cleanup never clears unknown/manual/redirect/non-health flags', as
   }
 });
 
-test('nightly cleanup owned-health recovery is guarded and audited; dry-run never writes', async () => {
-  const existing = recovered(); reset([existing]);
+test('nightly cleanup owned-health retirement is guarded and audited while offline; dry-run never writes', async () => {
+  const existing = recovered({ lastCheckOk: false }); reset([existing]);
   await runJunkCleanup({ dryRun: false, reportPath: '/not-written.csv', log() {} });
   assert.equal(updates.length, 1);
   assert.equal(updates[0].update.$set.noIndex, false);
   assert.deepEqual(updates[0].filter.automaticNoIndex, { $eq: existing.automaticNoIndex });
   assert.equal(updates[0].options.respectManualFields, true);
-  assert.match(reports[0], /fresh-success-after-owned-health-failure/);
+  assert.match(reports[0], /retired-owned-health-only-seo-exclusion/);
+  assert.equal(updates[0].update.$set.lastCheckOk, undefined);
   reset([existing]); await runJunkCleanup({ dryRun: true, reportPath: '/not-written.csv', log() {} });
   assert.equal(updates.length, 0);
 });
 
 test('cleanup new flags have provenance and existing unknown flags are not adopted', async () => {
   reset([row()]); await runJunkCleanup({ dryRun: false, reportPath: '/not-written.csv', log() {} });
-  assert.equal(updates[0].update.$set.automaticNoIndex.reason, 'stream-dead-30d');
+  assert.equal(updates.length, 0, 'availability failure alone cannot create SEO exclusion');
+  reset([row({ name: 'Radio Test Stream', slug: 'radio-test-stream' })]); await runJunkCleanup({ dryRun: false, reportPath: '/not-written.csv', log() {} });
+  assert.equal(updates[0].update.$set.automaticNoIndex.reason, 'test-feed:test-stream');
   reset([row({ noIndex: true })]); await runJunkCleanup({ dryRun: false, reportPath: '/not-written.csv', log() {} });
   assert.equal(updates.length, 0);
 });

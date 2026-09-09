@@ -8,6 +8,8 @@ import { useGlobalPlayer } from "@/hooks/useGlobalPlayer";
 import { Heart, Play, Square, Loader2, ThumbsUp } from "lucide-react";
 import { useTranslation } from "@/hooks/useTranslation";
 import { useSeoRouting } from "@/hooks/useSeoRouting";
+import { stationQueryFreshness } from '@/lib/station-query-policy';
+import { availableStations } from '@/utils/station-availability';
 
 export default function Favorites() {
   const [sortQuery, setSortQuery] = useState('newest');
@@ -44,15 +46,14 @@ export default function Favorites() {
   const { data: favoritesResponse, isLoading, error } = useQuery({
     queryKey: ['/api/user/favorites', { sort: sortQuery }],
     retry: false,
-    refetchOnWindowFocus: false,
-    staleTime: 10 * 60 * 1000, // 10 minutes cache
+    ...stationQueryFreshness,
   });
 
   // Check for authentication errors
   const isAuthError = error && (error as any).message?.includes('401');
 
   // API returns stations directly as an array, not wrapped in {stations: []}
-  const favoriteStations = Array.isArray(favoritesResponse) ? favoritesResponse : [];
+  const favoriteStations = availableStations(Array.isArray(favoritesResponse) ? favoritesResponse : []);
 
   const handlePlayStation = (station: any) => {
     if (currentStation?._id === station._id) {

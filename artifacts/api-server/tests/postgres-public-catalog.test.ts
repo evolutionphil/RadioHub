@@ -247,7 +247,7 @@ describe('Native PostgreSQL public catalog', { skip: !process.env.PG_TEST_DATABA
     assert.deepEqual(compact.stations[0].descriptions, {});
     assert.equal(full.stations[0].descriptions.de.full, 'Search article');
   });
-  it('legacy fallback caches cannot cross full/compact shapes and search failures stay unavailable', async () => {
+  it('fallback caches cannot cross shapes or filters and only unexpired exact requests remain usable', async () => {
     await catalog.insertMany([station('fallback', { descriptions: { de: { full: 'Preserved full article' } } })]);
     for (const [warm, cold] of [['', '&slim=1'], ['&slim=1', '']]) {
       cache.clear();
@@ -257,8 +257,11 @@ describe('Native PostgreSQL public catalog', { skip: !process.env.PG_TEST_DATABA
         const wrongShape = await fetch(base + '/api/stations?country=Germany&state=Berlin' + cold);
         assert.equal(wrongShape.status, 503); assert.equal(wrongShape.headers.get('cache-control'), 'no-store');
         const sameShape = await fetch(base + '/api/stations?country=Germany&state=Berlin' + warm);
-        assert.equal(sameShape.status, 200); assert.equal(sameShape.headers.get('x-data-stale'), 'true');
-        const body = await sameShape.json() as any;
+        assert.equal(sameShape.status, 503);
+        const exact = await fetch(base + '/api/stations?country=Germany' + warm);
+        assert.equal(exact.status, 200); assert.equal(exact.headers.get('cdn-cache-control'), 'no-store');
+        assert.equal(exact.headers.get('cloudflare-cdn-cache-control'), 'no-store');
+        const body = await exact.json() as any;
         assert.deepEqual(body.stations[0].descriptions, warm ? {} : { de: { full: 'Preserved full article' } });
         const search = await fetch(base + '/api/stations?country=Germany&search=missing' + warm);
         assert.equal(search.status, 503);

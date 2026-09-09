@@ -96,7 +96,7 @@ export async function getPopularStationsFromPostgres(options: {
 
 export async function getGeoStationsFromPostgres(limit: number): Promise<any[]> {
   const result = await getPostgresPool().query(
-    `SELECT * FROM stations WHERE latitude IS NOT NULL AND longitude IS NOT NULL
+    `SELECT * FROM stations WHERE last_check_ok IS TRUE AND latitude IS NOT NULL AND longitude IS NOT NULL
      ORDER BY votes DESC LIMIT $1`,
     [boundedInteger(limit, 1000, 5_000)],
   );
@@ -132,12 +132,12 @@ export async function getNearbyStationsFromPostgres(options: {
        FROM stations
        WHERE latitude BETWEEN $1-$3 AND $1+$3
          AND abs(mod((longitude-$2+540)::numeric,360)-180)<=$4
-         AND ($5='' OR lower(country)=lower($5)) AND (NOT $6 OR last_check_ok=true)
+         AND ($5='' OR lower(country)=lower($5)) AND last_check_ok IS TRUE AND $6::boolean
      ) SELECT * FROM candidates WHERE distance<=$9
        ORDER BY COALESCE(country ILIKE $7,false) DESC,
        (NULLIF(btrim(favicon),'') IS NOT NULL AND favicon NOT IN ('null','undefined')) DESC,
        distance ASC,votes DESC,id ASC LIMIT $8`,
-    [lat,lng,deltaLat,deltaLng,options.country || '',options.excludeBroken || false,
+    [lat,lng,deltaLat,deltaLng,options.country || '',true,
       containsPattern(options.userCountry || ''),boundedInteger(options.limit,12,50),radius],
   );
   if (!result.rows.length && radius<100) return getNearbyStationsFromPostgres({ ...options,radiusKm:100,limit:Math.min(boundedInteger(options.limit,12,50),10) });
@@ -178,7 +178,7 @@ export async function getRelatedStationsFromPostgres(stationId: string, limit: n
 
 export async function getRandomCountryStationFromPostgres(country: string): Promise<any | null> {
   const result = await getPostgresPool().query(
-    "SELECT * FROM stations WHERE lower(country)=lower($1) ORDER BY random() LIMIT 1",
+    "SELECT * FROM stations WHERE last_check_ok IS TRUE AND lower(country)=lower($1) ORDER BY random() LIMIT 1",
     [country],
   );
   return fromPostgres(result.rows[0]);
@@ -197,10 +197,11 @@ export async function listStationsFromPostgres(options: PostgresStationListOptio
   pagination: { page: number; limit: number; total: number; pages: number };
 }> {
   const values: unknown[] = [];
-  const conditions: string[] = [];
+  // This is a public catalog reader. excludeBroken=false is a legacy client
+  // preference, not permission to bypass current native health visibility.
+  const conditions: string[] = ['last_check_ok IS TRUE'];
   let genreCandidates = '';
   const bind = (value: unknown): string => { values.push(value); return `$${values.length}`; };
-  if (options.excludeBroken) conditions.push("last_check_ok=true");
   if (options.country) conditions.push(`lower(country)=lower(${bind(options.country)})`);
   if (options.state) {
     const names = /^(wien|vienna)$/i.test(options.state) ? ['Wien', 'Vienna'] : [options.state];
@@ -289,4 +290,9 @@ export async function updateStationDerivedFields(stationId: string, update: { sl
 
 export async function getStationByIdentifier(identifier: string): Promise<any | null> {
   return postgresStation(identifier);
+}
+
+export async function getPublicStationByIdentifier(identifier: string): Promise<any | null> {
+  const station = await postgresStation(identifier);
+  return station?.lastCheckOk === true ? station : null;
 }

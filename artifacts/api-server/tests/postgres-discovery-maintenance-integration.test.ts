@@ -147,8 +147,8 @@ describe(
           { name: "Munich", terms: ["Munich"] },
         ],
       );
-      assert.equal(counts.total, 3);
-      assert.equal(counts.unassigned, 1);
+      assert.equal(counts.total, 2);
+      assert.equal(counts.unassigned, 0);
       assert.deepEqual(
         counts.cities.sort((a, b) => a.name.localeCompare(b.name)),
         [
@@ -160,23 +160,22 @@ describe(
       assert.equal(
         region.body.data.countries.find((row: any) => row.name === "Germany")
           .stationCount,
-        3,
+        2,
       );
       const cities = await request("/api/regions/europe/germany");
       assert.equal(
-        cities.body.data.cities.find((row: any) => row.slug === "all")
-          .stationCount,
-        1,
+        cities.body.data.cities.find((row: any) => row.slug === "all")?.stationCount ?? 0,
+        0,
       );
       const rural = await request("/api/regions/europe/germany/all/stations");
-      assert.equal(rural.body.data.total, 1);
-      assert.equal(rural.body.data.stations[0]._id, "c");
+      assert.equal(rural.body.data.total, 0);
+      assert.deepEqual(rural.body.data.stations, []);
       const all = await request(
         "/api/regions/europe/germany/stations?limit=-2&offset=-10&sortBy=__proto__",
       );
       assert.equal(all.body.data.limit, 1);
       assert.equal(all.body.data.offset, 0);
-      assert.equal(all.body.data.total, 3);
+      assert.equal(all.body.data.total, 2);
       const global = await request("/api/cities/global");
       assert.equal(
         global.body.data.cities.find((row: any) => row.name === "Berlin")
@@ -196,16 +195,17 @@ describe(
       ('user-b','user-b','b@example.invalid','B','{}');
       INSERT INTO user_favorites(user_id,station_id) VALUES ('user-a','a'),('user-b','a'),('user-a','b')`);
       const refresh = await import("../src/routes/cache-refresh-utils");
+      const publicCache = (await import('../src/public-station-cache')).publicStationCache;
       await refresh.refreshCommunityFavoritesCache("Germany");
-      const favorites = await cache.get<any[]>(
+      const favorites = await publicCache.get<any[]>(
         "community_favorites:Germany:all:20",
       );
       assert.equal(favorites![0]._id, "a");
       assert.equal(favorites![0].favoriteCount, 2);
       assert.equal(JSON.stringify(favorites).includes("internalOnly"), false);
       await refresh.refreshPopularStationsCache("Germany");
-      const popular = await cache.get<any[]>("popular_stations:Germany:all:20");
-      assert.equal(popular!.length, 3);
+      const popular = await publicCache.get<any[]>("popular_stations:Germany:all:20");
+      assert.equal(popular!.length, 2);
       assert.equal(JSON.stringify(popular).includes("internalOnly"), false);
     });
     it("reports actual PostgreSQL health, traffic, content and synchronization status", async () => {

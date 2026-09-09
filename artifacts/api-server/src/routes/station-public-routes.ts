@@ -1,7 +1,8 @@
 import type { Express } from "express";
 import { stripPlaceholders, tvValidateParams, tvSlimStation } from './shared-utils';
 import { normalizeCountryFilter, resolveToDbName } from '../utils/normalize-country';
-import CacheManager from '../cache';
+import { publicStationCache as CacheManager } from '../public-station-cache';
+import { publicStationResponseCache } from '../middleware/public-station-cache';
 import { logger } from '../utils/logger';
 
 
@@ -98,6 +99,7 @@ async function generateUniqueSlug(name: string, type: string, id: string): Promi
 }
 
 export function registerPublicStationRoutes(app: Express, deps: any) {
+  app.use(['/api/station','/api/stations'], publicStationResponseCache);
   const { requireAdmin } = deps;
 
   // SINGLE STATION BY SLUG OR ID - Used by all station detail pages
@@ -172,7 +174,7 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
           }),
           { freshTtl: 3600, staleTtl: 21600 },
         );
-        res.set('Cache-Control', 'public, max-age=600, s-maxage=3600');
+        res.set('Cache-Control', 'public, max-age=0, s-maxage=0, must-revalidate');
         return void res.json(isTV ? stations.map(tvSlimStation) : stripPlaceholders(stations));
       }
       // INCIDENT 2026-05-15 v10 — wrapped compute in single-flight so 100
@@ -342,7 +344,7 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
       if (result === null) return void res.status(404).json({ error: 'Station not found' });
 
       // Let the Tizen app / CDN cache the response — similar stations change rarely.
-      res.set('Cache-Control', 'public, max-age=300, s-maxage=3600');
+      res.set('Cache-Control', 'public, max-age=0, s-maxage=0, must-revalidate');
       res.json(stripPlaceholders(result));
     } catch (error: any) {
       logger.error(`❌ /api/stations/similar/:id failed: code=${error?.code || 'unknown'} msg=${error?.message || error}`);
@@ -548,7 +550,6 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
     // Country-only LKG cache key — last successful payload for this
     // country regardless of filter/sort/page. Used as second-tier
     // fallback in the catch block when the exact webCacheKey is cold.
-    const lkgKey = `stations:list:lkg:${country || 'all'}:${isTV ? 'tv' : 'web'}${compact ? ':cards:v1' : ''}`;
 
     const computeStationsList = async () => {
       {
@@ -583,15 +584,6 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
         ? await CacheManager.getOrSetSingleFlight(webCacheKey, computeStationsList, { ttl: 300 })
         : await computeStationsList();
 
-      // Write country-level LKG cache after every successful aggregate
-      // so the catch-block fallback can serve a populated country page
-      // even when the exact filter/sort/page combination has no entry.
-      // 6h TTL — generous because LKG is intentionally only consulted
-      // when the live aggregate fails.
-      if (response && response.stations && response.stations.length > 0) {
-        try { await CacheManager.set(lkgKey, response, { ttl: 21600 }); } catch {}
-      }
-
       res.json(response);
     } catch (error: any) {
       logger.error(`❌ /api/stations failed: code=${error?.code || 'unknown'} msg=${error?.message || error}`);
@@ -602,13 +594,10 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
       // failed `?search=jazz` would return ALL of Germany's stations).
       // Tier 1: exact webCacheKey (may already be populated by a
       // parallel successful caller before we threw).
-      // Tier 2: country-level LKG so the visitor still gets a populated
-      // page even on a cold exact-key miss.
+      // Do not renew country-level last-known-good data on every cache hit:
+      // that could keep a now-unavailable station visible indefinitely.
       if (webCacheKey) {
         try { stale = await CacheManager.get(webCacheKey); } catch {}
-        if (!stale) {
-          try { stale = await CacheManager.get(lkgKey); } catch {}
-        }
       }
       res.set('Cache-Control', 'no-store');
       if (stale != null) { res.set('X-Data-Stale', 'true'); return void res.json(stale); }

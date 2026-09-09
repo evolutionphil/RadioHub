@@ -1,4 +1,5 @@
 import { useParams } from "wouter";
+import { stationQueryFreshness } from '@/lib/station-query-policy';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Share2, UserPlus, UserMinus, Music, Clock, Heart } from "lucide-react";
 import { useState, useEffect } from "react";
@@ -69,6 +70,7 @@ export default function UserProfile() {
   // Fetch user profile data using user-engagement API
   const { data: userProfile, isLoading: isLoadingProfile, error: profileError } = useQuery<UserProfile>({
     queryKey: [`/api/user-engagement/profile/${userId}`, { viewer: currentUser?._id || 'anonymous' }],
+    ...stationQueryFreshness,
     queryFn: context => getQueryFn<UserProfile>({ on401: 'throw' })({ ...context, queryKey: [`/api/user-engagement/profile/${encodeURIComponent(userId || '')}`] }),
     enabled: !!userId
   });
@@ -80,6 +82,7 @@ export default function UserProfile() {
     favorites: Station[];
   }>({
     queryKey: [`/api/user-engagement/profile/${userId}/favorites`],
+    ...stationQueryFreshness,
     enabled: !!userId && !!userProfile,
     retry: false
   });
@@ -89,6 +92,7 @@ export default function UserProfile() {
   // Fetch user's recently played stations
   const { data: recentlyPlayedData, isLoading: isLoadingRecentlyPlayed } = useQuery<Station[]>({
     queryKey: [`/api/user-engagement/profile/${userId}/recently-played`],
+    ...stationQueryFreshness,
     enabled: !!userId && !!userProfile && activeTab === 'recently-played',
     retry: false
   });

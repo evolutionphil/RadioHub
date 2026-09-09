@@ -3,6 +3,8 @@ import { findActiveAuthToken, revokeAuthToken, revokeUserAuthTokens } from '../d
 import { logger } from '../utils/logger';
 import { tvSlimStation } from './shared-utils';
 import CacheManager from '../cache';
+import { publicStationCache } from '../public-station-cache';
+import { publicStationResponseCache } from '../middleware/public-station-cache';
 import { pgFindUserById, pgUserFollowCounts } from '../data/postgres-user-store';
 import { activateTvLogin,cleanupTvState,createTvCode,deactivatePushToken,enqueueCastCommand,findTvDevice,getCastNowPlaying,getTvCode,listTvDevices,pollCastCommand,saveCastNowPlaying,savePushToken,touchTvDevice,unpairTvDevice } from '../data/postgres-tv-store';
 import { expireCastSessions } from '../data/postgres-cast-store';
@@ -10,6 +12,7 @@ import { getPostgresPool } from '../postgres-runtime';
 import { resolveToDbName } from '../utils/normalize-country';
 
 export function registerMobileTvRoutes(app: Express, deps: any) {
+  app.use('/api/tv/init', publicStationResponseCache);
   const { requireAuth } = deps;
   const cleanupTimer = setInterval(() => { void cleanupTvState().catch(error => logger.error('TV state cleanup failed:', error)); }, 60_000);
   cleanupTimer.unref();
@@ -646,9 +649,9 @@ If you have any questions about this privacy policy or our data practices, pleas
       const genreLimit = Math.min(Math.max(1, parseInt(req.query.genreLimit as string) || 20), 50);
 
       const cacheKey = `tv:init:${country || countryCode || 'global'}:${limit}:${genreLimit}:v2`;
-      const cached = await CacheManager.get(cacheKey);
+      const cached = await publicStationCache.get(cacheKey);
       if (cached) {
-        res.set('Cache-Control', 'public, max-age=600, s-maxage=3600');
+        res.set('Cache-Control', 'public, max-age=0, s-maxage=0, must-revalidate');
         return void res.json(cached);
       }
 
@@ -662,12 +665,12 @@ If you have any questions about this privacy policy or our data practices, pleas
         getPostgresPool().query(`SELECT sg.genre_slug slug,COALESCE(g.name,initcap(replace(sg.genre_slug,'-',' '))) name,
           count(*)::int AS "stationCount",g.source->>'posterImage' AS "posterImage"
           FROM station_genres sg JOIN stations s ON s.id=sg.station_id LEFT JOIN genres g ON g.slug=sg.genre_slug
-          WHERE ${scope} AND (g.id IS NULL OR g.is_discoverable=true) GROUP BY sg.genre_slug,g.name,g.source HAVING count(*) >= CASE WHEN $1::text IS NULL AND g.name IS NULL THEN 5 ELSE 1 END
+          WHERE s.last_check_ok IS TRUE AND ${scope} AND (g.id IS NULL OR g.is_discoverable=true) GROUP BY sg.genre_slug,g.name,g.source HAVING count(*) >= CASE WHEN $1::text IS NULL AND g.name IS NULL THEN 5 ELSE 1 END
           ORDER BY count(*) DESC,sg.genre_slug LIMIT $3`, [dbCountry,selection,genreLimit]),
-        getPostgresPool().query("SELECT country AS _id,count(*)::int count,min(country_code) code FROM stations WHERE country IS NOT NULL AND country<>'' GROUP BY country ORDER BY count(*) DESC LIMIT 200"),
+        getPostgresPool().query("SELECT country AS _id,count(*)::int count,min(country_code) code FROM stations WHERE last_check_ok IS TRUE AND country IS NOT NULL AND country<>'' GROUP BY country ORDER BY count(*) DESC LIMIT 200"),
       ]);
       const stationShape = (s: any) => ({ ...s.source, ...s, _id:s.id,urlResolved:s.url_resolved,countrycode:s.country_code,
-        tags:s.tags_raw,clickCount:Number(s.click_count),votes:Number(s.votes),logoAssets:s.logo_assets });
+        tags:s.tags_raw,clickCount:Number(s.click_count),votes:Number(s.votes),logoAssets:s.logo_assets,lastCheckOk:s.last_check_ok });
       const popularStations = popular.rows.map(stationShape), trendingStations = trending.rows.map(stationShape);
       const countries = countryRows.rows;
       const genresRaw = { genres: genreRows.rows.map((g:any) => ({ ...g,posterImage:g.posterImage || `/images/genre-bg-grad-${(Math.abs(g.slug.split('').reduce((a:number,b:string)=>a+b.charCodeAt(0),0))%4)+1}.webp` })) };
@@ -710,8 +713,8 @@ If you have any questions about this privacy policy or our data practices, pleas
         }
       };
 
-      await CacheManager.set(cacheKey, result, { ttl: 3600 });
-      res.set('Cache-Control', 'public, max-age=600, s-maxage=3600');
+      await publicStationCache.set(cacheKey, result, { ttl: 60 });
+      res.set('Cache-Control', 'public, max-age=0, s-maxage=0, must-revalidate');
       res.json(result);
     } catch (error: any) {
       logger.error('TV init error:', error);

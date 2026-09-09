@@ -643,6 +643,7 @@ app.use(session(sessionConfig));
           ['scheduled admin-setting-history prune', async () => { (await import('./services/scheduled-admin-setting-history-prune')).scheduledAdminSettingHistoryPrune.initialize(); }],
           ['scheduled backfill', async () => { (await import('./services/scheduled-backfill')).scheduledBackfill.initialize(); }],
           ['scheduled station sync', async () => { (await import('./services/scheduled-station-sync')).scheduledStationSync.initialize(); }],
+          ['scheduled stream health', async () => { (await import('./services/scheduled-stream-health')).scheduledStreamHealth.initialize(); }],
           ['scheduled coverage snapshot', async () => { (await import('./services/scheduled-coverage-snapshot')).scheduledCoverageSnapshot.initialize(); }],
           ['scheduled genre-slug cleanup', async () => { (await import('./services/scheduled-genre-slug-cleanup')).scheduledGenreSlugCleanup.initialize(); }],
           ['scheduled genre station-counts', async () => { (await import('./services/scheduled-genre-station-counts')).scheduledGenreStationCounts.initialize(); }],

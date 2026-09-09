@@ -16,3 +16,12 @@ test('missing or unplayable station data cannot masquerade as a complete bootstr
  assert.equal(renderStationBootstrap(null,'en'),'');
  assert.equal(renderStationBootstrap({_id:'one',name:'One',slug:'one'},'en'),'');
 });
+
+test('offline station bootstrap retains its rich public content and explicit false availability',()=>{
+ const html=renderStationBootstrap({_id:'offline',name:'Offline FM',slug:'offline-fm',url:'https://radio.example/live',lastCheckOk:false,
+   descriptions:{de:{full:'Bestehende Senderbeschreibung'},en:{full:'Existing station description'}}},'de');
+ const payload=JSON.parse(html.replace(/^<script[^>]*>/,'').replace(/<\/script>$/,''));
+ assert.equal(payload.station.lastCheckOk,false);
+ assert.equal(payload.station.descriptions.de,'Bestehende Senderbeschreibung');
+ assert.equal(payload.station.url,'https://radio.example/live');
+});

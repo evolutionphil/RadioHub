@@ -5,6 +5,7 @@ import {
 } from "../data/postgres-catalog-store";
 import { getPostgresPool } from "../postgres-runtime";
 import CacheManager, { CacheKeys } from "../cache";
+import { publicStationCache } from "../public-station-cache";
 import {
   normalizeCountryFilter,
   resolveToDbName,
@@ -42,7 +43,7 @@ export async function refreshCommunityFavoritesCache(
     const rows = (
       await getPostgresPool().query(
         `SELECT s.*,count(f.user_id)::int favorite_count FROM user_favorites f
-      JOIN stations s ON s.id=f.station_id WHERE ${sql}
+      JOIN stations s ON s.id=f.station_id WHERE s.last_check_ok IS TRUE AND (${sql})
       GROUP BY s.id ORDER BY favorite_count DESC,s.id LIMIT 20`,
         values,
       )
@@ -63,6 +64,7 @@ export async function refreshCommunityFavoritesCache(
       "iso_3166_1",
       "language",
       "slug",
+      "lastCheckOk",
     ];
     const communityFavorites = rows.map((row) => {
       const station = catalogShape(row);
@@ -73,7 +75,7 @@ export async function refreshCommunityFavoritesCache(
     });
 
     const cacheKey = `community_favorites:${country || "all"}:all:20`;
-    await CacheManager.set(cacheKey, communityFavorites, { ttl: 600 });
+    await publicStationCache.set(cacheKey, communityFavorites, { ttl: 60 });
   } catch (error) {
     logger.log(`⚠️ Failed to cache community favorites for ${country}:`, error);
   }
@@ -88,7 +90,7 @@ export async function refreshPopularStationsCache(
       ? resolveToDbName(country) || country
       : "all";
 
-  let featuredFilter: any = { ...countryFilter, isFeatured: true };
+  let featuredFilter: any = { ...countryFilter, isFeatured: true, lastCheckOk: true };
   if (!country || country === "all" || country === "null") {
     featuredFilter.showInGlobalPopular = true;
   }
@@ -103,7 +105,7 @@ export async function refreshPopularStationsCache(
   let regularStations: any[] = [];
   if (remainingLimit > 0) {
     regularStations = await pgCatalog().find(
-      { ...countryFilter, isFeatured: { $ne: true } },
+      { ...countryFilter, isFeatured: { $ne: true }, lastCheckOk: true },
       {
         sort: { votes: -1 },
         limit: remainingLimit,
@@ -115,7 +117,7 @@ export async function refreshPopularStationsCache(
   const popularStations = [...featuredStations, ...regularStations];
 
   const cacheKey = `popular_stations:${resolvedName}:all:20`;
-  await CacheManager.set(cacheKey, popularStations, { ttl: 86400 });
+  await publicStationCache.set(cacheKey, popularStations, { ttl: 60 });
 
   const tvSlimAll = popularStations
     .filter(
@@ -127,8 +129,8 @@ export async function refreshPopularStationsCache(
 
   for (const tvLimit of [4, 10, 12]) {
     const tvCacheKey = `popular_stations:${resolvedName}:all:${tvLimit}:false:tv:v2`;
-    await CacheManager.set(tvCacheKey, tvSlimAll.slice(0, tvLimit), {
-      ttl: 86400,
+    await publicStationCache.set(tvCacheKey, tvSlimAll.slice(0, tvLimit), {
+      ttl: 60,
     });
   }
 }

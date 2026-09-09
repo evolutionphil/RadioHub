@@ -51,6 +51,19 @@ describe('Native PostgreSQL translation admin, genre merge and favorites', {skip
     const unrelated=await station('Unrelated',{genre:'R+B Rock',tags:'R+B Rock,Pop'});
     return {winner,demoted,attached,unrelated};
   };
+  it('public provider-style lists use native healthy identity and retain numeric legacy health/click aliases', async()=>{
+    const good=await station('Provider Healthy',{countryCode:'DE',lastCheckOk:true,clickCount:100001,votes:100001});
+    const bad=await station('Provider Offline',{lastCheckOk:false,clickCount:100002,votes:100002});
+    for(const path of ['top-clicked','top-voted']) {
+      const response=await fetch(`${base}/api/radio-browser/${path}?limit=1`);
+      assert.equal(response.status,200);const body=await response.json() as any;
+      assert.equal(body.stations[0]._id,good._id);assert.equal(body.stations[0].lastcheckok,1);
+      assert.equal(body.stations[0].lastCheckOk,true);assert.equal(body.stations[0].clickcount,100001);
+      assert.equal(body.stations[0].countrycode,'DE');assert.equal(Object.hasOwn(body.stations[0],'descriptions'),false);
+    }
+    assert.equal((await fetch(`${base}/api/radio-browser/broken`)).status,401);
+    await pool.query('DELETE FROM stations WHERE id=ANY($1)',[[good._id,bad._id]]);
+  });
   it('matches escaped whole tags in preview and serializes concurrent merge retries with one durable audit',async()=>{
     const f=await fixture();
     const preview=await fetch(`${base}/api/admin/genres/${f.demoted}/merge-preview?targetGenreId=${f.winner}`,{headers:adminHeaders});

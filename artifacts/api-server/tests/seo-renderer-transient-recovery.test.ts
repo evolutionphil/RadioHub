@@ -3,6 +3,7 @@ import { beforeEach, mock, test } from 'node:test';
 import { ACTIVE_SITEMAP_LANGUAGES, generateLanguageUrls, truncateAtWordBoundary } from '@workspace/seo-shared/seo-config';
 import { getIndexableLanguagesForStation, isStationIndexableInLanguage } from '../src/seo/junk-station-rules';
 import { URL_TRANSLATIONS } from '@workspace/seo-shared/url-translations';
+import { getStationStreamUnavailableNotice } from '@workspace/seo-shared/station-page-copy';
 
 const pageCache = new Map<string, any>();
 let databaseFails = false;
@@ -133,9 +134,73 @@ test('actual localized SSR station routes retain the same reciprocal fourteen-la
   for (const entry of expected.filter(item => item.lang !== 'x-default')) {
     const page = await renderer.renderStaticPage(new URL(entry.url).pathname, 'https://themegaradio.com');
     assert.equal(page.pageData?.pageType, 'station');
-    assert.equal(page.seoTags.canonical, entry.url);
+    assert.equal(new URL(page.seoTags.canonical).href, new URL(entry.url).href);
     assert.deepEqual(page.seoTags.hreflangs.map((item: any) => ({ ...item, url: new URL(item.url).href })), expected, entry.lang);
   }
+});
+
+test('offline station details retain full fourteen-language content, indexability and matching human-visible notices', async () => {
+  qualifiedLanguages = [...ACTIVE_SITEMAP_LANGUAGES];
+  stationOverrides = {
+    lastCheckOk: false, lastCheckTime: new Date(), lastCheckOkTime: new Date(Date.now() - 90 * 86400000),
+    descriptions: Object.fromEntries(qualifiedLanguages.map(lang => [lang, { full: `Existing editorial station information ${lang}`, meta: `Existing station summary ${lang}` }])),
+  };
+  const entries = generateLanguageUrls('/station/recovery-fm', 'https://themegaradio.com', 'en', undefined, undefined, qualifiedLanguages);
+  for (const entry of entries.filter(item => item.lang !== 'x-default')) {
+    const page = await renderer.renderStaticPage(new URL(entry.url).pathname, 'https://themegaradio.com');
+    assert.equal(page.pageData?.station.lastCheckOk, false);
+    assert.equal(page.pageData?.stationIsJunk, false);
+    assert.equal(page.pageData?.notFound, false);
+    assert.equal(page.pageData?.stationDbError, undefined, 'offline audio is not a page/database outage');
+    assert.equal(page.pageData?.redirectTo, undefined);
+    assert.notEqual(page.seoTags.noIndex, true);
+    assert.equal(new URL(page.seoTags.canonical).href, new URL(entry.url).href);
+    assert.deepEqual(page.seoTags.hreflangs.map((item: any) => ({ ...item, url: new URL(item.url).href })), entries.map(item => ({ ...item, url: new URL(item.url).href })));
+    assert.equal(page.pageData?.station.descriptions[entry.lang].full, stationOverrides.descriptions[entry.lang].full);
+    const body = renderer.generateHtmlBody({ pageType: 'station', language: entry.lang, translations: {},
+      stationData: page.pageData?.station, seoTags: page.seoTags, cleanPath: page.cleanPath });
+    assert.ok(body.includes(stationOverrides.descriptions[entry.lang].full));
+    assert.ok(body.includes(`<p id="station-stream-unavailable" role="status">${escapeHead(getStationStreamUnavailableNotice(entry.lang))}</p>`));
+    assert.equal((body.match(/<h1>/g) || []).length, 1);
+    for (const availability of [true, undefined]) {
+      const availableBody = renderer.generateHtmlBody({ pageType: 'station', language: entry.lang, translations: {},
+        stationData: { ...page.pageData?.station, lastCheckOk: availability }, seoTags: page.seoTags });
+      assert.ok(!availableBody.includes('id="station-stream-unavailable"'));
+    }
+  }
+});
+
+test('unknown legacy offline noindex keeps rich localized200 data without reindexing, while manual and quality exclusions stay gone', async () => {
+  noIndex = true; qualifiedLanguages = [...ACTIVE_SITEMAP_LANGUAGES];
+  stationOverrides = { lastCheckOk: false, descriptions: Object.fromEntries(qualifiedLanguages.map(lang => [lang,
+    { full: `Retained original station article ${lang}`, meta: `Retained station summary ${lang}` }])) };
+  const entries = generateLanguageUrls('/station/recovery-fm', 'https://themegaradio.com', 'en', undefined, undefined, qualifiedLanguages);
+  for (const entry of entries.filter(item => item.lang !== 'x-default')) {
+    const page = await renderer.renderStaticPage(new URL(entry.url).pathname, 'https://themegaradio.com');
+    assert.equal(page.pageData.stationIsJunk, false, 'HTTP layer keeps200 instead of410');
+    assert.equal(page.pageData.stationDbError, undefined);
+    assert.equal(page.pageData.notFound, false);
+    assert.equal(page.pageData.redirectTo, undefined);
+    assert.equal(page.pageData.station.noIndex, true, 'unknown persisted flag is not reset');
+    assert.equal(page.seoTags.noIndex, true);
+    assert.deepEqual(page.seoTags.hreflangs, []);
+    assert.deepEqual(getIndexableLanguagesForStation(page.pageData.station, qualifiedLanguages), []);
+    assert.equal(new URL(page.seoTags.canonical).href, new URL(entry.url).href);
+    const body = renderer.generateHtmlBody({ pageType: 'station', language: entry.lang, translations: {},
+      stationData: page.pageData.station, seoTags: page.seoTags });
+    assert.ok(body.includes(stationOverrides.descriptions[entry.lang].full));
+    assert.ok(body.includes('id="station-stream-unavailable"'));
+  }
+  for (const extra of [{ manualEditFields: { noIndex: true } }, { manualEditFields: { noIndex: false } },
+    { slug: 'radio-test-stream' }, { slug: 'radio-aac' }, { slug: '-1234' }]) {
+    pageCache.clear(); stationOverrides = { ...stationOverrides, manualEditFields: undefined, slug: 'recovery-fm', ...extra };
+    const page = await renderer.renderStaticPage(`/en/station/${stationOverrides.slug}`, 'https://themegaradio.com');
+    assert.equal(page.pageData.stationIsJunk, true);
+    assert.equal(page.seoTags.noIndex, true);
+  }
+  pageCache.clear(); stationOverrides = { lastCheckOk: false, redirectToSlug: 'original-fm' };
+  const duplicate = await renderer.renderStaticPage(url, 'https://themegaradio.com');
+  assert.match(duplicate.pageData.redirectTo, /original-fm$/);
 });
 
 const escapeHead = (value: string) => value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#39;');

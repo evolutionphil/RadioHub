@@ -1,6 +1,8 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { authQueryOptions, type AuthQueryResponse } from '@/lib/auth-query';
+import { stationQueryFreshness } from '@/lib/station-query-policy';
+import { availableStations } from '@/utils/station-availability';
 
 interface FavoriteState {
   user: AuthQueryResponse['user'];
@@ -34,18 +36,16 @@ export function FavoriteStateProvider({ children }: { children: ReactNode }) {
     queryKey: ['/api/user/favorites'],
     queryFn: async ({ signal }) => {
       const response = await fetch('/api/user/favorites', { credentials: 'include', signal });
-      if (!response.ok) return [];
+      if (!response.ok) throw new Error('Failed to fetch favorites');
       return response.json();
     },
     enabled: !!userId && favoriteOwnerId === userId,
-    staleTime: 10 * 60 * 1000,
-    refetchOnMount: false,
-    refetchOnWindowFocus: false,
+    ...stationQueryFreshness,
   });
   // Hide a former account's cached membership in the transition render itself,
   // before the effect cancels its request and replaces the shared cache entry.
   const favoriteStationIds = useMemo(() => userId && favoriteOwnerId === userId
-    ? new Set(favoritesData?.map(station => station._id) ?? [])
+    ? new Set(availableStations(favoritesData ?? []).map(station => station._id))
     : NO_FAVORITES, [favoritesData, favoriteOwnerId, userId]);
   const value = useMemo(() => ({ user, favoriteStationIds }), [user, favoriteStationIds]);
   return <FavoriteStateContext.Provider value={value}>{children}</FavoriteStateContext.Provider>;

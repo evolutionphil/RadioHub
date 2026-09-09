@@ -9,6 +9,10 @@ let station: any, calls: any[], dbFailure: boolean, probeFailure: boolean, cache
 let server: Server, base: string;
 const evidence = () => ({ checkedAt: new Date().toISOString(), contentType: 'audio/mpeg', bytesRead: 1024 });
 before(async () => {
+  mock.module('../src/postgres-runtime',{namedExports:{getPostgresPool:()=>({query:async()=>{
+    calls.push(['status']);if(dbFailure)throw new Error('secret DB URL');
+    return {rows:[{tracked:40,due:2,hidden_from_lists:3,summary:{checked:12}}]};
+  }})}});
   mock.module('../src/utils/station-health-recovery', { namedExports: { getStreamRecoverySnapshot, assertRecoverableStation,
     probeStationStream: async (url: string) => { calls.push(['probe', url]); if (probeFailure) throw new Error('secret stream URL'); return evidence(); } } });
   mock.module('../src/data/postgres-catalog-store', { namedExports: { pgCatalog: () => ({
@@ -37,6 +41,15 @@ const post = (payload: any = body(), authorized = true, target = id) => fetch(`$
 
 test('admin authentication occurs before any read, probe or mutation', async () => {
   assert.equal((await post(body(), false)).status, 401); assert.deepEqual(calls, []);
+});
+test('automatic health status is admin-only, bounded, uncached and contains no stream URLs',async()=>{
+  assert.equal((await fetch(`${base}/api/admin/stream-health/status`)).status,401);assert.deepEqual(calls,[]);
+  const response=await fetch(`${base}/api/admin/stream-health/status`,{headers:{'x-test-admin':'1'}});
+  assert.equal(response.status,200);assert.equal(response.headers.get('cache-control'),'no-store');
+  const value=await response.json();assert.equal(value.batchLimit,12);assert.equal(value.concurrency,2);
+  assert.equal(value.hidden_from_lists,3);assert.ok(!JSON.stringify(value).includes('https://'));
+  dbFailure=true;const failure=await fetch(`${base}/api/admin/stream-health/status`,{headers:{'x-test-admin':'1'}});
+  assert.equal(failure.status,503);assert.ok(!(await failure.text()).includes('secret'));
 });
 test('only exact persisted resolved URL is probed and committed result invalidates same-station keys', async () => {
   const response = await post(); assert.equal(response.status, 200); assert.equal(response.headers.get('cache-control'), 'no-store');

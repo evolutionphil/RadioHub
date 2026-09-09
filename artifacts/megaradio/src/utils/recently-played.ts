@@ -1,3 +1,5 @@
+import { isExplicitlyFailedStation } from './station-availability';
+
 type RecentStation = Record<string, any> & { _id: string; playedAt?: string };
 const HISTORY_LIMIT = 12;
 
@@ -31,14 +33,18 @@ export function mergeRecentlyPlayed(local: unknown, remote: unknown): RecentStat
   return [...merged.values()].sort((a, b) => playTime(b) - playTime(a)).slice(0, HISTORY_LIMIT);
 }
 
-export function hydrateRecentlyPlayed(history: RecentStation[], catalog: Record<string, any>): RecentStation[] {
-  return history.map(entry => {
+export function hydrateRecentlyPlayed(history: RecentStation[], catalog: Record<string, any>, authoritative = false): RecentStation[] {
+  return history.flatMap(entry => {
     const current = catalog[String(entry._id)];
-    if (!current || typeof current !== 'object' || String(current._id) !== String(entry._id)) return entry;
+    if (!current || typeof current !== 'object' || String(current._id) !== String(entry._id)) {
+      return authoritative || isExplicitlyFailedStation(entry) ? [] : [entry];
+    }
+    if (isExplicitlyFailedStation(current)) return [];
     // Current catalogue owns logos/stream metadata; history owns recency.
     // A removed image must not resurrect a stale localStorage logo. Missing
-    // catalogue rows and outages retain their original history snapshot.
-    return { ...entry, ...current, favicon: current.favicon, logoAssets: current.logoAssets,
-      localImagePath: current.localImagePath, playedAt: entry.playedAt };
+    // catalogue rows are hidden only after a successful authoritative response.
+    // Storage is untouched, so the same ID can recover in a later batch.
+    return [{ ...entry, ...current, favicon: current.favicon, logoAssets: current.logoAssets,
+      localImagePath: current.localImagePath, playedAt: entry.playedAt }];
   });
 }

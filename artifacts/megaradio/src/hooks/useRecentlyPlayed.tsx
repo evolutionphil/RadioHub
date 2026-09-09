@@ -3,6 +3,7 @@ import { useAuth } from './useAuth';
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useBatchStations } from './useBatchStations';
 import { readRecentlyPlayed, mergeRecentlyPlayed, hydrateRecentlyPlayed } from '@/utils/recently-played';
+import { stationQueryFreshness } from '@/lib/station-query-policy';
 
 export function useRecentlyPlayed() {
   const { isAuthenticated } = useAuth();
@@ -51,14 +52,15 @@ export function useRecentlyPlayed() {
       return response.json();
     },
     enabled: isAuthenticated,
+    ...stationQueryFreshness,
     staleTime: 30 * 1000,
   });
 
   const history = useMemo(() => mergeRecentlyPlayed(localRecentlyPlayed, isAuthenticated ? apiRecentlyPlayed : []),
     [isAuthenticated, localRecentlyPlayed, apiRecentlyPlayed]);
   const stationIds = useMemo(() => history.map(station => String(station._id)), [history]);
-  const { stationsMap } = useBatchStations(stationIds);
-  const recentlyPlayed = useMemo(() => hydrateRecentlyPlayed(history, stationsMap), [history, stationsMap]);
+  const { stationsMap, hasAuthoritativeData } = useBatchStations(stationIds);
+  const recentlyPlayed = useMemo(() => hydrateRecentlyPlayed(history, stationsMap, hasAuthoritativeData), [history, stationsMap, hasAuthoritativeData]);
 
   const hasRecentlyPlayed = recentlyPlayed && recentlyPlayed.length > 0;
 

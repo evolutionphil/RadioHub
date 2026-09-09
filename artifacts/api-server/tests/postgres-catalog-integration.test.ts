@@ -219,6 +219,22 @@ describe("PostgreSQL native catalog writes", { skip: !connectionString }, () => 
     await catalog.patchById('three',{ $set:{ favicon:'https://example.invalid/new.png' } });
     assert.equal((await catalog.update({ _id:'three',favicon:'https://example.invalid/current.png','logoAssets.operationId':claimed?.logoAssets.operationId },{ $set:{ favicon:'obsolete' } })).matchedCount,0);
   });
+  it('provider sync cannot overwrite newer health evidence but fresh checks can hide and restore',async()=>{
+    await catalog.insertMany([station('health-clock')]);
+    const first=new Date('2026-01-01T12:00:00Z'),old=new Date('2026-01-01T11:00:00Z'),fresh=new Date('2026-01-01T13:00:00Z');
+    await catalog.patchById('health-clock',{$set:{lastCheckOk:false,lastCheckTime:first,noIndex:false}});
+    await catalog.update({_id:'health-clock'},{$set:{lastCheckOk:true,lastCheckTime:old,lastCheckOkTime:old}},{respectManualFields:true});
+    assert.equal((await catalog.findById('health-clock'))?.lastCheckOk,false);
+    assert.deepEqual((await catalog.findById('health-clock'))?.lastCheckTime,first);
+    await catalog.update({_id:'health-clock'},{$set:{lastCheckOk:true,lastCheckTime:fresh,lastCheckOkTime:fresh}},{respectManualFields:true});
+    const recovered=await catalog.findById('health-clock');
+    assert.equal(recovered?.lastCheckOk,true);assert.equal(recovered?.noIndex,false);
+    await catalog.update({_id:'health-clock'},{$set:{lastCheckOk:false}},{respectManualFields:true});
+    assert.equal((await catalog.findById('health-clock'))?.lastCheckOk,true);
+    await catalog.patchById('health-clock',{$set:{'manualEditFields.lastCheckOk':true}});
+    await catalog.update({_id:'health-clock'},{$set:{lastCheckOk:false,lastCheckTime:new Date('2026-01-01T14:00:00Z')}},{respectManualFields:true});
+    assert.equal((await catalog.findById('health-clock'))?.lastCheckOk,true);
+  });
   it('atomically blacklists before deletion and rolls back both on audit failure',async()=>{
     await catalog.insertMany([station('delete-success'),station('delete-fail')]);
     await pool.query(`CREATE FUNCTION reject_blacklist_test() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.name='Station delete-fail' THEN RAISE EXCEPTION 'audit unavailable'; END IF; RETURN NEW; END $$`);

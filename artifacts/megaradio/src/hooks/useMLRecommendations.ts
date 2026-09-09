@@ -2,6 +2,7 @@ import { useEffect, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { logger } from '@/lib/logger';
+import { stationQueryFreshness } from '@/lib/station-query-policy';
 
 interface UserInteraction {
   sessionId: string;
@@ -97,6 +98,7 @@ export function useMLRecommendations() {
   // Get personalized recommendations for homepage
   const { data: recommendations, isLoading: recommendationsLoading } = useQuery<StationWithRecommendation[]>({
     queryKey: ['/api/ml/recommendations', sessionId],
+    ...stationQueryFreshness,
     enabled: true, // Always enabled - backend provides starter recommendations for new users
     staleTime: 2 * 60 * 1000, // 2 minutes (reduced from 10 minutes for faster updates)
     retry: 1
@@ -260,7 +262,7 @@ export function useMLSimilarStations(stationId: string, enabled = true) {
     queryKey: ['/api/stations/similar', stationId, sessionId],
     queryFn: () => getSimilarStations(stationId),
     enabled: enabled && !!stationId,
-    staleTime: 15 * 60 * 1000, // 15 minutes
+    ...stationQueryFreshness,
     retry: 1
   });
 }

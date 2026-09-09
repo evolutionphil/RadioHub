@@ -1,4 +1,4 @@
-import CacheManager from '../cache';
+import { publicStationCache as CacheManager } from '../public-station-cache';
 import { pgCatalog } from '../data/postgres-catalog-store';
 import { POPULAR_RANK_FIELDS, PostgresPopularGlobalCandidates } from '../data/postgres-popular-global-candidates';
 import { logger } from '../utils/logger';
@@ -83,7 +83,7 @@ export class PrecomputedPopularGlobalService {
       // these bounded winners need their full response fields/descriptions.
       const ranked = trimPool([...featured, ...pool], targetPoolSize);
       const hydrated = ranked.length ? await pgCatalog().find(
-        { _id: { $in: [...new Set(ranked.map(s => s._id))] } },
+        { _id: { $in: [...new Set(ranked.map(s => s._id))] }, lastCheckOk: true },
         { fields: Object.keys(POPULAR_PROJECTION), limit: ranked.length },
       ) : [];
       const byId = new Map(hydrated.map(station => [station._id, station]));

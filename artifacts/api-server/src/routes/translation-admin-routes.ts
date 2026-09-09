@@ -15,6 +15,8 @@ import { pgCatalog, pgSyncLogs } from '../data/postgres-catalog-store';
 import { pgStationFacetCounts, pgGenreLandingCountries, pgGenreLandingRelated, pgFavoriteIds, pgAdminAddFavorites, pgFlushStationData, pgAnalyticsEvents, pgGenrePopulationCounts } from '../data/postgres-translation-admin-store';
 import { pgStoredGenreById, pgListAdminGenres, pgUpsertPopulatedGenre, pgMergeDemotedGenre, pgPruneGenreMergeAudit, pgGenreMergeAuditList } from '../data/postgres-genre-admin-store';
 import CacheManager from "../cache";
+import { publicStationCache } from "../public-station-cache";
+import { publicStationResponseCache } from '../middleware/public-station-cache';
 import { logger } from "../utils/logger";
 import { stripPlaceholders } from "./shared-utils";
 import { refreshCommunityFavoritesCache, fetchTranslationsForLanguage, refreshTranslationsCache } from "./cache-refresh-utils";
@@ -36,7 +38,22 @@ import { pgFindUserByEmail, pgFindUserByIdOrSlug, pgUpdateUser, pgUserFavoriteCo
 // per-language Set fails fast locally; the PostgreSQL singleton below also
 // excludes other replicas and background sync while fencing every write.
 const inFlightTranslateJobs = new Set<string>();
+async function healthyRadioBrowserStations(order: 'clickCount' | 'votes' | 'updatedAt', requested: unknown) {
+    const limit = Math.max(1, Math.min(Math.trunc(Number(requested)) || 100, 500));
+    return publicStationCache.getOrSetSingleFlight(`radio-browser:${order}:${limit}`, async () => {
+        const stations = await pgCatalog().find({ lastCheckOk: true }, { sort: { [order]: -1 }, limit,
+            fields: ['_id','stationuuid','changeUuid','name','slug','url','urlResolved','homepage','favicon','tags','country','countryCode',
+                'state','language','languageCodes','codec','bitrate','hls','votes','clickCount','clickTrend','lastCheckOk','lastCheckTime',
+                'lastCheckOkTime','lastChangeTime','geoLat','geoLong','logoAssets'] });
+        return stations.map(s => ({ ...s, changeuuid:s.changeUuid, url_resolved:s.urlResolved, countrycode:s.countryCode,
+            languagecodes:Array.isArray(s.languageCodes) ? s.languageCodes.join(',') : s.languageCodes,
+            clickcount:s.clickCount, clicktrend:s.clickTrend, lastcheckok:s.lastCheckOk ? 1 : 0,
+            lastchecktime:s.lastCheckTime, lastchecktime_iso8601:s.lastCheckTime,
+            lastcheckoktime:s.lastCheckOkTime, lastchangetime:s.lastChangeTime, geo_lat:s.geoLat, geo_long:s.geoLong }));
+    });
+}
 export function registerTranslationAdminRoutes(app: Express, deps: any) {
+    app.use(['/api/filters','/api/recently-played','/api/community-favorites','/api/radio-browser','/api/user/favorites','/api/users'], publicStationResponseCache);
     const { requireAuth, requireAdmin } = deps;
     const userEngagementService = new UserEngagementService();
     async function authenticatedUserId(req: any): Promise<string | undefined> {
@@ -1123,17 +1140,17 @@ ${keysText}`;
     app.get("/api/filters/countries", async (req, res) => {
         try {
             const cacheKey = 'filters:countries:v1';
-            const cached = await CacheManager.get(cacheKey);
+            const cached = await publicStationCache.get(cacheKey);
             if (cached) {
-                res.set('Cache-Control', 'public, max-age=3600, s-maxage=86400');
+                res.set('Cache-Control', 'public, max-age=0, s-maxage=0, must-revalidate');
                 return void res.json(cached);
             }
             const countries = (await pgStationFacetCounts('country')).map(row => row._id);
             const filteredCountries = (countries as string[])
                 .filter((country: string) => country && country.trim() !== '')
                 .sort();
-            await CacheManager.set(cacheKey, filteredCountries, { ttl: 86400 });
-            res.set('Cache-Control', 'public, max-age=3600, s-maxage=86400');
+            await publicStationCache.set(cacheKey, filteredCountries, { ttl: 60 });
+            res.set('Cache-Control', 'public, max-age=0, s-maxage=0, must-revalidate');
             res.json(filteredCountries);
         }
         catch (error: any) {
@@ -1156,7 +1173,7 @@ ${keysText}`;
             // (24h fresh / 7d stale) so a stressed cluster mid-refresh
             // keeps serving the prior language list instead of falling
             // through to the empty-array soft-fail.
-            const cleanLanguages = await CacheManager.getOrSetSWR<string[]>(cacheKey, async () => {
+            const cleanLanguages = await publicStationCache.getOrSetSWR<string[]>(cacheKey, async () => {
                 // Get aggregated language data with counts
                 const languageStats = (await pgStationFacetCounts('language')).filter(row => row.count >= 3);
                 // Clean up the language names - remove malformed data
@@ -1185,7 +1202,7 @@ ${keysText}`;
                     .sort();
                 return cleanLanguages;
             }, { freshTtl: 86400, staleTtl: 86400 * 7 });
-            res.set('Cache-Control', 'public, max-age=3600, s-maxage=86400');
+            res.set('Cache-Control', 'public, max-age=0, s-maxage=0, must-revalidate');
             res.json(cleanLanguages);
         }
         catch (error: any) {
@@ -1193,7 +1210,7 @@ ${keysText}`;
             // INCIDENT 2026-05-15 v10.2 — read SWR envelope on fallback path.
             let stale: any = null;
             try {
-                stale = await CacheManager.getSWR(cacheKey);
+                stale = await publicStationCache.getSWR(cacheKey);
             }
             catch { }
             res.set('Cache-Control', 'no-store');
@@ -1207,9 +1224,9 @@ ${keysText}`;
     app.get("/api/filters/genres", async (req, res) => {
         try {
             const cacheKey = 'filters:genres:v1';
-            const cached = await CacheManager.get(cacheKey);
+            const cached = await publicStationCache.get(cacheKey);
             if (cached) {
-                res.set('Cache-Control', 'public, max-age=3600, s-maxage=86400');
+                res.set('Cache-Control', 'public, max-age=0, s-maxage=0, must-revalidate');
                 return void res.json(cached);
             }
             // Get all distinct tags from stations
@@ -1236,8 +1253,8 @@ ${keysText}`;
             });
             // Convert to sorted array
             const genres = Array.from(genreSet).sort();
-            await CacheManager.set('filters:genres:v1', genres, { ttl: 86400 });
-            res.set('Cache-Control', 'public, max-age=3600, s-maxage=86400');
+            await publicStationCache.set('filters:genres:v1', genres, { ttl: 60 });
+            res.set('Cache-Control', 'public, max-age=0, s-maxage=0, must-revalidate');
             res.json(genres);
         }
         catch (error: any) {
@@ -1253,6 +1270,7 @@ ${keysText}`;
             const { page = 1, limit = 20, country } = req.query;
             const skip = (parseInt(page as string) - 1) * parseInt(limit as string);
             let query: any = {
+                lastCheckOk: true,
                 $or: [
                     { genre: new RegExp(genre, 'i') },
                     { tags: new RegExp(genre, 'i') }
@@ -1438,7 +1456,7 @@ ${keysText}`;
                 return void res.status(400).json({error:'Valid email and up to 1000 station IDs are required'});
             }
             const user = await pgAdminAddFavorites(email, stationIds);
-            await CacheManager.clearByPattern(`user-favorites:${user._id}:`);
+            await publicStationCache.clearByPattern(`user-favorites:${user._id}:`);
             await refreshCommunityFavoritesCache();
             // logger.log(' Added favorites to user:', user.email, 'total favorites:', user.favoriteStations.length);
             res.json({
@@ -1545,13 +1563,13 @@ ${keysText}`;
             const { country } = req.query;
             const cacheKey = `community_favorites:${country || 'all'}:all:20`;
             // Try cache first
-            const cached = await CacheManager.get(cacheKey);
+            const cached = await publicStationCache.get(cacheKey);
             if (cached) {
                 return void res.json(cached);
             }
             // If not cached, refresh and return
             await refreshCommunityFavoritesCache(country as string | undefined);
-            const data = await CacheManager.get(cacheKey);
+            const data = await publicStationCache.get(cacheKey);
             res.json(data || []);
         }
         catch (error) {
@@ -1592,12 +1610,12 @@ ${keysText}`;
             if (!currentUserId)
                 return void res.json([]);
             const cacheKey = `recently-played:${currentUserId}`;
-            const cached = await CacheManager.get(cacheKey);
+            const cached = await publicStationCache.get(cacheKey);
             if (cached)
                 return void res.json(cached);
             {
                 const result = stripPlaceholders(await pgRecentlyPlayedStations(currentUserId));
-                await CacheManager.set(cacheKey, result, { ttl: 300 });
+                await publicStationCache.set(cacheKey, result, { ttl: 60 });
                 return void res.json(result);
             }
         }
@@ -1620,7 +1638,7 @@ ${keysText}`;
                 const updated = await pgAddRecentlyPlayed(currentUserId, String(stationId));
                 if (!updated)
                     return void res.status(404).json({ error: 'Station or user not found' });
-                await CacheManager.clearByPattern(`recently-played:${currentUserId}`);
+                await publicStationCache.clearByPattern(`recently-played:${currentUserId}`);
                 return void res.json({ success: true });
             }
         }
@@ -1664,7 +1682,7 @@ ${keysText}`;
                 read: false,
                 createdAt: new Date()
             });
-            await CacheManager.clearByPattern(`user-favorites:${currentUserId}`);
+            await publicStationCache.clearByPattern(`user-favorites:${currentUserId}`);
             res.json(result);
         }
         catch (error: any) {
@@ -1706,7 +1724,7 @@ ${keysText}`;
                     createdAt: new Date()
                 });
             }
-            await CacheManager.clearByPattern(`user-favorites:${currentUserId}`);
+            await publicStationCache.clearByPattern(`user-favorites:${currentUserId}`);
             res.json(result);
         }
         catch (error) {
@@ -1959,7 +1977,7 @@ ${keysText}`;
             const userId = String(user._id);
             const usePagination = page > 0 && limit > 0;
             const cacheKey = `user-favorites:${userId}:p${page}:l${limit}:f${fieldsParam}`;
-            const cached = await CacheManager.get(cacheKey);
+            const cached = await publicStationCache.get(cacheKey);
             if (cached) {
                 return void res.json(cached);
             }
@@ -1979,6 +1997,7 @@ ${keysText}`;
                 iso_3166_1: '$station.iso_3166_1',
                 urlResolved: '$station.urlResolved',
                 lastcheckok: '$station.lastcheckok',
+                lastCheckOk: '$station.lastCheckOk',
                 clickCount: '$station.clickCount',
                 favoritedAt: '$createdAt'
             };
@@ -2015,7 +2034,7 @@ ${keysText}`;
             else {
                 result = stations;
             }
-            CacheManager.set(cacheKey, result, { ttl: 120 });
+            await publicStationCache.set(cacheKey, result, { ttl: 60 });
             res.json(result);
         }
         catch (error) {
@@ -2111,12 +2130,9 @@ ${keysText}`;
     // Get top clicked stations from Radio Browser API
     app.get("/api/radio-browser/top-clicked", async (req, res) => {
         try {
-            if (!radioBrowserService) {
-                return void res.status(503).json({ error: 'Radio Browser service not available yet' });
-            }
             const { limit = 100 } = req.query;
             // logger.log('🔥 Fetching top ${limit} clicked stations from Radio Browser API...');
-            const stations = await radioBrowserService.getTopClickedStations(Number(limit));
+            const stations = await healthyRadioBrowserStations('clickCount', limit);
             res.json({ stations });
         }
         catch (error) {
@@ -2127,12 +2143,9 @@ ${keysText}`;
     // Get top voted stations from Radio Browser API
     app.get("/api/radio-browser/top-voted", async (req, res) => {
         try {
-            if (!radioBrowserService) {
-                return void res.status(503).json({ error: 'Radio Browser service not available yet' });
-            }
             const { limit = 100 } = req.query;
             // logger.log(`⭐ Fetching top ${limit} voted stations from Radio Browser API...`);
-            const stations = await radioBrowserService.getTopVotedStations(Number(limit));
+            const stations = await healthyRadioBrowserStations('votes', limit);
             res.json({ stations });
         }
         catch (error) {
@@ -2143,12 +2156,9 @@ ${keysText}`;
     // Get recently changed stations from Radio Browser API
     app.get("/api/radio-browser/recent", async (req, res) => {
         try {
-            if (!radioBrowserService) {
-                return void res.status(503).json({ error: 'Radio Browser service not available yet' });
-            }
             const { limit = 100 } = req.query;
             // logger.log('🕒 Fetching ${limit} recently changed stations from Radio Browser API...');
-            const stations = await radioBrowserService.getRecentlyChangedStations(Number(limit));
+            const stations = await healthyRadioBrowserStations('updatedAt', limit);
             res.json({ stations });
         }
         catch (error) {
@@ -2157,7 +2167,7 @@ ${keysText}`;
         }
     });
     // Get broken stations from Radio Browser API
-    app.get("/api/radio-browser/broken", async (req, res) => {
+    app.get("/api/radio-browser/broken", requireAdmin, async (req, res) => {
         try {
             if (!radioBrowserService) {
                 return void res.status(503).json({ error: 'Radio Browser service not available yet' });
@@ -2282,7 +2292,7 @@ ${keysText}`;
             const stationResult = {deletedCount:counts.deletedStations};
             const syncLogResult = {deletedCount:counts.deletedSyncLogs};
             const blacklistResult = {deletedCount:counts.deletedBlacklisted};
-            await CacheManager.clearByPattern('user-favorites:');
+            await publicStationCache.clearByPattern('user-favorites:');
             await refreshCommunityFavoritesCache();
             performanceCache.clearSeoHtml();
             performanceCache.clearPageData();

@@ -31,7 +31,8 @@ catalog.groupCount = async () => [{ _id: 'Germany', count: 3061 }, { _id: 'Austr
 catalog.findOne = async () => null;
 mock.module('../src/data/postgres-catalog-store', { namedExports: { pgCatalog: () => catalog } });
 mock.module('../src/utils/logger', { namedExports: { logger: { log() {}, warn() {}, error() {} } } });
-const { CacheManager } = await import('../src/cache');
+const { CacheManager: rawCache } = await import('../src/cache');
+const { publicStationCache: CacheManager, publicStationCacheKey } = await import('../src/public-station-cache');
 const { PrecomputedStationsService } = await import('../src/services/precomputed-stations');
 const prefix = 'precomputed_stations:catalog:v1:';
 
@@ -106,16 +107,14 @@ for (const phase of ['count', 'find'] as const) {
   });
 }
 
-test('stale known-good page survives a failed background refresh', async () => {
+test('expired health data cannot survive a failed refresh', async () => {
   const good = await PrecomputedStationsService.getCountryStationsByName('Germany', 51, 60);
   const key = `${prefix}Germany:51:60`;
   const data = await CacheManager.getSWR(key);
-  await CacheManager.set(`${key}:swr`, { v: data, exp: Date.now() - 1000 }, { ttl: 604800 });
+  await rawCache.set(publicStationCacheKey(`${key}:swr`), { value: data, expiresAt: Date.now() - 1000 }, { ttl: 300 });
   failure = 'find';
-  const stale = await PrecomputedStationsService.getCountryStationsByName('Germany', 51, 60);
-  assert.deepEqual(stale.stations, good.stations);
-  await new Promise(resolve => setImmediate(resolve));
-  assert.deepEqual(await CacheManager.getSWR(key), data);
+  await assert.rejects(PrecomputedStationsService.getCountryStationsByName('Germany', 51, 60), /Database unavailable/);
+  assert.equal(await CacheManager.getSWR(key), null);
 });
 
 test('hasLogo/votes order keeps deterministic ID ties and supplies existing renderer filter flags', async () => {

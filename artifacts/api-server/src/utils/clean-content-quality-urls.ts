@@ -214,7 +214,7 @@ export async function runJunkCleanup(
       reasons.push(`junk:${policyVerdict.reason}`);
     } else if (policyPatch.noIndex === false) {
       updateActions.push('clear-noindex');
-      reasons.push('fresh-success-after-owned-health-failure');
+      reasons.push('retired-owned-health-only-seo-exclusion');
     }
 
     if (Object.keys(ops).length === 0) continue;

@@ -8,17 +8,26 @@ import { buildLocalizedUrl } from '../src/seo/url-helpers';
 const pageCache = new Map<string, any>(), allowed = new Set(['pop', 'rock', 'jazz', 'thin']);
 const queries: string[] = [];
 let failRead = false;
-let genreRows = [
+let genreRows: Array<{ id: string; slug: string; name: string; station_count: number; is_discoverable: boolean; source?: Record<string, unknown> }> = [
   { id: 'rock', slug: 'rock', name: 'Rock', station_count: 80, is_discoverable: true },
   { id: 'pop', slug: 'pop', name: 'Pop', station_count: 120, is_discoverable: true },
   { id: 'thin', slug: 'thin', name: 'Thin', station_count: 1, is_discoverable: true },
-  { id: 'jazz', slug: 'jazz', name: 'Jazz', station_count: 75, is_discoverable: false },
+  // Not featured is not a directory ban; this fixture is explicitly demoted.
+  { id: 'jazz', slug: 'jazz', name: 'Jazz', station_count: 75, is_discoverable: false, source: { cleanupDemotion: true } },
   { id: '105', slug: '105', name: '105', station_count: 10000, is_discoverable: true },
 ];
 let countryRows = [{ name: 'Germany' }, { name: 'Austria' }, { name: 'Turkey' }, { name: 'Türkiye' }, { name: 'Unknown Place' }];
-const pool = { query: async (sql: string) => {
+const pool = { query: async (sql: string, values?: unknown[]) => {
   queries.push(sql); if (failRead) throw new Error('temporary reference read failure');
-  if (sql === 'SELECT * FROM genres WHERE is_discoverable=true') return { rows: genreRows.filter(row => row.is_discoverable) };
+  if (sql.includes('FROM station_genres sg JOIN stations s ON s.id=sg.station_id')) {
+    // Return the small per-genre healthy-count aggregate, not full stations or
+    // the stale genres.station_count snapshot. Native SQL tests cover counts.
+    assert.match(sql, /s\.last_check_ok IS TRUE/);
+    assert.match(sql, /count\(DISTINCT sg\.station_id\)::int station_count/);
+    assert.match(sql, /GROUP BY sg\.genre_slug/);
+    assert.deepEqual(values, ['']);
+    return { rows: genreRows };
+  }
   if (sql === 'SELECT name FROM countries ORDER BY name') return { rows: countryRows };
   throw new Error(`Unexpected DB query: ${sql}`);
 } };
@@ -62,10 +71,11 @@ for (const language of ACTIVE_SITEMAP_LANGUAGES) {
         assert.equal((body.match(/<section>/g) || []).length, 6);
         assert.ok(!body.includes('unknown-place'));
       }
-      assert.equal(queries.length, 1, 'One small native reference-table read per cold hub');
+      assert.equal(queries.length, 1, 'One bounded-result native aggregate/reference read per cold hub');
       await renderer.renderStaticPage(path, 'https://themegaradio.com');
       assert.equal(queries.length, 1, 'Existing pageData cache eliminates repeated reads');
-      assert.ok(!queries.some(sql => /\bstations\b|\bstation_genres\b|legacy|mongo/i.test(sql)));
+      assert.ok(!queries.some(sql => /legacy|mongo|SELECT\s+s\.\*|\bs\.(?:source|descriptions)\b/i.test(sql)), 'Hubs never hydrate the station catalogue or archived articles');
+      if (kind === 'regions') assert.ok(!queries.some(sql => /\bstations\b|\bstation_genres\b/i.test(sql)));
     });
   }
 }
@@ -76,6 +86,17 @@ test('warm genre hub cache follows whitelist removals immediately', async () => 
   const second = await renderer.renderStaticPage('/en/genres', 'https://themegaradio.com');
   assert.deepEqual(second.pageData.directoryGenres.map((genre: any) => genre.slug), ['pop']);
   assert.equal(queries.length, 2);
+});
+
+test('an unfeatured but healthy whitelisted genre remains browseable; explicit cleanup demotion is respected', async () => {
+  const jazz = genreRows.find(row => row.slug === 'jazz')!;
+  const original = jazz.source;
+  try {
+    assert.ok(!(await loadGenreDirectoryHub()).some(genre => genre.slug === 'jazz'));
+    jazz.source = undefined;
+    assert.ok((await loadGenreDirectoryHub()).some(genre => genre.slug === 'jazz'));
+    assert.equal(jazz.is_discoverable, false, 'Feature-tile preference is not changed');
+  } finally { jazz.source = original; }
 });
 test('failed hub reads are not cached as permanent empty navigation', async () => {
   failRead = true;

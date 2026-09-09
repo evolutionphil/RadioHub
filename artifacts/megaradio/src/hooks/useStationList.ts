@@ -1,6 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { useBatchStations } from "./useBatchStations";
 import { useMemo } from "react";
+import { stationQueryFreshness } from '@/lib/station-query-policy';
+import { availableStations } from '@/utils/station-availability';
 
 interface UseStationListOptions {
   enableBatching?: boolean;
@@ -32,7 +34,7 @@ export function useStationList(stationIds: string[], options: UseStationListOpti
       return Promise.all(promises);
     },
     enabled: !shouldUseBatch && stationIds.length > 0,
-    staleTime: 5 * 60 * 1000, // 5 minutes
+    ...stationQueryFreshness,
     gcTime: 10 * 60 * 1000, // 10 minutes
   });
 
@@ -41,7 +43,7 @@ export function useStationList(stationIds: string[], options: UseStationListOpti
     if (shouldUseBatch) {
       return batchResult.stations;
     }
-    return individualQueries.data || [];
+    return availableStations(individualQueries.data || []);
   }, [shouldUseBatch, batchResult.stations, individualQueries.data]);
 
   const isLoading = shouldUseBatch ? batchResult.isLoading : individualQueries.isLoading;

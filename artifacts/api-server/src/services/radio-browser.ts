@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { logger } from '../utils/logger';
+import { radioBrowserHealthDate } from '../utils/provider-health-freshness';
 
 export interface RadioBrowserStation {
   changeuuid: string;
@@ -325,8 +326,8 @@ export class RadioBrowserService {
       bitrate: station.bitrate || undefined,
       hls: station.hls === 1,
       lastCheckOk: station.lastcheckok === 1,
-      lastCheckTime: station.lastchecktime ? new Date(station.lastchecktime) : undefined,
-      lastCheckOkTime: station.lastcheckoktime ? new Date(station.lastcheckoktime) : undefined,
+      lastCheckTime: radioBrowserHealthDate(station,'lastchecktime'),
+      lastCheckOkTime: radioBrowserHealthDate(station,'lastcheckoktime'),
       lastLocalCheckTime: station.lastlocalchecktime ? new Date(station.lastlocalchecktime) : undefined,
       clickTimestamp: station.clicktimestamp ? new Date(station.clicktimestamp) : undefined,
       clickCount: station.clickcount || 0,

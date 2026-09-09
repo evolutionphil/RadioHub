@@ -2,6 +2,7 @@ import { useGlobalPlayer } from "@/hooks/useGlobalPlayer";
 import FavoriteButton from "@/components/ui/favorite-button";
 import VoteButton from "@/components/ui/vote-button";
 import { getStationControlLabels, type StationControlLabels } from '@/utils/station-control-labels';
+import { isExplicitlyFailedStation } from '@/utils/station-availability';
 
 // Custom favorite icon from Figma design
 import favIcon from "@assets/fav-icon.png";
@@ -79,7 +80,12 @@ export default function StationControlButtonGroup({ className, currentPageStatio
     previousStation,
     audioElement
   } = useGlobalPlayer();
+  const displayStation = currentPageStation || currentStation;
+  const isDisplayStationPlaying = isPlaying && currentStation?._id === displayStation?._id;
+  // Keep Stop available if a currently playing station was subsequently marked failed.
+  const playDisabled = isExplicitlyFailedStation(displayStation) && !isDisplayStationPlaying;
   const handlePlayPause = async () => {
+    if (playDisabled) return;
     // If there's a current page station and either no current station or different station, play the page station
     if (currentPageStation && (!currentStation || currentStation._id !== currentPageStation._id)) {
       try {
@@ -111,7 +117,6 @@ export default function StationControlButtonGroup({ className, currentPageStatio
   if (!currentStation && !currentPageStation) return null;
   
   // Use current page station for favorite button if no current station or if they're different
-  const displayStation = currentPageStation || currentStation;
 
   return (
     <div className={`flex items-center w-fit ${className || ''}`} style={{ height: buttonSize, gap }}>
@@ -130,13 +135,15 @@ export default function StationControlButtonGroup({ className, currentPageStatio
       {/* Play/Stop Button */}
       <button
         onClick={handlePlayPause}
+        disabled={playDisabled}
+        aria-describedby={playDisabled && currentPageStation ? 'station-stream-unavailable' : undefined}
         className="flex items-center justify-center bg-black hover:opacity-80 transition-opacity"
         style={{ width: buttonSize, height: buttonSize, borderRadius: buttonRadius }}
-        aria-label={isPlaying ? labels.stop : labels.play}
-        title={isPlaying ? labels.stop : labels.play}
+        aria-label={isDisplayStationPlaying ? labels.stop : labels.play}
+        title={isDisplayStationPlaying ? labels.stop : labels.play}
         data-testid="button-play-stop"
       >
-        <div style={{ transform: `scale(${iconScale})` }}>{isPlaying ? <PauseIcon /> : <PlayIcon />}</div>
+        <div style={{ transform: `scale(${iconScale})` }}>{isDisplayStationPlaying ? <PauseIcon /> : <PlayIcon />}</div>
       </button>
 
       {/* Next Station Button */}

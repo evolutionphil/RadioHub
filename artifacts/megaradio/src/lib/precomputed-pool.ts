@@ -19,9 +19,11 @@
  * 18-per-page main grid with Load More) must keep their direct fetch.
  */
 
+import { availableStations } from '@/utils/station-availability';
+
 const POOL_LIMIT = 200;
-// Matches the 7-day staleTime the consuming queries already use.
-const POOL_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+// Match station health freshness, not the long catalogue GC window.
+const POOL_TTL_MS = 5 * 60 * 1000;
 
 interface PoolResponse {
   data?: unknown[];
@@ -65,5 +67,5 @@ export async function getPrecomputedStationsSlice(
   limit: number,
 ): Promise<unknown[]> {
   const pool = await fetchPool(countryName);
-  return (pool.data || []).slice(0, limit);
+  return availableStations(pool.data || []).slice(0, limit);
 }

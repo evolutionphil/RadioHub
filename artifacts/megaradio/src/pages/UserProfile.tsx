@@ -1,4 +1,5 @@
 import { useParams, useLocation } from 'wouter';
+import { stationQueryFreshness } from '@/lib/station-query-policy';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Share2, UserPlus, UserMinus, Music, Clock, Heart, Users, Copy, Mail, MessageCircle, Camera } from "lucide-react";
 import { useState, useEffect } from "react";
@@ -96,6 +97,7 @@ export default function UserProfile() {
     recentlyPlayed: Station[];
   }>({
     queryKey: [`/api/user-engagement/profile/${userIdOrSlug}/full`, { viewer: currentUser?._id || 'anonymous' }],
+    ...stationQueryFreshness,
     queryFn: context => getQueryFn<any>({ on401: 'throw' })({ ...context, queryKey: [`/api/user-engagement/profile/${encodeURIComponent(userIdOrSlug || '')}/full`] }),
     enabled: !!userIdOrSlug,
     retry: false,

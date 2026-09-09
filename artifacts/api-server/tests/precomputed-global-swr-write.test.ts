@@ -17,11 +17,12 @@ mock.module('../src/data/postgres-catalog-store', { namedExports: { pgCatalog: (
   },
   count: async (filter: unknown) => { assert.deepEqual(filter, { lastCheckOk: true }); return 61291; },
 }) } });
-const { CacheManager } = await import('../src/cache');
+const { CacheManager: rawCache } = await import('../src/cache');
+const { publicStationCache: CacheManager, publicStationCacheKey } = await import('../src/public-station-cache');
 const { PrecomputedStationsService } = await import('../src/services/precomputed-stations');
 const key = 'precomputed_stations:global';
-const originalSet = CacheManager.set.bind(CacheManager);
-const writes = mock.method(CacheManager, 'set', originalSet);
+const originalSet = rawCache.set.bind(rawCache);
+const writes = mock.method(rawCache, 'set', originalSet);
 beforeEach(async () => {
   await CacheManager.delSWR(key);
   reads = 0; fail = false; gate = undefined; writes.mock.resetCalls();
@@ -31,8 +32,8 @@ test('concurrent cold global readers publish one SWR envelope and retain rank, c
   const results = await Promise.all(Array.from({ length: 8 }, () => PrecomputedStationsService.getGlobalStations(2, 2)));
   assert.equal(reads, 1);
   assert.equal(writes.mock.callCount(), 1);
-  assert.equal(writes.mock.calls[0].arguments[0], `${key}:swr`);
-  assert.deepEqual(writes.mock.calls[0].arguments[2], { ttl: 86400*7 });
+  assert.equal(writes.mock.calls[0].arguments[0], publicStationCacheKey(`${key}:swr`));
+  assert.deepEqual(writes.mock.calls[0].arguments[2], { ttl: 60 });
   for (const result of results) {
     assert.deepEqual(result.stations, stations.slice(2, 4));
     assert.equal(result.total, 61291); assert.equal(result.page, 2); assert.equal(result.totalPages, 3);
@@ -51,17 +52,18 @@ test('direct global refresh still writes through and subsequent shared readers r
   assert.equal(warm.cached, true); assert.equal(reads, 1); assert.equal(writes.mock.callCount(), 1);
 });
 
-test('stale reads return immediately and coalesce background refresh into one publication', async () => {
+test('expired health data is not served and concurrent refreshes publish only once', async () => {
   const stale = { stations: stations.slice(0, 1), total: 100, computedAt: 1, countryName: 'global' };
-  await CacheManager.set(`${key}:swr`, { v: stale, exp: Date.now()-1 }, { ttl: 86400*7 });
+  await rawCache.set(publicStationCacheKey(`${key}:swr`), { value: stale, expiresAt: Date.now()-1 }, { ttl: 300 });
   writes.mock.resetCalls();
   let release!: () => void;
   gate = new Promise<void>(resolve => { release = resolve; });
-  const results = await Promise.all(Array.from({ length: 8 }, () => PrecomputedStationsService.getGlobalStations()));
-  assert.ok(results.every(result => result.total === 100));
+  const pending = Promise.all(Array.from({ length: 8 }, () => PrecomputedStationsService.getGlobalStations()));
+  await new Promise(resolve => setImmediate(resolve));
   assert.equal(reads, 1); assert.equal(writes.mock.callCount(), 0);
   release();
-  await new Promise(resolve => setImmediate(resolve));
+  const results = await pending;
+  assert.ok(results.every(result => result.total === 61291));
   assert.equal(writes.mock.callCount(), 1);
   assert.equal((await CacheManager.getSWR<{ total: number }>(key))?.total, 61291);
 });

@@ -581,7 +581,7 @@ export class RecommendationEngine {
           country: stationCountry, // STRICT COUNTRY LOCK
           lastCheckOk: true,
           $or: tagPatterns.map(pattern => ({ tags: pattern }))
-        }, { sort: { votes: -1 }, limit: limit * 3, fields: ['_id', 'name', 'slug', 'favicon', 'country', 'countryCode', 'tags', 'votes', 'clickCount', 'bitrate', 'codec', 'logoAssets', 'localImagePath', 'url', 'urlResolved'] });
+        }, { sort: { votes: -1 }, limit: limit * 3, fields: ['_id', 'name', 'slug', 'favicon', 'country', 'countryCode', 'tags', 'votes', 'clickCount', 'bitrate', 'codec', 'logoAssets', 'localImagePath', 'url', 'urlResolved', 'lastCheckOk'] });
         
         // Score by tag match count
         const scoredStations: any[] = tagMatchedStations.map(station => {
@@ -608,7 +608,7 @@ export class RecommendationEngine {
           country: stationCountry, // STRICT COUNTRY LOCK
           lastCheckOk: true,
           votes: { $gte: 5000 } // Discovery threshold
-        }, { limit: 50, fields: ['_id', 'name', 'slug', 'favicon', 'country', 'countryCode', 'tags', 'votes', 'clickCount', 'bitrate', 'codec', 'logoAssets', 'localImagePath', 'url', 'urlResolved'] });
+        }, { limit: 50, fields: ['_id', 'name', 'slug', 'favicon', 'country', 'countryCode', 'tags', 'votes', 'clickCount', 'bitrate', 'codec', 'logoAssets', 'localImagePath', 'url', 'urlResolved', 'lastCheckOk'] });
         
         // Filter out already used stations
         const available = highVoteStations.filter(s => !existingIds.has(s._id.toString()));
@@ -628,7 +628,7 @@ export class RecommendationEngine {
           _id: { $nin: Array.from(excludeSet) },
           country: stationCountry, // STRICT COUNTRY LOCK
           lastCheckOk: true
-        }, { sort: { votes: -1 }, limit: needed * 2, fields: ['_id', 'name', 'slug', 'favicon', 'country', 'countryCode', 'tags', 'votes', 'clickCount', 'bitrate', 'codec', 'logoAssets', 'localImagePath', 'url', 'urlResolved'] });
+        }, { sort: { votes: -1 }, limit: needed * 2, fields: ['_id', 'name', 'slug', 'favicon', 'country', 'countryCode', 'tags', 'votes', 'clickCount', 'bitrate', 'codec', 'logoAssets', 'localImagePath', 'url', 'urlResolved', 'lastCheckOk'] });
         
         pool.push(...countryStations.filter(s => !existingIds.has(s._id.toString())).slice(0, needed));
       }

@@ -1,4 +1,4 @@
-import { CacheManager } from '../cache';
+import { publicStationCache as CacheManager } from '../public-station-cache';
 import { pgTaxonomyRuntime } from '../data/postgres-taxonomy-runtime-store';
 import { pgGenres } from '../data/postgres-taxonomy-store';
 import { logger } from '../utils/logger';
@@ -32,9 +32,9 @@ export class PrecomputedGenresService {
     const dbName = this.resolveCountry(countryIdentifier);
     return trackOperation('compute-genres', async () => {
       const store = pgTaxonomyRuntime();
-      let counts = await store.storedCounts(dbName || 'global');
-      // Empty is a legitimate cold start, not a database-error fallback.
-      if (!counts.size) counts = await store.liveCounts(dbName);
+      // The persisted administrative counts are intentionally retained, but
+      // cannot authorize public visibility after a health transition.
+      const counts = await store.liveCounts(dbName, true);
       const curated = await pgGenres();
       const entries = new Map<string, { id: string; name: string; tag: string; posterImage?: string }>();
       for (const genre of curated) {

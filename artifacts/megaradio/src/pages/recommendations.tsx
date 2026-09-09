@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { stationQueryFreshness } from '@/lib/station-query-policy';
 import { Link } from "wouter";
 import StationCard from "@/components/ui/station-card";
 import { useGlobalPlayer } from "@/hooks/useGlobalPlayer";
@@ -84,7 +85,7 @@ export default function RecommendationsPage({
       const result = await response.json();
       return result.data || [];
     },
-    staleTime: 7 * 24 * 60 * 60 * 1000,
+    ...stationQueryFreshness,
   });
 
   const moodStationsCache = useMemo(() => {
@@ -179,7 +180,7 @@ export default function RecommendationsPage({
       const result = await response.json();
       return result.data || [];
     },
-    staleTime: 7 * 24 * 60 * 60 * 1000,
+    ...stationQueryFreshness,
   });
 
   // Fetch discovery stations from 7-day cache. Same approach as trending.
@@ -192,7 +193,7 @@ export default function RecommendationsPage({
       const result = await response.json();
       return result.data || [];
     },
-    staleTime: 7 * 24 * 60 * 60 * 1000,
+    ...stationQueryFreshness,
   });
 
   // Client-side mood filter helper (no network calls).
@@ -231,7 +232,7 @@ export default function RecommendationsPage({
       return result.data || [];
     },
     enabled: !selectedMood,
-    staleTime: 7 * 24 * 60 * 60 * 1000,
+    ...stationQueryFreshness,
   });
 
   // Get stations based on selected mood or default

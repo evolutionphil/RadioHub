@@ -25,8 +25,9 @@ import { runJunkCleanup, type JunkCleanupResult } from '../utils/clean-content-q
  *   read pressure and write contention.
  *
  * noIndex transitions are delegated to the shared provenance-aware policy:
- * only fresh health evidence can recover an automatically health-flagged
- * station. Manual/unknown flags and duplicate redirects remain untouched.
+ * only proven, solely automatic health flags can be retired; stream failures
+ * no longer imply low-quality pages. Manual/unknown flags and duplicate
+ * redirects remain untouched, and playback availability is not changed.
  */
 class ScheduledJunkCleanup {
   private static instance: ScheduledJunkCleanup;

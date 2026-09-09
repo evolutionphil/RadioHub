@@ -7,6 +7,7 @@ import { useTranslation } from '@/hooks/useTranslation';
 import { useSeoRouting } from '@/hooks/useSeoRouting';
 import { useGenreMobileViewport, useGenrePagination } from '@/hooks/useGenrePageState';
 import { getGenrePageLabels } from '@/utils/genre-page-labels';
+import { stationQueryFreshness } from '@/lib/station-query-policy';
 
 // Import arrow icons for pagination
 import arrowLeftIcon from "@assets/arrow-left.png";
@@ -51,6 +52,7 @@ export default function GenreLanding({ selectedCountry, onCountryChange }: Genre
 
   const { data: stationsResponse, isLoading: stationsLoading, isError: stationsError, refetch: retryStations, isFetching: stationsFetching } = useQuery<{stations: any[], total: number, page: number, pages: number}>({
     queryKey: [`/api/genres/${slug}/stations`, { page: currentPage, limit: stationsPerPage }, currentCountry, urlCountryCode],
+    ...stationQueryFreshness,
     queryFn: async ({ signal }) => {
       const params = new URLSearchParams({
         page: currentPage.toString(),

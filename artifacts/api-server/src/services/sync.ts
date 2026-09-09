@@ -2,6 +2,7 @@ import { pgCatalog, pgCreateSyncRun, pgSaveSyncRun, pgSyncLogs, pgSyncBlacklist 
 import { getPostgresPool, getPostgresCoordinationPool } from '../postgres-runtime';
 import axios from 'axios';
 import NodeCache from 'node-cache';
+import { radioBrowserHealthDate } from '../utils/provider-health-freshness';
 import { ImageManager } from './image-manager';
 import { logoProcessor } from './logo-processor';
 import { logger } from '../utils/logger';
@@ -511,11 +512,13 @@ export class SyncService {
           }
         }
         let existingBaseSlugs = new Set<string>();
+        let siblingLookupFailed = false;
         if (baseSlugSet.size > 0) {
           try {
             const found = await pgCatalog().find({ slug: { $in: Array.from(baseSlugSet) } }, { fields: ['slug'] });
             existingBaseSlugs = new Set(found.map((s: any) => s.slug));
           } catch (err) {
+            siblingLookupFailed = true;
             logger.log(`⚠️ Frequency-prefix sibling lookup failed: ${(err as Error).message}`);
           }
         }
@@ -537,6 +540,12 @@ export class SyncService {
             ? { isJunk: true, reason: `duplicate-of:${candidateBase}` }
             : evaluateJunkStation(merged);
           const policyPatch = automaticNoIndexPatch(merged, verdict);
+          // An unavailable duplicate lookup cannot prove an old automatic
+          // health flag was the sole SEO exclusion. Retry on the next sync.
+          if (candidateBase && siblingLookupFailed && policyPatch.noIndex === false) {
+            delete policyPatch.noIndex;
+            delete policyPatch.automaticNoIndex;
+          }
           Object.assign(fields, policyPatch);
           if (policyPatch.noIndex === true) {
             autoFlagged++;
@@ -646,11 +655,14 @@ export class SyncService {
     
     // Status & Monitoring
     update.hls = apiStation.hls === 1;
-    update.lastCheckOk = apiStation.lastcheckok === 1;
+    if ([0,1].includes(apiStation.lastcheckok)) update.lastCheckOk = apiStation.lastcheckok === 1;
     update.sslError = apiStation.ssl_error === 1;
-    if (apiStation.lastchecktime) update.lastCheckTime = new Date(apiStation.lastchecktime);
-    if (apiStation.lastcheckoktime) update.lastCheckOkTime = new Date(apiStation.lastcheckoktime);
-    if (apiStation.lastlocalchecktime) update.lastLocalCheckTime = new Date(apiStation.lastlocalchecktime);
+    const checked = radioBrowserHealthDate(apiStation,'lastchecktime');
+    const succeeded = radioBrowserHealthDate(apiStation,'lastcheckoktime');
+    const local = radioBrowserHealthDate(apiStation,'lastlocalchecktime');
+    if (checked) update.lastCheckTime = checked;
+    if (succeeded) update.lastCheckOkTime = succeeded;
+    if (local) update.lastLocalCheckTime = local;
     if (apiStation.lastchangetime) update.lastChangeTime = new Date(apiStation.lastchangetime);
     
     // FAVICON / LOGO POLICY (2026-05-09 user spec):
@@ -705,9 +717,9 @@ export class SyncService {
       bitrate: station.bitrate || undefined,
       hls: station.hls === 1,
       lastCheckOk: station.lastcheckok === 1,
-      lastCheckTime: station.lastchecktime ? new Date(station.lastchecktime) : undefined,
-      lastCheckOkTime: station.lastcheckoktime ? new Date(station.lastcheckoktime) : undefined,
-      lastLocalCheckTime: station.lastlocalchecktime ? new Date(station.lastlocalchecktime) : undefined,
+      lastCheckTime: radioBrowserHealthDate(station,'lastchecktime'),
+      lastCheckOkTime: radioBrowserHealthDate(station,'lastcheckoktime'),
+      lastLocalCheckTime: radioBrowserHealthDate(station,'lastlocalchecktime'),
       clickTimestamp: station.clicktimestamp ? new Date(station.clicktimestamp) : undefined,
       clickCount: station.clickcount || 0,
       clickTrend: station.clicktrend || 0,

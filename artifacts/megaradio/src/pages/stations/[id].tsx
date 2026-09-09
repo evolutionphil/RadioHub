@@ -10,6 +10,7 @@ import { usePremiumStatus } from "@/hooks/usePremiumStatus";
 import { getAdSensePageType } from '@/lib/adsense-runtime';
 import { AD_SLOTS, DIRECT_AD_ROTATION_MS } from '@/lib/advertising-placements';
 import { useTranslation } from "@/hooks/useTranslation";
+import { stationQueryFreshness } from '@/lib/station-query-policy';
 import { useGlobalPlayer } from "@/hooks/useGlobalPlayer";
 import FavoriteButton from "@/components/ui/favorite-button";
 import { useSeoRouting } from "@/hooks/useSeoRouting";
@@ -17,6 +18,8 @@ import { SeoHead } from "@/components/SeoHead";
 import { useBreadcrumbLastItemName } from "@/components/RouteBreadcrumbs";
 import { getStationUrl } from "@/utils/slugs";
 import StationControlButtonGroup from "@/components/ui/station-control-button-group";
+import { StationStreamAvailability } from '@/components/StationStreamAvailability';
+import { isExplicitlyFailedStation } from '@/utils/station-availability';
 import youtubeIcon from "@assets/youtube-logo.png";
 import spotifyIcon from "@assets/spotify-logo.png";
 import deezerIcon from "@assets/deezer.png";
@@ -212,6 +215,7 @@ export default function StationDetails() {
 
   const { data: station, isLoading: stationLoading, error, refetch: refetchStation } = useQuery<any>({
     queryKey: [`/api/station/${identifier}`],
+    ...stationQueryFreshness,
     placeholderData: () => readStationBootstrap(identifier, language),
     enabled: !!identifier,
   });
@@ -232,7 +236,7 @@ export default function StationDetails() {
       return response.json();
     },
     enabled: !!station?._id,
-    staleTime: 10 * 60 * 1000, // 10 minutes cache
+    ...stationQueryFreshness,
   });
 
   // Fetch user location for country-specific similar stations - Long cache (location rarely changes)
@@ -334,6 +338,7 @@ export default function StationDetails() {
       if (currentStation?._id === station._id && isPlaying) {
         pauseStation();
       } else {
+        if (isExplicitlyFailedStation(station)) return;
         // This will automatically stop current station and play new one
         await playStation(station);
       }
@@ -348,6 +353,7 @@ export default function StationDetails() {
 
   // Function to handle play from station cards (always play new station and navigate)
   const handleStationCardPlay = async (selectedStation: any) => {
+    if (isExplicitlyFailedStation(selectedStation)) return;
     try {
       // Always play the selected station (will auto-stop current if different)
       await playStation(selectedStation);
@@ -724,6 +730,7 @@ export default function StationDetails() {
                     {/* Station Control Buttons - extra margin on mobile */}
                     <div className="mt-4 md:mt-0">
                       <StationControlButtonGroup currentPageStation={station} labels={controlLabels} />
+                      <StationStreamAvailability station={station} language={language} />
                     </div>
                   </div>
                 </div>

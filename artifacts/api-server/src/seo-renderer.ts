@@ -2,7 +2,8 @@ import { generateSeoTags, getLanguageFromPath, DEFAULT_LANGUAGE, generateLanguag
 import { buildDirectoryIndexSeo } from '@workspace/seo-shared/directory-index-seo';
 import { getStationImageAlt } from '@workspace/seo-shared/station-image-alt';
 import { getStationBroadcastLanguages, getSchemaCountry, generateOrganizationSchema, generateWebSiteSchema, generateDeveloperOrganizationSchema } from '@workspace/seo-shared/structured-data';
-import { getStationPageCopy } from '@workspace/seo-shared/station-page-copy';
+import { getStationPageCopy, getStationStreamUnavailableNotice } from '@workspace/seo-shared/station-page-copy';
+import { withPublicStationDeadline } from './utils/public-station-deadline';
 import { pgSeoCatalog } from './data/postgres-seo-read-store';
 import { pgStoredGenreBySlug } from './data/postgres-taxonomy-store';
 import { pgSeoMetadata } from './data/postgres-content-store';
@@ -293,7 +294,7 @@ export class SeoRenderer {
 
     try {
       const result = await Promise.race([
-        this._doRenderStaticPage(url, domain, preferredLanguage, abortController.signal),
+        withPublicStationDeadline(() => this._doRenderStaticPage(url, domain, preferredLanguage, abortController.signal)),
         new Promise<never>((_, reject) => {
           timerId = setTimeout(() => {
             abortController.abort();
@@ -470,9 +471,9 @@ export class SeoRenderer {
               // the HTTP layer in index.ts/index-web.ts serves 410 Gone for
               // the original alias URL too. Same gate the main station branch
               // uses (line ~503) to keep alias and canonical paths consistent.
-              const { isJunkStation } = await import('./seo/junk-station-rules');
+              const { isJunkStation, canRenderLegacyOfflineInformation } = await import('./seo/junk-station-rules');
               const aliasTargetIsJunk =
-                isJunkStation(aliasMatch) || aliasMatch.noIndex === true;
+                isJunkStation(aliasMatch) || (aliasMatch.noIndex === true && !canRenderLegacyOfflineInformation(aliasMatch));
               if (aliasTargetIsJunk) {
                 // CRITICAL: Do NOT set notFound:true — the HTTP-layer junk
                 // handler in both index.ts:1068 and index-web.ts:719 gates on
@@ -712,6 +713,7 @@ export class SeoRenderer {
           const topStations = await withSignal<LeanStationCard[]>(
             pgSeoCatalog().find({
               tags: { $regex: escapedTerm },
+              lastCheckOk: true,
               slug: { $exists: true, $ne: '' },
               noIndex: { $ne: true },
               votes: { $gt: 0 },
@@ -723,7 +725,7 @@ export class SeoRenderer {
           // BOTH meta+full descriptions per language — too restrictive for our image-grid surface
           // where the station's own SSR page already enforces full language gate).
           additionalData.popularStations = topStations
-            .filter((s) => s.noIndex !== true && !isJunkStation(s))
+            .filter((s) => s.lastCheckOk === true && s.noIndex !== true && !isJunkStation(s))
             .slice(0, 12);
 
           // ---- Genre cross-link fetch (architect P1: B2) -----------------
@@ -813,17 +815,16 @@ export class SeoRenderer {
       // catalogue so the entire long tail gets a crawlable in-link. The
       // filter is a pure string range on the unique {slug:1} index (see
       // azSlugBounds) and the sort rides the same index — no regex, no
-      // in-memory sort (2026-05-14 incident rule). Results are cached 6h
-      // per (letter, page) behind single-flight so at most 27×50 distinct
-      // queries exist and concurrent cold misses coalesce.
+      // in-memory sort (2026-05-14 incident rule). Results are health-aware,
+      // cached at most60s per (letter, page), with concurrent misses coalesced.
       pageType = 'stations';
       additionalData.azLetter = azLetter;
       try {
         const PAGE_SIZE = 60;
         const page = pagination.page;
         const { gte, lt } = azSlugBounds(azLetter);
-        const { CacheManager } = await import('./cache');
-        const azData = await CacheManager.getOrSetSingleFlight(
+        const { publicStationCache } = await import('./public-station-cache');
+        const azData = await publicStationCache.getOrSetSingleFlight(
           `az-index:${azLetter}:${page}`,
           async () => {
             // Count the indexed range before any OFFSET. A manufactured huge
@@ -835,10 +836,10 @@ export class SeoRenderer {
               { slug: { $gte: gte, $lt: lt }, lastCheckOk: true, noIndex: { $ne: true } }, { sort: { slug: 1 }, offset: (page - 1) * PAGE_SIZE, limit: PAGE_SIZE });
             return { docs, total };
           },
-          { ttl: 21600 },
+          { ttl: 60 },
         );
         const catalog = ((azData?.docs as any[]) || [])
-          .filter((s: any) => s && s.slug && s.noIndex !== true && !isJunkStation(s));
+          .filter((s: any) => s && s.slug && s.lastCheckOk === true && s.noIndex !== true && !isJunkStation(s));
         additionalData.catalogStations = catalog;
         // Mirror the hub: expose as popularStations too so the existing
         // ItemList + CollectionPage JSON-LD path emits structured data.
@@ -868,7 +869,7 @@ export class SeoRenderer {
         // points at a 410/noindex station (full per-language gate is overkill
         // here — Universal-14 stations are indexable in every one of the 14).
         const catalog = (result?.stations || [])
-          .filter((s: any) => s && s.slug && s.noIndex !== true && !isJunkStation(s));
+          .filter((s: any) => s && s.slug && s.lastCheckOk === true && s.noIndex !== true && !isJunkStation(s));
         additionalData.catalogStations = catalog;
         // Re-audit fix (HIGH): also expose the catalog as `popularStations` so
         // the existing ItemList + CollectionPage JSON-LD path (which keys off
@@ -991,6 +992,7 @@ export class SeoRenderer {
             const topStations = await withSignal<LeanStationCard[]>(
               pgSeoCatalog().find({
                 country: countryName,
+                lastCheckOk: true,
                 slug: { $exists: true, $ne: '' },
                 noIndex: { $ne: true },
                 votes: { $gt: 0 },
@@ -999,7 +1001,7 @@ export class SeoRenderer {
             );
             // DALGA 2 W2.REVIEW P2: Junk gate via isJunkStation + noIndex (see W2.1 comment).
             const indexableStations = topStations.filter((s) =>
-              s.noIndex !== true && !isJunkStation(s)
+              s.lastCheckOk === true && s.noIndex !== true && !isJunkStation(s)
             );
             additionalData.popularStations = indexableStations.slice(0, 12);
             // Pull lowercase ISO countryCode from first matching station for flagcdn.com
@@ -1023,7 +1025,7 @@ export class SeoRenderer {
                 countryName, page, CATALOG_PAGE_SIZE,
               );
               additionalData.catalogStations = (countryCatalog?.stations || [])
-                .filter((s: any) => s && s.slug && s.noIndex !== true && !isJunkStation(s));
+                .filter((s: any) => s && s.slug && s.lastCheckOk === true && s.noIndex !== true && !isJunkStation(s));
               additionalData.catalogPage = page;
               additionalData.catalogTotalPages = countryCatalog?.totalPages || 1;
               if (isMissingSeoCatalogPage(page, additionalData.catalogTotalPages, additionalData.catalogStations)) additionalData.httpNotFound = true;
@@ -1156,6 +1158,7 @@ export class SeoRenderer {
         const popularStations = await withSignal<LeanStationCard[]>(
           pgSeoCatalog().find({
             votes: { $gt: 0 },
+            lastCheckOk: true,
             slug: { $exists: true, $ne: '' },
             noIndex: { $ne: true },
           }, { sort: { votes: -1 }, limit: 24 }),
@@ -1164,7 +1167,7 @@ export class SeoRenderer {
         // Apply the junk-station gate (same as genre/region SSR surfaces) so the
         // homepage never internally links to stations that resolve to 410 Gone.
         additionalData.popularStations = popularStations
-          .filter((s) => s.noIndex !== true && !isJunkStation(s))
+          .filter((s) => s.lastCheckOk === true && s.noIndex !== true && !isJunkStation(s))
           .slice(0, 10);
       } catch (error: any) {
         if (error?.name === 'AbortError' || signal?.aborted) throw error;
@@ -1216,6 +1219,7 @@ export class SeoRenderer {
           getIndexableLanguagesForStation,
           isStationIndexableInLanguage,
           isNumericOnlySlug,
+          canRenderLegacyOfflineInformation,
         } = await import('./seo/junk-station-rules');
         const { getCachedQualifiedLanguages } = await import('./seo/qualified-languages');
 
@@ -1225,10 +1229,11 @@ export class SeoRenderer {
         // here — that bypasses the translation-qualification check and can
         // re-introduce "Crawled - currently not indexed" regressions.
         const qualifiedLangs = await getCachedQualifiedLanguages();
-        const isJunk = isJunkStation(stationData) || stationData.noIndex === true;
+        const legacyOfflineInformation = canRenderLegacyOfflineInformation(stationData);
+        const isJunk = isJunkStation(stationData) || (stationData.noIndex === true && !legacyOfflineInformation);
         const indexable = getIndexableLanguagesForStation(stationData, qualifiedLangs);
         const langIneligible =
-          !isJunk && !isStationIndexableInLanguage(stationData, language, qualifiedLangs);
+          !isJunk && !legacyOfflineInformation && !isStationIndexableInLanguage(stationData, language, qualifiedLangs);
         // Negative integer slugs (e.g. `-598`, `-2612`) are DB artifact IDs —
         // never valid station callsigns. Treat as junk → 410. Positive integer
         // slugs (e.g. `1234`) stay noindex-only in case they're callsign brands.
@@ -1237,7 +1242,12 @@ export class SeoRenderer {
         // legitimate numeric-callsign brands are not lost.
         const numericOnlySlug = !isJunk && !negativeNumericSlug && isNumericOnlySlug(stationData.slug);
 
-        if (isJunk || numericOnlySlug || negativeNumericSlug) {
+        if (legacyOfflineInformation) {
+          // Preserve the unknown historical noindex, not a gone response or
+          // an invented reindexing approval. Real localized content remains.
+          seoTags.robots = 'noindex, follow';
+          seoTags.noIndex = true;
+        } else if (isJunk || numericOnlySlug || negativeNumericSlug) {
           // Junk / numeric-only: serve noindex (junk and negativeNumericSlug
           // are upgraded to 410 Gone by the HTTP layer via stationIsJunkFlag).
           seoTags.robots = 'noindex, follow';
@@ -1274,7 +1284,9 @@ export class SeoRenderer {
           langRedirectUrl = `${domain}/en/${enSegment}/${stationData.slug}`;
         }
 
-        if (isJunk || negativeNumericSlug) {
+        if (legacyOfflineInformation) {
+          seoTags.hreflangs = [];
+        } else if (isJunk || negativeNumericSlug) {
           // Signal to the HTTP layer to return 410 Gone instead of SSR'ing
           // the page. Also suppress ALL hreflang alternates — a noindex/
           // gone page must not expose alternates (Google policy).
@@ -1405,9 +1417,9 @@ export class SeoRenderer {
 
         const baseFilter: any = {
           noIndex: { $ne: true },
+          lastCheckOk: true,
           $and: [
             { $or: [{ isJunk: { $exists: false } }, { isJunk: { $ne: true } }] },
-            { $or: [{ lastCheckOk: { $exists: false } }, { lastCheckOk: { $ne: false } }] },
           ],
         };
         if (selfId) baseFilter._id = { $ne: selfId };
@@ -1504,6 +1516,7 @@ export class SeoRenderer {
         const dedupe = (arr: any[], cap: number) => {
           const out: any[] = [];
           for (const s of arr) {
+            if (s?.lastCheckOk !== true) continue;
             const key = String(s?._id || s?.slug || '');
             if (!key || seen.has(key)) continue;
             seen.add(key);
@@ -2401,6 +2414,7 @@ export class SeoRenderer {
         content = `
           <main>
             <h1>${this.escapeHtml(h1Text)}</h1>
+            ${stationData?.lastCheckOk === false ? `<p id="station-stream-unavailable" role="status">${this.escapeHtml(getStationStreamUnavailableNotice(language))}</p>` : ''}
             ${stationData ? `
               <div class="station-info">
                 ${(() => {

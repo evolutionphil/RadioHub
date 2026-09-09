@@ -84,8 +84,11 @@ test('real diff reads sequential <=500 rows, dedupes across batches and preserve
   assert.deepEqual(reads.map(batch => batch.length), [500, 500, 102, 1, 500, 500, 102, 1]);
   assert.equal(maximumConcurrentReads, 1);
   assert.deepEqual(result.perLanguage.map(row => [row.language, row.chunk, row.todayCount]), [
-    ['en', 1, 1096], ['en', 2, 1], ['fr', 1, 1095], ['fr', 2, 1],
+    ['en', 1, 1097], ['en', 2, 1], ['fr', 1, 1096], ['fr', 2, 1],
   ]);
+  // A stream outage does not delete a useful localized station from sitemaps.
+  assert.ok(result.perLanguage.filter(row => row.chunk === 1)
+    .every(row => row.additions.some(url => url.endsWith('/radio-0505'))));
   assert.ok(events.indexOf('snapshot:en:1') < events.indexOf('read:second'));
   for (const row of result.perLanguage) {
     assert.deepEqual(row.additions, [...new Set(row.additions)].sort());

@@ -16,7 +16,7 @@ async function tx<T>(operation:(client:pg.PoolClient)=>Promise<T>):Promise<T> {
   catch(error){await client.query('ROLLBACK').catch(()=>undefined);throw error;} finally{client.release();}
 }
 async function station(client:pg.PoolClient,stationId:string):Promise<any> {
-  const row=(await client.query(`SELECT id,name,slug,COALESCE(NULLIF(url_resolved,''),url) stream_url,favicon FROM stations WHERE id=$1`,[stationId])).rows[0];
+  const row=(await client.query(`SELECT id,name,slug,COALESCE(NULLIF(url_resolved,''),url) stream_url,favicon FROM stations WHERE id=$1 AND last_check_ok IS TRUE`,[stationId])).rows[0];
   return row?{stationId:row.id,name:row.name,slug:row.slug,streamUrl:row.stream_url,favicon:row.favicon}:null;
 }
 export async function createCastSession(userId:string,mobileDeviceId?:string,tvDeviceId?:string,stationId?:string):Promise<any> {

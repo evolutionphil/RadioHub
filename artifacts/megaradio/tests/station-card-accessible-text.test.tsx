@@ -21,6 +21,15 @@ const station = { _id: 'test-radio', name: 'Test Radio', country: 'Germany', gen
 beforeEach(() => { state.language = 'en'; state.translations = {}; state.isPlaying = false; });
 
 describe('station card accessible text', () => {
+  it('hides explicitly failed stations and restores the unchanged card on recovery', () => {
+    const onPlay = vi.fn(), onNavigate = vi.fn();
+    const { container, rerender } = render(<StationCard station={{ ...station, lastCheckOk: false }} onPlay={onPlay} onNavigate={onNavigate} />);
+    expect(container).toBeEmptyDOMElement();
+    expect(onPlay).not.toHaveBeenCalled(); expect(onNavigate).not.toHaveBeenCalled();
+    rerender(<StationCard station={{ ...station, lastCheckOk: true }} onPlay={onPlay} onNavigate={onNavigate} />);
+    expect(container).not.toBeEmptyDOMElement();
+    expect(station).not.toHaveProperty('lastCheckOk');
+  });
   it('reports the existing 70px mobile and 90px desktop logo slot without changing its layout', () => {
     render(<StationCard station={station} />);
     const image = screen.getByRole('img');

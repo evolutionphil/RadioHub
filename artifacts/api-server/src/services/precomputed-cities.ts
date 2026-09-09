@@ -1,4 +1,4 @@
-import { CacheManager } from '../cache';
+import { publicStationCache as CacheManager } from '../public-station-cache';
 import { pgTaxonomyRuntime } from '../data/postgres-taxonomy-runtime-store';
 import { logger } from '../utils/logger';
 

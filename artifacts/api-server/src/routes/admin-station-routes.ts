@@ -15,6 +15,8 @@ import { logoProcessor } from "../services/logo-processor";
 import { isS3Url, isS3Configured } from "../services/s3-storage";
 import { IndexNowService } from "../services/indexnow";
 import CacheManager from "../cache";
+import { publicStationCache } from "../public-station-cache";
+import { publicStationResponseCache } from '../middleware/public-station-cache';
 import { getQuotaStatus } from "../utils/quota-guard";
 import { performanceCache } from "../performance-cache";
 import { stripPlaceholders } from "./shared-utils";
@@ -1090,7 +1092,7 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
   });
 
   // BATCH STATION LOADING ENDPOINT - Performance Optimization
-  app.post("/api/stations/batch", async (req, res) => {
+  app.post("/api/stations/batch", publicStationResponseCache, async (req, res) => {
     try {
       const { stationIds } = req.body;
       if (!Array.isArray(stationIds) || stationIds.length === 0) {
@@ -1099,19 +1101,27 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
       if (stationIds.length > 50) {
         return void res.status(400).json({ error: 'Maximum 50 stations per batch request' });
       }
+      if (stationIds.some(id => typeof id !== 'string' || !id.trim() || id.length > 200)) {
+        return void res.status(400).json({ error: 'Station IDs must be non-empty strings' });
+      }
 
       const sortedIds = [...stationIds].sort();
-      const cacheKey = `stations:batch:${sortedIds.join(',')}`;
-      const cached = await CacheManager.get(cacheKey);
+      const slim = req.body.slim === true || req.query.slim === '1';
+      const cacheKey = `stations:batch:${slim ? 'slim:v1:' : ''}${sortedIds.join(',')}`;
+      const cached = await publicStationCache.get(cacheKey);
       if (cached) return void res.json(cached);
 
-      const stations = await pgCatalog().find({ _id: { $in: stationIds } });
+      const stations = await pgCatalog().find({ _id: { $in: stationIds }, lastCheckOk: true }, slim ? {
+        fields: ['_id','stationuuid','name','slug','url','urlResolved','favicon','country','countryCode','state','language',
+          'tags','codec','bitrate','hls','votes','clickCount','averageRating','totalRatings','lastCheckOk','lastCheckTime',
+          'hasLogo','logoAssets','isFeatured','noIndex'], limit: 50,
+      } : { limit: 50 });
       const stationMap = stations.reduce((acc: any, station: any) => {
         acc[station._id.toString()] = station;
         return acc;
       }, {});
 
-      await CacheManager.set(cacheKey, stationMap, { ttl: 300 });
+      await publicStationCache.set(cacheKey, stationMap, { ttl: 60 });
       res.json(stationMap);
     } catch (error) {
       res.status(500).json({ error: 'Failed to fetch stations' });

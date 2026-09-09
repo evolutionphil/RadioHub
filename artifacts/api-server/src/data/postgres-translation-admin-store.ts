@@ -20,7 +20,7 @@ export async function pgGenrePopulationCounts():Promise<Array<{tag:string;count:
 }
 
 export async function pgStationFacetCounts(field: 'country' | 'language' | 'codec' | 'tags') {
-  const rows = await pgSeoCatalog().groupCount(field, { [field]: { $nin: ['', null] } });
+  const rows = await pgSeoCatalog().groupCount(field, { [field]: { $nin: ['', null] }, lastCheckOk: true });
   return rows.filter((row): row is { _id: string; count: number } => typeof row._id === 'string' && row._id !== '')
     .sort((a, b) => b.count - a.count || a._id.localeCompare(b._id));
 }
@@ -28,7 +28,7 @@ export async function pgStationFacetCounts(field: 'country' | 'language' | 'code
 export async function pgGenreLandingCountries(genre: string) {
   const rows = await getPostgresPool().query(`SELECT country AS _id,country AS name,count(*)::int count,
     round(avg(votes)::numeric,1)::float8 AS "avgVotes" FROM stations
-    WHERE (source->>'genre'~*$1 OR tags_raw~*$1) AND country IS NOT NULL AND country<>''
+    WHERE last_check_ok IS TRUE AND (source->>'genre'~*$1 OR tags_raw~*$1) AND country IS NOT NULL AND country<>''
     GROUP BY country ORDER BY count DESC,country LIMIT 50`, [genre]);
   return rows.rows;
 }
@@ -36,7 +36,7 @@ export async function pgGenreLandingCountries(genre: string) {
 export async function pgGenreLandingRelated(genre: string) {
   const rows = await getPostgresPool().query(`SELECT trim(tag) AS _id,trim(tag) AS name,count(*)::int count
     FROM stations CROSS JOIN LATERAL unnest(string_to_array(tags_raw,',')) tag
-    WHERE (source->>'genre'~*$1 OR tags_raw~*$1)
+    WHERE last_check_ok IS TRUE AND (source->>'genre'~*$1 OR tags_raw~*$1)
       AND trim(tag)<>ALL($2::text[]) GROUP BY trim(tag) HAVING count(*)>=5
     ORDER BY count DESC,trim(tag) LIMIT 8`, [genre, [genre, '', 'music', 'radio', 'online', 'live', 'stream', 'station']]);
   return rows.rows.map(row => ({ ...row, slug: row.name.replaceAll(' ', '-').replaceAll('--', '-').toLowerCase() }));

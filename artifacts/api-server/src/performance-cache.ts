@@ -4,6 +4,11 @@ import { sleep } from './utils/event-loop-yield';
 import { trackOperation } from './utils/operation-tracker';
 import { pgLocalization } from './data/postgres-localization-store';
 import { pgCatalog } from './data/postgres-catalog-store';
+import { getPublicStationDeadline, limitPublicStationDeadline } from './utils/public-station-deadline';
+
+export const SEO_CACHE_NAMESPACE = 'availability-v1';
+const stationDependent = (data: any): boolean => !!data?.pageData?.station ||
+  ['home', 'station', 'stations', 'genres', 'regions'].includes(data?.pageData?.pageType);
 
 /**
  * Recursively freeze a value before storing it in a `useClones: false` cache.
@@ -180,22 +185,29 @@ export class PerformanceCache {
   // === SEO HTML CACHING ===
   
   getSeoHtml(url: string, userAgent: string = 'bot'): string | null {
-    const cacheKey = `seo:${userAgent}:${url}`;
+    const cacheKey = `seo:${SEO_CACHE_NAMESPACE}:${userAgent}:${url}`;
     const result = this.seoHtmlCache.get(cacheKey) as string | undefined;
+    if (result) limitPublicStationDeadline(this.seoHtmlCache.getTtl(cacheKey) || Date.now());
     return result || null;
   }
   
   setSeoHtml(url: string, html: string, userAgent: string = 'bot'): void {
     const page = this.getPageData(url)?.pageData;
     if (page?.stationIsJunk || page?.notFound) return;
-    const cacheKey = `seo:${userAgent}:${url}`;
-    this.safeSet(this.seoHtmlCache, 'seoHtmlCache', cacheKey, html);
+    const cacheKey = `seo:${SEO_CACHE_NAMESPACE}:${userAgent}:${url}`;
+    // HTML must expire with its source page, not start a fresh TTL after a
+    // page-data hit. Missing paired data is conservatively bounded as well.
+    const expiresAt = this.pageDataCache.getTtl(`page:${SEO_CACHE_NAMESPACE}:${url}`) || Date.now() + 60000;
+    const seconds = Math.min(1800, (expiresAt - Date.now()) / 1000);
+    if (seconds > 0) this.safeSet(this.seoHtmlCache, 'seoHtmlCache', cacheKey, html, seconds);
   }
   
   // === PAGE DATA CACHING ===
   
   getPageData(url: string): any | null {
-    const result = this.pageDataCache.get(`page:${url}`);
+    const key = `page:${SEO_CACHE_NAMESPACE}:${url}`;
+    const result = this.pageDataCache.get(key);
+    if (result && stationDependent(result)) limitPublicStationDeadline(this.pageDataCache.getTtl(key) || Date.now());
     return result || null;
   }
   
@@ -207,7 +219,12 @@ export class PerformanceCache {
       // expired negative guard can never expose an older cached 200 page.
       this.seoHtmlCache.del(this.seoHtmlCache.keys().filter(key => key.endsWith(`:${url}`)));
     }
-    this.safeSet(this.pageDataCache, 'pageDataCache', `page:${url}`, data, excluded ? 60 : undefined);
+    const key = `page:${SEO_CACHE_NAMESPACE}:${url}`;
+    const bounded = excluded || stationDependent(data);
+    const seconds = bounded ? Math.min(60, (getPublicStationDeadline() - Date.now()) / 1000) : 1800;
+    if (seconds <= 0) { this.pageDataCache.del(key); return; }
+    this.safeSet(this.pageDataCache, 'pageDataCache', key, data, seconds);
+    if (bounded) limitPublicStationDeadline(this.pageDataCache.getTtl(key) || Date.now());
   }
   
   // === QUICK CACHING ===

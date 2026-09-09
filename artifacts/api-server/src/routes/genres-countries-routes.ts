@@ -5,7 +5,9 @@ import { pgRecommendationProfile, pgRecentSessionListening } from '../data/postg
 import { SAFE_GENRE_SLUG_RE } from '../seo/genre-slug';
 import { pgCatalog } from '../data/postgres-catalog-store';
 import { RecommendationEngine } from '../services/recommendation-engine';
-import CacheManager, { CacheKeys } from '../cache';
+import { CacheKeys } from '../cache';
+import { publicStationCache as CacheManager } from '../public-station-cache';
+import { publicStationResponseCache } from '../middleware/public-station-cache';
 import { PrecomputedGenresService } from '../services/precomputed-genres';
 import { resolveToDbName, getAllCountryInfoFromDb } from '../utils/normalize-country';
 import { tvValidateParams, tvSlimGenre } from './shared-utils';
@@ -19,6 +21,7 @@ const publicGenreWhitelistVersion = () => 'navigation-v2:' + createHash('sha256'
   .update([...getMergedWhitelist()].sort().join('\0')).digest('hex').slice(0, 16);
 
 export function registerGenresCountriesRoutes(app: Express, deps: any) {
+  app.use(['/api/genres','/api/countries'], publicStationResponseCache);
   const { requireAdmin } = deps;
 
   // ML RECOMMENDATION APIs
@@ -99,7 +102,7 @@ export function registerGenresCountriesRoutes(app: Express, deps: any) {
       const recentStations = await pgRecentSessionListening(sessionId, 5);
 
       if (recentStations.length === 0) {
-        const popularStations = await pgCatalog().find({}, { sort: { votes: -1 }, limit: limit || 6 });
+        const popularStations = await pgCatalog().find({ lastCheckOk: true }, { sort: { votes: -1 }, limit: limit || 6 });
         
         const starterRecommendations = popularStations.map(station => ({
           ...station,
@@ -124,7 +127,7 @@ export function registerGenresCountriesRoutes(app: Express, deps: any) {
 
       if (recommendations.length > 0) {
         const stationIds = recommendations.map(rec => rec.stationId);
-        const stations = await pgCatalog().find({ _id: { $in: stationIds } });
+        const stations = await pgCatalog().find({ _id: { $in: stationIds }, lastCheckOk: true });
         
         const enhancedStations = stations.map(station => {
           const rec = recommendations.find(r => r.stationId === station._id.toString());
@@ -160,7 +163,7 @@ export function registerGenresCountriesRoutes(app: Express, deps: any) {
       const cacheKey = isRich ? 'countries:rich:v1' : 'countries:plain:v1';
       const cached = await CacheManager.get(cacheKey);
       if (cached) {
-        res.set('Cache-Control', 'public, max-age=3600, s-maxage=86400');
+        res.set('Cache-Control', 'public, max-age=0, s-maxage=0, must-revalidate');
         return void res.json(cached);
       }
 
@@ -170,7 +173,7 @@ export function registerGenresCountriesRoutes(app: Express, deps: any) {
           ? getAllCountryInfoFromDb(countryCounts)
           : countryCounts.map((entry) => entry.name).sort();
         await CacheManager.set(cacheKey, countries, { ttl: 86400 });
-        res.set('Cache-Control', 'public, max-age=3600, s-maxage=86400');
+        res.set('Cache-Control', 'public, max-age=0, s-maxage=0, must-revalidate');
         return void res.json(countries);
       }
 

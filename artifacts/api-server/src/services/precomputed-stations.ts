@@ -1,4 +1,4 @@
-import { CacheManager } from '../cache';
+import { publicStationCache as CacheManager } from '../public-station-cache';
 import { pgCatalog, type CatalogFilter } from '../data/postgres-catalog-store';
 import { logger } from '../utils/logger';
 import { sleep } from '../utils/event-loop-yield';

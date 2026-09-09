@@ -70,7 +70,12 @@ test("schema installer executes normal SQL transactionally and the reviewed inde
   assert.equal(db.calls.filter((sql) => sql === "BEGIN").length, files.length - 1);
   assert.equal(db.calls.filter((sql) => sql === "COMMIT").length, files.length - 1);
   const indexPosition = db.calls.findIndex(sql => sql.startsWith('CREATE INDEX CONCURRENTLY'));
-  assert.ok(indexPosition > db.calls.lastIndexOf('COMMIT'));
+  // Later transactional migrations may follow the concurrent index. Verify
+  // its own transaction boundary, not that it happens to be the last file.
+  assert.ok(indexPosition > 0);
+  assert.equal(db.calls.slice(0, indexPosition).filter(sql => sql === 'BEGIN').length,
+    db.calls.slice(0, indexPosition).filter(sql => sql === 'COMMIT').length);
+  assert.ok(db.calls.slice(indexPosition + 1).includes('BEGIN'));
   assert.ok(db.calls.slice(indexPosition + 1).find(sql => sql.startsWith('SELECT i.indisvalid')));
   assert.ok(db.calls.some((sql) => sql.includes("pg_try_advisory_lock")));
   assert.ok(db.calls.some((sql) => sql.includes("pg_advisory_unlock")));
@@ -86,7 +91,9 @@ test('schema lock contention expires between completed try-lock statements witho
   assert.equal(db.releases, 1); assert.equal(db.ends, 1);
 });
 test('a cancelled concurrent build is not recorded as applied or wrapped in a transaction', async () => {
-  const db = fixture({ applied: hashes.slice(0, -1), queryError: (sql: string) => sql.startsWith('CREATE INDEX CONCURRENTLY') });
+  const indexMigration = files.findIndex(name => name === '0027_station_source_genre_search.sql');
+  assert.ok(indexMigration > 0);
+  const db = fixture({ applied: hashes.slice(0, indexMigration), queryError: (sql: string) => sql.startsWith('CREATE INDEX CONCURRENTLY') });
   await assert.rejects(applyPostgresMigrations({ environment, migrationsDirectory, createPool: db.createPool, log() {} }), /injected/);
   assert.ok(!db.calls.some(sql => sql.startsWith('INSERT INTO radiohub_schema_migrations')));
   assert.ok(!db.calls.includes('BEGIN')); assert.ok(!db.calls.includes('COMMIT'));

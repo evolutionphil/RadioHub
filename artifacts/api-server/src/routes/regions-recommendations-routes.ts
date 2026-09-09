@@ -6,7 +6,8 @@ import {
   pgDiverseStations,
 } from "../data/postgres-discovery-operations";
 import { logger } from "../utils/logger";
-import CacheManager from "../cache";
+import { publicStationCache as CacheManager } from "../public-station-cache";
+import { publicStationResponseCache } from '../middleware/public-station-cache';
 import {
   pgStartMaintenanceJob,
   pgMaintenanceJobs,
@@ -576,12 +577,13 @@ function getCountrySearchPatterns(countryName: string): string[] {
 }
 
 export function registerRegionsRecommendationsRoutes(app: Express, deps: any) {
+  app.use(['/api/regions','/api/cities','/api/recommendations'], publicStationResponseCache);
   const { requireAdmin, normalizeCountryFilter } = deps;
 
   // Get global popular cities - CACHED
   app.get("/api/cities/global", async (req, res) => {
     const cacheKey = "global_cities_v1";
-    const CacheManager = (await import("../cache")).default;
+    const CacheManager = (await import("../public-station-cache")).publicStationCache;
     try {
       // INCIDENT 2026-05-15 v10.2 — wrap the 30-aggregate fan-out in
       // single-flight + SWR. With ~10 major countries × 3 cities this
@@ -720,7 +722,7 @@ export function registerRegionsRecommendationsRoutes(app: Express, deps: any) {
       const payload = await CacheManager.getOrSetSingleFlight(
         cacheKey,
         async () => {
-          const counts = await pgCatalog().groupCount("country");
+          const counts = await pgCatalog().groupCount("country", { lastCheckOk: true });
           const accurateCountMap = new Map(
             counts
               .filter((row) => row._id)
@@ -949,6 +951,7 @@ export function registerRegionsRecommendationsRoutes(app: Express, deps: any) {
         }));
 
         const stationFilter: any = {
+          lastCheckOk: true,
           $or: countryOrConditions,
         };
 

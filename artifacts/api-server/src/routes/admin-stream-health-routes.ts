@@ -4,12 +4,27 @@ import { pgCatalog } from '../data/postgres-catalog-store';
 import { assertRecoverableStation, getStreamRecoverySnapshot, probeStationStream } from '../utils/station-health-recovery';
 import { performanceCache } from '../performance-cache';
 import CacheManager from '../cache';
+import { getPostgresPool } from '../postgres-runtime';
 
 const invalidBody: ErrorRequestHandler = (_error, _req, res, _next) => {
   res.status(400).json({ error: 'Invalid recovery request' });
 };
 
 export function registerAdminStreamHealthRoutes(app: Express, requireAdmin: RequestHandler): void {
+  app.get('/api/admin/stream-health/status', requireAdmin, async (_req, res) => {
+    res.set('Cache-Control','no-store');
+    try {
+      const query = { text:`SELECT c.last_run_at,c.next_run_at,c.summary,
+        (SELECT count(*)::int FROM station_stream_health) tracked,
+        (SELECT count(*)::int FROM station_stream_health WHERE next_check_at<=now()) due,
+        (SELECT count(*)::int FROM stations WHERE last_check_ok IS NOT TRUE) hidden_from_lists
+        FROM station_stream_health_control c WHERE c.id=1`, query_timeout:2000 };
+      const result = await getPostgresPool().query(query);
+      res.json({ enabled:process.env.STREAM_HEALTH_ENABLED!=='false' && process.env.BACKGROUND_JOBS_ENABLED!=='false',
+        intervalSeconds:120,batchLimit:12,concurrency:2,sampleByteLimit:65_536,probeDeadlineMs:8000,
+        healthyRecheckDays:7,failedRecheckHours:12,...result.rows[0] });
+    } catch { res.status(503).json({error:'Health status is temporarily unavailable'}); }
+  });
   app.post('/api/admin/stations/:id/recover-stream-health', requireAdmin,
     (_req: Request, res: Response, next: NextFunction) => { res.set('Cache-Control', 'no-store'); next(); },
     express.json({ limit: '32kb' }), async (req: Request, res: Response) => {

@@ -23,6 +23,8 @@ function stationShape(row: Record<string, any>): Record<string, any> {
     logoAssets: row.logo_assets,
     averageRating: row.average_rating,
     totalRatings: row.total_ratings,
+    lastCheckOk: row.last_check_ok,
+    lastCheckTime: row.last_check_time,
   };
 }
 
@@ -58,7 +60,7 @@ export async function pgPublicProfile(value: string, currentUserId?: string): Pr
   if (!user) return null;
   const favorites = await pool().query<{ tags_raw: string | null; country: string | null }>(
     `SELECT s.tags_raw, s.country FROM user_favorites f
-     JOIN stations s ON s.id=f.station_id WHERE f.user_id=$1`,
+     JOIN stations s ON s.id=f.station_id WHERE f.user_id=$1 AND s.last_check_ok IS TRUE`,
     [user.id],
   );
   const genres = new Map<string, number>();
@@ -115,10 +117,10 @@ export async function pgUserFavorites(value: string, page: number, limit: number
   const [rows, count] = await Promise.all([
     pool().query(
       `SELECT s.* FROM user_favorites f JOIN stations s ON s.id=f.station_id
-       WHERE f.user_id=$1 ORDER BY f.created_at DESC LIMIT $2 OFFSET $3`,
+       WHERE f.user_id=$1 AND s.last_check_ok IS TRUE ORDER BY f.created_at DESC LIMIT $2 OFFSET $3`,
       [userId, limit, offset],
     ),
-    pool().query<{ count: string }>("SELECT count(*)::text count FROM user_favorites WHERE user_id=$1", [userId]),
+    pool().query<{ count: string }>("SELECT count(*)::text count FROM user_favorites f JOIN stations s ON s.id=f.station_id WHERE f.user_id=$1 AND s.last_check_ok IS TRUE", [userId]),
   ]);
   return { favorites: rows.rows.map(stationShape), total: Number(count.rows[0]?.count || 0), page, limit };
 }
@@ -128,7 +130,7 @@ export async function pgTrendingStations(country: string | undefined, limit: num
     `SELECT s.*, count(f.user_id)::int total_favorites,
        (count(f.user_id) * (1 + COALESCE(s.votes,0)::numeric / 100))::float8 trending_score
      FROM user_favorites f JOIN stations s ON s.id=f.station_id
-     WHERE ($1='' OR s.country ILIKE '%' || $1 || '%')
+     WHERE s.last_check_ok IS TRUE AND ($1='' OR s.country ILIKE '%' || $1 || '%')
      GROUP BY s.id ORDER BY trending_score DESC LIMIT $2`,
     [country && country !== "global" ? country : "", limit],
   );
@@ -152,7 +154,7 @@ export async function pgCommunityFavorites(
     `SELECT s.*, count(f.user_id)::int total_favorites,
        min(f.created_at) first_favorited, max(f.created_at) last_favorited
      FROM user_favorites f JOIN stations s ON s.id=f.station_id
-     WHERE ($1='' OR s.country ILIKE '%' || $1 || '%')
+     WHERE s.last_check_ok IS TRUE AND ($1='' OR s.country ILIKE '%' || $1 || '%')
        AND ($2='' OR s.tags_raw ILIKE '%' || $2 || '%')
      GROUP BY s.id ORDER BY total_favorites DESC, last_favorited DESC LIMIT $3`,
     [country && country !== "global" ? country : "", genre && genre !== "all" ? genre : "", limit],
@@ -318,10 +320,10 @@ export async function pgFavoriteStationsForUser(
   const [rows, count] = await Promise.all([
     pool().query(
       `SELECT s.*,f.created_at AS favorited_at FROM user_favorites f
-       JOIN stations s ON s.id=f.station_id WHERE f.user_id=$1 ORDER BY ${order}${suffix}`,
+       JOIN stations s ON s.id=f.station_id WHERE f.user_id=$1 AND s.last_check_ok IS TRUE ORDER BY ${order}${suffix}`,
       values,
     ),
-    pool().query<{ count: string }>("SELECT count(*)::text count FROM user_favorites WHERE user_id=$1", [userId]),
+    pool().query<{ count: string }>("SELECT count(*)::text count FROM user_favorites f JOIN stations s ON s.id=f.station_id WHERE f.user_id=$1 AND s.last_check_ok IS TRUE", [userId]),
   ]);
   return {
     stations: rows.rows.map((row) => ({ ...stationShape(row), favoritedAt: row.favorited_at })),
@@ -418,23 +420,27 @@ export async function pgRecentlyPlayed(value: string, limit: number): Promise<an
     [value],
   );
   const recent = result.rows[0]?.source?.recentlyPlayedStations;
-  return Array.isArray(recent) ? recent.slice(0, limit) : [];
+  if (!Array.isArray(recent) || !recent.length) return [];
+  const ids = recent.map((entry: any) => String(entry?.stationId || entry));
+  const eligible = await pool().query('SELECT id FROM stations WHERE id=ANY($1::text[]) AND last_check_ok IS TRUE', [ids]);
+  const allowed = new Set(eligible.rows.map(row => row.id));
+  return recent.filter((entry: any) => allowed.has(String(entry?.stationId || entry))).slice(0, limit);
 }
 
 export async function pgRecentlyPlayedStations(userId: string, limit = 12): Promise<any[]> {
   const user = await pool().query<{ source: any }>("SELECT source FROM users WHERE id=$1", [userId]);
   const recent = Array.isArray(user.rows[0]?.source?.recentlyPlayedStations)
-    ? user.rows[0].source.recentlyPlayedStations.slice(0, limit)
+    ? user.rows[0].source.recentlyPlayedStations
     : [];
   if (!recent.length) return [];
   const ids = recent.map((entry: any) => String(entry?.stationId || entry));
-  const stations = await pool().query("SELECT * FROM stations WHERE id=ANY($1::text[])", [ids]);
+  const stations = await pool().query("SELECT * FROM stations WHERE id=ANY($1::text[]) AND last_check_ok IS TRUE", [ids]);
   const byId = new Map(stations.rows.map((row) => [row.id, row]));
   return recent.flatMap((entry: any) => {
     const id = String(entry?.stationId || entry);
     const row = byId.get(id);
     return row ? [{ ...stationShape(row), playedAt: entry?.playedAt || null }] : [];
-  });
+  }).slice(0, limit);
 }
 
 export async function pgAddRecentlyPlayed(userId: string, stationId: string): Promise<boolean> {

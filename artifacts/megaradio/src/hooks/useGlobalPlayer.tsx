@@ -6,6 +6,7 @@ import { trackStationPlay, trackListeningTime, trackStationFavorite } from '../l
 import { logger } from '@/lib/logger';
 import { getStreamProxyUrl, resolveStreamUrl } from '@/lib/utils';
 import { addRecentlyPlayed } from '@/utils/recently-played';
+import { adjacentAvailableStation, availableStations, isExplicitlyFailedStation } from '@/utils/station-availability';
 
 import type { GlobalPlayerState } from './useGlobalPlayer.shell';
 import { GlobalPlayerContext } from './useGlobalPlayer.shell';
@@ -725,6 +726,8 @@ export function GlobalPlayerProvider({ children }: { children: ReactNode }) {
 
   // VLC-LIKE APPROACH: Resolve playlists and try candidates until one works
   const playStation = async (station: Station, pageStations?: Station[]) => {
+    // Reject known failed snapshots before touching playback/history or making requests.
+    if (isExplicitlyFailedStation(station)) return;
     try {
       logger.log('🎯 VLC-LIKE APPROACH: Resolving stream for', station.name);
       
@@ -780,8 +783,9 @@ export function GlobalPlayerProvider({ children }: { children: ReactNode }) {
       
       // Set up station queue for next/prev
       if (pageStations) {
-        setStationQueue(pageStations);
-        const currentIndex = pageStations.findIndex(s => s._id === station._id);
+        const availableQueue = availableStations(pageStations);
+        setStationQueue(availableQueue);
+        const currentIndex = availableQueue.findIndex(s => s._id === station._id);
         setCurrentStationIndex(currentIndex);
       }
 
@@ -1045,8 +1049,9 @@ export function GlobalPlayerProvider({ children }: { children: ReactNode }) {
 
   // Station queue management
   const setPageStationQueue = (stations: Station[], currentStation: Station) => {
-    setStationQueue(stations);
-    const currentIndex = stations.findIndex(s => s._id === currentStation._id);
+    const availableQueue = availableStations(stations);
+    setStationQueue(availableQueue);
+    const currentIndex = availableQueue.findIndex(s => s._id === currentStation._id);
     setCurrentStationIndex(currentIndex);
   };
 
@@ -1160,24 +1165,22 @@ export function GlobalPlayerProvider({ children }: { children: ReactNode }) {
 
   // Simple station navigation
   const nextStation = () => {
-    if (stationQueue.length > 1) {
-      const nextIndex = currentStationIndex < stationQueue.length - 1 ? currentStationIndex + 1 : 0;
-      const next = stationQueue[nextIndex];
+    const next = adjacentAvailableStation(stationQueue, currentStation?._id, 1);
+    if (next && next._id !== currentStation?._id) {
       logger.log('⏭️ Next station:', next.name);
       playStation(next, stationQueue);
-    } else if (currentStation) {
+    } else if (currentStation && !isExplicitlyFailedStation(currentStation)) {
       logger.log('🔄 Only one station, refreshing current');
       refreshStream();
     }
   };
 
   const previousStation = () => {
-    if (stationQueue.length > 1) {
-      const prevIndex = currentStationIndex > 0 ? currentStationIndex - 1 : stationQueue.length - 1;
-      const prev = stationQueue[prevIndex];
+    const prev = adjacentAvailableStation(stationQueue, currentStation?._id, -1);
+    if (prev && prev._id !== currentStation?._id) {
       logger.log('⏮️ Previous station:', prev.name);
       playStation(prev, stationQueue);
-    } else if (currentStation) {
+    } else if (currentStation && !isExplicitlyFailedStation(currentStation)) {
       logger.log('🔄 Only one station, refreshing current');
       refreshStream();
     }

@@ -12,6 +12,7 @@ import { useLocation, Link } from "wouter";
 import { getStationImageAlt } from "@workspace/seo-shared/station-image-alt";
 import { getStationListenLabel } from '@/utils/station-accessible-text';
 import { getLocalizedCountryDisplayName } from '@/utils/localized-country';
+import { isExplicitlyFailedStation } from '@/utils/station-availability';
 
 const formatVoteCount = (count: number): string => {
   if (count >= 1000000) {
@@ -103,6 +104,7 @@ const StationCard = memo(function StationCard({
   const isThisStationPlaying = globalIsPlaying && currentStation?._id === station._id;
 
   const handleNavigateAndPlay = async () => {
+    if (isExplicitlyFailedStation(station)) return;
     try {
       // Navigate to station detail page
       if (onNavigate) {
@@ -127,6 +129,7 @@ const StationCard = memo(function StationCard({
   };
 
   const handlePlay = async () => {
+    if (isExplicitlyFailedStation(station)) return;
     try {
       setIsLoading(true);
       // Only play the station - no navigation
@@ -144,6 +147,7 @@ const StationCard = memo(function StationCard({
   };
 
   const handleNavigate = () => {
+    if (isExplicitlyFailedStation(station)) return;
     try {
       // Only navigate to station detail page
       if (onNavigate) {
@@ -181,6 +185,8 @@ const StationCard = memo(function StationCard({
       toast({ title: t('auth_please_login_to_add_favorites'), variant: "destructive" });
     }
   };
+
+  if (isExplicitlyFailedStation(station)) return null;
 
   return (
     <div 

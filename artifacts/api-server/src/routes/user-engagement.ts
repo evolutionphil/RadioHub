@@ -1,13 +1,15 @@
 import express from 'express';
 import { engagementStore, UserEngagementService } from '../services/user-engagement-service';
 import { pgResolveUserId, pgPublicProfileCacheIdentity } from '../data/postgres-engagement-store';
-import CacheManager from '../cache';
+import { publicStationCache as CacheManager } from '../public-station-cache';
+import { publicStationResponseCache } from '../middleware/public-station-cache';
 import { findActiveAuthToken } from '../data/auth-token-store';
 import { PushNotificationService } from '../services/pushNotificationService';
 import { isQuotaExceeded, handleQuotaError, isQuotaError, safeWrite } from '../utils/quota-guard';
 import { pgFindUserById, newPublicUserId, userStore } from '../data/postgres-user-store';
 import { notificationStore, pgCreateNotification } from '../data/postgres-notification-store';
 const router = express.Router();
+router.use(publicStationResponseCache);
 const userEngagementService = new UserEngagementService();
 // Get user profile by slug
 router.get('/profile/:slug', async (req, res) => {

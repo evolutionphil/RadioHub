@@ -190,8 +190,7 @@ test('computeStationsSitemapUrlsForChunk emits one URL per indexable, non-junk s
     [String(idNoIndex), { ...goodStation('delta-fm', 'Delta FM'), _id: idNoIndex, noIndex: true }],
     // missing slug
     [String(idNoSlug), { ...goodStation('placeholder', 'No Slug'), _id: idNoSlug, slug: undefined }],
-    // A current failed check plus a successful check older than30days is
-    // required; stale failure history alone does not establish an outage.
+    // A long stream outage does not remove the retained information page.
     [String(idJunk), {
       ...goodStation('echo-fm', 'Echo FM'),
       _id: idJunk,
@@ -215,6 +214,7 @@ test('computeStationsSitemapUrlsForChunk emits one URL per indexable, non-junk s
     'https://example.com/de/sender/alpha-fm',
     'https://example.com/de/sender/bravo-radio',
     'https://example.com/de/sender/charlie-am',
+    'https://example.com/de/sender/echo-fm',
   ]);
 });
 

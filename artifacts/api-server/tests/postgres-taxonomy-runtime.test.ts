@@ -33,6 +33,7 @@ describe('PostgreSQL taxonomy runtime', {skip:!process.env.PG_TEST_DATABASE_URL}
     mock.module('../src/data/postgres-catalog-store',{namedExports:{PostgresCatalogStore,pgCatalog:()=>catalog}});
     const manager={
       get:async(key:string)=>cache.get(key)??null,getSWR:async(key:string)=>cache.get(key)??null,
+      set:async(key:string,value:any)=>{cache.set(key,value);},
       setSWR:async(key:string,value:any)=>{cache.set(key,value);},
       getOrSetSWR:async(key:string,compute:()=>Promise<any>)=>{
         if(cache.has(key))return cache.get(key);const fresh=await compute();cache.set(key,fresh);return fresh;
