@@ -42,6 +42,7 @@ mock.module('../src/services/recommendation-engine', { namedExports: { Recommend
 mock.module('../src/services/precomputed-genres', { namedExports: { PrecomputedGenresService: {} } });
 mock.module('../src/routes/shared-utils', { namedExports: { tvSlimGenre: (value: unknown) => value, tvValidateParams: () => ({ page: 1, limit: 9 }) } });
 const { registerGenresCountriesRoutes } = await import('../src/routes/genres-countries-routes');
+const { publicStationCacheKey } = await import('../src/public-station-cache');
 let server: Server, base: string;
 before(async () => {
   const app = express(); registerGenresCountriesRoutes(app, { requireAdmin: (_req: unknown, res: any) => res.sendStatus(401) });
@@ -60,18 +61,20 @@ it('uses the canonical genre identity while preserving the editorial name and pu
 });
 it('does not reuse display-name-era empty cache entries and caches the corrected result', async () => {
   cache.set('genre-stations:jazz:all:1:20', { stations: [], total: 0 });
+  cache.set('public-health:v1:genre-stations:slug-v2:jazz:all:1:20', { value: { stations: [], total: 0 }, expiresAt: Date.now() + 60_000 });
   assert.equal((await (await request()).json() as any).total, 3);
   assert.equal((await (await request()).json() as any).total, 3);
   assert.equal(listingCalls.length, 1);
-  assert.ok(cache.has('public-health:v1:genre-stations:slug-v2:jazz:all:1:20'));
+  assert.ok(cache.has(publicStationCacheKey('genre-stations:slug-v2:jazz:all:1:20')));
 });
 it('does not reuse the old stored-count genre detail cache after membership counts become authoritative', async () => {
   cache.set('genre-slug:jazz', { name: 'Jazz Music', slug: 'jazz', stationCount: 0 });
+  cache.set('public-health:v1:genre-slug:membership-v2:jazz', { value: { name: 'Jazz Music', slug: 'jazz', stationCount: 0 }, expiresAt: Date.now() + 60_000 });
   const response = await fetch(base + '/api/genres/slug/jazz');
   assert.equal(response.status, 200);
   const detail = await response.json() as any;
   assert.equal(detail.name, 'Jazz Music'); assert.equal(detail.stationCount, 3);
-  assert.ok(cache.has('public-health:v1:genre-slug:membership-v2:jazz'));
+  assert.ok(cache.has(publicStationCacheKey('genre-slug:membership-v2:jazz')));
 });
 it('retains country-scoped totals, global genre metadata, and separate pagination caches', async () => {
   const first = await (await request('?country=Austria&limit=1')).json() as any;

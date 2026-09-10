@@ -2,6 +2,7 @@ import { pgCatalog } from '../data/postgres-catalog-store';
 import { pgCollaborativeRecommendations, pgRecommendationProfile, pgRecordRecommendationInteraction } from '../data/postgres-recommendation-store';
 import { CacheManager } from '../cache';
 import { performanceCache } from '../performance-cache';
+import { resolveStationId, resolveStationIds } from '../data/station-identity-store';
 
 interface UserInteraction {
   sessionId: string;
@@ -41,13 +42,18 @@ export class RecommendationEngine {
   
   static async recordUserInteraction(interaction: UserInteraction): Promise<void> {
     try {
-      const station = await pgCatalog().findOne({ _id: interaction.stationId });
+      const stationId = await resolveStationId(interaction.stationId);
+      if (!stationId) return;
+      // A merge may finish between identity resolution and metadata lookup.
+      const station = await pgCatalog().findOne({ _id: stationId }) || await pgCatalog().findMergedAlias(stationId);
       if (!station) return;
 
       const now = new Date();
       await pgRecordRecommendationInteraction({
         sessionId: interaction.sessionId,
-        stationId: interaction.stationId,
+        // The writer locks/resolves this identifier again if another merge
+        // commits after this metadata read.
+        stationId: station._id,
         stationName: station.name,
         country: station.country || 'Unknown',
         genre: this.extractPrimaryGenre(station.tags),
@@ -72,7 +78,9 @@ export class RecommendationEngine {
   }
 
   static async getPersonalizedSimilarStations(options: PersonalizedSimilarStationsOptions): Promise<RecommendationResult[]> {
-    const { sourceStationId, sessionId, limit: requestedLimit = 10, minConfidence = 0.3 } = options;
+    const { sessionId, limit: requestedLimit = 10, minConfidence = 0.3 } = options;
+    const sourceStationId = await resolveStationId(options.sourceStationId);
+    if (!sourceStationId) return [];
     const limit = Math.max(1, Math.min(100, Math.trunc(requestedLimit) || 10));
     
     if (this.activeRecommendations >= this.MAX_CONCURRENT_RECOMMENDATIONS) {
@@ -553,10 +561,13 @@ export class RecommendationEngine {
     excludeIds?: string[];
     seedRandom?: number;
   }): Promise<any[]> {
-    const { stationId, limit: requestedLimit = 12, excludeIds = [] } = options;
+    const { limit: requestedLimit = 12, excludeIds = [] } = options;
     const limit = Math.max(1, Math.min(100, Math.trunc(requestedLimit) || 12));
     
     try {
+      const identities = await resolveStationIds([options.stationId, ...excludeIds]);
+      const stationId = identities.get(options.stationId);
+      if (!stationId) return [];
       // Get source station with tags and country
       const sourceStation = await pgCatalog().findOne({ _id: stationId }, { fields: ['country', 'tags'] });
       if (!sourceStation) return [];
@@ -564,7 +575,7 @@ export class RecommendationEngine {
       const stationCountry = sourceStation.country;
       if (!stationCountry) return [];
       
-      const excludeSet = new Set([stationId, ...excludeIds]);
+      const excludeSet = new Set([stationId, ...excludeIds.map(id => identities.get(id) ?? id)]);
       const sourceTags = this.parseStationTags(sourceStation.tags);
       
       let pool: any[] = [];

@@ -6,6 +6,8 @@ import type { StationDescriptionChange } from '../utils/station-description-patc
 import { assertRecoverableStation, getStreamRecoverySnapshot } from '../utils/station-health-recovery';
 import { providerHealthIsNewer, PROVIDER_HEALTH_FIELDS } from '../utils/provider-health-freshness';
 import { stationVisibilityFields, stationVisibilitySql, stationAvailabilitySql } from '../utils/station-visibility';
+import { assessDuplicateGroup } from '../utils/station-duplicate-policy';
+import { preserveMergedStationMetadata } from '../utils/station-merge-preservation';
 
 export type CatalogDocument = Record<string, any>;
 export type CatalogFilter = Record<string, any>;
@@ -238,6 +240,10 @@ export class PostgresCatalogStore {
     return result.rows.map(row => ({ ...catalogShape(row), url_resolved: row.url_resolved }));
   }
   async findById(id: string): Promise<CatalogDocument | null> { return (await this.find({ _id: id }, { limit: 1 }))[0] || null; }
+  async findMergedAlias(alias: string): Promise<CatalogDocument | null> {
+    const result = await this.pool.query('SELECT s.* FROM station_merge_aliases a JOIN stations s ON s.id=a.station_id WHERE a.alias=$1', [alias]);
+    return result.rows[0] ? catalogShape(result.rows[0]) : null;
+  }
   async findOne(filter: CatalogFilter, options: { sort?: Record<string,number>; fields?: string[] } = {}): Promise<CatalogDocument | null> {
     return (await this.find(filter, { ...options, limit: 1 }))[0] || null;
   }
@@ -315,7 +321,10 @@ export class PostgresCatalogStore {
         // Dedup races across sync replicas are prevented by the sync leader
         // lock; the content-key lock also covers direct native insert callers.
         const doc: CatalogDocument = { ...input, _id: input._id || crypto.randomBytes(12).toString("hex") };
-        if (options.syncRunId && (await client.query('SELECT 1 FROM station_blacklist WHERE station_uuid=$1 OR url=$2 LIMIT 1',[doc.stationuuid,doc.url])).rowCount) continue;
+        // Merge archives ban the removed UUID, not the shared live endpoint.
+        // An explicit admin blacklist remains a URL-wide ban.
+        if (options.syncRunId && (await client.query(`SELECT 1 FROM station_blacklist WHERE station_uuid=$1
+          OR (url=$2 AND NULLIF(source#>>'{mergeAudit,survivorId}','') IS NULL) LIMIT 1`,[doc.stationuuid,doc.url])).rowCount) continue;
         const duplicate = await client.query("SELECT id FROM stations WHERE station_uuid=$1 OR (name=$2 AND url=$3 AND COALESCE(country_code,'')=$4) LIMIT 1", [doc.stationuuid,doc.name,doc.url,doc.countryCode || ""]);
         if (duplicate.rowCount) continue;
         saved.push(await this.persist(client,doc,true));
@@ -597,46 +606,104 @@ export class PostgresCatalogStore {
     } catch (error) { await client.query('ROLLBACK'); throw error; } finally { client.release(); }
   }
   /** Recompute totals under row locks; concurrent merges cannot double-count. */
-  async mergeDuplicates(ids: string[], options: { primaryId?:string; validateGroup?:boolean; patch?:CatalogDocument } = {}): Promise<{ deletedCount: number; primary: CatalogDocument | null; duplicates: CatalogDocument[] }> {
-    const client = await this.pool.connect();
+  async mergeDuplicates(ids: string[], options: { primaryId?:string; validateGroup?:boolean; patch?:CatalogDocument; requireSafeIdentity?:boolean; client?:pg.PoolClient } = {}): Promise<{ deletedCount: number; primary: CatalogDocument | null; duplicates: CatalogDocument[] }> {
+    const client = options.client || await this.pool.connect();
+    const ownsTransaction = !options.client;
+    const savepoint = ownsTransaction ? null : `station_merge_${crypto.randomBytes(6).toString('hex')}`;
     try {
-      await client.query('BEGIN');
+      if (ownsTransaction) await client.query('BEGIN');
+      else await client.query(`SAVEPOINT ${savepoint}`);
       const rows = await client.query('SELECT * FROM stations WHERE id=ANY($1::text[]) ORDER BY id FOR UPDATE',[ids]);
       const docs = rows.rows.map(catalogShape).sort((a,b)=>(b.votes || 0)-(a.votes || 0) || a._id.localeCompare(b._id));
-      const primary = options.primaryId ? docs.find(doc=>doc._id===options.primaryId) : docs[0];
+      if (options.requireSafeIdentity) {
+        const assessment = docs.length === new Set(ids).size ? assessDuplicateGroup(docs) : { eligible: false, reason: 'Detected station group changed or a member is missing' };
+        if (!assessment.eligible) throw Object.assign(new Error(assessment.reason), { code: 'UNSAFE_DUPLICATE_GROUP' });
+      }
+      let primary = options.primaryId ? docs.find(doc=>doc._id===options.primaryId) : docs[0];
       if (options.primaryId && !primary) throw Object.assign(new Error('Primary station not found'),{ code:'PRIMARY_NOT_FOUND' });
-      if (docs.length < 2) { await client.query('COMMIT'); return { deletedCount: 0,primary: primary || null,duplicates: [] }; }
+      if (docs.length < 2) {
+        await client.query(ownsTransaction ? 'COMMIT' : `RELEASE SAVEPOINT ${savepoint}`);
+        return { deletedCount: 0,primary: primary || null,duplicates: [] };
+      }
       // Revalidate the detected group: an admin may have edited it since scanning.
-      if (options.validateGroup !== false && docs.some(doc=>doc.name.trim().toLowerCase()!==primary!.name.trim().toLowerCase() || (doc.country || '')!==(primary!.country || ''))) throw new Error('Duplicate group changed; detect duplicates again');
+      if (!options.requireSafeIdentity && options.validateGroup !== false && docs.some(doc=>doc.name.trim().toLowerCase()!==primary!.name.trim().toLowerCase() || (doc.country || '')!==(primary!.country || ''))) throw new Error('Duplicate group changed; detect duplicates again');
       if (!primary) throw new Error('Primary station not found');
-      const duplicates = docs.filter(doc=>doc._id!==primary._id), loserIds = duplicates.map(doc=>doc._id);
+      const before = primary;
+      const duplicates = docs.filter(doc=>doc._id!==before._id), loserIds = duplicates.map(doc=>doc._id);
+      primary = preserveMergedStationMetadata(primary, duplicates);
       for (const field of ['name','url','homepage','favicon','country','language','genre']) {
         const value = options.patch?.[field];
         if (typeof value==='string' && value.trim()) { primary[field] = value.trim();primary.manualEditFields = { ...primary.manualEditFields,[field]:true }; }
       }
-      primary.slugAliases = [...new Set([...(primary.slugAliases || []),...duplicates.flatMap(doc=>[doc.slug,...(doc.slugAliases || [])])].filter(value=>typeof value==='string' && value && value!==primary.slug))];
+      if (primary.url !== before.url) {
+        // An explicit manual merge URL is a new endpoint, not verified evidence.
+        primary.urlResolved = ''; primary.availabilityOutcome = 'inconclusive'; primary.availabilityCheckedAt = null;
+        primary.mergedUrls = [...new Set([...primary.mergedUrls, primary.url])];
+        if (!before.manualEditFields?.isListVisible && !(before.manualEditFields?.lastCheckOk && before.lastCheckOk === false)) { primary.isListVisible = true; primary.visibilityExpiresAt = null; }
+        await client.query(`UPDATE station_stream_health SET failure_count=0,first_failure_at=NULL,lease_token=NULL,lease_until=NULL,next_check_at=now() WHERE station_id=$1`, [primary._id]);
+      }
       const changeTimes = docs.map(doc=>new Date(doc.lastChangeTime).getTime()).filter(Number.isFinite);
       if (changeTimes.length) primary.lastChangeTime = new Date(Math.min(...changeTimes));
-      for (const doc of duplicates) await blacklistInTransaction(client,{ ...doc,stationUuid: doc.stationuuid,reason: 'Auto-merge-all duplicate removal',deletedBy: 'admin' });
+      const ratings = await client.query('SELECT * FROM station_ratings WHERE station_id=ANY($1::text[]) ORDER BY updated_at DESC,id FOR UPDATE',[loserIds]);
+      for (const doc of duplicates) await blacklistInTransaction(client,{ ...doc,stationUuid: doc.stationuuid,
+        reason: 'Duplicate merge: preserved original station',deletedBy: 'admin',
+        mergeAudit: { survivorId: primary._id, mergedAt: new Date().toISOString(), ratings: ratings.rows.filter(rating=>rating.station_id===doc._id) } }, true);
+
+      const aliases = [...new Set<string>([...primary.mergedStationIds, ...primary.mergedStationUuids])];
+      const aliasConflict = await client.query('SELECT 1 FROM stations WHERE (id=ANY($1::text[]) OR station_uuid=ANY($1::text[])) AND NOT(id=ANY($2::text[])) LIMIT 1', [aliases, ids]);
+      if (aliasConflict.rowCount) throw Object.assign(new Error('Station merge aliases conflict with another live station'), { code: 'MERGE_ALIAS_CONFLICT' });
+      await client.query('UPDATE station_merge_aliases SET station_id=$1 WHERE station_id=ANY($2::text[])', [primary._id, loserIds]);
+      const savedAliases = await client.query(`INSERT INTO station_merge_aliases(alias,station_id)
+        SELECT alias,$1 FROM unnest($2::text[]) AS alias ON CONFLICT(alias) DO UPDATE SET station_id=excluded.station_id
+        WHERE station_merge_aliases.station_id=ANY($3::text[]) RETURNING alias`, [primary._id, aliases, ids]);
+      if (savedAliases.rowCount !== aliases.length) throw Object.assign(new Error('Station merge alias ownership changed'), { code: 'MERGE_ALIAS_CONFLICT' });
       await client.query(`INSERT INTO user_favorites(user_id,station_id,created_at)
         SELECT user_id,$1,min(created_at) FROM user_favorites WHERE station_id=ANY($2::text[]) GROUP BY user_id
         ON CONFLICT(user_id,station_id) DO UPDATE SET created_at=least(user_favorites.created_at,excluded.created_at)`,[primary._id,loserIds]);
       // Preserve ratings unless that principal already rated the survivor.
-      const ratings = await client.query('SELECT id,user_id,session_id FROM station_ratings WHERE station_id=ANY($1::text[]) ORDER BY updated_at DESC,id FOR UPDATE',[loserIds]);
       for (const rating of ratings.rows) {
         const conflict = await client.query('SELECT 1 FROM station_ratings WHERE station_id=$1 AND (($2::text IS NOT NULL AND user_id=$2) OR ($3::text IS NOT NULL AND session_id=$3)) LIMIT 1',[primary._id,rating.user_id,rating.session_id]);
         if (!conflict.rowCount) await client.query('UPDATE station_ratings SET station_id=$1 WHERE id=$2',[primary._id,rating.id]);
       }
       await client.query('UPDATE listening_history SET station_id=$1,station_name=$3 WHERE station_id=ANY($2::text[])',[primary._id,loserIds,primary.name]);
+      for (const table of ['recommendation_events', 'listening_sessions']) {
+        await client.query(`UPDATE ${table} SET station_id=$1,station_name=$3 WHERE station_id=ANY($2::text[])`, [primary._id, loserIds, primary.name]);
+      }
+      await client.query('UPDATE analytics_events SET station_id=$1 WHERE station_id=ANY($2::text[])', [primary._id, loserIds]);
+      // Similarity scores are derived cache data, not user history. Old pairs
+      // would collide or become self-pairs after renaming, so regenerate them.
+      await client.query('DELETE FROM station_similarities WHERE station_id_1=ANY($1::text[]) OR station_id_2=ANY($1::text[])', [loserIds]);
+      await client.query(`UPDATE users u SET source=jsonb_set(u.source,'{recentlyPlayedStations}',
+        (SELECT COALESCE(jsonb_agg(entry ORDER BY ord),'[]'::jsonb) FROM (
+          SELECT DISTINCT ON (station_id) entry,ord FROM (
+            SELECT ord,CASE WHEN COALESCE(item->>'stationId',item#>>'{}')=ANY($2::text[]) THEN $1 ELSE COALESCE(item->>'stationId',item#>>'{}') END AS station_id,
+              CASE WHEN COALESCE(item->>'stationId',item#>>'{}')=ANY($2::text[])
+                THEN CASE WHEN jsonb_typeof(item)='object' THEN item||jsonb_build_object('stationId',$1::text) ELSE to_jsonb($1::text) END ELSE item END AS entry
+            FROM jsonb_array_elements(CASE WHEN jsonb_typeof(u.source->'recentlyPlayedStations')='array' THEN u.source->'recentlyPlayedStations' ELSE '[]'::jsonb END) WITH ORDINALITY AS recent(item,ord)
+          ) mapped ORDER BY station_id,ord
+        ) deduplicated),true)
+        WHERE EXISTS(SELECT 1 FROM jsonb_array_elements(CASE WHEN jsonb_typeof(u.source->'recentlyPlayedStations')='array' THEN u.source->'recentlyPlayedStations' ELSE '[]'::jsonb END) item
+          WHERE COALESCE(item->>'stationId',item#>>'{}')=ANY($2::text[]))`, [primary._id, loserIds]);
+      for (const [table, column] of [['cast_sessions', 'current_station'], ['cast_commands', 'station']]) {
+        await client.query(`UPDATE ${table} SET ${column}=${column}
+          || CASE WHEN ${column} ? 'stationId' THEN jsonb_build_object('stationId',$1::text) ELSE '{}'::jsonb END
+          || CASE WHEN ${column} ? '_id' THEN jsonb_build_object('_id',$1::text) ELSE '{}'::jsonb END
+          || CASE WHEN ${column} ? 'id' THEN jsonb_build_object('id',$1::text) ELSE '{}'::jsonb END
+          WHERE ${column}->>'stationId'=ANY($2::text[]) OR ${column}->>'_id'=ANY($2::text[]) OR ${column}->>'id'=ANY($2::text[])`, [primary._id, loserIds]);
+      }
       primary.votes = docs.reduce((sum,doc)=>sum+(doc.votes || 0),0);
       primary.clickCount = docs.reduce((sum,doc)=>sum+(doc.clickCount || 0),0);
       const ratingsSummary = (await client.query('SELECT count(*)::integer AS total,COALESCE(avg(rating),0)::real AS average FROM station_ratings WHERE station_id=$1',[primary._id])).rows[0];
       primary.totalRatings = ratingsSummary.total; primary.averageRating = ratingsSummary.average;
-      const saved = await this.persist(client,primary,false,primary);
+      const saved = await this.persist(client,primary,false,before);
       const deleted = await client.query('DELETE FROM stations WHERE id=ANY($1::text[])',[loserIds]);
-      await client.query('COMMIT');
+      await client.query(ownsTransaction ? 'COMMIT' : `RELEASE SAVEPOINT ${savepoint}`);
       return { deletedCount: deleted.rowCount || 0,primary: saved,duplicates };
-    } catch (error) { await client.query('ROLLBACK'); throw error; } finally { client.release(); }
+    } catch (error) {
+      if (ownsTransaction) await client.query('ROLLBACK');
+      else { await client.query(`ROLLBACK TO SAVEPOINT ${savepoint}`); await client.query(`RELEASE SAVEPOINT ${savepoint}`); }
+      throw error;
+    } finally { if (ownsTransaction) client.release(); }
   }
   private async persist(client: pg.PoolClient, input: CatalogDocument, insert: boolean, previous?:CatalogDocument): Promise<CatalogDocument> {
     const now = new Date();
@@ -676,12 +743,17 @@ export function normalizeCatalogImport(input: CatalogDocument): CatalogDocument 
   if (doc.hasLogo === undefined) doc.hasLogo = Boolean(doc.logoAssets?.webp256 || doc.logoAssets?.webp96 || doc.favicon);
   return doc;
 }
-async function blacklistInTransaction(client: pg.PoolClient, doc: CatalogDocument): Promise<CatalogDocument> {
+async function blacklistInTransaction(client: pg.PoolClient, doc: CatalogDocument, preserveSnapshot = false): Promise<CatalogDocument> {
   for (const key of [`blacklist:url:${doc.url}`, ...(doc.stationUuid ? [`blacklist:uuid:${doc.stationUuid}`] : [])].sort()) await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[key]);
-  const existing = await client.query('SELECT * FROM station_blacklist WHERE url=$1 OR ($2::text IS NOT NULL AND station_uuid=$2) ORDER BY id LIMIT 1',[doc.url,doc.stationUuid || null]);
-  if (existing.rows[0]) return blacklistShape(existing.rows[0]);
+  const existing = await client.query(`SELECT * FROM station_blacklist WHERE (url=$1 OR ($2::text IS NOT NULL AND station_uuid=$2))
+    AND NULLIF(source#>>'{mergeAudit,survivorId}','') IS NULL ORDER BY id LIMIT 1`,[doc.url,doc.stationUuid || null]);
+  if (!preserveSnapshot && existing.rows[0]) return blacklistShape(existing.rows[0]);
+  const snapshot = { ...doc };
+  // A restored old merge archive can later be explicitly removed by an admin.
+  // Do not accidentally carry its old UUID-only scope into the new manual ban.
+  if (!preserveSnapshot) delete snapshot.mergeAudit;
   const row = (await client.query(`INSERT INTO station_blacklist(id,station_uuid,url,name,reason,deleted_by,source)
-    VALUES($1,$2,$3,$4,$5,$6,$7::jsonb) RETURNING *`,[crypto.randomBytes(12).toString('hex'),doc.stationUuid || null,doc.url,doc.name,doc.reason || null,doc.deletedBy || 'admin',JSON.stringify(doc)])).rows[0];
+    VALUES($1,$2,$3,$4,$5,$6,$7::jsonb) RETURNING *`,[crypto.randomBytes(12).toString('hex'),doc.stationUuid || null,doc.url,doc.name,doc.reason || null,doc.deletedBy || 'admin',JSON.stringify(snapshot)])).rows[0];
   return blacklistShape(row);
 }
 function blacklistShape(row: CatalogDocument): CatalogDocument {
@@ -697,7 +769,8 @@ export async function pgBlacklistGet(id: string): Promise<CatalogDocument | null
   return row ? blacklistShape(row) : null;
 }
 export async function pgBlacklistFind(url: string, uuid?: string): Promise<CatalogDocument | null> {
-  const row = (await getPostgresPool().query('SELECT * FROM station_blacklist WHERE url=$1 OR ($2::text IS NOT NULL AND station_uuid=$2) ORDER BY id LIMIT 1',[url,uuid || null])).rows[0];
+  const row = (await getPostgresPool().query(`SELECT * FROM station_blacklist WHERE (url=$1 OR ($2::text IS NOT NULL AND station_uuid=$2))
+    AND NULLIF(source#>>'{mergeAudit,survivorId}','') IS NULL ORDER BY id LIMIT 1`,[url,uuid || null])).rows[0];
   return row ? blacklistShape(row) : null;
 }
 export async function pgBlacklistPage(search: string, limit: number, offset: number): Promise<{ rows: CatalogDocument[]; total: number }> {
@@ -726,5 +799,6 @@ export async function pgSyncLogs(limit = 10): Promise<CatalogDocument[]> {
   return result.rows.map((row) => ({ ...row.counters,_id: row.id,syncType: row.sync_type,status: row.status,error: row.error,errorMessage: row.error,startedAt: row.started_at,completedAt: row.completed_at }));
 }
 export async function pgSyncBlacklist(): Promise<CatalogDocument[]> {
-  return (await getPostgresPool().query('SELECT station_uuid AS "stationUuid",url FROM station_blacklist')).rows;
+  return (await getPostgresPool().query(`SELECT station_uuid AS "stationUuid",url,
+    NULLIF(source#>>'{mergeAudit,survivorId}','') IS NULL AS "blocksUrl" FROM station_blacklist`)).rows;
 }

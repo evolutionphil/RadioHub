@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import type pg from 'pg';
 import { getPostgresPool } from '../postgres-runtime';
+import { lockStationIdentity } from './station-identity-store';
 const newId = () => crypto.randomBytes(12).toString('hex');
 const boundedLimit = (limit: number, maximum = 1000) => Math.max(1, Math.min(maximum, Math.trunc(limit) || 1));
 const profileShape = (row: any): any => row ? ({
@@ -36,14 +37,17 @@ export async function pgRecordRecommendationInteraction(input: Record<string, an
   try {
     await client.query('BEGIN');
     await client.query("SET LOCAL statement_timeout='8s'");
+    // Lock the station before the per-session lock, matching merge ordering.
+    // Unknown historical IDs remain accepted by this telemetry-only contract.
+    const stationId = await lockStationIdentity(input.stationId, client, 'KEY SHARE') ?? input.stationId;
     // Insertion, history snapshot and profile upsert serialize per session on
     // every replica: a slow earlier calculation cannot overwrite a newer one.
     await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', ['recommendation-profile:' + input.sessionId]);
     await client.query(`INSERT INTO listening_history(id,session_id,station_id,station_name,country,genre,
       listen_duration,interaction_type,listened_at,device_type,context)
       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
-    [newId(), input.sessionId, input.stationId, input.stationName, input.country, input.genre || null,
-      Math.max(0, Math.round(input.listenDuration)), input.interactionType, input.listenedAt, input.deviceType || null, JSON.stringify(input)]);
+    [newId(), input.sessionId, stationId, input.stationName, input.country, input.genre || null,
+      Math.max(0, Math.round(input.listenDuration)), input.interactionType, input.listenedAt, input.deviceType || null, JSON.stringify({ ...input, stationId })]);
     const profile = deriveProfile(await recent(client, input.sessionId, 1000));
     await client.query(`INSERT INTO recommendation_profiles(id,session_id,preferred_genres,preferred_countries,preferred_languages,
       average_listen_duration,peak_listening_hours,skip_rate,total_stations_listened,unique_stations_count,favorite_stations_count,last_listened_at,profile_strength)

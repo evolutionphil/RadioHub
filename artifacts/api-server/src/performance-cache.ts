@@ -269,6 +269,10 @@ export class PerformanceCache {
   isSimilarPoolWarmed(): boolean {
     return this.similarStationsCache.keys().length > 0;
   }
+
+  clearSimilarStationPools(): void {
+    this.similarStationsCache.flushAll();
+  }
   
   // === CACHE MANAGEMENT ===
   

@@ -13,6 +13,7 @@ let noIndex = false;
 let stationReads = 0;
 let stationOverrides: Record<string, any> = {};
 let customMetadata: Record<string, any> | null = null;
+let mergedAlias: Record<string, any> | null = null;
 let qualifiedLanguages = ['en'];
 const station = { _id: 'test-station', name: 'Recovery FM', slug: 'recovery-fm', url: 'https://stream.example.invalid/live', country: 'Germany', tags: 'pop', lastCheckOk: true };
 mock.module('../src/performance-cache', { namedExports: { performanceCache: {
@@ -28,6 +29,7 @@ mock.module('../src/data/postgres-seo-read-store', { namedExports: { pgSeoCatalo
     return missing ? null : { ...station, ...stationOverrides, noIndex };
   },
   find: async () => [], count: async () => 0, groupCount: async () => [],
+  findMergedAlias: async () => mergedAlias,
 }) } });
 mock.module('../src/data/postgres-content-store', { namedExports: { pgSeoMetadata: async () => customMetadata } });
 mock.module('../src/services/precomputed-genres', { namedExports: { PrecomputedGenresService: {} } });
@@ -55,6 +57,27 @@ beforeEach(() => {
   pageCache.clear(); databaseFails = false; qualificationFails = false;
   missing = false; noIndex = false; stationReads = 0;
   stationOverrides = {}; qualifiedLanguages = ['en']; customMetadata = null;
+  mergedAlias = null;
+});
+
+for (const language of ACTIVE_SITEMAP_LANGUAGES) {
+  test(`${language}: merged IDs redirect once to the localized surviving station`, async () => {
+    missing = true;
+    mergedAlias = { ...station, noIndex: false };
+    const detail = URL_TRANSLATIONS[language]?.station || 'station';
+    const result = await renderer.renderStaticPage(`/${language}/${detail}/0123456789abcdef01234567`, 'https://themegaradio.com');
+    assert.equal(decodeURI(result.pageData?.redirectTo || ''), `/${language}/${detail}/recovery-fm`);
+    assert.equal(result.pageData?.notFound, undefined);
+    assert.equal(result.pageData?.stationDbError, undefined);
+  });
+}
+
+test('merged aliases never bypass an explicit junk target decision', async () => {
+  missing = true;
+  mergedAlias = { ...station, noIndex: true };
+  const result = await renderer.renderStaticPage('/tr/istasyon/old-uuid', 'https://themegaradio.com');
+  assert.equal(result.pageData?.redirectTo, undefined);
+  assert.equal(result.pageData?.stationIsJunk, true);
 });
 
 test('transient PostgreSQL placeholder is not permanent junk and the next request re-reads recovered data', async () => {

@@ -20,4 +20,4 @@ async function boundedQuery(text:string,values?:any[]):Promise<pg.QueryResult> {
 }
 
 const readStore = new PostgresCatalogStore({query:boundedQuery} as unknown as pg.Pool);
-export const pgSeoCatalog = ():Pick<PostgresCatalogStore,'find'|'findOne'|'findById'|'count'|'groupCount'> => readStore;
+export const pgSeoCatalog = ():Pick<PostgresCatalogStore,'find'|'findOne'|'findById'|'findMergedAlias'|'count'|'groupCount'> => readStore;

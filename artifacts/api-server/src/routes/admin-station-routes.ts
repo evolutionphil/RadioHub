@@ -37,6 +37,7 @@ import { registerAdminDescriptionRoutes } from './admin-description-routes';
 import { registerAdminStreamHealthRoutes } from './admin-stream-health-routes';
 import { slugifyStationName } from '../seo/junk-station-rules';
 import { SITEMAP_PRIORITY_LANGUAGES } from '@workspace/seo-shared/seo-config';
+import { registerAdminDuplicateJobRoutes } from './admin-duplicate-job-routes';
 
 // AdminSetting key used to record the most recent coverage drop alert
 // acknowledgement (Task #238). The stored value is keyed by snapshotDate
@@ -105,92 +106,6 @@ type RecheckTagsJob = {
 const recheckTagsJobs = new Map<string, RecheckTagsJob>();
 const RECHECK_TAGS_JOB_TTL_MS = 60 * 60 * 1000; // 1h after completion
 
-// Task #490: in-memory tracker for the bulk auto-merge-all job. Kept
-// process-local on purpose — these jobs only run for a few minutes and
-// the admin UI polls every 1s, so persistence is unnecessary. If the
-// API server restarts mid-job, the frontend's polling loop will see a
-// 404 from /api/admin/merge-jobs/:jobId and surface the failure.
-type MergeAllJobMergedStation = {
-  groupName: string;
-  primaryStation: { name: string; country: string };
-  mergedStations: Array<{ name: string; votes: number; url: string }>;
-  fallbackUrlsAdded: number;
-  totalVotes: number;
-};
-type MergeAllJob = {
-  jobId: string;
-  status: 'running' | 'completed' | 'failed';
-  dryRun: boolean;
-  threshold: number;
-  startedAt: number;
-  finishedAt?: number;
-  errorMessage?: string;
-  progress: {
-    currentStep: string;
-    percentage: number;
-    groupsProcessed: number;
-    totalGroups: number;
-  };
-  results?: {
-    message: string;
-    mergedStations: MergeAllJobMergedStation[];
-    errors: string[];
-    // Convenience totals also used by the sync-fallback code path in
-    // the frontend (autoMergeAll in duplicates.tsx ~line 658).
-    totalGroups: number;
-    mergedGroups: number;
-    totalStationsToDelete: number;
-    totalStationsDeleted: number;
-  };
-};
-const mergeAllJobs = new Map<string, MergeAllJob>();
-const MERGE_ALL_JOB_TTL_MS = 60 * 60 * 1000; // 1h after completion
-function cleanupMergeAllJobs() {
-  const now = Date.now();
-  for (const [id, j] of mergeAllJobs) {
-    if (j.finishedAt && now - j.finishedAt > MERGE_ALL_JOB_TTL_MS) {
-      mergeAllJobs.delete(id);
-    }
-  }
-}
-
-async function runAutoMergeAllJob(jobId: string): Promise<void> {
-  const job = mergeAllJobs.get(jobId);
-  if (!job) return;
-  const minLen = job.threshold >= 0.95 ? 1 : job.threshold >= 0.85 ? 3 : 4;
-  const groups = await pgDuplicateStationGroups(minLen,50000);
-  job.progress.totalGroups = groups.length;
-  const mergedStations: MergeAllJobMergedStation[] = [], errors: string[] = [];
-  let totalStationsToDelete = 0,totalStationsDeleted = 0,mergedGroups = 0;
-  for (const group of groups) {
-    try {
-      const planned = [...group.stations].sort((a,b)=>(b.votes || 0)-(a.votes || 0) || a._id.localeCompare(b._id));
-      totalStationsToDelete += Math.max(0,planned.length-1);
-      const applied = job.dryRun ? { primary:planned[0],duplicates:planned.slice(1),deletedCount:0 }
-        : await pgCatalog().mergeDuplicates(planned.map(s=>s._id));
-      if (applied.primary && applied.duplicates.length) {
-        mergedGroups++; totalStationsDeleted += applied.deletedCount;
-        mergedStations.push({ groupName:group._id.name,
-          primaryStation:{ name:applied.primary.name,country:applied.primary.country || '' },
-          mergedStations:applied.duplicates.map(s=>({ name:s.name,votes:s.votes || 0,url:s.url })),
-          fallbackUrlsAdded:0,totalVotes:job.dryRun ? planned.reduce((sum,s)=>sum+(s.votes || 0),0) : applied.primary.votes });
-      }
-    } catch(error) { errors.push(group._id.name+': '+(error instanceof Error ? error.message : String(error))); }
-    job.progress.groupsProcessed++;
-    job.progress.percentage = Math.round(job.progress.groupsProcessed/Math.max(groups.length,1)*100);
-    job.progress.currentStep = (job.dryRun ? 'Previewed ' : 'Processed ')+job.progress.groupsProcessed+'/'+groups.length;
-  }
-  if (!job.dryRun && totalStationsDeleted) {
-    await Promise.all(['popular_stations','stations','community_favorites'].map(pattern=>CacheManager.clearByPattern(pattern)));
-    triggerGenreStationCountsRecompute('auto-merge-all');
-  }
-  job.status = errors.length ? 'failed' : 'completed';
-  job.errorMessage = errors.length ? errors.join('; ').slice(0,2000) : undefined;
-  job.finishedAt = Date.now(); job.progress.percentage = 100;
-  job.progress.currentStep = errors.length ? 'Finished with errors' : job.dryRun ? 'Dry run complete' : 'Merge complete';
-  job.results = { message:job.dryRun ? 'Previewed '+mergedGroups+' duplicate groups.' : 'Merged '+mergedGroups+' groups; deleted '+totalStationsDeleted+' duplicates.',
-    mergedStations,errors,totalGroups:groups.length,mergedGroups,totalStationsToDelete,totalStationsDeleted };
-}
 function cleanupRecheckTagsJobs() {
   const now = Date.now();
   for (const [jobId, job] of recheckTagsJobs) {
@@ -515,6 +430,7 @@ interface RouteDeps {
 export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
   const { requireAdmin } = deps;
   registerAdminDescriptionRoutes(app, requireAdmin);
+  registerAdminDuplicateJobRoutes(app, requireAdmin);
   registerAdminStreamHealthRoutes(app, requireAdmin);
 
   // 2026-05-15: manual on-demand trigger for the nightly Radio-Browser sync.
@@ -1231,19 +1147,23 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
 
       const sortedIds = [...stationIds].sort();
       const slim = req.body.slim === true || req.query.slim === '1';
-      const cacheKey = `stations:batch:${slim ? 'slim:v1:' : ''}${sortedIds.join(',')}`;
+      const cacheKey = `stations:batch:v2:${slim ? 'slim:' : ''}${sortedIds.join(',')}`;
       const cached = await publicStationCache.get(cacheKey);
       if (cached) return void res.json(cached);
 
-      const stations = await pgCatalog().find({ _id: { $in: stationIds }, isListVisible: true }, slim ? {
+      const { resolveStationIds } = await import('../data/station-identity-store');
+      const identities = await resolveStationIds(stationIds);
+      const stations = await pgCatalog().find({ _id: { $in: [...new Set(identities.values())] }, isListVisible: true }, slim ? {
         fields: ['_id','stationuuid','name','slug','url','urlResolved','favicon','country','countryCode','state','language',
           'tags','codec','bitrate','hls','votes','clickCount','averageRating','totalRatings','lastCheckOk','lastCheckTime',
           'hasLogo','logoAssets','isFeatured','noIndex','isListVisible','availabilityStatus'], limit: 50,
       } : { limit: 50 });
-      const stationMap = stations.reduce((acc: any, station: any) => {
-        acc[station._id.toString()] = station;
-        return acc;
-      }, {});
+      const byId = new Map(stations.map(station => [String(station._id), station]));
+      // Keep the requested keys so older mobile/local-history IDs still hydrate.
+      const stationMap = Object.fromEntries(stationIds.flatMap((id: string) => {
+        const station = byId.get(identities.get(id) || '');
+        return station ? [[id, station]] : [];
+      }));
 
       await publicStationCache.set(cacheKey, stationMap, { ttl: 60 });
       res.json(stationMap);
@@ -1407,84 +1327,6 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
         details: error?.message || String(error),
       });
     }
-  });
-
-  // BULK AUTO-MERGE EVERY DUPLICATE GROUP (Task #490)
-  //
-  // Companion to GET /api/admin/stations/duplicates. Enqueues an in-process
-  // async job that walks every duplicate group (same name+country grouping
-  // as the detection endpoint) and either previews (dryRun) or actually
-  // merges each one — keeping the highest-voted station as primary,
-  // summing votes, and deleting the rest. Progress is exposed via
-  // GET /api/admin/merge-jobs/:jobId so the frontend can poll for a
-  // running percentage and a final results summary.
-  //
-  // Frontend contract (artifacts/megaradio/src/pages/admin/duplicates.tsx
-  // `pollJobStatus` ~line 530): the polled job document must expose
-  //   { status: 'running'|'completed'|'failed',
-  //     progress: { currentStep, percentage, groupsProcessed, totalGroups },
-  //     results?: { message, mergedStations: [{ groupName,
-  //       primaryStation: { name, country },
-  //       mergedStations: [{ name, votes, url }],
-  //       fallbackUrlsAdded, totalVotes }], errors: string[] },
-  //     errorMessage?: string }
-  app.post("/api/admin/auto-merge-all", requireAdmin, async (req, res) => {
-    try {
-      const thresholdRaw = parseFloat(String(req.body?.threshold ?? '0.85'));
-      const threshold = Number.isFinite(thresholdRaw)
-        ? Math.min(1, Math.max(0, thresholdRaw))
-        : 0.85;
-      const dryRun = req.body?.dryRun !== false; // default to safe preview
-
-      const jobId = crypto.randomBytes(12).toString('hex');
-      const job: MergeAllJob = {
-        jobId,
-        status: 'running',
-        dryRun,
-        threshold,
-        startedAt: Date.now(),
-        progress: {
-          currentStep: 'Detecting duplicate groups…',
-          percentage: 0,
-          groupsProcessed: 0,
-          totalGroups: 0,
-        },
-      };
-      mergeAllJobs.set(jobId, job);
-      cleanupMergeAllJobs();
-
-      // Fire-and-forget — errors are captured into the job record.
-      void runAutoMergeAllJob(jobId).catch((err) => {
-        const j = mergeAllJobs.get(jobId);
-        if (!j) return;
-        j.status = 'failed';
-        j.errorMessage = err?.message || String(err);
-        j.finishedAt = Date.now();
-        logger.error(
-          `❌ /api/admin/auto-merge-all job ${jobId} crashed: ${j.errorMessage}`,
-        );
-      });
-
-      return void res.json({ success: true, async: true, jobId });
-    } catch (error: any) {
-      logger.error(
-        `❌ /api/admin/auto-merge-all failed to enqueue: ${error?.message || error}`,
-      );
-      return void res
-        .status(500)
-        .json({ success: false, error: error?.message || 'Failed to start auto-merge' });
-    }
-  });
-
-  // Polling endpoint for bulk merge job progress (Task #490).
-  app.get("/api/admin/merge-jobs/:jobId", requireAdmin, (req, res) => {
-    const { jobId } = req.params as { jobId: string };
-    const job = mergeAllJobs.get(jobId);
-    if (!job) {
-      return void res.status(404).json({ error: 'Job not found' });
-    }
-    res.set('Cache-Control', 'no-store');
-    return void res.json(job);
   });
 
   // CITY DUPLICATES DETECTION (Admin Only)

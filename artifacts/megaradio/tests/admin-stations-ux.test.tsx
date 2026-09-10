@@ -11,8 +11,9 @@ import AdminStationPagination from '../src/components/stations/admin-station-pag
 const mocks = vi.hoisted(() => ({
   options: vi.fn(), stations: vi.fn(), request: vi.fn(), toast: vi.fn(), play: vi.fn(), pause: vi.fn(),
   player: { currentStation: null as any, isPlaying: false, isLoading: false },
+  translations: {} as Record<string, string>,
 }));
-vi.mock('@/hooks/useTranslation', () => ({ useTranslation: () => ({ t: (_key: string, fallback: string) => fallback }) }));
+vi.mock('@/hooks/useTranslation', () => ({ useTranslation: () => ({ t: (key: string, fallback: string) => mocks.translations[key] || fallback }) }));
 vi.mock('@/hooks/use-toast', () => ({ useToast: () => ({ toast: mocks.toast }) }));
 vi.mock('@/hooks/useGlobalPlayer', () => ({ useGlobalPlayer: () => ({ ...mocks.player, playStation: mocks.play, pause: mocks.pause }) }));
 vi.mock('@/hooks/useAdminAuth', () => ({ useAdminAuth: () => ({ isAuthenticated: true, isAdmin: true, user: { username: 'test-admin', role: 'admin' } }) }));
@@ -32,6 +33,7 @@ function wrapper(children: React.ReactNode) {
 }
 beforeEach(() => {
   vi.clearAllMocks(); localStorage.clear();
+  mocks.translations = {};
   mocks.player.currentStation = null; mocks.player.isPlaying = false; mocks.player.isLoading = false;
   mocks.options.mockResolvedValue({ countries: [{ name: 'Austria', code: 'AT' }], languages: ['German'], genres: Array.from({ length: 70 }, (_, index) => 'Genre ' + index), codecs: ['AAC', 'MP3'] });
   mocks.stations.mockImplementation(async filters => ({ stations: [station], total: filters.healthStatus === 'unavailable' ? 1 : 1000 }));
@@ -85,6 +87,19 @@ describe('truthful health and content labels', () => {
 
 describe('scannable, scoped filters and page navigation', () => {
   const filterProps = { search: '', country: '', language: '', genre: '', healthStatus: 'all' as const, onSearchChange: vi.fn(), onCountryChange: vi.fn(), onLanguageChange: vi.fn(), onGenreChange: vi.fn(), onHealthStatusChange: vi.fn(), onCodecChange: vi.fn() };
+  it('preserves the existing runtime translation keys in the searchable layout', async () => {
+    mocks.translations = { filter_search_placeholder: 'Sender suchen...', filter_all_countries: 'Alle Länder', filter_all_languages: 'Alle Sprachen', filter_all_genres: 'Alle Genres' };
+    wrapper(<Filters {...filterProps} />);
+    expect(screen.getByPlaceholderText('Sender suchen...')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Alle Länder')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Advanced filters' }));
+    expect(screen.getByPlaceholderText('Alle Sprachen')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Alle Genres')).toBeInTheDocument();
+    const source = await readFile('src/components/stations/filters.tsx', 'utf8');
+    for (const key of ['filter_search_placeholder', 'filter_all_countries', 'filter_all_languages', 'filter_all_genres', 'filter_loading_countries', 'filter_loading_languages', 'filter_loading_genres', 'filter_error_loading_countries', 'filter_error_loading_languages', 'filter_error_loading_genres']) {
+      expect(source).toContain(`t('${key}',`);
+    }
+  });
   it('shows health at the top and keeps advanced filters closed without losing any genres', async () => {
     wrapper(<Filters {...filterProps} />);
     expect(screen.getByRole('combobox', { name: 'Broadcast health' })).toBeInTheDocument();

@@ -90,6 +90,15 @@ describe('Native PostgreSQL admin catalog HTTP contracts',{ skip:!connectionStri
     assert.equal((await request('/api/stations/batch','POST',{stationIds:[{}]},null)).status,400);
     await pool.query('UPDATE stations SET last_check_ok=true,is_list_visible=true,visibility_expires_at=NULL WHERE id=$1',[ids[0]]);
   });
+  it('public batch preserves stale client keys while hydrating their surviving station', async()=>{
+    await pool.query('INSERT INTO station_merge_aliases(alias,station_id) VALUES($1,$2)', ['old-client-id', ids[1]]);
+    const response = await request('/api/stations/batch','POST',{stationIds:['old-client-id','admin-b','nonexistent'],slim:true},null);
+    assert.equal(response.status,200);
+    const body:any = await response.json();
+    assert.deepEqual(Object.keys(body).sort(),['admin-b','old-client-id']);
+    assert.equal(body['old-client-id']._id,ids[1]);
+    assert.equal(body['admin-b']._id,ids[1]);
+  });
   it('saves all station editor controls and rejects invalid fields without partial writes',async()=>{
     const id=(99).toString(16).padStart(24,'0');
     await catalog.insertMany([{_id:id,stationuuid:'editor-contract',name:'Editor Contract',url:'https://example.invalid/original',urlResolved:'https://example.invalid/old-resolved',noIndex:true}]);

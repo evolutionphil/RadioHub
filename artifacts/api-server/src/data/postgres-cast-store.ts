@@ -1,6 +1,7 @@
 import { randomBytes, randomInt } from "node:crypto";
 import type pg from "pg";
 import { getPostgresPool } from "../postgres-runtime";
+import { lockStationIdentity } from './station-identity-store';
 
 export type CastCommand = 'play'|'pause'|'resume'|'stop'|'change_station'|'volume_up'|'volume_down'|'set_volume';
 export const castCommands = new Set(['play','pause','resume','stop','change_station','volume_up','volume_down','set_volume']);
@@ -16,11 +17,17 @@ async function tx<T>(operation:(client:pg.PoolClient)=>Promise<T>):Promise<T> {
   catch(error){await client.query('ROLLBACK').catch(()=>undefined);throw error;} finally{client.release();}
 }
 async function station(client:pg.PoolClient,stationId:string):Promise<any> {
+  const canonicalId = await lockStationIdentity(stationId, client, 'KEY SHARE');
+  if (!canonicalId) return null;
+  stationId = canonicalId;
   const row=(await client.query(`SELECT id,name,slug,COALESCE(NULLIF(url_resolved,''),url) stream_url,favicon FROM stations WHERE id=$1 AND (is_list_visible IS TRUE OR COALESCE(visibility_expires_at<=now(),false))`,[stationId])).rows[0];
   return row?{stationId:row.id,name:row.name,slug:row.slug,streamUrl:row.stream_url,favicon:row.favicon}:null;
 }
 export async function createCastSession(userId:string,mobileDeviceId?:string,tvDeviceId?:string,stationId?:string):Promise<any> {
   return tx(async(client)=>{
+    // Lock stations before users/devices, matching duplicate merges.
+    const currentStation=stationId?await station(client,stationId):null;
+    if(stationId&&!currentStation)throw new Error('Station not found');
     await client.query("SELECT id FROM users WHERE id=$1 FOR UPDATE",[userId]);
     if(tvDeviceId){
       const device=await client.query("UPDATE user_devices SET last_seen_at=now() WHERE user_id=$1 AND device_id=$2 AND is_active=true RETURNING id",[userId,tvDeviceId]);
@@ -28,8 +35,6 @@ export async function createCastSession(userId:string,mobileDeviceId?:string,tvD
     }
     await client.query("UPDATE cast_sessions SET status='expired' WHERE user_id=$1 AND status IN ('waiting_for_pair','paired')",[userId]);
     await client.query("UPDATE cast_sessions SET status='expired' WHERE status='waiting_for_pair' AND expires_at<=now()");
-    const currentStation=stationId?await station(client,stationId):null;
-    if(stationId&&!currentStation)throw new Error('Station not found');
     for(let attempt=0;attempt<30;attempt++){
       const result=await client.query(`INSERT INTO cast_sessions(id,session_id,pairing_code,user_id,mobile_device_id,tv_device_id,status,current_station,is_playing,paired_at,expires_at)
         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,CASE WHEN $6::text IS NULL THEN NULL ELSE now() END,now()+interval '24 hours')
@@ -57,11 +62,14 @@ export async function expireCastSessions(userId:string,sessionId?:string):Promis
 export async function applyCastCommand(sessionId:string,userId:string,command:CastCommand,data:any,fromRole:'mobile'|'tv'='mobile'):Promise<any> {
   if(!castCommands.has(command))return null;
   return tx(async(client)=>{
+    const changesStation = (command==='play'||command==='change_station') && !!data?.stationId;
+    const selectedStation = changesStation ? await station(client,data.stationId) : null;
+    if(changesStation&&!selectedStation)return null;
     const row=(await client.query("SELECT * FROM cast_sessions WHERE session_id=$1 AND user_id=$2 AND status IN ('paired','active') AND expires_at>now() FOR UPDATE",[sessionId,userId])).rows[0];
     if(!row)return null;
     let currentStation=row.current_station, playing=row.is_playing,status=row.status;
     if(command==='play'||command==='change_station'){
-      if(data?.stationId){currentStation=await station(client,data.stationId);if(!currentStation)return null;}
+      if(changesStation)currentStation=selectedStation;
       playing=true;status='active';
     }else if(command==='resume')playing=true;
     else if(command==='pause')playing=false;

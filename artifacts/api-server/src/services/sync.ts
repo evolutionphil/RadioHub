@@ -1,4 +1,5 @@
 import { pgCatalog, pgCreateSyncRun, pgSaveSyncRun, pgSyncLogs, pgSyncBlacklist } from '../data/postgres-catalog-store';
+import { buildSyncBlacklist } from '../utils/sync-blacklist';
 import { getPostgresPool, getPostgresCoordinationPool } from '../postgres-runtime';
 import axios from 'axios';
 import NodeCache from 'node-cache';
@@ -124,8 +125,7 @@ export class SyncService {
       // Load blacklisted stations to prevent re-import
       logger.log('📋 Loading blacklisted stations...');
       const blacklistedStations = await pgSyncBlacklist();
-      const blacklistedUuids = new Set(blacklistedStations.map(b => b.stationUuid).filter(Boolean) as string[]);
-      const blacklistedUrls = new Set(blacklistedStations.map(b => b.url).filter(Boolean) as string[]);
+      const { blacklistedUuids, blacklistedUrls } = buildSyncBlacklist(blacklistedStations);
       logger.log(`🚫 Loaded ${blacklistedUuids.size} blacklisted station UUIDs`);
 
       // Create indexes for better performance (only if they don't exist)

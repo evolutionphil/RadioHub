@@ -24,6 +24,8 @@ const client = {
   async query(text: string, values: any[] = []) {
     queries.push({ text, values });
     if (queryErrorPattern?.test(text)) throw new Error("simulated SQL failure");
+    if (text.includes('FROM unnest($1::text[]) requested')) return { rows: [{ requested: stationId, id: stationId }], rowCount: 1 };
+    if (text.startsWith('SELECT id FROM stations WHERE id=$1 FOR ')) return { rows: [{ id: stationId }], rowCount: 1 };
     if (text.includes("pg_try_advisory_lock")) return { rows: [{ acquired: true }], rowCount: 1 };
     if (text.includes("SELECT resume_token")) return { rows: [{ resume_token: storedResumeToken, events_processed: "0" }], rowCount: 1 };
     if (emptyCounterResult && text.startsWith('UPDATE stations')) return { rows: [], rowCount: 0 };
@@ -118,10 +120,13 @@ test("PostgreSQL-only counters execute atomic SQL and do not call MongoDB", asyn
   assert.equal(await store.incrementStationClick(stationId), true);
   assert.equal(await store.incrementStationVote(stationId), 43);
   assert.equal(mongoWrites.length, 0);
-  assert.match(queries[0].text, /click_count=click_count\+1/);
-  assert.match(queries[1].text, /votes=votes\+1/);
-  assert.deepEqual(queries[0].values, [stationId, true]);
-  assert.deepEqual(queries[1].values, [stationId, false]);
+  const updates = queries.filter(query => query.text.startsWith('UPDATE stations'));
+  assert.match(updates[0].text, /click_count=click_count\+1/);
+  assert.match(updates[1].text, /votes=votes\+1/);
+  assert.deepEqual(updates[0].values, [stationId, true]);
+  assert.deepEqual(updates[1].values, [stationId, false]);
+  assert.equal(queries.filter(query => query.text === 'COMMIT').length, 2);
+  assert.equal(queries.filter(query => query.text.includes('FOR UPDATE')).length, 2);
 });
 
 test("startup rejects legacy counter modes and competing CDC writers", () => {

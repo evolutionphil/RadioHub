@@ -20,9 +20,10 @@ let countryRows = [{ name: 'Germany' }, { name: 'Austria' }, { name: 'Turkey' },
 const pool = { query: async (sql: string, values?: unknown[]) => {
   queries.push(sql); if (failRead) throw new Error('temporary reference read failure');
   if (sql.includes('FROM station_genres sg JOIN stations s ON s.id=sg.station_id')) {
-    // Return the small per-genre healthy-count aggregate, not full stations or
+    // Return the small per-genre visible-count aggregate, not full stations or
     // the stale genres.station_count snapshot. Native SQL tests cover counts.
-    assert.match(sql, /s\.last_check_ok IS TRUE/);
+    assert.match(sql, /s\.is_list_visible IS TRUE OR COALESCE\(s\.visibility_expires_at<=now\(\),false\)/);
+    assert.doesNotMatch(sql, /s\.last_check_ok IS TRUE/, 'Provider uncertainty must not exclude a visible station');
     assert.match(sql, /count\(DISTINCT sg\.station_id\)::int station_count/);
     assert.match(sql, /GROUP BY sg\.genre_slug/);
     assert.deepEqual(values, ['']);

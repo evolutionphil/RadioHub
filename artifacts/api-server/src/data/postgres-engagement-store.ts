@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import { getPostgresPool } from "../postgres-runtime";
 import { stationVisibilityFields } from '../utils/station-visibility';
+import { lockStationIdentity, resolveStationId, resolveStationIds } from './station-identity-store';
 
 const pool = () => getPostgresPool();
 
@@ -196,8 +197,9 @@ export async function pgRateStationIdentity(
 
     // All identities on a station must serialize BEFORE inserting and computing
     // aggregates; an identity-only lock permits stale averages/counts to win.
-    const stationLock = await client.query("SELECT id FROM stations WHERE id=$1 FOR UPDATE", [stationId]);
-    if (!stationLock.rowCount) throw new Error("Station not found");
+    const canonicalId = await lockStationIdentity(stationId, client);
+    if (!canonicalId) throw new Error("Station not found");
+    stationId = canonicalId;
     // Also retain identity uniqueness for anonymous IP-only ratings.
     await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [
       `${stationId}:${identityType}:${identityValue}`,
@@ -244,7 +246,8 @@ export async function pgRateStationIdentity(
   }
 }
 
-async function pgStationRatingStats(stationId: string, queryable: { query: Function } = pool()): Promise<any> {
+async function pgStationRatingStats(stationId: string, queryable = pool() as Pick<import('pg').PoolClient, 'query'>): Promise<any> {
+  stationId = await resolveStationId(stationId, queryable) ?? stationId;
   const result = await queryable.query(
     `SELECT count(*)::int AS total,
        COALESCE(round(avg(rating)::numeric,1),0)::float8 AS average,
@@ -264,6 +267,7 @@ async function pgStationRatingStats(stationId: string, queryable: { query: Funct
 }
 
 export async function pgStationRatings(stationId: string, page: number, limit: number): Promise<any> {
+  stationId = await resolveStationId(stationId) ?? stationId;
   const offset = Math.max(0, page - 1) * limit;
   const [ratings, stats] = await Promise.all([
     pool().query(
@@ -293,6 +297,7 @@ export async function pgFindStationRating(stationId: string, identity: RatingIde
   const identityType = identity.userId ? "user" : identity.sessionId ? "session" : "ip";
   const identityValue = identity.userId || identity.sessionId || identity.ipAddress;
   if (!identityValue) return null;
+  stationId = await resolveStationId(stationId) ?? stationId;
   const result = await pool().query(
     `SELECT id AS _id,user_id AS "userId",session_id AS "sessionId",ip_address AS "ipAddress",
        station_id AS "stationId",rating,comment,created_at AS "createdAt",updated_at AS "updatedAt"
@@ -334,19 +339,29 @@ export async function pgFavoriteStationsForUser(
 }
 
 export async function pgIsFavorite(userId: string, stationId: string): Promise<boolean> {
+  stationId = await resolveStationId(stationId) ?? stationId;
   const result = await pool().query("SELECT 1 FROM user_favorites WHERE user_id=$1 AND station_id=$2", [userId, stationId]);
   return (result.rowCount || 0) > 0;
 }
 
 export async function pgSetFavorite(userId: string, stationId: string, enabled: boolean): Promise<any> {
-  if (enabled) {
-    await pool().query(
-      "INSERT INTO user_favorites(user_id,station_id) VALUES ($1,$2) ON CONFLICT DO NOTHING",
-      [userId, stationId],
-    );
-  } else {
-    await pool().query("DELETE FROM user_favorites WHERE user_id=$1 AND station_id=$2", [userId, stationId]);
-  }
+  const client = await pool().connect();
+  try {
+    await client.query('BEGIN');
+    const canonicalId = await lockStationIdentity(stationId, client, 'KEY SHARE');
+    if (!canonicalId && enabled) throw new Error('Station not found');
+    stationId = canonicalId ?? stationId;
+    if (enabled) {
+      await client.query(
+        "INSERT INTO user_favorites(user_id,station_id) VALUES ($1,$2) ON CONFLICT DO NOTHING",
+        [userId, stationId],
+      );
+    } else {
+      await client.query("DELETE FROM user_favorites WHERE user_id=$1 AND station_id=$2", [userId, stationId]);
+    }
+    await client.query('COMMIT');
+  } catch (error) { await client.query('ROLLBACK'); throw error; }
+  finally { client.release(); }
   return { success: true, message: enabled ? "Station added to favorites" : "Station removed from favorites" };
 }
 
@@ -449,19 +464,23 @@ export async function pgAddRecentlyPlayed(userId: string, stationId: string): Pr
   const client = await pool().connect();
   try {
     await client.query("BEGIN");
-    const [user, station] = await Promise.all([
-      client.query<{ source: any }>("SELECT source FROM users WHERE id=$1 FOR UPDATE", [userId]),
-      client.query("SELECT 1 FROM stations WHERE id=$1", [stationId]),
-    ]);
-    if (!user.rowCount || !station.rowCount) {
+    const canonicalId = await lockStationIdentity(stationId, client, 'KEY SHARE');
+    if (!canonicalId) { await client.query('ROLLBACK'); return false; }
+    stationId = canonicalId;
+    const user = await client.query<{ source: any }>("SELECT source FROM users WHERE id=$1 FOR UPDATE", [userId]);
+    if (!user.rowCount) {
       await client.query("ROLLBACK");
       return false;
     }
     const source = user.rows[0].source && typeof user.rows[0].source === "object" ? user.rows[0].source : {};
     const previous = Array.isArray(source.recentlyPlayedStations) ? source.recentlyPlayedStations : [];
+    const identities = await resolveStationIds(previous.map((entry: any) => String(entry?.stationId || entry)), client);
     const next = [
       { stationId, playedAt: new Date().toISOString() },
-      ...previous.filter((entry: any) => String(entry?.stationId || entry) !== stationId),
+      ...previous.filter((entry: any) => {
+        const id = String(entry?.stationId || entry);
+        return (identities.get(id) ?? id) !== stationId;
+      }),
     ].slice(0, 12);
     await client.query(
       "UPDATE users SET source=jsonb_set(COALESCE(source,'{}'::jsonb),'{recentlyPlayedStations}',$2::jsonb,true) WHERE id=$1",

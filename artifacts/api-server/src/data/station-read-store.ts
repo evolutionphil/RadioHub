@@ -52,11 +52,15 @@ async function postgresStation(identifier: string): Promise<any | null> {
     // scan the complete catalog. Retain precedence in one snapshot, but only
     // evaluate the legacy fallback when the indexed direct lookup is empty.
     `WITH direct AS MATERIALIZED (
-       SELECT * FROM stations WHERE slug=$1 OR id=$1
-       ORDER BY CASE WHEN slug=$1 THEN 0 ELSE 1 END LIMIT 1
-     ) SELECT * FROM direct
+       SELECT * FROM stations WHERE slug=$1 OR id=$1 OR station_uuid=$1
+       ORDER BY CASE WHEN slug=$1 THEN 0 WHEN id=$1 THEN 1 ELSE 2 END LIMIT 1
+     ), merged AS MATERIALIZED (
+       SELECT s.* FROM station_merge_aliases a JOIN stations s ON s.id=a.station_id
+       WHERE a.alias=$1 AND NOT EXISTS (SELECT 1 FROM direct)
+     ) SELECT * FROM direct UNION ALL SELECT * FROM merged
      UNION ALL (SELECT * FROM stations
-       WHERE NOT EXISTS (SELECT 1 FROM direct) AND $1=ANY(slug_aliases) LIMIT 1)`,
+       WHERE NOT EXISTS (SELECT 1 FROM direct) AND NOT EXISTS (SELECT 1 FROM merged)
+       AND $1=ANY(slug_aliases) LIMIT 1)`,
     [identifier],
   );
   return fromPostgres(result.rows[0]);

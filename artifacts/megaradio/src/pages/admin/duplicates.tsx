@@ -2,7 +2,8 @@ import { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Slider } from '@/components/ui/slider';
+import AdminDuplicateMergePanel from '@/components/stations/admin-duplicate-merge-panel';
+import { readAdminMergeJob } from '@/hooks/useAdminDuplicateMerge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Separator } from '@/components/ui/separator';
 import { Progress } from '@/components/ui/progress';
@@ -55,7 +56,6 @@ export default function AdminDuplicates() {
   const { toast } = useToast();
   const [duplicates, setDuplicates] = useState<DuplicatesResponse | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [threshold, setThreshold] = useState([0.85]);
   const [mergeResults, setMergeResults] = useState<string[]>([]);
   const [processingMerge, setProcessingMerge] = useState<string | null>(null);
   const [activeJobs, setActiveJobs] = useState<Set<string>>(new Set());
@@ -79,11 +79,12 @@ export default function AdminDuplicates() {
     sampleClusters: Array<{ canonical: string; losers: string[] }>;
   } | null>(null);
 
-  const activeIntervalsRef = useRef<Map<string, ReturnType<typeof setInterval>>>(new Map());
+  const activeIntervalsRef = useRef<Map<string, { timer?: ReturnType<typeof setTimeout>; controller: AbortController }>>(new Map());
+  const [pollingFailures, setPollingFailures] = useState<Record<string, { groupName?: string; message: string }>>({});
 
   useEffect(() => {
     return () => {
-      activeIntervalsRef.current.forEach(id => clearInterval(id));
+      activeIntervalsRef.current.forEach(entry => { if (entry.timer) clearTimeout(entry.timer); entry.controller.abort(); });
       activeIntervalsRef.current.clear();
     };
   }, []);
@@ -93,7 +94,7 @@ export default function AdminDuplicates() {
     setMergeResults([]);
     setSelectedStations(new Set()); // Clear selections when detecting new duplicates
     try {
-      const response = await fetch(`/api/admin/stations/duplicates?threshold=${threshold[0]}`);
+      const response = await fetch('/api/admin/stations/duplicates');
       const data = await response.json();
       
       // Check for API errors
@@ -144,7 +145,7 @@ export default function AdminDuplicates() {
       if (sortedData.duplicateGroups.length > 0) {
         toast({
           title: 'Duplicates found',
-          description: `Found ${sortedData.totalGroups} duplicate groups with ${sortedData.potentialMerges} stations to merge.`
+          description: `Found ${sortedData.totalGroups} candidate groups to inspect. Matching names alone do not prove they are the same broadcast.`
         });
       }
     } catch (error) {
@@ -536,152 +537,52 @@ export default function AdminDuplicates() {
   };
 
   const pollJobStatus = (jobId: string, groupName?: string) => {
-    setActiveJobs(prev => new Set([...Array.from(prev), jobId]));
-
-    const pollInterval = setInterval(async () => {
+    if (activeIntervalsRef.current.has(jobId)) return;
+    const entry: { timer?: ReturnType<typeof setTimeout>; controller: AbortController } = { controller: new AbortController() };
+    activeIntervalsRef.current.set(jobId, entry);
+    setPollingFailures(previous => { const next = { ...previous }; delete next[jobId]; return next; });
+    setActiveJobs(previous => new Set([...Array.from(previous), jobId]));
+    const finish = () => {
+      if (entry.timer) clearTimeout(entry.timer);
+      activeIntervalsRef.current.delete(jobId);
+      setActiveJobs(previous => { const next = new Set(previous); next.delete(jobId); return next; });
+      setJobProgress(previous => { const next = { ...previous }; delete next[jobId]; return next; });
+    };
+    const poll = async () => {
       try {
-        const response = await fetch(`/api/admin/merge-jobs/${jobId}`);
-        const job = await response.json();
-        
-        // Update progress display immediately
-        if (job.progress?.currentStep) {
-          setJobProgress(prev => ({
-            ...prev,
-            [jobId]: {
-              step: job.progress.currentStep,
-              percentage: job.progress.percentage || 0,
-              groupsProcessed: job.progress.groupsProcessed,
-              totalGroups: job.progress.totalGroups
-            }
-          }));
+        const job = await readAdminMergeJob(jobId, entry.controller.signal);
+        if (entry.controller.signal.aborted) return;
+        setJobProgress(previous => ({ ...previous, [jobId]: {
+          step: job.progress.currentStep, percentage: job.progress.percentage,
+          groupsProcessed: job.progress.groupsProcessed, totalGroups: job.progress.totalGroups,
+        } }));
+        if (job.status === 'running') {
+          // Schedule after the response, so slow requests never overlap.
+          entry.timer = setTimeout(() => void poll(), 3000);
+          return;
         }
-        
+        finish();
         if (job.status === 'completed') {
-          clearInterval(pollInterval);
-          activeIntervalsRef.current.delete(jobId);
-          setActiveJobs(prev => {
-            const newSet = new Set(Array.from(prev));
-            newSet.delete(jobId);
-            return newSet;
-          });
-          setJobProgress(prev => {
-            const newProgress = { ...prev };
-            delete newProgress[jobId];
-            return newProgress;
-          });
-          
-          if (job.results) {
-            const groupInfo = groupName ? ` for ${groupName}` : '';
-            setMergeResults(prev => [...prev, `✅ Merge completed${groupInfo}: ${job.results.message}`]);
-            
-            // Display detailed merge information
-            if (job.results.mergedStations?.length > 0) {
-              job.results.mergedStations.forEach((merge: any) => {
-                const mergedCount = merge.mergedStations.length;
-                setMergeResults(prev => [...prev, 
-                  `📻 ${merge.groupName} - Merged ${mergedCount} station${mergedCount > 1 ? 's' : ''} into primary station "${merge.primaryStation.name}" (${merge.primaryStation.country})`
-                ]);
-                
-                // Show individual merged stations
-                merge.mergedStations.forEach((station: any) => {
-                  setMergeResults(prev => [...prev, 
-                    `   • ${station.name} (${station.votes} votes) - ${station.url.substring(0, 50)}...`
-                  ]);
-                });
-                
-                setMergeResults(prev => [...prev, 
-                  `   💾 Added ${merge.fallbackUrlsAdded} fallback URL${merge.fallbackUrlsAdded > 1 ? 's' : ''} • Total votes: ${merge.totalVotes}`
-                ]);
-              });
-            }
-            
-            if (job.results.errors?.length > 0) {
-              job.results.errors.forEach((error: string) => {
-                setMergeResults(prev => [...prev, `⚠️ ${error}`]);
-              });
-            }
-          }
-          
-          // Refresh duplicates after successful merge
           await detectDuplicates();
-        } else if (job.status === 'failed') {
-          clearInterval(pollInterval);
-          activeIntervalsRef.current.delete(jobId);
-          setActiveJobs(prev => {
-            const newSet = new Set(Array.from(prev));
-            newSet.delete(jobId);
-            return newSet;
-          });
-          setJobProgress(prev => {
-            const newProgress = { ...prev };
-            delete newProgress[jobId];
-            return newProgress;
-          });
-          
-          const groupInfo = groupName ? ` for ${groupName}` : '';
-          setMergeResults(prev => [...prev, `❌ Merge failed${groupInfo}: ${job.errorMessage || 'Unknown error'}`]);
-        } else if (job.status === 'running' && job.progress) {
-          // Update progress if needed
-          const progressInfo = `${job.progress.currentStep} (${job.progress.percentage || 0}%)`;
-          const groupInfo = groupName ? ` ${groupName}:` : '';
-          setMergeResults(prev => {
-            const filtered = prev.filter(msg => !msg.includes(`🔄 Progress${groupInfo}`));
-            return [...filtered, `🔄 Progress${groupInfo} ${progressInfo}`];
-          });
+          if (entry.controller.signal.aborted) return;
+          setMergeResults(previous => [...previous,
+            `Merge completed${groupName ? ` for ${groupName}` : ''}: ${job.results.mergedGroups} groups merged; ${job.results.skippedGroups} skipped.`,
+            ...job.results.errors,
+          ]);
+        } else {
+          setMergeResults(previous => [...previous, `Merge failed: ${job.errorMessage || 'See server job details before retrying.'}`, ...job.results.errors]);
         }
       } catch (error) {
-        // Error polling job status
+        if (entry.controller.signal.aborted) return;
+        finish();
+        setPollingFailures(previous => ({ ...previous, [jobId]: { groupName,
+          message: error instanceof Error ? error.message : 'Status request failed',
+        } }));
       }
-    }, 1000);
-
-    activeIntervalsRef.current.set(jobId, pollInterval);
-
-    // Safety: stop polling after 10 minutes regardless of job status
-    setTimeout(() => {
-      clearInterval(pollInterval);
-      activeIntervalsRef.current.delete(jobId);
-      setActiveJobs(prev => {
-        const newSet = new Set(Array.from(prev));
-        newSet.delete(jobId);
-        return newSet;
-      });
-    }, 600000);
+    };
+    void poll();
   };
 
-  const autoMergeAll = async (dryRun = true) => {
-    setIsLoading(true);
-    try {
-      const response = await fetch('/api/admin/auto-merge-all', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ threshold: threshold[0], dryRun })
-      });
-      
-      const result = await response.json();
-      if (result.success && result.async) {
-        const actionType = dryRun ? 'DRY RUN' : 'LIVE MERGE';
-        setMergeResults([`🔄 Started async ${actionType} (Job ID: ${result.jobId})`]);
-        setMergeResults(prev => [...prev, `ℹ️ Auto-merge is running in background. You can safely close this tab.`]);
-        
-        // Start polling for job status
-        pollJobStatus(result.jobId);
-      } else if (result.success) {
-        // Fallback for synchronous response
-        if (dryRun) {
-          setMergeResults([`🔍 DRY RUN: Would merge ${result.totalGroups} groups, deleting ${result.totalStationsToDelete} duplicate stations`]);
-        } else {
-          setMergeResults([`🎉 LIVE MERGE: Merged ${result.mergedGroups} groups, deleted ${result.totalStationsDeleted} duplicate stations`]);
-          await detectDuplicates();
-        }
-      } else {
-        setMergeResults([`❌ Auto-merge failed: ${result.error}`]);
-      }
-    } catch (error) {
-      setMergeResults([`❌ Auto-merge failed: ${error}`]);
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   // Frequency-format dedup: collapse station records whose slugs differ only in
   // frequency punctuation (classical-95-9-wcri vs classical-959-wcri) onto one
@@ -729,115 +630,26 @@ export default function AdminDuplicates() {
         </p>
       </div>
 
-      {/* Detection Controls */}
+      <AdminDuplicateMergePanel onApplied={() => { if (duplicates) void detectDuplicates(); }} />
+      {Object.entries(pollingFailures).map(([jobId, failure]) => (
+        <Alert key={jobId} variant="destructive"><AlertDescription>
+          Status checking stopped{failure.groupName ? ` for ${failure.groupName}` : ''}: {failure.message}. The server job may still be running.
+          <Button size="sm" variant="outline" className="ml-3" onClick={() => pollJobStatus(jobId, failure.groupName)}>Retry job status</Button>
+        </AlertDescription></Alert>
+      ))}
       <Card>
         <CardHeader>
-          <CardTitle>Detection Settings</CardTitle>
+          <CardTitle>Review candidate groups individually</CardTitle>
           <CardDescription>
-            Adjust similarity threshold and run duplicate detection
+            Matching names and countries are candidates, not proof of duplicate broadcasts.
+            Inspect streams and content before choosing a primary station.
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <label className="text-sm font-medium">
-              Similarity Threshold: {threshold[0].toFixed(2)}
-            </label>
-            <Slider
-              value={threshold}
-              onValueChange={setThreshold}
-              min={0.5}
-              max={1.0}
-              step={0.05}
-              className="w-full"
-            />
-            <p className="text-xs text-muted-foreground">
-              Higher values = more strict matching. Recommended: 0.80-0.90
-            </p>
-          </div>
-          
-          {/* One-click clean-up: detects + merges + blacklists every duplicate
-              in a single background job, with the highest-voted row winning.
-              Blacklisting means merged duplicates never re-appear on the next
-              Radio-Browser sync. No prior "Detect" run is required. */}
-          <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-3 sm:p-4 mb-4">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-              <div>
-                <p className="text-sm font-semibold">One-Click: Merge ALL Duplicates</p>
-                <p className="text-xs text-muted-foreground">
-                  Detects every duplicate group, keeps the highest-voted station,
-                  merges votes, deletes the rest, and blacklists them so sync
-                  never re-imports them.
-                </p>
-              </div>
-              <Button
-                onClick={() => {
-                  if (window.confirm(
-                    'Merge ALL duplicate stations now?\n\nThe highest-voted station in each group is kept, its duplicates are deleted and blacklisted so they never re-sync. This cannot be undone.'
-                  )) {
-                    autoMergeAll(false);
-                  }
-                }}
-                variant="destructive"
-                disabled={isLoading}
-                size="sm"
-                className="flex items-center gap-2 text-xs sm:text-sm whitespace-nowrap"
-              >
-                {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                Merge ALL Duplicates
-              </Button>
-            </div>
-          </div>
-
-          <div className="flex flex-wrap gap-2">
-            <Button
-              onClick={detectDuplicates}
-              disabled={isLoading}
-              className="flex items-center gap-2 text-xs sm:text-sm"
-              size="sm"
-            >
-              {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <AlertTriangle className="h-4 w-4" />}
-              <span className="hidden sm:inline">Detect</span> Duplicates
-            </Button>
-
-            {duplicates && (
-              <>
-                {duplicates.duplicateGroups.length > 0 ? (
-                  <>
-                    <Button 
-                      onClick={() => autoMergeAll(true)} 
-                      variant="outline"
-                      disabled={isLoading}
-                      size="sm"
-                      className="text-xs sm:text-sm"
-                    >
-                      <span className="hidden sm:inline">Preview</span> Auto-Merge
-                    </Button>
-                    <Button 
-                      onClick={() => autoMergeAll(false)} 
-                      variant="destructive"
-                      disabled={isLoading}
-                      size="sm"
-                      className="text-xs sm:text-sm"
-                    >
-                      <Trash2 className="h-4 w-4 sm:mr-2" />
-                      <span className="hidden sm:inline">Auto-Merge All</span>
-                    </Button>
-                  </>
-                ) : (
-                  <Button 
-                    onClick={() => autoMergeAll(false)} 
-                    variant="destructive"
-                    disabled={isLoading}
-                    size="sm"
-                    className="text-xs sm:text-sm"
-                  >
-                    <Trash2 className="h-4 w-4 sm:mr-2" />
-                    <span className="hidden sm:inline">Auto-Merge All</span>
-                  </Button>
-                )}
-              </>
-            )}
-          </div>
+        <CardContent>
+          <Button onClick={detectDuplicates} disabled={isLoading} size="sm" variant="outline">
+            {isLoading ? <Loader2 aria-hidden="true" className="mr-2 h-4 w-4 animate-spin" /> : <AlertTriangle aria-hidden="true" className="mr-2 h-4 w-4" />}
+            Detect candidates for manual review
+          </Button>
         </CardContent>
       </Card>
 
@@ -1263,7 +1075,7 @@ export default function AdminDuplicates() {
             <CheckCircle className="h-12 w-12 text-green-500 mx-auto mb-4" />
             <h3 className="text-lg font-semibold">No Duplicates Found</h3>
             <p className="text-muted-foreground">
-              Your database is clean! No duplicate stations detected at threshold {threshold[0].toFixed(2)}
+              No matching name-and-country candidate groups were found. This is not a guarantee that every station is unique.
             </p>
           </CardContent>
         </Card>

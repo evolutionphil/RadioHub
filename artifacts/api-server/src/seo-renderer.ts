@@ -460,7 +460,7 @@ export class SeoRenderer {
           // engines consolidate ranking on the new slug instead of indexing both.
           if (!stationData) {
             const aliasMatch: any = await withSignal(
-              pgSeoCatalog().findOne({ slugAliases: stationSlug }),
+              pgSeoCatalog().findMergedAlias(stationSlug).then(match => match ?? pgSeoCatalog().findOne({ slugAliases: stationSlug })),
               signal,
             );
             if (aliasMatch && aliasMatch.slug && aliasMatch.slug !== stationSlug) {

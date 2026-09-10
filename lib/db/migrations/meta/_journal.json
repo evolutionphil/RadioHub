@@ -204,6 +204,20 @@
       "when": 1790895600000,
       "tag": "0029_station_visibility_evidence",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1790982000000,
+      "tag": "0030_station_merge_aliases",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1791068400000,
+      "tag": "0031_station_duplicate_jobs",
+      "breakpoints": true
     }
   ]
 }

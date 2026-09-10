@@ -13,6 +13,7 @@ import {
   text,
   timestamp,
   uniqueIndex,
+  type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 
 const createdAt = timestamp("created_at", { withTimezone: true })
@@ -671,3 +672,68 @@ export const adminSettingHistory = pgTable("admin_setting_history", {
   index("admin_setting_history_key_changed_idx").on(table.key, table.changedAt.desc()),
   check("admin_setting_history_action_check", sql`${table.action} IN ('update','clear')`),
 ]);
+
+export const stationMergeAliases = pgTable('station_merge_aliases', {
+  alias: text('alias').primaryKey(),
+  stationId: text('station_id').notNull().references(() => stations.id, { onDelete: 'cascade' }),
+  createdAt,
+}, table => [
+  index('station_merge_aliases_station_idx').on(table.stationId),
+  check('station_merge_aliases_alias_check', sql`length(${table.alias}) > 0`),
+]);
+
+export const stationDuplicateJobs = pgTable('station_duplicate_jobs', {
+  id: text('id').primaryKey(),
+  kind: text('kind').notNull(),
+  status: text('status').notNull().default('queued'),
+  phase: text('phase').notNull().default('scan'),
+  threshold: real('threshold').notNull().default(0.85),
+  previewJobId: text('preview_job_id').unique().references((): AnyPgColumn => stationDuplicateJobs.id),
+  totalGroups: integer('total_groups').notNull().default(0),
+  groupsProcessed: integer('groups_processed').notNull().default(0),
+  eligibleGroups: integer('eligible_groups').notNull().default(0),
+  skippedGroups: integer('skipped_groups').notNull().default(0),
+  mergedGroups: integer('merged_groups').notNull().default(0),
+  stationsToDelete: integer('stations_to_delete').notNull().default(0),
+  stationsDeleted: integer('stations_deleted').notNull().default(0),
+  mergedStations: jsonb('merged_stations').notNull().default([]),
+  errors: jsonb('errors').notNull().default([]),
+  skippedReasons: jsonb('skipped_reasons').notNull().default({}),
+  errorMessage: text('error_message'),
+  createdAt,
+  startedAt: timestamp('started_at', { withTimezone: true }),
+  updatedAt,
+  finishedAt: timestamp('finished_at', { withTimezone: true }),
+}, table => [
+  index('station_duplicate_jobs_active_idx').on(table.createdAt).where(sql`${table.status} IN ('queued','running')`),
+  index('station_duplicate_jobs_kind_created_idx').on(table.kind, table.createdAt.desc()),
+  check('station_duplicate_jobs_kind_check', sql`${table.kind} IN ('preview','manual','automatic')`),
+  check('station_duplicate_jobs_status_check', sql`${table.status} IN ('queued','running','completed','failed')`),
+  check('station_duplicate_jobs_phase_check', sql`${table.phase} IN ('scan','evaluate')`),
+]);
+
+export const stationDuplicateJobGroups = pgTable('station_duplicate_job_groups', {
+  jobId: text('job_id').notNull().references(() => stationDuplicateJobs.id, { onDelete: 'cascade' }),
+  ordinal: integer('ordinal').notNull(),
+  stationIds: text('station_ids').array().notNull(),
+  stationCount: integer('station_count').notNull(),
+  groupName: text('group_name').notNull(),
+  country: text('country').notNull(),
+  status: text('status').notNull().default('pending'),
+  reason: text('reason'),
+  attempts: integer('attempts').notNull().default(0),
+}, table => [
+  primaryKey({ columns: [table.jobId, table.ordinal] }),
+  index('station_duplicate_groups_pending_idx').on(table.jobId, table.ordinal).where(sql`${table.status}='pending'`),
+  check('station_duplicate_job_groups_status_check', sql`${table.status} IN ('pending','eligible','skipped','merged')`),
+]);
+
+export const stationDuplicateMergeControl = pgTable('station_duplicate_merge_control', {
+  id: integer('id').primaryKey(),
+  nextAutoAt: timestamp('next_auto_at', { withTimezone: true }).notNull().default(sql`now()+interval '24 hours'`),
+  nextCycleAt: timestamp('next_cycle_at', { withTimezone: true }).notNull().defaultNow(),
+  lastRunAt: timestamp('last_run_at', { withTimezone: true }),
+  leaseOwner: text('lease_owner'),
+  leaseUntil: timestamp('lease_until', { withTimezone: true }),
+  summary: jsonb('summary').notNull().default({}),
+}, table => [check('station_duplicate_merge_control_id_check', sql`${table.id}=1`)]);

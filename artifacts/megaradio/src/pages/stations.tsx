@@ -8,6 +8,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Plus, RefreshCw, Users, Merge, Check, X, ChevronDown, ChevronUp, Trash2, Crown, Sparkles, AlertTriangle, Tag, Database } from "lucide-react";
 import StationTable from "@/components/stations/station-table";
 import AdminStationPagination from '@/components/stations/admin-station-pagination';
+import AdminDuplicateMergePanel from '@/components/stations/admin-duplicate-merge-panel';
 import StationForm from "@/components/stations/station-form";
 import { saveAdminStationEdit } from '@/lib/admin-station-description';
 import Filters from "@/components/stations/filters";
@@ -1690,12 +1691,13 @@ export default function Stations() {
             </div>
           ) : showDuplicates ? (
             // Duplicate Stations Interface
-            <div className="p-6">
+            <div className="space-y-5 p-4 sm:p-6">
+              <AdminDuplicateMergePanel />
               {stationsData?.duplicates?.length > 0 ? (
                 <div className="space-y-4">
                   <div className="flex items-center justify-between mb-4">
                     <h3 className="text-lg font-semibold">
-                      Found {stationsData.duplicates.length} duplicate groups
+                      Found {stationsData.duplicates.length} candidate groups
                     </h3>
                     <Badge variant="outline">
                       Total duplicates: {stationsData.duplicates.reduce((sum: number, group: any) => sum + group.stations.length, 0)} stations

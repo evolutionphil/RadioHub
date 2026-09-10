@@ -11,7 +11,7 @@ import { sendSeoNotFound } from '../src/seo/send-seo-not-found';
 const pageCache = new Map<string, any>();
 let readFails = false, cacheReady = true, reads = 0, totalPages = 2;
 let stationFilters: any[] = [];
-let catalog = [{ _id: 'fm', slug: 'real-fm', name: 'Real FM', country: 'Germany', url: 'https://stream.example.invalid/live', lastCheckOk: true }];
+let catalog = [{ _id: 'fm', slug: 'real-fm', name: 'Real FM', country: 'Germany', url: 'https://stream.example.invalid/live', lastCheckOk: true, isListVisible: true }];
 const catalogRead = async () => { reads++; if (readFails) throw Error('temporary catalogue failure'); return { stations: catalog, totalPages }; };
 mock.module('../src/performance-cache', { namedExports: { performanceCache: {
   getPageData: (key: string) => pageCache.get(key), setPageData: (key: string, value: any) => pageCache.set(key, value),
@@ -34,25 +34,28 @@ mock.module('../src/seo/slug-existence', { namedExports: {
 const { SeoRenderer } = await import('../src/seo-renderer');
 const renderer = new SeoRenderer();
 beforeEach(() => { pageCache.clear(); readFails = false; cacheReady = true; reads = 0; totalPages = 2; stationFilters = [];
-  catalog = [{ _id: 'fm', slug: 'real-fm', name: 'Real FM', country: 'Germany', url: 'https://stream.example.invalid/live', lastCheckOk: true }]; });
+  catalog = [{ _id: 'fm', slug: 'real-fm', name: 'Real FM', country: 'Germany', url: 'https://stream.example.invalid/live', lastCheckOk: true, isListVisible: true }]; });
 
-test('public SSR grids reject failed and unknown health while retaining healthy station content', async () => {
-  catalog.push({ ...catalog[0], _id: 'offline', slug: 'offline-fm', name: 'Offline FM', lastCheckOk: false });
+test('public SSR grids exclude confirmed local unavailability without hiding provider-failed or unknown stations', async () => {
+  catalog.push({ ...catalog[0], _id: 'offline', slug: 'offline-fm', name: 'Offline FM', lastCheckOk: false, isListVisible: false });
+  catalog.push({ ...catalog[0], _id: 'source-flagged', slug: 'source-flagged-fm', name: 'Provider Flagged FM', lastCheckOk: false });
   catalog.push({ ...catalog[0], _id: 'unknown', slug: 'unknown-fm', name: 'Unknown FM', lastCheckOk: undefined as any });
   for (const path of ['/en', '/en/stations', '/en/stations/a', '/en/regions/europe/germany']) {
     const page = await renderer.renderStaticPage(path, 'https://themegaradio.com');
     assert.notEqual(page.seoTags.noIndex, true);
     const data = page.pageData.additionalData;
     for (const list of [data.popularStations, data.catalogStations].filter(Boolean)) {
-      assert.deepEqual(list.map((station: any) => station.slug), ['real-fm'], path);
+      assert.deepEqual(list.map((station: any) => station.slug), ['real-fm', 'source-flagged-fm', 'unknown-fm'], path);
     }
     const body = renderer.generateHtmlBody({ pageType: page.pageData.pageType, language: 'en', translations: {},
       additionalData: data, seoTags: page.seoTags });
     assert.ok(!body.includes('offline-fm'), path);
-    assert.ok(!body.includes('unknown-fm'), path);
+    assert.ok(body.includes('source-flagged-fm'), path);
+    assert.ok(body.includes('unknown-fm'), path);
   }
   assert.ok(stationFilters.length >= 3);
-  assert.ok(stationFilters.every(filter => filter.lastCheckOk === true), 'raw SSR collection reads push health filtering into SQL');
+  assert.ok(stationFilters.every(filter => filter.isListVisible === true && !Object.hasOwn(filter, 'lastCheckOk')),
+    'raw SSR collection reads push confirmed visibility filtering into SQL without treating provider flags as proof');
 });
 
 test('page parser is strict, bounded and query-order agnostic without modifying filters', () => {
