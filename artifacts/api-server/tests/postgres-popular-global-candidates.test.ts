@@ -73,7 +73,7 @@ describe('native popular ranking preserves the former loop and full response', {
         url: 'https://example.invalid/h', country: 'Country 0', isFeatured: true, showInGlobalPopular: false, votes: 200000 },
     ]);
     await pool.query(`UPDATE stations SET no_index=true WHERE id='fixture-2'`);
-    await pool.query(`UPDATE stations SET last_check_ok=false WHERE id='fixture-3'`);
+    await pool.query(`UPDATE stations SET last_check_ok=false,is_list_visible=false WHERE id='fixture-3'`);
     await pool.query(`UPDATE stations SET slug='' WHERE id='fixture-4'`);
     await pool.query(`UPDATE stations SET slug=NULL WHERE id='fixture-5'`);
     await pool.query(`UPDATE stations SET country=' ' WHERE id='fixture-6'`);
@@ -104,7 +104,8 @@ describe('native popular ranking preserves the former loop and full response', {
       }));
     }
     assert.equal(expected.length, 119);
-    assert.deepEqual(await new PostgresPopularGlobalCandidates(pool).regular(countries, 40), expected);
+    assert.deepEqual(await new PostgresPopularGlobalCandidates(pool).regular(countries, 40),
+      expected.map(station => Object.fromEntries(POPULAR_RANK_FIELDS.map(field=>[field,station[field]]))));
   });
 
   test('full compute matches old incremental trimming, hydrates only winners, and keeps source extras', async () => {
@@ -173,7 +174,7 @@ describe('native popular ranking preserves the former loop and full response', {
 
   test('empty recomputation still throws instead of replacing the stale cache with empty success', async () => {
     const { PrecomputedPopularGlobalService } = await import('../src/services/precomputed-popular-global');
-    await pool.query('UPDATE stations SET last_check_ok=false');
+    await pool.query('UPDATE stations SET is_list_visible=false');
     await assert.rejects(PrecomputedPopularGlobalService.computeStations(50), /refusing to cache empty success/);
   });
 });

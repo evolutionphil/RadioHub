@@ -32,6 +32,7 @@ describe('Native PostgreSQL recommendation engine and precomputed station pools'
       ('d','uuid-d','Radio D','radio-d','https://example.invalid/d',NULL,'Turkey','Turkish','rock',4000,true,true,'{"webp96":"logo-d"}'),
       ('e','uuid-e','Radio E','radio-e','https://example.invalid/e',NULL,'Germany','German','rock',50000,true,true,'{}'),
       ('offline','uuid-offline','Offline','offline','https://example.invalid/offline',NULL,'Turkey','Turkish','rock',99999,false,true,'{}')`);
+    await pool.query("UPDATE stations SET is_list_visible=false WHERE id='offline'");
     engine = (await import('../src/services/recommendation-engine')).RecommendationEngine;
     store = await import('../src/data/postgres-recommendation-store');
   });

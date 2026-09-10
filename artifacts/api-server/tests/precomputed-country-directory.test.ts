@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { after, beforeEach, mock, test } from 'node:test';
 import { PostgresCatalogStore } from '../src/data/postgres-catalog-store';
+import { stationListVisibleSql } from '../src/utils/station-visibility';
 
 // Exercise the production catalog SQL compiler and real SWR/singleflight cache;
 // the query transport is deterministic, in-memory and cannot contact a DB.
@@ -14,9 +15,9 @@ const catalog = new PostgresCatalogStore({ query: async (sql: string, values: an
   if (pause) await pause;
   const count = sql.startsWith('SELECT count(*)');
   if (failure === (count ? 'count' : 'find')) throw new Error('Database unavailable');
-  assert.match(sql, /s.last_check_ok = \$2::boolean/);
+  assert.ok(sql.includes(`${stationListVisibleSql()} = $2::boolean`));
   assert.equal(values[1], true);
-  const matches = rows.filter(row => row.last_check_ok === true && (
+  const matches = rows.filter(row => row.is_list_visible === true && (
     sql.includes('s.country ~*') ? new RegExp(values[0], 'i').test(row.country) : row.country === values[0]
   ));
   if (count) return { rows: [{ count: String(matches.length) }] };
@@ -38,7 +39,7 @@ const prefix = 'precomputed_stations:catalog:v1:';
 
 function fixture() {
   return Array.from({ length: 3061 }, (_, index) => ({ id: `radio-${String(index).padStart(5, '0')}`,
-    slug: `station-${index}`, name: `Station ${index}`, country: 'Germany', last_check_ok: true,
+    slug: `station-${index}`, name: `Station ${index}`, country: 'Germany', last_check_ok: true, is_list_visible: true,
     has_logo: true, votes: 10, url: 'https://example.invalid/live', url_resolved: 'https://example.invalid/resolved',
     no_index: index === 0, source: { unrelated: 'not selected' }, descriptions: { en: { full: 'not selected' } },
   }));
@@ -120,7 +121,7 @@ test('expired health data cannot survive a failed refresh', async () => {
 test('hasLogo/votes order keeps deterministic ID ties and supplies existing renderer filter flags', async () => {
   rows = [
     { ...rows[2], votes: 99 }, { ...rows[1], votes: 99 }, { ...rows[0], has_logo: false, votes: 999 },
-    { ...rows[3], last_check_ok: false },
+    { ...rows[3], last_check_ok: false, is_list_visible: false },
   ];
   const page = await PrecomputedStationsService.getCountryStationsByName('Germany', 1, 60);
   assert.deepEqual(page.stations.map(station => station._id), ['radio-00001', 'radio-00002', 'radio-00000']);

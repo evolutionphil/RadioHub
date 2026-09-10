@@ -1242,7 +1242,7 @@ export default function AdminDuplicates() {
                             </Badge>
                           </div>
                           <div className="text-[10px] sm:text-xs text-muted-foreground whitespace-nowrap">
-                            {station.lastCheckOk ? '✅' : '❌'} <span className="hidden sm:inline">{station.lastCheckOk ? 'Working' : 'Offline'}</span>
+                            {station.lastCheckOk ? '✅' : '⚠'} <span className="hidden sm:inline">{station.lastCheckOk ? 'Source reports working' : 'Source reports offline'}</span>
                           </div>
                         </div>
                       </div>

@@ -193,12 +193,12 @@ export function AdminErrorLogs() {
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div>
               <label className="text-sm font-medium">Error Type</label>
-              <Select value={errorType} onValueChange={setErrorType}>
+              <Select value={errorType || 'all'} onValueChange={value=>{setErrorType(value==='all'?'':value);setPage(1);}}>
                 <SelectTrigger>
                   <SelectValue placeholder="All types" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All types</SelectItem>
+                  <SelectItem value="all">All types</SelectItem>
                   <SelectItem value="NETWORK_ERROR">Network Error</SelectItem>
                   <SelectItem value="CODEC_UNSUPPORTED">Codec Unsupported</SelectItem>
                   <SelectItem value="CONNECTION_TIMEOUT">Connection Timeout</SelectItem>
@@ -211,12 +211,12 @@ export function AdminErrorLogs() {
             
             <div>
               <label className="text-sm font-medium">Status</label>
-              <Select value={resolved} onValueChange={setResolved}>
+              <Select value={resolved || 'all'} onValueChange={value=>{setResolved(value==='all'?'':value);setPage(1);}}>
                 <SelectTrigger>
                   <SelectValue placeholder="All statuses" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All statuses</SelectItem>
+                  <SelectItem value="all">All statuses</SelectItem>
                   <SelectItem value="false">Unresolved</SelectItem>
                   <SelectItem value="true">Resolved</SelectItem>
                 </SelectContent>
@@ -227,8 +227,8 @@ export function AdminErrorLogs() {
               <label className="text-sm font-medium">Station Search</label>
               <Input
                 value={stationSearch}
-                onChange={(e) => setStationSearch(e.target.value)}
-                placeholder="Station ID or name"
+                onChange={(e) => {setStationSearch(e.target.value);setPage(1);}}
+                placeholder="Station ID"
               />
             </div>
             

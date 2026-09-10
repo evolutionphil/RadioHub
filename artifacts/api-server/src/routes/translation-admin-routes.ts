@@ -41,7 +41,7 @@ const inFlightTranslateJobs = new Set<string>();
 async function healthyRadioBrowserStations(order: 'clickCount' | 'votes' | 'updatedAt', requested: unknown) {
     const limit = Math.max(1, Math.min(Math.trunc(Number(requested)) || 100, 500));
     return publicStationCache.getOrSetSingleFlight(`radio-browser:${order}:${limit}`, async () => {
-        const stations = await pgCatalog().find({ lastCheckOk: true }, { sort: { [order]: -1 }, limit,
+        const stations = await pgCatalog().find({ isListVisible: true }, { sort: { [order]: -1 }, limit,
             fields: ['_id','stationuuid','changeUuid','name','slug','url','urlResolved','homepage','favicon','tags','country','countryCode',
                 'state','language','languageCodes','codec','bitrate','hls','votes','clickCount','clickTrend','lastCheckOk','lastCheckTime',
                 'lastCheckOkTime','lastChangeTime','geoLat','geoLong','logoAssets'] });

@@ -142,7 +142,7 @@ test('actual localized SSR station routes retain the same reciprocal fourteen-la
 test('offline station details retain full fourteen-language content, indexability and matching human-visible notices', async () => {
   qualifiedLanguages = [...ACTIVE_SITEMAP_LANGUAGES];
   stationOverrides = {
-    lastCheckOk: false, lastCheckTime: new Date(), lastCheckOkTime: new Date(Date.now() - 90 * 86400000),
+    lastCheckOk: false, isListVisible: false, lastCheckTime: new Date(), lastCheckOkTime: new Date(Date.now() - 90 * 86400000),
     descriptions: Object.fromEntries(qualifiedLanguages.map(lang => [lang, { full: `Existing editorial station information ${lang}`, meta: `Existing station summary ${lang}` }])),
   };
   const entries = generateLanguageUrls('/station/recovery-fm', 'https://themegaradio.com', 'en', undefined, undefined, qualifiedLanguages);
@@ -164,7 +164,7 @@ test('offline station details retain full fourteen-language content, indexabilit
     assert.equal((body.match(/<h1>/g) || []).length, 1);
     for (const availability of [true, undefined]) {
       const availableBody = renderer.generateHtmlBody({ pageType: 'station', language: entry.lang, translations: {},
-        stationData: { ...page.pageData?.station, lastCheckOk: availability }, seoTags: page.seoTags });
+        stationData: { ...page.pageData?.station, isListVisible: availability }, seoTags: page.seoTags });
       assert.ok(!availableBody.includes('id="station-stream-unavailable"'));
     }
   }
@@ -189,7 +189,7 @@ test('unknown legacy offline noindex keeps rich localized200 data without reinde
     const body = renderer.generateHtmlBody({ pageType: 'station', language: entry.lang, translations: {},
       stationData: page.pageData.station, seoTags: page.seoTags });
     assert.ok(body.includes(stationOverrides.descriptions[entry.lang].full));
-    assert.ok(body.includes('id="station-stream-unavailable"'));
+    assert.ok(!body.includes('id="station-stream-unavailable"'), 'an unverified source flag is not a confirmed outage');
   }
   for (const extra of [{ manualEditFields: { noIndex: true } }, { manualEditFields: { noIndex: false } },
     { slug: 'radio-test-stream' }, { slug: 'radio-aac' }, { slug: '-1234' }]) {

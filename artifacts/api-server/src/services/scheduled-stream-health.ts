@@ -35,7 +35,7 @@ export class ScheduledStreamHealth {
       for (let offset=0; offset<candidates.length; offset+=2) {
         if (pool.waitingCount > 0) break;
         const pair = await Promise.all(candidates.slice(offset,offset+2).map(async candidate => ({
-          candidate, observation: await probeStreamAvailability(candidate.url),
+          candidate, observation: await probeStreamAvailability(candidate.urls),
         })));
         results.push(...pair);
       }

@@ -15,7 +15,7 @@ mock.module('../src/data/postgres-catalog-store', { namedExports: { pgCatalog: (
     if (fail) throw new Error('catalog unavailable');
     return stations;
   },
-  count: async (filter: unknown) => { assert.deepEqual(filter, { lastCheckOk: true }); return 61291; },
+  count: async (filter: unknown) => { assert.deepEqual(filter, { isListVisible: true }); return 61291; },
 }) } });
 const { CacheManager: rawCache } = await import('../src/cache');
 const { publicStationCache: CacheManager, publicStationCacheKey } = await import('../src/public-station-cache');

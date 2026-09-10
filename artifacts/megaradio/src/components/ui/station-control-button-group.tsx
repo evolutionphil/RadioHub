@@ -2,7 +2,6 @@ import { useGlobalPlayer } from "@/hooks/useGlobalPlayer";
 import FavoriteButton from "@/components/ui/favorite-button";
 import VoteButton from "@/components/ui/vote-button";
 import { getStationControlLabels, type StationControlLabels } from '@/utils/station-control-labels';
-import { isExplicitlyFailedStation } from '@/utils/station-availability';
 
 // Custom favorite icon from Figma design
 import favIcon from "@assets/fav-icon.png";
@@ -82,10 +81,8 @@ export default function StationControlButtonGroup({ className, currentPageStatio
   } = useGlobalPlayer();
   const displayStation = currentPageStation || currentStation;
   const isDisplayStationPlaying = isPlaying && currentStation?._id === displayStation?._id;
-  // Keep Stop available if a currently playing station was subsequently marked failed.
-  const playDisabled = isExplicitlyFailedStation(displayStation) && !isDisplayStationPlaying;
+  // Keep manual retry available on direct station pages; health is advisory here.
   const handlePlayPause = async () => {
-    if (playDisabled) return;
     // If there's a current page station and either no current station or different station, play the page station
     if (currentPageStation && (!currentStation || currentStation._id !== currentPageStation._id)) {
       try {
@@ -135,8 +132,7 @@ export default function StationControlButtonGroup({ className, currentPageStatio
       {/* Play/Stop Button */}
       <button
         onClick={handlePlayPause}
-        disabled={playDisabled}
-        aria-describedby={playDisabled && currentPageStation ? 'station-stream-unavailable' : undefined}
+        aria-describedby={currentPageStation?.isListVisible === false ? 'station-stream-unavailable' : undefined}
         className="flex items-center justify-center bg-black hover:opacity-80 transition-opacity"
         style={{ width: buttonSize, height: buttonSize, borderRadius: buttonRadius }}
         aria-label={isDisplayStationPlaying ? labels.stop : labels.play}

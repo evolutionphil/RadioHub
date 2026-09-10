@@ -5,6 +5,7 @@ import { assertRecoverableStation, getStreamRecoverySnapshot, probeStationStream
 import { performanceCache } from '../performance-cache';
 import CacheManager from '../cache';
 import { getPostgresPool } from '../postgres-runtime';
+import { stationListVisibleSql, stationAvailabilityStatusSql } from '../utils/station-visibility';
 
 const invalidBody: ErrorRequestHandler = (_error, _req, res, _next) => {
   res.status(400).json({ error: 'Invalid recovery request' });
@@ -17,7 +18,10 @@ export function registerAdminStreamHealthRoutes(app: Express, requireAdmin: Requ
       const query = { text:`SELECT c.last_run_at,c.next_run_at,c.summary,
         (SELECT count(*)::int FROM station_stream_health) tracked,
         (SELECT count(*)::int FROM station_stream_health WHERE next_check_at<=now()) due,
-        (SELECT count(*)::int FROM stations WHERE last_check_ok IS NOT TRUE) hidden_from_lists
+        (SELECT count(*)::int FROM stations s WHERE NOT ${stationListVisibleSql('s')}) hidden_from_lists,
+        (SELECT count(*)::int FROM stations WHERE last_check_ok IS FALSE AND (source->>'healthSource') IS DISTINCT FROM 'manual-unchecked') source_flagged_offline,
+        (SELECT count(*)::int FROM stations s WHERE (${stationAvailabilityStatusSql('s')})='working') locally_verified_working,
+        (SELECT count(*)::int FROM stations s WHERE (${stationAvailabilityStatusSql('s')})='unverified') unverified
         FROM station_stream_health_control c WHERE c.id=1`, query_timeout:2000 };
       const result = await getPostgresPool().query(query);
       res.json({ enabled:process.env.STREAM_HEALTH_ENABLED!=='false' && process.env.BACKGROUND_JOBS_ENABLED!=='false',
@@ -45,7 +49,7 @@ export function registerAdminStreamHealthRoutes(app: Express, requireAdmin: Requ
       let evidence;
       try {
         assertRecoverableStation(station);
-        evidence = await probeStationStream(station.urlResolved || station.url);
+        evidence = await probeStationStream([station.urlResolved, station.url].filter(Boolean));
       } catch { return void res.status(422).json({ error: 'Station recovery could not be verified' }); }
       let result;
       try { result = await pgCatalog().recoverStreamHealth(id, body.expected, evidence); }
@@ -64,7 +68,8 @@ export function registerAdminStreamHealthRoutes(app: Express, requireAdmin: Requ
       // duplicate mutation; other services' memory/CDN entries keep their TTL.
       const cacheInvalidated = cacheResults.every(result => result.status === 'fulfilled');
       res.json({ success: true, stationId: saved._id, slug: saved.slug, noIndex: saved.noIndex,
-        lastCheckOk: saved.lastCheckOk, checkedAt: evidence.checkedAt, cacheInvalidated,
+        lastCheckOk: saved.lastCheckOk, isListVisible:saved.isListVisible,
+        availabilityStatus:saved.availabilityStatus, checkedAt: evidence.checkedAt, cacheInvalidated,
         ...(!cacheInvalidated ? { cacheWarning: 'Recovery committed; some cached views may refresh later' } : {}) });
     }, invalidBody);
 }

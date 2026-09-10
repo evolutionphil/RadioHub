@@ -1,5 +1,6 @@
 import { getPostgresPool } from '../postgres-runtime';
 import { catalogShape, compileCatalogFilter, type CatalogFilter } from './postgres-catalog-store';
+import { stationListVisibleSql, stationAvailabilityStatusSql } from '../utils/station-visibility';
 
 /** SQL groups retain the stable public station IDs used throughout the UI. */
 export async function pgDuplicateStationGroups(minLength = 3, limit = 10000): Promise<any[]> {
@@ -26,12 +27,25 @@ export async function pgDuplicateCityGroups(): Promise<any[]> {
     sum(count)::integer AS "totalStations",jsonb_agg(countries) AS "allCountries"
     FROM variations GROUP BY city_key HAVING count(*)>1 ORDER BY sum(count) DESC,city_key LIMIT 10000`)).rows;
 }
-export async function pgAdminCatalogPage(filter: CatalogFilter, options: { descriptionState?: string; sortBy: string; direction: number; limit: number; offset: number }): Promise<{ stations: any[]; total: number }> {
+export async function pgAdminCatalogPage(filter: CatalogFilter, options: { descriptionState?: string; healthStatus?: string; sortBy: string; direction: number; limit: number; offset: number }): Promise<{ stations: any[]; total: number }> {
   const { sql,values } = compileCatalogFilter(filter);
   const countExpr = "(SELECT count(*) FROM jsonb_object_keys(CASE WHEN jsonb_typeof(s.descriptions)='object' THEN s.descriptions ELSE '{}'::jsonb END))";
   const status = options.descriptionState;
-  const extra = status==='yes' ? `${countExpr}>0` : status==='no' ? `${countExpr}=0` : status==='partial' ? `${countExpr} BETWEEN 1 AND 13` : 'TRUE';
+  const descriptionFilter = status==='yes' ? `${countExpr}>0` : status==='no' ? `${countExpr}=0` : status==='partial' ? `${countExpr} BETWEEN 1 AND 13` : 'TRUE';
+  const availability = stationAvailabilityStatusSql('s');
+  const healthFilters: Record<string,string> = {
+    working: `(${availability})='working'`,
+    unavailable: `NOT (${stationListVisibleSql('s')})`,
+    unverified: `(${availability})='unverified'`,
+    'source-offline': "s.last_check_ok IS FALSE AND (s.source->>'healthSource') IS DISTINCT FROM 'manual-unchecked'",
+  };
+  const extra = `(${descriptionFilter}) AND (${healthFilters[options.healthStatus || ''] || 'TRUE'})`;
   const orderFields: Record<string,string> = { name:'s.name',country:'s.country',countryCode:'s.country_code',votes:'s.votes',clickCount:'s.click_count',bitrate:'s.bitrate',codec:'s.codec',language:'s.language',tags:'s.tags_raw',createdAt:'s.created_at',updatedAt:'s.updated_at',noIndex:'s.no_index',hasLogo:'s.has_logo',lastCheckOk:'s.last_check_ok',favicon:"(char_length(COALESCE(s.favicon,''))>5)" };
+  // Ascending health puts confirmed unavailable first, then unverified, then
+  // locally working. Raw provider flags remain separately filterable.
+  orderFields.healthStatus = `CASE (${availability}) WHEN 'unavailable' THEN 0 WHEN 'unverified' THEN 1 ELSE 2 END`;
+  orderFields.clickcount = 's.click_count'; // Older admin clients use this spelling.
+  orderFields.tagsCheckedAt = "s.source->>'tagsCheckedAt'";
   const order = orderFields[options.sortBy] || 's.name';
   const direction = options.sortBy==='favicon' ? -options.direction : options.direction;
   const client = await getPostgresPool().connect();
@@ -42,6 +56,26 @@ export async function pgAdminCatalogPage(filter: CatalogFilter, options: { descr
     await client.query('COMMIT');
     return { total: count,stations: rows.rows.map(catalogShape) };
   } catch(error) { await client.query('ROLLBACK'); throw error; } finally { client.release(); }
+}
+/** Admin options deliberately include hidden stations; public discovery filters do not. */
+export async function pgAdminStationFilterOptions() {
+  const rows = (await getPostgresPool().query(`
+    SELECT 'country' AS kind,COALESCE(NULLIF(btrim(country),''),country_code) AS value,
+      upper(COALESCE(country_code,'')) AS code FROM stations
+      WHERE COALESCE(NULLIF(btrim(country),''),NULLIF(btrim(country_code),'')) IS NOT NULL
+      GROUP BY country,country_code
+    UNION ALL SELECT 'language',btrim(value),'' FROM stations,
+      LATERAL regexp_split_to_table(COALESCE(language,''),',') AS value WHERE btrim(value)<>'' GROUP BY btrim(value)
+    UNION ALL SELECT 'genre',btrim(value),'' FROM stations,
+      LATERAL regexp_split_to_table(COALESCE(tags_raw,''),',') AS value WHERE btrim(value)<>'' GROUP BY btrim(value)
+    UNION ALL SELECT 'codec',btrim(codec),'' FROM stations WHERE btrim(COALESCE(codec,''))<>'' GROUP BY btrim(codec)
+    ORDER BY kind,value,code`)).rows;
+  return {
+    countries: rows.filter(r=>r.kind==='country').map(r=>({name:r.value,code:r.code})),
+    languages: rows.filter(r=>r.kind==='language').map(r=>r.value),
+    genres: rows.filter(r=>r.kind==='genre').map(r=>r.value),
+    codecs: rows.filter(r=>r.kind==='codec').map(r=>r.value),
+  };
 }
 export async function pgDatabaseSizeReport(): Promise<any> {
   const tables = (await getPostgresPool().query(`SELECT relname AS name,COALESCE(n_live_tup,0)::float8 AS count,

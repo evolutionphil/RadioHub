@@ -5,6 +5,7 @@ import { getPostgresPool } from "../postgres-runtime";
 import type { StationDescriptionChange } from '../utils/station-description-patch';
 import { assertRecoverableStation, getStreamRecoverySnapshot } from '../utils/station-health-recovery';
 import { providerHealthIsNewer, PROVIDER_HEALTH_FIELDS } from '../utils/provider-health-freshness';
+import { stationVisibilityFields, stationVisibilitySql, stationAvailabilitySql } from '../utils/station-visibility';
 
 export type CatalogDocument = Record<string, any>;
 export type CatalogFilter = Record<string, any>;
@@ -30,6 +31,8 @@ const fields: Record<string, [string, string]> = {
   clickCount: ["click_count","integer"], clickTrend: ["click_trend","float8"],
   averageRating: ["average_rating","real"], totalRatings: ["total_ratings","integer"],
   lastCheckOk: ["last_check_ok","boolean"], lastCheckTime: ["last_check_time","timestamptz"],
+  isListVisible: ["is_list_visible","boolean"], visibilityExpiresAt: ["visibility_expires_at","timestamptz"],
+  availabilityOutcome: ["availability_outcome","text"], availabilityCheckedAt: ["availability_checked_at","timestamptz"],
   geoLat: ["latitude","float8"], geoLong: ["longitude","float8"], hasLogo: ["has_logo","boolean"],
   logoAssets: ["logo_assets","jsonb"], descriptions: ["descriptions","jsonb"],
   manualEditFields: ["manual_edit_fields","jsonb"], mediaGroupId: ["media_group_id","text"],
@@ -76,6 +79,7 @@ function pathParts(field: string): string[] {
 export function catalogShape(row: CatalogDocument): CatalogDocument {
   const doc = { ...(row.source || {}) };
   for (const [field,[column]] of Object.entries(fields)) doc[field] = row[column];
+  Object.assign(doc, stationVisibilityFields(row));
   return doc;
 }
 
@@ -84,6 +88,8 @@ export function catalogShape(row: CatalogDocument): CatalogDocument {
 export function compileCatalogFilter(filter: CatalogFilter, values: any[] = []): { sql: string; values: any[] } {
   const bind = (value: any) => { values.push(value); return `$${values.length}`; };
   const fieldExpression = (field: string, candidate?: any): { sql: string; type: string; exists: string } => {
+    if (field === 'isListVisible') return { sql: stationVisibilitySql(), type: 'boolean', exists: 'TRUE' };
+    if (field === 'availabilityStatus') return { sql: stationAvailabilitySql(), type: 'text', exists: 'TRUE' };
     if (fields[field]) {
       const [column,type] = fields[field];
       return { sql: `s.${column}`, type, exists: `s.${column} IS NOT NULL` };
@@ -177,7 +183,7 @@ export class PostgresCatalogStore {
     if (options.fields) {
       // Keep catalogShape + nested JS selection semantics, but do not decode
       // every station's large source/descriptions for a small scalar read.
-      const columns = new Set(['id']);
+      const columns = new Set(['id','is_list_visible','visibility_expires_at','availability_outcome','availability_checked_at']);
       const sourceKeys = new Set<string>();
       for (const field of options.fields) {
         const root = pathParts(field)[0];
@@ -197,7 +203,7 @@ export class PostgresCatalogStore {
     return result.rows.map((row) => {
       const doc = catalogShape(row);
       if (!options.fields) return doc;
-      const selected: CatalogDocument = { _id: doc._id };
+      const selected: CatalogDocument = { _id: doc._id, isListVisible: doc.isListVisible, availabilityStatus: doc.availabilityStatus };
       for (const field of options.fields) {
         const parts = pathParts(field);
         let from = doc, to = selected;
@@ -216,13 +222,14 @@ export class PostgresCatalogStore {
         SELECT id,has_logo,votes,row_number() OVER (
           PARTITION BY country ORDER BY has_logo DESC NULLS LAST,votes DESC NULLS LAST,id ASC
         ) AS country_rank FROM stations
-        WHERE last_check_ok=true AND no_index IS DISTINCT FROM true
+        WHERE (is_list_visible IS TRUE OR COALESCE(visibility_expires_at<=now(),false)) AND no_index IS DISTINCT FROM true
           AND NULLIF(btrim(country),'') IS NOT NULL
       ), winners AS (
         SELECT id,has_logo,votes FROM ranked WHERE country_rank<=$1
         ORDER BY has_logo DESC NULLS LAST,votes DESC NULLS LAST,id ASC LIMIT $2
       ) SELECT s.id,s.slug,s.name,s.url,s.url_resolved,s.favicon,s.country,s.state,
         s.votes,s.has_logo,s.tags_raw,s.codec,s.bitrate,s.logo_assets,s.no_index,s.last_check_ok,s.last_check_time,
+        s.is_list_visible,s.visibility_expires_at,s.availability_outcome,s.availability_checked_at,
         CASE WHEN s.source ? 'logo' THEN jsonb_build_object('logo',s.source->'logo')
           ELSE '{}'::jsonb END AS source
       FROM winners w JOIN stations s ON s.id=w.id
@@ -344,6 +351,7 @@ export class PostgresCatalogStore {
           const parts = pathParts(field);
           if (["_id","createdAt"].includes(parts[0])) throw new Error(`Immutable catalog field: ${field}`);
           if (options.respectManualFields && current.manualEditFields?.[parts[0]]) return;
+          if (options.respectManualFields && parts[0] === 'urlResolved' && current.manualEditFields?.url) return;
           if (preserveHealth && PROVIDER_HEALTH_FIELDS.has(parts[0])) return;
           if (options.fillMissingFaviconOnly && parts[0] === 'favicon' && (
             current.hasLogo === true || current.faviconLocal ||
@@ -359,6 +367,15 @@ export class PostgresCatalogStore {
           if (remove) delete cursor[parts.at(-1)!]; else cursor[parts.at(-1)!] = value;
         };
         for (const [field,value] of Object.entries(patch)) if (!field.startsWith("$")) setPath(field,value);
+        if (next.url !== current.url && !Object.hasOwn(patch,'urlResolved')) next.urlResolved = '';
+        const urlsChanged = next.url !== current.url || next.urlResolved !== current.urlResolved;
+        const freshProviderSuccess = (options.respectManualFields || options.syncRunId) && !preserveHealth && patch.lastCheckOk === true;
+        const manuallyHidden = (current.manualEditFields?.isListVisible && current.isListVisible === false) ||
+          (current.manualEditFields?.lastCheckOk && current.lastCheckOk === false);
+        if ((urlsChanged || freshProviderSuccess) && !manuallyHidden) {
+          next.isListVisible = true; next.visibilityExpiresAt = null;
+          if (urlsChanged) { next.availabilityOutcome = 'inconclusive'; next.availabilityCheckedAt = null; }
+        }
         for (const field of Object.keys(update.$unset || {})) setPath(field,undefined,true);
         for (const [field,value] of Object.entries(update.$inc || {})) {
           const existing = pathParts(field).reduce((value,key) => value?.[key],next);
@@ -370,6 +387,12 @@ export class PostgresCatalogStore {
           continue;
         }
         const saved = await this.persist(client,next,false,current);
+        if (urlsChanged || (!preserveHealth && patch.lastCheckOk === false)) {
+          await client.query(`UPDATE station_stream_health SET next_check_at=least(next_check_at,now()),
+            failure_count=CASE WHEN $2 THEN 0 ELSE failure_count END,
+            first_failure_at=CASE WHEN $2 THEN NULL ELSE first_failure_at END
+            WHERE station_id=$1`, [current._id,urlsChanged]);
+        }
         modifiedCount++;
         if (options.returnDocument) document = saved;
       }
@@ -464,8 +487,8 @@ export class PostgresCatalogStore {
     const checkedAt = Date.parse(evidence.checkedAt);
     if (!/^[a-f0-9]{24}$/i.test(id) || !Number.isFinite(checkedAt) || checkedAt > Date.now() + 5000 ||
         Date.now() - checkedAt > 5 * 60 * 1000 || typeof evidence.contentType !== 'string' ||
-        !/^(audio\/[a-z0-9.+-]+|application\/ogg)$/.test(evidence.contentType) || evidence.contentType.length > 256 ||
-        evidence.bytesRead !== 1024) return { status: 'rejected' };
+        !/^(audio\/[a-z0-9.+-]+|application\/(?:ogg|mp4|octet-stream)|video\/(?:mp2t|mp4))$/.test(evidence.contentType) || evidence.contentType.length > 256 ||
+        !Number.isInteger(evidence.bytesRead) || evidence.bytesRead < 1024 || evidence.bytesRead > 65536) return { status: 'rejected' };
     const client = await this.pool.connect();
     try {
       await client.query('BEGIN');
@@ -480,13 +503,16 @@ export class PostgresCatalogStore {
       try { assertRecoverableStation(station); }
       catch { await client.query('ROLLBACK'); return { status: 'rejected' }; }
       const sourcePatch = {
-        lastCheckOkTime: evidence.checkedAt, lastLocalCheckTime: evidence.checkedAt,
         healthRecovery: { actor: 'admin-reviewed', checkedAt: evidence.checkedAt, previousSnapshot: expected,
           contentType: evidence.contentType, bytesRead: evidence.bytesRead },
       };
-      const saved = await client.query(`UPDATE stations SET no_index=false,last_check_ok=true,last_check_time=$2::timestamptz,
+      const saved = await client.query(`UPDATE stations SET no_index=false,
+        is_list_visible=true,visibility_expires_at=NULL,availability_outcome='healthy',availability_checked_at=$2::timestamptz,
         updated_at=now(),source=COALESCE(source,'{}'::jsonb)||$3::jsonb WHERE id=$1 RETURNING *`,
         [id, evidence.checkedAt, JSON.stringify(sourcePatch)]);
+      await client.query(`UPDATE station_stream_health SET failure_count=0,first_failure_at=NULL,
+        lease_token=NULL,lease_until=NULL,next_check_at=$2::timestamptz+interval '7 days' WHERE station_id=$1`,
+      [id,evidence.checkedAt]);
       await client.query('COMMIT');
       return { status: 'updated', station: catalogShape(saved.rows[0]) };
     } catch (error) { await client.query('ROLLBACK'); throw error; } finally { client.release(); }
@@ -615,7 +641,7 @@ export class PostgresCatalogStore {
   private async persist(client: pg.PoolClient, input: CatalogDocument, insert: boolean, previous?:CatalogDocument): Promise<CatalogDocument> {
     const now = new Date();
     const doc: CatalogDocument = { slugAliases: [],hls: false,votes: 0,clickCount: 0,clickTrend: 0,averageRating: 0,totalRatings: 0,
-      lastCheckOk: true,hasLogo: false,descriptions: {},manualEditFields: {},isFeatured: false,
+      lastCheckOk: true,isListVisible: true,hasLogo: false,descriptions: {},manualEditFields: {},isFeatured: false,
       showInGlobalPopular: false,noIndex: false,createdAt: now,...input,updatedAt: now };
     if (!doc.stationuuid || !doc.name || !doc.url) throw new Error("Station UUID, name and URL are required");
     if (Array.isArray(doc.tags)) doc.tags = doc.tags.join(",");

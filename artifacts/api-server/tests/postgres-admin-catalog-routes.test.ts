@@ -77,7 +77,7 @@ describe('Native PostgreSQL admin catalog HTTP contracts',{ skip:!connectionStri
     assert.equal(await catalog.count(),3);
   });
   it('public batch omits unhealthy stations while admin retains them and compact fields stay bounded', async()=>{
-    await pool.query('UPDATE stations SET last_check_ok=false WHERE id=$1',[ids[0]]);
+    await pool.query("UPDATE stations SET last_check_ok=false,is_list_visible=false,visibility_expires_at=now()+interval '12 hours' WHERE id=$1",[ids[0]]);
     const publicBatch:any = await (await request('/api/stations/batch','POST',{stationIds:ids},null)).json();
     assert.deepEqual(Object.keys(publicBatch).sort(),ids.slice(1).sort());
     const compact:any = await (await request('/api/stations/batch','POST',{stationIds:ids,slim:true},null)).json();
@@ -88,7 +88,23 @@ describe('Native PostgreSQL admin catalog HTTP contracts',{ skip:!connectionStri
     const retained:any = await (await request('/api/admin/stations?search=Manual%20Edit')).json();
     assert.equal(retained.stations[0]._id,ids[0]); assert.equal(retained.stations[0].lastCheckOk,false);
     assert.equal((await request('/api/stations/batch','POST',{stationIds:[{}]},null)).status,400);
-    await pool.query('UPDATE stations SET last_check_ok=true WHERE id=$1',[ids[0]]);
+    await pool.query('UPDATE stations SET last_check_ok=true,is_list_visible=true,visibility_expires_at=NULL WHERE id=$1',[ids[0]]);
+  });
+  it('saves all station editor controls and rejects invalid fields without partial writes',async()=>{
+    const id=(99).toString(16).padStart(24,'0');
+    await catalog.insertMany([{_id:id,stationuuid:'editor-contract',name:'Editor Contract',url:'https://example.invalid/original',urlResolved:'https://example.invalid/old-resolved',noIndex:true}]);
+    const response=await request('/api/stations/'+id,'PUT',{state:'Vienna',isFeatured:true,showInGlobalPopular:true,url:'https://example.invalid/repaired'});
+    assert.equal(response.status,200);
+    const saved=(await response.json() as any).station;
+    assert.equal(saved.state,'Vienna');assert.equal(saved.isFeatured,true);assert.equal(saved.showInGlobalPopular,true);
+    assert.equal(saved.urlResolved,'');assert.equal(saved.manualEditFields.url,true);
+    const explicit=await request('/api/stations/'+id,'PUT',{urlResolved:'https://example.invalid/new-resolved'});
+    assert.equal(explicit.status,200);assert.equal((await explicit.json() as any).station.urlResolved,'https://example.invalid/new-resolved');
+    for(const body of [{isFeatured:'false'},{state:{}},{url:'javascript:alert(1)'},{url:''},{name:''},{bitrate:-1},{bitrate:1.5}]){
+      assert.equal((await request('/api/stations/'+id,'PUT',body)).status,400);
+    }
+    assert.equal((await request('/api/stations/'+id,'PUT',{name:'Unauthorized'},null)).status,401);
+    const final=await catalog.findById(id);assert.equal(final?.name,'Editor Contract');assert.equal(final?.url,'https://example.invalid/repaired');
   });
   it('persists preferences per admin and enforces preset ownership over HTTP',async()=>{
     assert.equal((await request('/api/admin/preferences/view','PUT',{value:{country:'DE'}})).status,200);
@@ -99,6 +115,35 @@ describe('Native PostgreSQL admin catalog HTTP contracts',{ skip:!connectionStri
     assert.equal((await request('/api/admin/shared-presets/'+preset.id,'DELETE',undefined,'bob')).status,403);
     assert.equal((await request('/api/admin/shared-presets/'+preset.id,'PUT',{name:'Updated'})).status,200);
     assert.equal((await request('/api/admin/shared-presets','POST',{name:'updated',countries:['DE']})).status,409);
+  });
+  it('separates source flags from confirmed offline filters, expiry and sorting',async()=>{
+    const healthIds=[201,202,203,204].map(n=>n.toString(16).padStart(24,'0'));
+    await catalog.insertMany(healthIds.map((id,i)=>({_id:id,stationuuid:'health-filter-'+i,name:'Health fixture '+i,
+      country:'Health Fixture',countryCode:'HF',url:'https://example.invalid/health-'+i,
+      codec:'RareCodec',language:'Rare Language',tags:'Rare Genre',lastCheckOk:false})));
+    await pool.query("UPDATE stations SET is_list_visible=false,visibility_expires_at=now()+interval '12 hours',availability_outcome='failed',availability_checked_at=now() WHERE id=$1",[healthIds[0]]);
+    await pool.query("UPDATE stations SET availability_outcome='healthy',availability_checked_at=now() WHERE id=$1",[healthIds[1]]);
+    await pool.query("UPDATE stations SET is_list_visible=false,visibility_expires_at=now()-interval '1 minute',availability_outcome='failed',availability_checked_at=now()-interval '2 days' WHERE id=$1",[healthIds[3]]);
+    for(const [filter,expected] of [['unavailable',[healthIds[0]]],['working',[healthIds[1]]],['unverified',healthIds.slice(2)],['source-offline',healthIds]] as const){
+      const response=await request('/api/admin/stations?'+new URLSearchParams({search:'Health fixture',healthStatus:filter,codec:'RareCodec'}));
+      assert.equal(response.status,200);assert.match(response.headers.get('cache-control') || '',/no-store/);
+      const body:any=await response.json();assert.deepEqual(body.stations.map((s:any)=>s._id).sort(),[...expected].sort());
+    }
+    const sorted:any=await (await request('/api/admin/stations?search=Health%20fixture&sortBy=healthStatus&sortOrder=asc')).json();
+    assert.equal(sorted.stations[0]._id,healthIds[0]);assert.equal(sorted.stations.at(-1)._id,healthIds[1]);
+    const batch:any=await (await request('/api/stations/batch','POST',{stationIds:healthIds,slim:true},null)).json();
+    assert.deepEqual(Object.keys(batch).sort(),healthIds.slice(1).sort());
+    assert.equal(batch[healthIds[1]].lastCheckOk,false);assert.equal(batch[healthIds[1]].isListVisible,true);
+    assert.equal(batch[healthIds[1]].availabilityStatus,'working');
+    assert.equal(batch[healthIds[3]].availabilityStatus,'unverified');
+    assert.equal((await request('/api/admin/stations?healthStatus=bogus')).status,400);
+    assert.equal((await request('/api/admin/stations?healthStatus=working&healthStatus=unavailable')).status,400);
+    assert.equal((await request('/api/admin/stations/filter-options','GET',undefined,null)).status,401);
+    const options:any=await (await request('/api/admin/stations/filter-options')).json();
+    assert.ok(options.codecs.includes('RareCodec'));assert.ok(options.languages.includes('Rare Language'));assert.ok(options.genres.includes('Rare Genre'));
+    assert.ok(options.countries.some((c:any)=>c.code==='HF'));
+    // These fixtures must not enter the later description-generation test.
+    await pool.query('UPDATE stations SET no_index=true WHERE id=ANY($1::text[])',[healthIds]);
   });
   it('keeps SEMrush import, list, summary and delete backed by PostgreSQL',async()=>{
     const csv='URL,Status Code,Issue,Description,Priority\nhttps://example.invalid,200,Title,Missing title,High';
@@ -207,6 +252,65 @@ describe('Native PostgreSQL admin catalog HTTP contracts',{ skip:!connectionStri
       const response=await request('/api/admin/stations/'+id+'/descriptions','PATCH',{slug:current.slug,changes:[change]});
       assert.equal(response.status,200);const body:any=await response.json();assert.equal(body.success,true);assert.equal(body.cacheInvalidated,false);
       assert.equal((await catalog.findById(id))?.descriptions.en.meta,change.value);
+    }finally{failing.mock.restore();}
+  });
+  it('creates manual stations with server identity and unverified availability, without source probes',async()=>{
+    const payload={name:'Créated Manual Radio',url:'https://example.invalid/manual-created',urlResolved:'https://example.invalid/manual-resolved',
+      country:'Austria',countryCode:'at',state:'Vienna',bitrate:0,hls:false,isFeatured:true,showInGlobalPopular:true,
+      homepage:'https://example.invalid',favicon:'https://example.invalid/logo.png',tags:'Rock, Pop',
+      descriptions:{de:{full:'A manually supplied German article.',meta:'A German summary.'}}};
+    const countBefore=await catalog.count();
+    assert.equal((await request('/api/stations','POST',payload,null)).status,401);
+    assert.equal(await catalog.count(),countBefore);
+    const originalFetch=globalThis.fetch;
+    const observed:string[]=[];
+    const fetchGuard=mock.method(globalThis,'fetch',(input:any,init:any)=>{
+      const url=String(input);observed.push(url);assert.ok(url.startsWith(base+'/'),'creation must not contact a source host');
+      return originalFetch(input,init);
+    });
+    let response:Response;
+    try{response=await request('/api/stations','POST',payload);}finally{fetchGuard.mock.restore();}
+    assert.equal(observed.length,1);assert.equal(response!.status,201);assert.equal(response!.headers.get('cache-control'),'no-store');
+    const body:any=await response!.json();assert.equal(body.success,true);
+    const saved=body.station;assert.match(saved._id,/^[a-f0-9]{24}$/);assert.match(saved.stationuuid,/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/);
+    assert.match(saved.slug,new RegExp('^created-manual-radio-'+saved._id+'$'));
+    assert.equal(saved.countryCode,'AT');assert.equal(saved.state,'Vienna');assert.equal(saved.bitrate,0);
+    assert.equal(saved.urlResolved,payload.urlResolved);assert.equal(saved.isFeatured,true);assert.equal(saved.showInGlobalPopular,true);
+    assert.equal(saved.lastCheckOk,false);assert.equal(saved.lastCheckTime,null);assert.equal(saved.availabilityOutcome,'inconclusive');
+    assert.equal(saved.availabilityCheckedAt,null);assert.equal(saved.availabilityStatus,'unverified');assert.equal(saved.isListVisible,true);
+    assert.equal(saved.healthSource,'manual-unchecked');assert.equal(saved.lastCheckOkTime,undefined);
+    assert.equal(saved.manualEditFields.name,true);assert.equal(saved.manualEditFields.url,true);assert.equal(saved.manualEditFields.descriptions,true);
+    assert.equal(saved.manualEditFields.lastCheckOk,undefined);assert.deepEqual(saved.descriptions,payload.descriptions);
+    assert.equal((await catalog.findById(saved._id))?.stationuuid,saved.stationuuid);
+    assert.equal(await catalog.count(),countBefore+1);
+    assert.equal((await request('/api/stations','POST',payload)).status,409,'duplicate creation never overwrites or creates another row');
+    assert.equal(await catalog.count(),countBefore+1);
+    const second:any=await (await request('/api/stations','POST',{name:payload.name,url:'https://example.invalid/manual-second',noIndex:true})).json();
+    assert.notEqual(second.station._id,saved._id);assert.notEqual(second.station.stationuuid,saved.stationuuid);assert.notEqual(second.station.slug,saved.slug);
+    assert.equal(second.station.noIndex,true);assert.equal(second.station.manualEditFields.noIndex,true);
+  });
+  it('rejects malformed creation and client-forged identity/health before any native insert',async()=>{
+    const countBefore=await catalog.count(),basePayload={name:'Invalid Creation',url:'https://example.invalid/create-invalid'};
+    for(const body of [[],{}, {...basePayload,name:'  '},{...basePayload,url:''},{...basePayload,url:'javascript:alert(1)'},
+      {...basePayload,urlResolved:'ftp://example.invalid'},{...basePayload,homepage:'invalid'},{...basePayload,favicon:'javascript:alert(1)'},
+      {...basePayload,state:{}},{...basePayload,countryCode:'GER'},{...basePayload,bitrate:-1},{...basePayload,bitrate:1.5},
+      {...basePayload,bitrate:'128'},{...basePayload,bitrate:100001},{...basePayload,hls:'false'},{...basePayload,isFeatured:1},
+      {...basePayload,showInGlobalPopular:'true'},{...basePayload,noIndex:'false'},{...basePayload,_id:ids[0]},
+      {...basePayload,id:ids[0]},{...basePayload,stationuuid:'forged'},{...basePayload,lastCheckOk:true},
+      {...basePayload,availabilityOutcome:'healthy'},{...basePayload,manualEditFields:{lastCheckOk:true}},
+      {...basePayload,descriptions:null},{...basePayload,descriptions:[]},{...basePayload,descriptions:{xx:{full:'Unsupported'}}},
+      {...basePayload,descriptions:{de:{full:''}}},{...basePayload,descriptions:{de:{full:'Text',unsupported:'field'}}}]){
+      assert.equal((await request('/api/stations','POST',body)).status,400,JSON.stringify(body));
+    }
+    assert.equal(await catalog.count(),countBefore);
+  });
+  it('keeps a committed manual creation successful when cache invalidation fails',async()=>{
+    const {performanceCache}=await import('../src/performance-cache');
+    const failing=mock.method(performanceCache,'invalidateStationCache',()=>{throw new Error('Injected cache failure');});
+    try{
+      const response=await request('/api/stations','POST',{name:'Cache Safe Manual Radio',url:'https://example.invalid/create-cache',bitrate:null});
+      assert.equal(response.status,201);const body:any=await response.json();assert.equal(body.success,true);assert.equal(body.cacheInvalidated,false);
+      assert.equal((await catalog.findById(body.station._id))?.name,'Cache Safe Manual Radio');
     }finally{failing.mock.restore();}
   });
 });

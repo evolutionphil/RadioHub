@@ -7,6 +7,9 @@ export interface StreamAvailability {
   reason: string;
   checkedAt: string;
   bytesRead: number;
+  /** Present only after a media sample, never copied from an unverified
+   * manifest/error response. Unknown media MIME is application/octet-stream. */
+  verifiedContentType?: string;
 }
 export interface StreamProbeOptions {
   /** Options can reduce, never increase, the production resource ceilings. */
@@ -15,20 +18,24 @@ export interface StreamProbeOptions {
   maxRequests?: number;
   signal?: AbortSignal;
 }
+export interface StreamPlaylistCandidate { nextUrl: string; segment: boolean }
 export type ParsedStreamPlaylist =
-  | { kind: 'playlist'; nextUrl: string; segment: boolean }
+  | ({ kind: 'playlist'; alternatives?: StreamPlaylistCandidate[]; inconclusiveReason?: string } & StreamPlaylistCandidate)
   | { kind: 'unsupported'; reason: string }
   | null;
 
 const PLAYLIST_TYPE = /(?:mpegurl|scpls|vnd\.apple\.mpegurl)/i;
 const HTML = /^\s*(?:\uFEFF)?\s*<(?:!doctype|html|head|body|\?xml|svg)\b/i;
 const MAX_PLAYLIST_BYTES = 16 * 1024;
+const MAX_CANDIDATES = 16;
 
-/** Parse one bounded PLS/M3U/HLS hop. This does not authorize its URL: the
- * caller must validate and pin DNS again before following every returned hop. */
+/** Parse bounded PLS/M3U/HLS alternatives, preserving uncertainty for entries
+ * we cannot inspect. This does not authorize their URLs: the caller must
+ * validate and pin DNS again before following every returned hop. */
 export function parseStreamPlaylist(body: string, baseUrl: string, contentType = ''): ParsedStreamPlaylist {
   let base: URL;
   try { base = new URL(baseUrl); } catch { return { kind: 'unsupported', reason: 'invalid-playlist-base' }; }
+  if (Buffer.byteLength(body, 'utf8') > MAX_PLAYLIST_BYTES) return { kind: 'unsupported', reason: 'playlist-body-budget' };
   const text = body.replace(/^\uFEFF/, '').trim();
   const lines = text.split(/\r?\n/).map(line => line.trim());
   const playlist = /^\[playlist\]/i.test(text) || /^#EXTM3U\b/i.test(text)
@@ -40,19 +47,35 @@ export function parseStreamPlaylist(body: string, baseUrl: string, contentType =
   }
   const pls = lines.map(line => /^File(\d+)\s*=\s*(.+)$/i.exec(line)).filter(match => match !== null)
     .sort((left, right) => Number(left[1]) - Number(right[1]));
-  const audioRendition = lines.find(line => /^#EXT-X-MEDIA:/i.test(line) && /\bTYPE=AUDIO(?:,|$)/i.test(line));
-  const renditionUrl = audioRendition && /\bURI="([^"]+)"/.exec(audioRendition)?.[1];
-  const candidate = pls[0]?.[2] || renditionUrl || lines.find(line => line && !line.startsWith('#') && !line.startsWith('[')
+  const renditionUrls = lines.filter(line => /^#EXT-X-MEDIA:/i.test(line) && /\bTYPE=AUDIO(?:,|$)/i.test(line))
+    .map(line => /\bURI="([^"]+)"/i.exec(line)?.[1]).filter((url): url is string => Boolean(url));
+  const entries = lines.filter(line => line && !line.startsWith('#') && !line.startsWith('[')
     && !/^(?:NumberOfEntries|Title\d+|Length\d+|Version)\s*=/i.test(line));
-  if (!candidate) return { kind: 'unsupported', reason: 'empty-playlist' };
-  try {
-    const next = new URL(candidate, baseUrl);
-    if (!['http:', 'https:'].includes(next.protocol) || next.username || next.password) {
-      return { kind: 'unsupported', reason: 'unsafe-playlist-url' };
-    }
-    return { kind: 'playlist', nextUrl: next.href,
-      segment: !pls.length && !renditionUrl && lines.some(line => /^#EXT-X-TARGETDURATION:/i.test(line)) };
-  } catch { return { kind: 'unsupported', reason: 'invalid-playlist-url' }; }
+  const references = pls.length ? pls.map(match => match[2]) : [...renditionUrls, ...entries];
+  const segment = !pls.length && !renditionUrls.length && lines.some(line => /^#EXT-X-TARGETDURATION:/i.test(line));
+  const candidates: StreamPlaylistCandidate[] = [];
+  const seen = new Set<string>();
+  let inconclusiveReason: string | undefined;
+  for (const reference of references) {
+    try {
+      const next = new URL(reference, baseUrl);
+      if (!['http:', 'https:'].includes(next.protocol) || next.username || next.password || next.href.length > 8192) {
+        inconclusiveReason ||= 'unsafe-playlist-url';
+        continue;
+      }
+      next.hash = '';
+      if (seen.has(next.href)) continue;
+      seen.add(next.href);
+      if (candidates.length >= MAX_CANDIDATES) { inconclusiveReason ||= 'playlist-candidate-budget'; continue; }
+      candidates.push({ nextUrl: next.href, segment });
+    } catch { inconclusiveReason ||= 'invalid-playlist-url'; }
+  }
+  if (!candidates.length) return { kind: 'unsupported', reason: inconclusiveReason || 'empty-playlist' };
+  return {
+    kind: 'playlist', ...candidates[0],
+    ...(candidates.length > 1 ? { alternatives: candidates.slice(1) } : {}),
+    ...(inconclusiveReason ? { inconclusiveReason } : {}),
+  };
 }
 
 function bounded(value: number | undefined, fallback: number): number {
@@ -97,7 +120,14 @@ function requestPinned(guard: SafeUrlResult, signal: AbortSignal, maxBytes: numb
       const finish = (truncated = false) => {
         if (done) return;
         done = true;
-        resolve({ status, contentType, location: response.headers.location, body: Buffer.concat(chunks, bytes), truncated });
+        const body = Buffer.concat(chunks, bytes);
+        if (status === 206 && isPlaylist(body, contentType, guard.url)) {
+          const range = /^bytes (\d+)-(\d+)\/(\d+)$/i.exec(String(response.headers['content-range'] || ''));
+          // A partial manifest may contain only its first, broken alternative.
+          // Unlike a sampled audio payload, it cannot prove all entries failed.
+          truncated ||= !range || Number(range[1]) !== 0 || Number(range[2]) + 1 !== Number(range[3]) || Number(range[3]) !== bytes;
+        }
+        resolve({ status, contentType, location: response.headers.location, body, truncated });
         response.destroy(); request.destroy();
       };
       const fail = (error: Error) => {
@@ -136,8 +166,11 @@ function untilAbort<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
 
 /** Availability evidence only, never a permanent exclusion decision. The
  * worker requires separated failed observations; access/network ambiguity is
- * deliberately inconclusive. Redirect/playlist hops share one deadline. */
-export async function probeStreamAvailability(rawUrl: string, options: StreamProbeOptions = {}): Promise<StreamAvailability> {
+ * deliberately inconclusive. Original/resolved URLs, redirects and every
+ * playlist alternative share ONE station-wide deadline and resource budget.
+ * A single positive sample wins; a negative requires all inspected branches
+ * to conclusively fail, with no unsupported or untested branch remaining. */
+export async function probeStreamAvailability(rawUrl: string | readonly string[], options: StreamProbeOptions = {}): Promise<StreamAvailability> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), bounded(options.timeoutMs, 8000));
   const cancel = () => controller.abort();
@@ -146,48 +179,109 @@ export async function probeStreamAvailability(rawUrl: string, options: StreamPro
   const maxBytes = bounded(options.maxBytes, 64 * 1024);
   const maxRequests = bounded(options.maxRequests, 4);
   let bytesRead = 0;
-  let nextUrl = rawUrl;
-  let segment = false;
-  const visited = new Set<string>();
-  const result = (outcome: StreamAvailability['outcome'], reason: string): StreamAvailability =>
-    ({ outcome, reason, checkedAt: new Date().toISOString(), bytesRead });
+  let requestCount = 0;
+  let failedCount = 0;
+  let lastFailure = '';
+  let uncertainReason = '';
+  const pending: { key: string; url: URL; segment: boolean; ancestors: ReadonlySet<string> }[] = [];
+  const scheduled = new Set<string>();
+  const failures = new Set<string>();
+  const branches = new Map<string, string[]>();
+  const enqueue = (raw: string, segment = false, ancestors: ReadonlySet<string> = new Set()) => {
+    if (typeof raw !== 'string') { uncertainReason ||= 'invalid-url'; return; }
+    if (raw.length > 8192) { uncertainReason ||= 'unsafe-url'; return; }
+    let url: URL;
+    try { url = new URL(raw); } catch { uncertainReason ||= 'invalid-url'; return; }
+    if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.href.length > 8192) {
+      uncertainReason ||= 'unsafe-url'; return;
+    }
+    url.hash = '';
+    if (ancestors.has(url.href)) { uncertainReason ||= 'redirect-or-playlist-cycle'; return; }
+    // The same address may be a live HLS segment in one branch but a direct
+    // stream in another. A missing rolling segment is never firm evidence.
+    const key = `${Number(segment)}:${url.href}`;
+    if (scheduled.has(key)) return key;
+    if (scheduled.size >= MAX_CANDIDATES) { uncertainReason ||= 'candidate-budget'; return; }
+    scheduled.add(key);
+    pending.push({ key, url, segment, ancestors });
+    return key;
+  };
+  const result = (outcome: StreamAvailability['outcome'], reason: string, verifiedContentType?: string): StreamAvailability =>
+    ({ outcome, reason, checkedAt: new Date().toISOString(), bytesRead,
+      ...(verifiedContentType ? { verifiedContentType } : {}) });
   try {
-    for (let requestCount = 0; requestCount < maxRequests; requestCount++) {
+    const input = typeof rawUrl === 'string' ? [rawUrl] : rawUrl;
+    const roots = input.slice(0, MAX_CANDIDATES).map(url => enqueue(url)).filter((key): key is string => Boolean(key));
+    if (input.length > MAX_CANDIDATES) uncertainReason ||= 'candidate-budget';
+    while (pending.length) {
       if (controller.signal.aborted) return result('inconclusive', 'deadline-or-cancelled');
+      if (requestCount >= maxRequests) return result('inconclusive', 'request-budget');
       if (maxBytes - bytesRead < 1024) return result('inconclusive', 'byte-budget');
-      let url: URL;
-      try { url = new URL(nextUrl); } catch { return result('inconclusive', 'invalid-url'); }
-      if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.href.length > 8192) {
-        return result('inconclusive', 'unsafe-url');
-      }
-      url.hash = '';
-      if (visited.has(url.href)) return result('inconclusive', 'redirect-or-playlist-cycle');
-      visited.add(url.href);
-      const guard = await untilAbort(validateOutboundUrl(url.href, { blockedPorts: INTERNAL_SERVICE_PORTS }), controller.signal);
-      if (!guard.ok) return result('inconclusive', 'url-validation-rejected');
-      const response = await requestPinned(guard, controller.signal, Math.min(MAX_PLAYLIST_BYTES, maxBytes - bytesRead));
-      bytesRead += response.body.length;
-      if ([301, 302, 303, 307, 308].includes(response.status)) {
-        if (!response.location) return result('inconclusive', 'redirect-without-location');
-        try { nextUrl = new URL(response.location, guard.url).href; }
-        catch { return result('inconclusive', 'invalid-redirect'); }
+      const { key, url, segment, ancestors } = pending.shift()!;
+      let response: ProbeResponse;
+      let guard: SafeUrlResult;
+      try {
+        const validated = await untilAbort(validateOutboundUrl(url.href, { blockedPorts: INTERNAL_SERVICE_PORTS }), controller.signal);
+        if (!validated.ok) { uncertainReason ||= 'url-validation-rejected'; continue; }
+        guard = validated;
+        requestCount++;
+        response = await requestPinned(guard, controller.signal, Math.min(MAX_PLAYLIST_BYTES, maxBytes - bytesRead));
+      } catch (error: any) {
+        bytesRead = Math.min(maxBytes, bytesRead + (Number(error?.sampleBytesRead) || 0));
+        if (controller.signal.aborted || error?.code === 'ABORT_ERR') return result('inconclusive', 'deadline-or-cancelled');
+        // The guard pins only one validated DNS answer. Another A/AAAA answer,
+        // network or player fallback can work despite this socket refusal.
+        uncertainReason ||= error?.code === 'ECONNREFUSED' ? 'connection-refused' : 'network-error';
         continue;
       }
-      if ([404, 410].includes(response.status)) return result(segment ? 'inconclusive' : 'failed', segment ? 'hls-segment-unavailable' : `http-${response.status}`);
-      if (![200, 206].includes(response.status)) return result('inconclusive', `http-${response.status}`);
-      if (response.truncated) return result('inconclusive', 'playlist-or-encoding-budget');
+      bytesRead += response.body.length;
+      const childAncestors = new Set([...ancestors, url.href]);
+      if ([301, 302, 303, 307, 308].includes(response.status)) {
+        if (!response.location) { uncertainReason ||= 'redirect-without-location'; continue; }
+        try {
+          const child = enqueue(new URL(response.location, guard.url).href, segment, childAncestors);
+          branches.set(key, child ? [child] : []);
+        }
+        catch { uncertainReason ||= 'invalid-redirect'; }
+        continue;
+      }
+      if ([404, 410].includes(response.status)) {
+        if (segment) uncertainReason ||= 'hls-segment-unavailable';
+        else { failedCount++; failures.add(key); lastFailure = `http-${response.status}`; }
+        continue;
+      }
+      if (![200, 206].includes(response.status)) { uncertainReason ||= `http-${response.status}`; continue; }
+      if (response.truncated) { uncertainReason ||= 'playlist-or-encoding-budget'; continue; }
       const playlist = parseStreamPlaylist(response.body.toString('utf8'), guard.url.href, response.contentType);
-      if (playlist?.kind === 'unsupported') return result('inconclusive', playlist.reason);
-      if (playlist?.kind === 'playlist') { nextUrl = playlist.nextUrl; segment = playlist.segment; continue; }
-      if (audioSample(response.body, response.contentType, segment)) return result('healthy', segment ? 'hls-segment-sample' : 'audio-sample');
-      return result('inconclusive', response.body.length < 1024 ? 'insufficient-sample' : 'non-audio-content');
+      if (playlist?.kind === 'unsupported') { uncertainReason ||= playlist.reason; continue; }
+      if (playlist?.kind === 'playlist') {
+        uncertainReason ||= playlist.inconclusiveReason || '';
+        const children = [playlist, ...(playlist.alternatives || [])]
+          .map(candidate => enqueue(candidate.nextUrl, candidate.segment, childAncestors))
+          .filter((child): child is string => Boolean(child));
+        branches.set(key, children);
+        continue;
+      }
+      if (audioSample(response.body, response.contentType, segment)) {
+        const contentType = response.contentType.length <= 256 && /^(audio\/[a-z0-9.+-]+|application\/(?:ogg|mp4)|video\/(?:mp2t|mp4))$/.test(response.contentType)
+          ? response.contentType : 'application/octet-stream';
+        return result('healthy', segment ? 'hls-segment-sample' : 'audio-sample', contentType);
+      }
+      uncertainReason ||= response.body.length < 1024 ? 'insufficient-sample' : 'non-audio-content';
     }
-    return result('inconclusive', 'request-budget');
-  } catch (error: any) {
-    bytesRead = Math.min(maxBytes, bytesRead + (Number(error?.sampleBytesRead) || 0));
-    if (controller.signal.aborted || error?.code === 'ABORT_ERR') return result('inconclusive', 'deadline-or-cancelled');
-    if (error?.code === 'ECONNREFUSED') return result('failed', 'connection-refused');
-    return result('inconclusive', 'network-error');
+    if (controller.signal.aborted) return result('inconclusive', 'deadline-or-cancelled');
+    if (uncertainReason || !failedCount) return result('inconclusive', uncertainReason || 'no-candidates');
+    // Deduplicated roots may converge on each other before either was visited.
+    // Walk their tiny dependency graph so a cycle cannot be mistaken for a
+    // fully failed branch just because some unrelated candidate returned 404.
+    const failedBranch = (key: string, ancestors: ReadonlySet<string> = new Set()): boolean => {
+      if (failures.has(key)) return true;
+      if (ancestors.has(key)) return false;
+      const children = branches.get(key);
+      return Boolean(children?.length && children.every(child => failedBranch(child, new Set([...ancestors, key]))));
+    };
+    if (!roots.every(root => failedBranch(root))) return result('inconclusive', 'redirect-or-playlist-cycle');
+    return result('failed', failedCount > 1 ? 'all-candidates-failed' : lastFailure);
   } finally {
     clearTimeout(timer);
     options.signal?.removeEventListener('abort', cancel);

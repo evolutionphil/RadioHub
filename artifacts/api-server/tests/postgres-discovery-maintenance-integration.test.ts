@@ -137,6 +137,7 @@ describe(
       ('a','uuid-a','Berlin Vibes','old-a','https://example.invalid/a','Germany','Berlin','rock',100,'MP3','German',true,'https://example.invalid/logo','{"internalOnly":"private"}'),
       ('b','uuid-b','Berlin and Munich',NULL,'https://example.invalid/b','Germany','Munich','pop,rock',80,'AAC','German',true,NULL,'{}'),
       ('c','uuid-c','Rural Radio',NULL,'https://example.invalid/c','Germany','Rural','rock',50,'MP3','German',false,NULL,'{}')`);
+      await pool.query("UPDATE stations SET is_list_visible=false WHERE id='c'");
       await pool.query(
         `INSERT INTO genres(id,name,slug,station_count) VALUES ('rock','rock','rock',10),('pop','pop','pop',6)`,
       );

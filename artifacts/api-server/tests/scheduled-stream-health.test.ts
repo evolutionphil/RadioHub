@@ -10,13 +10,13 @@ mock.module('../src/data/postgres-stream-health-store',{namedExports:{PostgresSt
   async complete(c:any,o:any){completions.push({c,o});return false;}
   async finishBatch(value:any,pause:boolean){summary={...value,pause};}
 }}});
-mock.module('../src/utils/station-stream-probe',{namedExports:{probeStreamAvailability:async(url:string)=>{
+mock.module('../src/utils/station-stream-probe',{namedExports:{probeStreamAvailability:async(urls:string[])=>{
   active++;maximum=Math.max(maximum,active);
   await new Promise(resolve=>setTimeout(resolve,2));active--;
-  return observations[Number(url)] || {outcome:'healthy',checkedAt:new Date().toISOString(),bytesRead:1024,reason:'fixture'};
+  return observations[Number(urls[0])] || {outcome:'healthy',checkedAt:new Date().toISOString(),bytesRead:1024,reason:'fixture'};
 }}});
 const {ScheduledStreamHealth}=await import('../src/services/scheduled-stream-health');
-beforeEach(()=>{candidates=Array.from({length:12},(_,id)=>({id:String(id),url:String(id)}));observations=[];completions=[];summary=null;active=0;maximum=0;claimed=0;waitingCount=0;});
+beforeEach(()=>{candidates=Array.from({length:12},(_,id)=>({id:String(id),url:String(id),urls:[String(id)]}));observations=[];completions=[];summary=null;active=0;maximum=0;claimed=0;waitingCount=0;});
 test('bounds active sockets to2 and does not overlap in-process cycles',async()=>{
   const service=new ScheduledStreamHealth();
   await Promise.all([service.runOnce(),service.runOnce()]);

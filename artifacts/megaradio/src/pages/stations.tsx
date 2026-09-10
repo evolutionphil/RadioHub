@@ -7,11 +7,10 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { Plus, RefreshCw, Users, Merge, Check, X, ChevronDown, ChevronUp, Trash2, Crown, Sparkles, AlertTriangle, Tag, Database } from "lucide-react";
 import StationTable from "@/components/stations/station-table";
+import AdminStationPagination from '@/components/stations/admin-station-pagination';
 import StationForm from "@/components/stations/station-form";
 import { saveAdminStationEdit } from '@/lib/admin-station-description';
 import Filters from "@/components/stations/filters";
-import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from "@/components/ui/pagination";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -23,6 +22,7 @@ import { Label } from "@/components/ui/label";
 // import { type StationWithCountry } from '@workspace/db-shared/schema';
 import { useDebounce } from "@/hooks/use-debounce";
 import { useGlobalPlayer } from "@/hooks/useGlobalPlayer";
+import { ADMIN_STATION_DEFAULTS } from '@/lib/admin-station-list';
 
 function TagsStatusBadge({ onClick }: { onClick: () => void }) {
   const { data } = useQuery({
@@ -76,7 +76,7 @@ function NeverCheckedTagsBadge({ onClick }: { onClick: () => void }) {
 
 export default function Stations() {
   const { toast } = useToast();
-  const { playStation, nextStation, previousStation } = useGlobalPlayer();
+  const { playStation, currentStation, isPlaying, isLoading: isPlayerLoading, pause } = useGlobalPlayer();
 
   // Restore job ID from localStorage on mount (keep 24-hour cache)
   useEffect(() => {
@@ -91,19 +91,7 @@ export default function Stations() {
     }
   }, []);
 
-  const [filters, setFilters] = useState<StationFilters>({
-    page: 1,
-    limit: 50, // Changed default from 25 to 50
-    search: '',
-    country: '',
-    language: '',
-    genre: '',
-    sortBy: 'favicon',
-    sortOrder: 'desc',
-    hasDescriptions: 'all',
-    tagsStatus: 'all',
-    hasLogo: 'all',
-  });
+  const [filters, setFilters] = useState<StationFilters>({ ...ADMIN_STATION_DEFAULTS });
   
   const [editingStation, setEditingStation] = useState<any | undefined>();
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -149,7 +137,7 @@ export default function Stations() {
     search: debouncedSearch,
   }), [filters, debouncedSearch]);
 
-  const { data: stationsData, isLoading, error, refetch } = useQuery({
+  const { data: stationsData, isLoading, isFetching, error, refetch } = useQuery({
     queryKey: showBlacklisted ? ['/api/admin/blacklisted-stations', finalFilters] : 
               showDuplicates ? ['/api/admin/stations/duplicates', finalFilters] : 
               ['/api/admin/stations', finalFilters],
@@ -162,7 +150,7 @@ export default function Stations() {
         if (finalFilters.limit) params.set('limit', finalFilters.limit.toString());
         
         const url = `/api/admin/blacklisted-stations${params.toString() ? '?' + params.toString() : ''}`;
-        return fetch(url).then(res => res.json());
+        return apiRequest('GET', url).then(res => res.json());
       } else if (showDuplicates) {
         // Fetching duplicate stations with filters
         // Pass filters as query parameters to the duplicates endpoint
@@ -173,14 +161,14 @@ export default function Stations() {
         if (finalFilters.genre) params.set('genre', finalFilters.genre);
         
         const url = `/api/admin/stations/duplicates${params.toString() ? '?' + params.toString() : ''}`;
-        return fetch(url).then(res => res.json());
+        return apiRequest('GET', url).then(res => res.json());
       } else {
         // Calling api.getAdminStations with filters
         return api.getAdminStations(finalFilters);
       }
     },
-    staleTime: 86400000, // 24 hours - radio stations don't change frequently
-    gcTime: 172800000,   // 48 hours - keep data in memory for 2 days
+    staleTime: 30_000,
+    gcTime: 300_000,
   });
 
   // Debug the query result
@@ -395,12 +383,11 @@ export default function Stations() {
   });
 
   // Poll for AI job status
-  const { data: aiJobStatus } = useQuery({
+  const { data: aiJobStatus, isLoading: aiJobLoading, error: aiJobError, refetch: refetchAiJob } = useQuery({
     queryKey: ['/api/admin/stations/description-job-status', bulkAiJobId],
     queryFn: async () => {
       if (!bulkAiJobId) return null;
-      const response = await fetch(`/api/admin/stations/description-job-status/${bulkAiJobId}`);
-      if (!response.ok) return null;
+      const response = await apiRequest('GET', `/api/admin/stations/description-job-status/${bulkAiJobId}`);
       return response.json();
     },
     enabled: !!bulkAiJobId,
@@ -565,8 +552,14 @@ export default function Stations() {
 
   // Handle AI generation start
   const handleStartBulkAi = () => {
+    if (!selectedLanguages.size || (!selectedStations.size && !filters.country)) {
+      toast({ title: 'Choose a scope and languages', description: 'Select at least one station or country and at least one translation language.', variant: 'destructive' });
+      return;
+    }
     const stationIds = selectedStations.size > 0 ? Array.from(selectedStations) : undefined;
     const countryFilter = selectedStations.size === 0 ? filters.country : undefined; // Use country only if no specific stations selected
+    const scope = stationIds ? `${stationIds.length} selected station(s)` : `all eligible stations in ${countryFilter}`;
+    if (!confirm(`Generate AI content for ${scope} in ${selectedLanguages.size} language(s)? Provider charges may apply. Search, health and other filters do not limit this job.`)) return;
     bulkAiMutation.mutate({
       filterByCountry: countryFilter || undefined,
       skipExisting: true,
@@ -752,7 +745,13 @@ export default function Stations() {
   };
 
   const handlePageChange = (page: number) => {
-    setFilters(prev => ({ ...prev, page }));
+    setFilters(prev => ({ ...prev, page: Math.max(1, page) }));
+  };
+
+  const handleViewChange = (view: 'stations' | 'duplicates' | 'blacklist') => {
+    setShowDuplicates(view === 'duplicates');
+    setShowBlacklisted(view === 'blacklist');
+    setFilters(prev => ({ ...prev, page: 1 }));
   };
 
   const handleAddStation = () => {
@@ -790,7 +789,12 @@ export default function Stations() {
   };
 
   const handleGenerateAiDescription = (station: any) => {
-    // Add the station to the selection and open the bulk AI dialog
+    if (aiJobStatus?.status === 'running') {
+      setShowAiDialog(true);
+      return;
+    }
+    // Open an explicit preflight; the previous dialog had no controls without a job ID.
+    setBulkAiJobId(null);
     setSelectedStations(new Set([station._id]));
     setShowAiDialog(true);
     setGeneratingStationName(station.name);
@@ -978,7 +982,11 @@ export default function Stations() {
   };
 
   const handlePlayStation = async (station: any) => {
-    // Use global player to actually start playback
+    if (currentStation?._id === station._id && isPlaying) {
+      pause();
+      return;
+    }
+    // One shared player owns playback; the table must not create a second Audio.
     const stationsArray = Array.isArray(stationsData?.stations) ? stationsData.stations : [];
     await playStation(station, stationsArray);
   };
@@ -1023,7 +1031,7 @@ export default function Stations() {
 
   // Handle merge selected duplicates
   const handleMergeDuplicates = (groupId: string, stations: any[]) => {
-    const selectedIds = selectedDuplicates[groupId] || [];
+    const selectedIds = (selectedDuplicates[groupId] || []).filter(id => stations.some(station => station._id === id));
     if (selectedIds.length < 2) {
       toast({
         title: "Selection Error",
@@ -1059,12 +1067,14 @@ export default function Stations() {
       genre: primaryStation.genre,
     };
 
-    mergeMutation.mutate({ primaryStationId, duplicateStationIds, mergeData });
+    if (confirm(`Merge ${selectedIds.length} stations into "${primaryStation.name}"? The primary record is kept; the other selected records will be merged.`)) {
+      mergeMutation.mutate({ primaryStationId, duplicateStationIds, mergeData });
+    }
   };
 
   // Handle delete selected duplicates
   const handleDeleteSelectedDuplicates = async (groupId: string, groupStations: any[]) => {
-    const selectedIds = selectedDuplicates[groupId] || [];
+    const selectedIds = (selectedDuplicates[groupId] || []).filter(id => groupStations.some(station => station._id === id));
     if (selectedIds.length === 0) {
       toast({
         title: "Selection Error",
@@ -1074,6 +1084,7 @@ export default function Stations() {
       return;
     }
 
+    if (!confirm(`Delete ${selectedIds.length} selected duplicate station(s)? Review the selection before continuing.`)) return;
     try {
       // SMART FAVICON COPYING: Find highest-voted station that's NOT being deleted
       const remainingStations = groupStations
@@ -1177,7 +1188,13 @@ export default function Stations() {
     }));
   };
 
-  const totalPages = Math.ceil((stationsData?.total || 0) / filters.limit!);
+  const totalPages = showBlacklisted ? Number(stationsData?.pagination?.totalPages || 0) : Math.ceil((stationsData?.total || 0) / filters.limit!);
+  useEffect(() => {
+    if (!isFetching && !error && !showDuplicates && stationsData) {
+      const lastPage = Math.max(1, totalPages);
+      if ((filters.page || 1) > lastPage) setFilters(prev => ({ ...prev, page: lastPage }));
+    }
+  }, [isFetching, error, showDuplicates, showBlacklisted, stationsData, totalPages, filters.page]);
 
   return (
     <div className="mx-auto w-full max-w-[1600px] px-4 py-5 sm:px-6 sm:py-6 lg:px-8 space-y-5 sm:space-y-6">
@@ -1199,13 +1216,32 @@ export default function Stations() {
       )}
       
       <Card>
-        <CardHeader>
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-center gap-3 flex-wrap">
-              <CardTitle className="text-lg sm:text-xl">Station Management</CardTitle>
-              {/* "stuck on empty (cooldown)" badge removed (2026-07-04):
-                  purely informational cooldown counter the admin can't act
-                  on — clicking it only filtered, nothing ever "fixed". */}
+        <CardHeader className="space-y-4">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground mb-1">Radio catalogue</p>
+              <CardTitle className="text-2xl tracking-tight">Stations</CardTitle>
+              <p className="mt-1 text-sm text-muted-foreground">Manage broadcasts, health checks and multilingual content.</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button type="button" variant="outline" onClick={() => refetch()} disabled={isFetching} aria-label="Refresh station list">
+                <RefreshCw className={`mr-2 h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />Refresh
+              </Button>
+              <Button onClick={handleAddStation}><Plus className="w-4 h-4 mr-2" />Add station</Button>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap gap-1 rounded-lg border border-border bg-muted/30 p-1" role="group" aria-label="Station view">
+              <Button type="button" size="sm" variant={!showDuplicates && !showBlacklisted ? 'default' : 'ghost'} aria-pressed={!showDuplicates && !showBlacklisted} onClick={() => handleViewChange('stations')}>Catalogue</Button>
+              <Button type="button" size="sm" variant={showDuplicates ? 'default' : 'ghost'} aria-pressed={showDuplicates} onClick={() => handleViewChange('duplicates')}><Users className="mr-2 h-4 w-4" />Duplicates</Button>
+              <Button type="button" size="sm" variant={showBlacklisted ? 'default' : 'ghost'} aria-pressed={showBlacklisted} onClick={() => handleViewChange('blacklist')}><Trash2 className="mr-2 h-4 w-4" />Deleted</Button>
+            </div>
+            <p className="text-sm tabular-nums text-muted-foreground" aria-live="polite">{isFetching ? 'Updating…' : showDuplicates ? `${stationsData?.duplicates?.length ?? 0} duplicate groups` : `${(stationsData?.total ?? stationsData?.pagination?.total ?? 0).toLocaleString()} matching stations`}</p>
+          </div>
+          <details className="group rounded-lg border border-border bg-muted/20 p-3" data-testid="station-maintenance-tools">
+            <summary className="cursor-pointer text-sm font-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4">Maintenance &amp; translation tools <span className="ml-1 font-normal text-muted-foreground">· optional bulk operations</span></summary>
+            <p className="mt-3 text-xs leading-relaxed text-muted-foreground">Select specific stations or a country before a bulk operation. AI generation may incur provider charges; selected filters do not necessarily limit every maintenance job.</p>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
               <NeverCheckedTagsBadge
                 onClick={() => {
                   setShowDuplicates(false);
@@ -1213,42 +1249,14 @@ export default function Stations() {
                   handleFilterChange('tagsStatus', 'never-checked');
                 }}
               />
-            </div>
-            <div className="mt-4 sm:mt-0 flex flex-col sm:flex-row gap-2 sm:gap-3">
-              <Button onClick={handleAddStation} className="w-full sm:w-auto">
-                <Plus className="w-4 h-4 mr-2" />
-                Add Station
-              </Button>
               <Button variant="outline" onClick={handleSync} className="w-full sm:w-auto">
                 <RefreshCw className="w-4 h-4 mr-2" />
                 Sync Now
               </Button>
               <Button 
-                variant="outline" 
-                onClick={() => {
-                  setShowDuplicates(!showDuplicates);
-                  setShowBlacklisted(false);
-                }}
-                className="w-full sm:w-auto"
-              >
-                <Users className="w-4 h-4 mr-2" />
-                {showDuplicates ? 'Show All' : 'Find Duplicates'}
-              </Button>
-              <Button 
-                variant="outline" 
-                onClick={() => {
-                  setShowBlacklisted(!showBlacklisted);
-                  setShowDuplicates(false);
-                }}
-                className="w-full sm:w-auto"
-              >
-                <Trash2 className="w-4 h-4 mr-2" />
-                {showBlacklisted ? 'Show All' : 'Deleted Stations'}
-              </Button>
-              <Button 
                 variant="outline"
                 onClick={handleStartBulkAi}
-                disabled={bulkAiMutation.isPending || aiJobStatus?.status === 'running' || (selectedStations.size === 0 && !filters.country)}
+                disabled={bulkAiMutation.isPending || aiJobStatus?.status === 'running' || !selectedLanguages.size || (selectedStations.size === 0 && !filters.country)}
                 className="w-full sm:w-auto bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white border-0"
                 data-testid="button-bulk-ai-generate"
                 title={selectedStations.size > 0 ? `Generate for ${selectedStations.size} selected stations` : filters.country ? `Generate for ${filters.country}` : 'Select a country or stations first'}
@@ -1450,7 +1458,6 @@ export default function Stations() {
                 </Button>
               )}
             </div>
-          </div>
 
           {/* Language Selector for AI Translation */}
           <div className="mt-4 pt-4 border-t border-gray-200">
@@ -1485,7 +1492,7 @@ export default function Stations() {
                     }
                     setSelectedLanguages(newLangs);
                   }}
-                  className={selectedLanguages.has(lang.code) ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white border-0' : ''}
+                  aria-pressed={selectedLanguages.has(lang.code)}
                   data-testid={`button-language-${lang.code}`}
                 >
                   {lang.name}
@@ -1497,15 +1504,14 @@ export default function Stations() {
               {selectedStations.size > 0 && (
                 <span>, {selectedStations.size} station{selectedStations.size !== 1 ? 's' : ''} selected</span>
               )}
-              {selectedLanguages.size > 0 && (
-                <span> (Cost: ~${((selectedStations.size > 0 ? selectedStations.size : stationsData?.total || 0) * (0.0004 + selectedLanguages.size * 0.0007)).toFixed(2)}) estimated for GPT-4o-mini)</span>
-              )}
+              <span> · Charges depend on the provider model, text length and actual job scope.</span>
             </p>
           </div>
+          </details>
         </CardHeader>
 
         {selectedStations.size > 0 && (
-          <div className="mx-6 mb-3 flex items-center justify-between rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm">
+          <div className="mx-4 sm:mx-6 mb-3 flex flex-wrap items-center justify-between gap-2 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm">
             <span className="text-blue-900">
               <strong>{selectedStations.size}</strong> station{selectedStations.size !== 1 ? 's' : ''} selected across all filters. You can change country/filters to add more — your selection is preserved.
             </span>
@@ -1522,6 +1528,7 @@ export default function Stations() {
         )}
 
         <Filters
+          mode={showBlacklisted ? 'blacklist' : showDuplicates ? 'duplicates' : 'stations'}
           search={filters.search || ''}
           country={filters.country || ''}
           language={filters.language || ''}
@@ -1529,6 +1536,8 @@ export default function Stations() {
           hasDescriptions={filters.hasDescriptions || 'all'}
           tagsStatus={filters.tagsStatus || 'all'}
           hasLogo={filters.hasLogo || 'all'}
+          healthStatus={filters.healthStatus || 'all'}
+          codec={filters.codec || ''}
           onSearchChange={(value) => handleFilterChange('search', value)}
           onCountryChange={(value) => handleFilterChange('country', value)}
           onLanguageChange={(value) => handleFilterChange('language', value)}
@@ -1536,6 +1545,9 @@ export default function Stations() {
           onHasDescriptionsChange={(value) => handleFilterChange('hasDescriptions', value)}
           onTagsStatusChange={(value) => handleFilterChange('tagsStatus', value)}
           onHasLogoChange={(value) => handleFilterChange('hasLogo', value)}
+          onHealthStatusChange={(value) => handleFilterChange('healthStatus', value)}
+          onCodecChange={(value) => handleFilterChange('codec', value)}
+          onReset={() => setFilters(prev => ({ ...ADMIN_STATION_DEFAULTS, limit: prev.limit, sortBy: prev.sortBy, sortOrder: prev.sortOrder }))}
         />
 
         <CardContent className="p-0">
@@ -1684,47 +1696,8 @@ export default function Stations() {
                     </Card>
                   ))}
 
-                  {/* Pagination for blacklisted stations */}
-                  {stationsData?.pagination && stationsData.pagination.totalPages > 1 && (
-                    <div className="flex justify-center mt-6">
-                      <Pagination>
-                        <PaginationContent>
-                          {stationsData.pagination.page > 1 && (
-                            <PaginationItem>
-                              <PaginationPrevious 
-                                onClick={() => handlePageChange(stationsData.pagination.page - 1)}
-                                className="cursor-pointer"
-                              />
-                            </PaginationItem>
-                          )}
-                          
-                          {Array.from({ length: Math.min(5, stationsData.pagination.totalPages) }, (_, i) => {
-                            const page = i + 1;
-                            return (
-                              <PaginationItem key={page}>
-                                <PaginationLink
-                                  onClick={() => handlePageChange(page)}
-                                  isActive={page === stationsData.pagination.page}
-                                  className="cursor-pointer"
-                                >
-                                  {page}
-                                </PaginationLink>
-                              </PaginationItem>
-                            );
-                          })}
-
-                          {stationsData.pagination.page < stationsData.pagination.totalPages && (
-                            <PaginationItem>
-                              <PaginationNext 
-                                onClick={() => handlePageChange(stationsData.pagination.page + 1)}
-                                className="cursor-pointer"
-                              />
-                            </PaginationItem>
-                          )}
-                        </PaginationContent>
-                      </Pagination>
-                    </div>
-                  )}
+                  <AdminStationPagination page={stationsData.pagination?.page || filters.page || 1} limit={filters.limit || 50} total={stationsData.pagination?.total || 0}
+                    onPageChange={handlePageChange} onLimitChange={value => handleFilterChange('limit', value)} />
                 </div>
               ) : (
                 <div className="text-center py-12">
@@ -1749,7 +1722,7 @@ export default function Stations() {
                   </div>
                   
                   {stationsData.duplicates.map((group: any, index: number) => {
-                    const groupId = `${index}-${group._id?.name || group._id}`;
+                    const groupId = group.stations.map((station: any) => station._id).sort().join(':');
                     const isExpanded = expandedGroups[groupId];
                     const selectedCount = selectedDuplicates[groupId]?.length || 0;
                     
@@ -1794,7 +1767,7 @@ export default function Stations() {
                                 {group.stations.map((station: any, stationIndex: number) => {
                                   const isSelected = selectedDuplicates[groupId]?.includes(station._id) || false;
                                   const isPrimary = selectedDuplicates[groupId]?.[0] === station._id;
-                                  const selectionOrder = selectedDuplicates[groupId]?.indexOf(station._id) || -1;
+                                  const selectionOrder = selectedDuplicates[groupId]?.indexOf(station._id) ?? -1;
                                   
                                   return (
                                     <div key={station._id} className={`flex items-start space-x-3 p-3 border rounded-lg ${isPrimary ? 'bg-blue-50 border-blue-200' : 'bg-gray-50'}`}>
@@ -1936,6 +1909,8 @@ export default function Stations() {
               onEdit={handleEditStation}
               onDelete={handleDeleteStation}
               onPlay={handlePlayStation}
+              playingStationId={isPlaying ? currentStation?._id : undefined}
+              loadingStationId={isPlayerLoading ? currentStation?._id : undefined}
               onGenerateAi={handleGenerateAiDescription}
               onTranslate={handleTranslateDescriptions}
               onRecheckTags={handleRecheckStationTags}
@@ -1950,113 +1925,8 @@ export default function Stations() {
           )}
         </CardContent>
 
-        {/* Pagination Controls */}
-        <div className="bg-white px-3 sm:px-6 py-3 border-t border-gray-200">
-          {/* Page Size Selector */}
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-gray-700">Show:</span>
-              <Select
-                value={filters.limit?.toString()}
-                onValueChange={(value) => handleFilterChange('limit' as keyof StationFilters, value)}
-              >
-                <SelectTrigger className="w-20">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="10">10</SelectItem>
-                  <SelectItem value="20">20</SelectItem>
-                  <SelectItem value="50">50</SelectItem>
-                  <SelectItem value="100">100</SelectItem>
-                  <SelectItem value="200">200</SelectItem>
-                  <SelectItem value="1000">1000</SelectItem>
-                  <SelectItem value="2000">2000</SelectItem>
-                  <SelectItem value="5000">5000</SelectItem>
-                </SelectContent>
-              </Select>
-              <span className="text-sm text-gray-700">per page</span>
-            </div>
-            <div className="text-sm text-gray-700">
-              Total: <span className="font-medium">{stationsData?.total || 0}</span> stations
-            </div>
-          </div>
-
-          {/* Pagination */}
-          {totalPages > 1 && (
-            <div className="flex items-center justify-between">
-              <div className="flex-1 flex justify-between sm:hidden">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handlePageChange(Math.max(1, filters.page! - 1))}
-                  disabled={filters.page === 1}
-                >
-                  Previous
-                </Button>
-                <span className="text-sm text-gray-500 self-center">
-                  Page {filters.page} of {totalPages}
-                </span>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handlePageChange(Math.min(totalPages, filters.page! + 1))}
-                  disabled={filters.page === totalPages}
-                >
-                  Next
-                </Button>
-              </div>
-              <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
-                <div>
-                  <p className="text-sm text-gray-700">
-                    Showing{' '}
-                    <span className="font-medium">
-                      {((filters.page! - 1) * filters.limit!) + 1}
-                    </span>{' '}
-                    to{' '}
-                    <span className="font-medium">
-                      {Math.min(filters.page! * filters.limit!, stationsData?.total || 0)}
-                    </span>{' '}
-                    of{' '}
-                    <span className="font-medium">{stationsData?.total || 0}</span>{' '}
-                    results
-                  </p>
-                </div>
-                <Pagination>
-                  <PaginationContent>
-                    <PaginationItem>
-                      <PaginationPrevious
-                        onClick={() => handlePageChange(Math.max(1, filters.page! - 1))}
-                        className={filters.page === 1 ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
-                      />
-                    </PaginationItem>
-                    
-                    {[...Array(Math.min(5, totalPages))].map((_, i) => {
-                      const pageNum = i + 1;
-                      return (
-                        <PaginationItem key={pageNum}>
-                          <PaginationLink
-                            onClick={() => handlePageChange(pageNum)}
-                            isActive={filters.page === pageNum}
-                            className="cursor-pointer"
-                          >
-                            {pageNum}
-                          </PaginationLink>
-                        </PaginationItem>
-                      );
-                    })}
-                    
-                    <PaginationItem>
-                      <PaginationNext
-                        onClick={() => handlePageChange(Math.min(totalPages, filters.page! + 1))}
-                        className={filters.page === totalPages ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
-                      />
-                    </PaginationItem>
-                  </PaginationContent>
-                </Pagination>
-              </div>
-            </div>
-          )}
-        </div>
+        {!showDuplicates && !showBlacklisted && !error && <AdminStationPagination page={filters.page || 1} limit={filters.limit || 50} total={stationsData?.total || 0}
+          onPageChange={handlePageChange} onLimitChange={value => handleFilterChange('limit', value)} />}
       </Card>
 
       {/* Station Form Modal */}
@@ -2149,7 +2019,7 @@ export default function Stations() {
               AI Description Generation
             </DialogTitle>
             <DialogDescription>
-              {aiJobStatus?.status === 'completed' 
+              {!bulkAiJobId ? 'Choose languages and review the scope before starting.' : aiJobStatus?.status === 'completed'
                 ? 'AI generation completed successfully!'
                 : aiJobStatus?.status === 'failed'
                 ? 'AI generation failed'
@@ -2158,6 +2028,18 @@ export default function Stations() {
           </DialogHeader>
           
           <div className="space-y-4">
+            {!bulkAiJobId && <div className="space-y-4">
+              <p className="text-sm">Prepare content for <strong>{generatingStationName || `${selectedStations.size} selected station(s)`}</strong>. No generation has started.</p>
+              <fieldset><legend className="mb-2 text-sm font-medium">Translation languages</legend><div className="grid grid-cols-4 gap-2">
+                {['en', 'es', 'fr', 'de', 'pt', 'it', 'ru', 'ar', 'zh', 'tr', 'ja', 'ko', 'hi', 'he'].map(language => <label key={language} className="flex items-center gap-2 rounded border border-border px-2 py-2 text-xs uppercase">
+                  <Checkbox checked={selectedLanguages.has(language)} onCheckedChange={checked => setSelectedLanguages(previous => { const next = new Set(previous); if (checked === true) next.add(language); else next.delete(language); return next; })} />{language}
+                </label>)}
+              </div></fieldset>
+              <p className="text-xs text-muted-foreground">Existing content is preserved by the skip-existing job policy. Provider charges may apply.</p>
+              <Button type="button" className="w-full" disabled={!selectedLanguages.size || !selectedStations.size || bulkAiMutation.isPending} onClick={handleStartBulkAi}>{bulkAiMutation.isPending ? 'Starting…' : 'Review and start generation'}</Button>
+            </div>}
+            {bulkAiJobId && aiJobLoading && <p role="status" className="text-sm text-muted-foreground">Loading job status…</p>}
+            {bulkAiJobId && aiJobError && <div className="space-y-3"><p role="alert" className="text-sm text-destructive">Job status could not load. No new job has been started.</p><Button variant="outline" onClick={() => refetchAiJob()}>Retry status</Button><Button variant="ghost" onClick={() => { setBulkAiJobId(null); setShowAiDialog(false); }}>Dismiss saved job</Button></div>}
             {aiJobStatus && (
               <>
                 <div>
@@ -2168,7 +2050,7 @@ export default function Stations() {
                     </span>
                   </div>
                   <Progress 
-                    value={(aiJobStatus.processed / aiJobStatus.total) * 100} 
+                    value={aiJobStatus.total > 0 ? Math.min(100, (aiJobStatus.processed / aiJobStatus.total) * 100) : 0}
                     className="h-2"
                   />
                 </div>

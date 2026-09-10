@@ -29,6 +29,7 @@ interface LeanStationCard {
   homepage?: string;
   bitrate?: number;
   lastCheckOk?: boolean;
+  isListVisible?: boolean;
   lastCheckOkTime?: Date;
   lastCheckTime?: Date;
   noIndex?: boolean;
@@ -713,7 +714,7 @@ export class SeoRenderer {
           const topStations = await withSignal<LeanStationCard[]>(
             pgSeoCatalog().find({
               tags: { $regex: escapedTerm },
-              lastCheckOk: true,
+              isListVisible: true,
               slug: { $exists: true, $ne: '' },
               noIndex: { $ne: true },
               votes: { $gt: 0 },
@@ -725,7 +726,7 @@ export class SeoRenderer {
           // BOTH meta+full descriptions per language — too restrictive for our image-grid surface
           // where the station's own SSR page already enforces full language gate).
           additionalData.popularStations = topStations
-            .filter((s) => s.lastCheckOk === true && s.noIndex !== true && !isJunkStation(s))
+            .filter((s) => s.isListVisible !== false && s.noIndex !== true && !isJunkStation(s))
             .slice(0, 12);
 
           // ---- Genre cross-link fetch (architect P1: B2) -----------------
@@ -830,16 +831,16 @@ export class SeoRenderer {
             // Count the indexed range before any OFFSET. A manufactured huge
             // page must not force a full range scan, and real page51 must not
             // silently reuse page50 just because of the old SSR clamp.
-            const total = await pgSeoCatalog().count({ slug: { $gte: gte, $lt: lt }, lastCheckOk: true, noIndex: { $ne: true } });
+            const total = await pgSeoCatalog().count({ slug: { $gte: gte, $lt: lt }, isListVisible: true, noIndex: { $ne: true } });
             if (page > Math.max(1, Math.ceil(total / PAGE_SIZE))) return { docs: [], total };
             const docs = await pgSeoCatalog().find(
-              { slug: { $gte: gte, $lt: lt }, lastCheckOk: true, noIndex: { $ne: true } }, { sort: { slug: 1 }, offset: (page - 1) * PAGE_SIZE, limit: PAGE_SIZE });
+              { slug: { $gte: gte, $lt: lt }, isListVisible: true, noIndex: { $ne: true } }, { sort: { slug: 1 }, offset: (page - 1) * PAGE_SIZE, limit: PAGE_SIZE });
             return { docs, total };
           },
           { ttl: 60 },
         );
         const catalog = ((azData?.docs as any[]) || [])
-          .filter((s: any) => s && s.slug && s.lastCheckOk === true && s.noIndex !== true && !isJunkStation(s));
+          .filter((s: any) => s && s.slug && s.isListVisible !== false && s.noIndex !== true && !isJunkStation(s));
         additionalData.catalogStations = catalog;
         // Mirror the hub: expose as popularStations too so the existing
         // ItemList + CollectionPage JSON-LD path emits structured data.
@@ -869,7 +870,7 @@ export class SeoRenderer {
         // points at a 410/noindex station (full per-language gate is overkill
         // here — Universal-14 stations are indexable in every one of the 14).
         const catalog = (result?.stations || [])
-          .filter((s: any) => s && s.slug && s.lastCheckOk === true && s.noIndex !== true && !isJunkStation(s));
+          .filter((s: any) => s && s.slug && s.isListVisible !== false && s.noIndex !== true && !isJunkStation(s));
         additionalData.catalogStations = catalog;
         // Re-audit fix (HIGH): also expose the catalog as `popularStations` so
         // the existing ItemList + CollectionPage JSON-LD path (which keys off
@@ -992,7 +993,7 @@ export class SeoRenderer {
             const topStations = await withSignal<LeanStationCard[]>(
               pgSeoCatalog().find({
                 country: countryName,
-                lastCheckOk: true,
+                isListVisible: true,
                 slug: { $exists: true, $ne: '' },
                 noIndex: { $ne: true },
                 votes: { $gt: 0 },
@@ -1001,7 +1002,7 @@ export class SeoRenderer {
             );
             // DALGA 2 W2.REVIEW P2: Junk gate via isJunkStation + noIndex (see W2.1 comment).
             const indexableStations = topStations.filter((s) =>
-              s.lastCheckOk === true && s.noIndex !== true && !isJunkStation(s)
+              s.isListVisible !== false && s.noIndex !== true && !isJunkStation(s)
             );
             additionalData.popularStations = indexableStations.slice(0, 12);
             // Pull lowercase ISO countryCode from first matching station for flagcdn.com
@@ -1025,7 +1026,7 @@ export class SeoRenderer {
                 countryName, page, CATALOG_PAGE_SIZE,
               );
               additionalData.catalogStations = (countryCatalog?.stations || [])
-                .filter((s: any) => s && s.slug && s.lastCheckOk === true && s.noIndex !== true && !isJunkStation(s));
+                .filter((s: any) => s && s.slug && s.isListVisible !== false && s.noIndex !== true && !isJunkStation(s));
               additionalData.catalogPage = page;
               additionalData.catalogTotalPages = countryCatalog?.totalPages || 1;
               if (isMissingSeoCatalogPage(page, additionalData.catalogTotalPages, additionalData.catalogStations)) additionalData.httpNotFound = true;
@@ -1158,7 +1159,7 @@ export class SeoRenderer {
         const popularStations = await withSignal<LeanStationCard[]>(
           pgSeoCatalog().find({
             votes: { $gt: 0 },
-            lastCheckOk: true,
+            isListVisible: true,
             slug: { $exists: true, $ne: '' },
             noIndex: { $ne: true },
           }, { sort: { votes: -1 }, limit: 24 }),
@@ -1167,7 +1168,7 @@ export class SeoRenderer {
         // Apply the junk-station gate (same as genre/region SSR surfaces) so the
         // homepage never internally links to stations that resolve to 410 Gone.
         additionalData.popularStations = popularStations
-          .filter((s) => s.lastCheckOk === true && s.noIndex !== true && !isJunkStation(s))
+          .filter((s) => s.isListVisible !== false && s.noIndex !== true && !isJunkStation(s))
           .slice(0, 10);
       } catch (error: any) {
         if (error?.name === 'AbortError' || signal?.aborted) throw error;
@@ -1417,7 +1418,7 @@ export class SeoRenderer {
 
         const baseFilter: any = {
           noIndex: { $ne: true },
-          lastCheckOk: true,
+          isListVisible: true,
           $and: [
             { $or: [{ isJunk: { $exists: false } }, { isJunk: { $ne: true } }] },
           ],
@@ -1516,7 +1517,7 @@ export class SeoRenderer {
         const dedupe = (arr: any[], cap: number) => {
           const out: any[] = [];
           for (const s of arr) {
-            if (s?.lastCheckOk !== true) continue;
+            if (s?.isListVisible === false) continue;
             const key = String(s?._id || s?.slug || '');
             if (!key || seen.has(key)) continue;
             seen.add(key);
@@ -2414,7 +2415,7 @@ export class SeoRenderer {
         content = `
           <main>
             <h1>${this.escapeHtml(h1Text)}</h1>
-            ${stationData?.lastCheckOk === false ? `<p id="station-stream-unavailable" role="status">${this.escapeHtml(getStationStreamUnavailableNotice(language))}</p>` : ''}
+            ${stationData?.isListVisible === false ? `<p id="station-stream-unavailable" role="status">${this.escapeHtml(getStationStreamUnavailableNotice(language))}</p>` : ''}
             ${stationData ? `
               <div class="station-info">
                 ${(() => {

@@ -53,7 +53,7 @@ describe('Native PostgreSQL translation admin, genre merge and favorites', {skip
   };
   it('public provider-style lists use native healthy identity and retain numeric legacy health/click aliases', async()=>{
     const good=await station('Provider Healthy',{countryCode:'DE',lastCheckOk:true,clickCount:100001,votes:100001});
-    const bad=await station('Provider Offline',{lastCheckOk:false,clickCount:100002,votes:100002});
+    const bad=await station('Confirmed Offline',{lastCheckOk:false,isListVisible:false,clickCount:100002,votes:100002});
     for(const path of ['top-clicked','top-voted']) {
       const response=await fetch(`${base}/api/radio-browser/${path}?limit=1`);
       assert.equal(response.status,200);const body=await response.json() as any;

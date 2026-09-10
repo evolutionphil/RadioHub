@@ -52,7 +52,7 @@ export class PrecomputedPopularGlobalService {
       // Featured global pool — small (~hundreds), one cheap aggregate.
       let featured: any[] = [];
       try {
-        featured = await pgCatalog().find({ lastCheckOk: true, isFeatured: true, showInGlobalPopular: true, noIndex: { $ne: true }, slug: { $exists: true, $ne: '' } }, { sort: { votes: -1, clickCount: -1 }, limit: maxLimit * 4, fields: POPULAR_RANK_FIELDS });
+        featured = await pgCatalog().find({ isListVisible: true, isFeatured: true, showInGlobalPopular: true, noIndex: { $ne: true }, slug: { $exists: true, $ne: '' } }, { sort: { votes: -1, clickCount: -1 }, limit: maxLimit * 4, fields: POPULAR_RANK_FIELDS });
       } catch (err: any) {
         logger.warn(`[popular-global] featured aggregate failed: ${err?.message || 'unknown'}`);
       }
@@ -60,7 +60,7 @@ export class PrecomputedPopularGlobalService {
       // Preserve the existing country-key normalization and iteration order.
       let countries: string[] = [];
       try {
-        const raw = (await pgCatalog().groupCount('country', { lastCheckOk: true })).map(row => row._id);
+        const raw = (await pgCatalog().groupCount('country', { isListVisible: true })).map(row => row._id);
         countries = raw
           .filter((c: any) => c && typeof c === 'string' && c.trim().length > 0)
           .map((c: any) => c.trim());
@@ -83,7 +83,7 @@ export class PrecomputedPopularGlobalService {
       // these bounded winners need their full response fields/descriptions.
       const ranked = trimPool([...featured, ...pool], targetPoolSize);
       const hydrated = ranked.length ? await pgCatalog().find(
-        { _id: { $in: [...new Set(ranked.map(s => s._id))] }, lastCheckOk: true },
+        { _id: { $in: [...new Set(ranked.map(s => s._id))] }, isListVisible: true },
         { fields: Object.keys(POPULAR_PROJECTION), limit: ranked.length },
       ) : [];
       const byId = new Map(hydrated.map(station => [station._id, station]));

@@ -726,8 +726,8 @@ export function GlobalPlayerProvider({ children }: { children: ReactNode }) {
 
   // VLC-LIKE APPROACH: Resolve playlists and try candidates until one works
   const playStation = async (station: Station, pageStations?: Station[]) => {
-    // Reject known failed snapshots before touching playback/history or making requests.
-    if (isExplicitlyFailedStation(station)) return;
+    // Health controls discovery lists, not explicit playback attempts. A user
+    // opening a detail URL (or an admin reviewing it) can always try the stream.
     try {
       logger.log('🎯 VLC-LIKE APPROACH: Resolving stream for', station.name);
       

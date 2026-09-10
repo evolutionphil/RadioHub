@@ -22,6 +22,9 @@ describe('durable bounded stream health without station deletion', {skip:!connec
       source jsonb DEFAULT '{"preserved":"article","lastCheckOkTime":"2025-01-01"}',updated_at timestamptz DEFAULT '2025-01-01');
       CREATE TABLE user_favorites(user_id text,station_id text REFERENCES stations(id));`);
     await pool.query(await readFile(new URL('../../../lib/db/migrations/0028_station_stream_health.sql',import.meta.url),'utf8'));
+    // The production migration's country/votes index is irrelevant to this narrow fixture.
+    await pool.query(`ALTER TABLE stations ADD COLUMN country text; ALTER TABLE stations ADD COLUMN votes integer DEFAULT 0`);
+    await pool.query(await readFile(new URL('../../../lib/db/migrations/0029_station_visibility_evidence.sql',import.meta.url),'utf8'));
     store=new PostgresStreamHealthStore(pool);
   });
   beforeEach(async()=>{
@@ -39,12 +42,12 @@ describe('durable bounded stream health without station deletion', {skip:!connec
     assert.equal((await row()).last_check_ok,true);
     candidate=await due(later(15));
     assert.equal(await store.complete(candidate,result(later(15),'failed'),later(15)),true);
-    const hidden=await row();assert.equal(hidden.last_check_ok,false);assert.equal(hidden.no_index,true);
+    const hidden=await row();assert.equal(hidden.is_list_visible,false);assert.equal(hidden.last_check_ok,true);assert.equal(hidden.no_index,true);
     assert.equal(hidden.source.preserved,'article');assert.deepEqual(hidden.updated_at,original.updated_at);
     assert.equal((await pool.query('SELECT count(*)::int n FROM user_favorites')).rows[0].n,1);
     candidate=await due(later(30));
     assert.equal(await store.complete(candidate,result(later(30),'healthy'),later(30)),true);
-    assert.equal((await row()).last_check_ok,true);assert.equal((await row()).no_index,true);
+    assert.equal((await row()).is_list_visible,true);assert.equal((await row()).last_check_ok,true);assert.equal((await row()).no_index,true);
   });
   it('shares batch quota between replicas and restarts, excludes active leases, caps12',async()=>{
     await pool.query(`INSERT INTO stations(id,url,last_check_ok) SELECT 'station-'||n,'https://example.invalid/'||n,true FROM generate_series(1,30) n`);
@@ -58,6 +61,58 @@ describe('durable bounded stream health without station deletion', {skip:!connec
     candidate=await due(later(15));await store.complete(candidate,result(later(15),'inconclusive'),later(15));
     candidate=await due(later(30));await store.complete(candidate,result(later(30),'failed'),later(30));
     assert.equal((await row()).last_check_ok,true);
+  });
+  it('historical provider false is visible and local recovery does not fabricate provider success',async()=>{
+    await pool.query("UPDATE stations SET last_check_ok=false");
+    assert.equal((await row()).is_list_visible,true);
+    const candidate=(await store.claim(start))[0];
+    await store.complete(candidate,result(start,'healthy'),start);
+    const saved=await row();assert.equal(saved.last_check_ok,false);assert.equal(saved.is_list_visible,true);
+    assert.equal(saved.availability_outcome,'healthy');
+  });
+  it('checks raw and resolved together and fences a changed fallback URL',async()=>{
+    await pool.query("UPDATE stations SET url_resolved='https://example.invalid/resolved'");
+    const candidate=(await store.claim(start))[0];
+    assert.deepEqual(candidate.urls,['https://example.invalid/stream','https://example.invalid/resolved']);
+    await pool.query("UPDATE stations SET url_resolved='https://example.invalid/new-resolved'");
+    await store.complete(candidate,result(start,'failed'),start);
+    assert.equal((await pool.query('SELECT failure_count FROM station_stream_health')).rows[0].failure_count,0);
+  });
+  it('uncertainty releases a confirmed exclusion without changing provider flags',async()=>{
+    let candidate=(await store.claim(start))[0];await store.complete(candidate,result(start,'failed'),start);
+    candidate=await due(later(15));await store.complete(candidate,result(later(15),'failed'),later(15));
+    assert.equal((await row()).is_list_visible,false);
+    candidate=await due(later(30));await store.complete(candidate,result(later(30),'inconclusive'),later(30));
+    assert.equal((await row()).is_list_visible,true);assert.equal((await row()).last_check_ok,true);
+  });
+  it('a failure older than24h cannot combine with a new failure to hide',async()=>{
+    let candidate=(await store.claim(start))[0];await store.complete(candidate,result(start,'failed'),start);
+    candidate=await due(later(1441));await store.complete(candidate,result(later(1441),'failed'),later(1441));
+    assert.equal((await row()).is_list_visible,true);
+  });
+  it('concurrent local healthy evidence cannot be overwritten by an older failed completion with unchanged provider flags',async()=>{
+    let candidate=(await store.claim(start))[0];await store.complete(candidate,result(start,'failed'),start);
+    candidate=await due(later(15));
+    await pool.query("UPDATE stations SET availability_outcome='healthy',availability_checked_at=$1,is_list_visible=true",[later(15)]);
+    await store.complete(candidate,result(later(15),'failed'),later(15));
+    const current=await row();assert.equal(current.is_list_visible,true);assert.equal(current.availability_outcome,'healthy');
+    candidate=await due(later(30));await store.complete(candidate,result(later(30),'failed'),later(30));
+    assert.equal((await row()).is_list_visible,true,'the new failure starts a fresh chain');
+  });
+  it('a local recovery between completed observations resets their failure chain',async()=>{
+    let candidate=(await store.claim(start))[0];await store.complete(candidate,result(start,'failed'),start);
+    await pool.query("UPDATE stations SET availability_outcome='healthy',availability_checked_at=$1,is_list_visible=true",[later(5)]);
+    candidate=await due(later(15));await store.complete(candidate,result(later(15),'failed'),later(15));
+    assert.equal((await row()).is_list_visible,true);
+  });
+  it('expired exclusions fail open in SQL without running any worker; manual blocks remain',async()=>{
+    const {stationListVisibleSql}=await import('../src/utils/station-visibility');
+    await pool.query("UPDATE stations SET is_list_visible=false,visibility_expires_at=now()-interval '1 second'");
+    assert.equal((await pool.query(`SELECT count(*)::int n FROM stations s WHERE ${stationListVisibleSql()}`)).rows[0].n,1);
+    await pool.query("UPDATE stations SET visibility_expires_at=NULL,manual_edit_fields='{\"isListVisible\":true}'");
+    assert.equal((await pool.query(`SELECT count(*)::int n FROM stations s WHERE ${stationListVisibleSql()}`)).rows[0].n,0);
+    const candidate=(await store.claim(start))[0];await store.complete(candidate,result(start,'healthy'),start);
+    assert.equal((await row()).is_list_visible,false);
   });
   for(const change of ['url','health','manual','token']) it(`fences concurrent ${change} edits`,async()=>{
     const candidate=(await store.claim(start))[0];

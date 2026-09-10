@@ -34,7 +34,7 @@ export class RecommendationEngine {
 
   static async getDedicatedRecommendations(country?: string, genre?: string, limit = 10): Promise<any[]> {
     const escapedGenre = genre?.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    return pgCatalog().find({ lastCheckOk: true, ...(country ? { country } : {}),
+    return pgCatalog().find({ isListVisible: true, ...(country ? { country } : {}),
       ...(escapedGenre ? { tags: { $regex: new RegExp(escapedGenre, 'i') } } : {}) },
     { sort: { votes: -1, clickCount: -1 }, limit: Math.max(1, Math.min(100, Math.trunc(limit) || 10)) });
   }
@@ -140,7 +140,7 @@ export class RecommendationEngine {
     // Build query based on content similarity
     const query: any = {
       _id: { $ne: sourceStationId },
-      lastCheckOk: true
+      isListVisible: true
     };
 
     // Prioritize user's preferred genres if available
@@ -193,7 +193,7 @@ export class RecommendationEngine {
   ): Promise<RecommendationResult[]> {
     const query: any = {
       _id: { $ne: sourceStation._id },
-      lastCheckOk: true
+      isListVisible: true
     };
 
     // Use user preferences if available
@@ -523,7 +523,7 @@ export class RecommendationEngine {
     const fallbackStations = await pgCatalog().find({
       _id: { $ne: sourceStationId },
       country,
-      lastCheckOk: true
+      isListVisible: true
     }, { sort: { votes: -1, clickCount: -1 }, limit });
 
     return fallbackStations.map((station, index) => ({
@@ -579,7 +579,7 @@ export class RecommendationEngine {
         const tagMatchedStations = await pgCatalog().find({
           _id: { $nin: Array.from(excludeSet) },
           country: stationCountry, // STRICT COUNTRY LOCK
-          lastCheckOk: true,
+          isListVisible: true,
           $or: tagPatterns.map(pattern => ({ tags: pattern }))
         }, { sort: { votes: -1 }, limit: limit * 3, fields: ['_id', 'name', 'slug', 'favicon', 'country', 'countryCode', 'tags', 'votes', 'clickCount', 'bitrate', 'codec', 'logoAssets', 'localImagePath', 'url', 'urlResolved', 'lastCheckOk'] });
         
@@ -606,7 +606,7 @@ export class RecommendationEngine {
         const highVoteStations = await pgCatalog().find({
           _id: { $nin: Array.from(excludeSet) },
           country: stationCountry, // STRICT COUNTRY LOCK
-          lastCheckOk: true,
+          isListVisible: true,
           votes: { $gte: 5000 } // Discovery threshold
         }, { limit: 50, fields: ['_id', 'name', 'slug', 'favicon', 'country', 'countryCode', 'tags', 'votes', 'clickCount', 'bitrate', 'codec', 'logoAssets', 'localImagePath', 'url', 'urlResolved', 'lastCheckOk'] });
         
@@ -627,7 +627,7 @@ export class RecommendationEngine {
         const countryStations = await pgCatalog().find({
           _id: { $nin: Array.from(excludeSet) },
           country: stationCountry, // STRICT COUNTRY LOCK
-          lastCheckOk: true
+          isListVisible: true
         }, { sort: { votes: -1 }, limit: needed * 2, fields: ['_id', 'name', 'slug', 'favicon', 'country', 'countryCode', 'tags', 'votes', 'clickCount', 'bitrate', 'codec', 'logoAssets', 'localImagePath', 'url', 'urlResolved', 'lastCheckOk'] });
         
         pool.push(...countryStations.filter(s => !existingIds.has(s._id.toString())).slice(0, needed));

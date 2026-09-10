@@ -30,8 +30,8 @@ before(async () => {
     CREATE TABLE subscriptions(user_id text PRIMARY KEY);
     CREATE TABLE auth_tokens(id text PRIMARY KEY,user_id text,is_revoked boolean DEFAULT false);
     CREATE TABLE user_sessions(sid text PRIMARY KEY,sess jsonb);
-    CREATE TABLE stations(id text PRIMARY KEY,last_check_ok boolean NOT NULL);
-    INSERT INTO stations VALUES('private-history',true);`);
+    CREATE TABLE stations(id text PRIMARY KEY,last_check_ok boolean NOT NULL,is_list_visible boolean NOT NULL DEFAULT true,visibility_expires_at timestamptz);
+    INSERT INTO stations(id,last_check_ok) VALUES('private-history',true);`);
   mock.module('../src/postgres-runtime', { namedExports: { getPostgresPool: () => pool } });
   users = await import('../src/data/postgres-user-store');
   engagement = await import('../src/data/postgres-engagement-store');

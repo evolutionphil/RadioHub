@@ -205,7 +205,7 @@ describe('Native PostgreSQL public catalog', { skip: !process.env.PG_TEST_DATABA
         isFeatured: true, showInGlobalPopular: true, descriptions: article, extraArchiveField: 'full-only' }),
       station('card-b', { name: 'Radio Wien B', state: 'Wien', tags: 'jazz', votes: 10, lastCheckOk: true }),
       station('wrong-city', { state: 'Berlin', tags: 'jazz', votes: 999, lastCheckOk: true }),
-      station('broken', { state: 'Wien', tags: 'jazz', votes: 999, lastCheckOk: false }),
+      station('broken', { state: 'Wien', tags: 'jazz', votes: 999, lastCheckOk: false, isListVisible: false }),
     ]);
     const path = '/api/stations?country=Germany&state=Wien&tags=jazz&excludeBroken=true&sort=votes&limit=1&page=1';
     const request = async (suffix = '') => {

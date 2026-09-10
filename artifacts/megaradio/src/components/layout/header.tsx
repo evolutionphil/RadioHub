@@ -9,7 +9,7 @@ interface HeaderProps {
 }
 
 export default function Header({ onMobileMenuToggle }: HeaderProps) {
-  const { data: stats } = useQuery({
+  const { data: stats, isError, isLoading } = useQuery({
     queryKey: ['/api/dashboard/stats'],
     queryFn: () => api.getDashboardStats(),
     refetchInterval: 30000, // Refresh every 30 seconds
@@ -18,6 +18,7 @@ export default function Header({ onMobileMenuToggle }: HeaderProps) {
   const formatLastSync = (lastSync: string | Date | null) => {
     if (!lastSync) return "Never";
     const date = new Date(lastSync);
+    if (!Number.isFinite(date.getTime())) return "Unknown";
     const now = new Date();
     const diff = now.getTime() - date.getTime();
     const hours = Math.floor(diff / (1000 * 60 * 60));
@@ -63,11 +64,12 @@ export default function Header({ onMobileMenuToggle }: HeaderProps) {
               <span className="hidden sm:inline">
                 {stats?.syncStatus.isRunning 
                   ? 'Sync in progress...' 
-                  : `Last sync: ${formatLastSync(stats?.syncStatus.lastFullSync || null)}`
+                  : isLoading ? 'Loading sync status…' : isError ? 'Sync status unavailable'
+                  : `Last sync: ${formatLastSync(stats?.syncStatus?.lastSync || stats?.syncStatus?.lastFullSync || null)}`
                 }
               </span>
               <span className="sm:hidden">
-                {stats?.syncStatus.isRunning ? 'Syncing...' : 'Synced'}
+                {stats?.syncStatus?.isRunning ? 'Syncing...' : isError ? 'Unavailable' : isLoading ? 'Loading…' : 'Sync status'}
               </span>
             </div>
             

@@ -500,7 +500,7 @@ export class PerformanceCache {
       
       const selectFields = '_id name slug favicon country countryCode tags votes clickCount bitrate codec logoAssets url url_resolved';
       
-      const countryStationCounts = (await pgCatalog().groupCount('country', { lastCheckOk: true }))
+      const countryStationCounts = (await pgCatalog().groupCount('country', { isListVisible: true }))
         .sort((a, b) => b.count - a.count).slice(0, 10);
       
       const topCountries = countryStationCounts.map((c: any) => c._id).filter(Boolean);
@@ -513,7 +513,7 @@ export class PerformanceCache {
         // Atlas shared/serverless tiers (no allowDiskUse) crash boot when
         // any country has enough stations to make the TopK heap+filter
         // path overflow the 33MB sort budget.
-        const stations = await pgCatalog().find({ country, lastCheckOk: true }, {
+        const stations = await pgCatalog().find({ country, isListVisible: true }, {
           sort: { votes: -1 }, limit: 30, fields: selectFields.split(' '),
         });
         
@@ -523,7 +523,7 @@ export class PerformanceCache {
       
       // Global pool — same pattern, use the {lastCheckOk:1, votes:-1}
       // compound index to skip any in-memory SORT.
-      const globalStations = await pgCatalog().find({ lastCheckOk: true }, {
+      const globalStations = await pgCatalog().find({ isListVisible: true }, {
         sort: { votes: -1 }, limit: 50, fields: selectFields.split(' '),
       });
       

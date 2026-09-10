@@ -19,7 +19,7 @@ export class PostgresPopularGlobalCandidates {
         row_number() OVER (PARTITION BY country
           ORDER BY votes DESC NULLS LAST,click_count DESC NULLS LAST,id ASC) AS position
       FROM stations
-      WHERE last_check_ok=true AND is_featured IS DISTINCT FROM true
+      WHERE (is_list_visible IS TRUE OR COALESCE(visibility_expires_at<=now(),false)) AND is_featured IS DISTINCT FROM true
         AND no_index IS DISTINCT FROM true AND slug IS NOT NULL AND slug<>''
         AND country=ANY($1::text[])
     )

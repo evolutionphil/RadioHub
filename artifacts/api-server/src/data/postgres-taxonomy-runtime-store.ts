@@ -36,7 +36,7 @@ export class PostgresTaxonomyRuntimeStore {
 
   async liveCounts(country: string | null = null, publicOnly = false): Promise<Map<string, number>> {
     const { rows } = await this.pool.query(`SELECT tags.tag,count(*)::int count FROM stations s ${stationTags}
-      WHERE ($1::text IS NULL OR lower(s.country)=lower($1)) AND (NOT $2::boolean OR s.last_check_ok IS TRUE) GROUP BY tags.tag`,[country,publicOnly]);
+      WHERE ($1::text IS NULL OR lower(s.country)=lower($1)) AND (NOT $2::boolean OR (s.is_list_visible IS TRUE OR COALESCE(s.visibility_expires_at<=now(),false))) GROUP BY tags.tag`,[country,publicOnly]);
     return new Map(rows.map(r => [r.tag,Number(r.count)]));
   }
 
@@ -70,7 +70,7 @@ export class PostgresTaxonomyRuntimeStore {
 
   async cityCounts(countries: string[], cities: string[]): Promise<{total:number;counts:Map<string,number>}> {
     const {rows}=await this.pool.query(`WITH scoped AS MATERIALIZED (
-      SELECT name,tags_raw,state FROM stations WHERE country=ANY($1::text[]) AND last_check_ok=true
+      SELECT name,tags_raw,state FROM stations WHERE country=ANY($1::text[]) AND (is_list_visible IS TRUE OR COALESCE(visibility_expires_at<=now(),false))
     ), buckets AS (
       SELECT (SELECT c.name FROM unnest($2::text[]) WITH ORDINALITY c(name,position)
         WHERE strpos(lower(COALESCE(s.name,'')),lower(c.name))>0

@@ -43,7 +43,7 @@ export async function refreshCommunityFavoritesCache(
     const rows = (
       await getPostgresPool().query(
         `SELECT s.*,count(f.user_id)::int favorite_count FROM user_favorites f
-      JOIN stations s ON s.id=f.station_id WHERE s.last_check_ok IS TRUE AND (${sql})
+      JOIN stations s ON s.id=f.station_id WHERE (s.is_list_visible IS TRUE OR COALESCE(s.visibility_expires_at<=now(),false)) AND (${sql})
       GROUP BY s.id ORDER BY favorite_count DESC,s.id LIMIT 20`,
         values,
       )
@@ -90,7 +90,7 @@ export async function refreshPopularStationsCache(
       ? resolveToDbName(country) || country
       : "all";
 
-  let featuredFilter: any = { ...countryFilter, isFeatured: true, lastCheckOk: true };
+  let featuredFilter: any = { ...countryFilter, isFeatured: true, isListVisible: true };
   if (!country || country === "all" || country === "null") {
     featuredFilter.showInGlobalPopular = true;
   }
@@ -105,7 +105,7 @@ export async function refreshPopularStationsCache(
   let regularStations: any[] = [];
   if (remainingLimit > 0) {
     regularStations = await pgCatalog().find(
-      { ...countryFilter, isFeatured: { $ne: true }, lastCheckOk: true },
+      { ...countryFilter, isFeatured: { $ne: true }, isListVisible: true },
       {
         sort: { votes: -1 },
         limit: remainingLimit,

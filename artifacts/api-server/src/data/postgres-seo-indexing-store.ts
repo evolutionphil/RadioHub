@@ -118,11 +118,11 @@ export async function pgSlugCountryStates():Promise<Array<{_id:{country:string;s
 export async function pgTopIndexableTags(limit:number):Promise<Array<{_id:string;count:number}>> {
   return (await getPostgresPool().query(`SELECT btrim(tag) _id,count(*)::int count FROM stations
     CROSS JOIN LATERAL unnest(string_to_array(lower(tags_raw),',')) AS tag
-    WHERE no_index=false AND last_check_ok IS DISTINCT FROM false AND source->>'isJunk' IS DISTINCT FROM 'true' AND btrim(tag)<>''
+    WHERE no_index=false AND source->>'isJunk' IS DISTINCT FROM 'true' AND btrim(tag)<>''
     GROUP BY btrim(tag) ORDER BY count(*) DESC,btrim(tag) LIMIT $1`,[Math.max(1,Math.min(1000,limit))])).rows;
 }
 export async function pgTopSitemapCountries(limit:number):Promise<any[]>{return(await getPostgresPool().query(`SELECT country AS _id,count(*)::int count,max(updated_at) AS "maxUpdatedAt" FROM stations
-  WHERE country IS NOT NULL AND country<>'' AND no_index=false AND last_check_ok IS DISTINCT FROM false AND source->>'isJunk' IS DISTINCT FROM 'true'
+  WHERE country IS NOT NULL AND country<>'' AND no_index=false AND source->>'isJunk' IS DISTINCT FROM 'true'
   GROUP BY country ORDER BY count(*) DESC,country LIMIT $1`,[limit])).rows;}
 export async function pgTouchSitemapStations(now:Date):Promise<{matchedCount:number;modifiedCount:number}> {
   return seoTransaction(async client=>{

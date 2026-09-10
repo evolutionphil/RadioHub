@@ -1312,7 +1312,7 @@ export function registerMiscRoutes(
     res.set({ 'Cache-Control': 'no-cache, max-age=0, must-revalidate', 'CDN-Cache-Control': 'no-store', 'Cloudflare-CDN-Cache-Control': 'no-store' });
     try {
       const [popularStations, genres] = await Promise.all([
-        pgCatalog().find({ lastCheckOk: true }, { sort: { votes: -1 }, limit: 20 }),
+        pgCatalog().find({ isListVisible: true }, { sort: { votes: -1 }, limit: 20 }),
         pgDiscoverableGenres(undefined, 20),
       ]);
       const { tvSlimStation, tvSlimGenre } = await import("./shared-utils");

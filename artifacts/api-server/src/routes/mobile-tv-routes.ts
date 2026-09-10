@@ -1,4 +1,5 @@
 import type { Express } from "express";
+import { stationVisibilityFields } from '../utils/station-visibility';
 import { findActiveAuthToken, revokeAuthToken, revokeUserAuthTokens } from '../data/auth-token-store';
 import { logger } from '../utils/logger';
 import { tvSlimStation } from './shared-utils';
@@ -660,17 +661,18 @@ If you have any questions about this privacy policy or our data practices, pleas
       const dbCountry = selection ? resolveToDbName(selection) || selection : null;
       const scope = "($1::text IS NULL OR lower(s.country)=lower($1) OR upper(s.country_code)=upper($2))";
       const [popular, trending, genreRows, countryRows] = await Promise.all([
-        getPostgresPool().query(`SELECT s.* FROM stations s WHERE s.last_check_ok=true AND ${scope} ORDER BY votes DESC,click_count DESC,id LIMIT $3`, [dbCountry,selection,limit*2]),
-        getPostgresPool().query(`SELECT s.* FROM stations s WHERE s.last_check_ok=true AND s.click_trend>0 AND ${scope} ORDER BY click_trend DESC,id LIMIT $3`, [dbCountry,selection,limit]),
+        getPostgresPool().query(`SELECT s.* FROM stations s WHERE (s.is_list_visible IS TRUE OR COALESCE(s.visibility_expires_at<=now(),false)) AND ${scope} ORDER BY votes DESC,click_count DESC,id LIMIT $3`, [dbCountry,selection,limit*2]),
+        getPostgresPool().query(`SELECT s.* FROM stations s WHERE (s.is_list_visible IS TRUE OR COALESCE(s.visibility_expires_at<=now(),false)) AND s.click_trend>0 AND ${scope} ORDER BY click_trend DESC,id LIMIT $3`, [dbCountry,selection,limit]),
         getPostgresPool().query(`SELECT sg.genre_slug slug,COALESCE(g.name,initcap(replace(sg.genre_slug,'-',' '))) name,
           count(*)::int AS "stationCount",g.source->>'posterImage' AS "posterImage"
           FROM station_genres sg JOIN stations s ON s.id=sg.station_id LEFT JOIN genres g ON g.slug=sg.genre_slug
-          WHERE s.last_check_ok IS TRUE AND ${scope} AND (g.id IS NULL OR g.is_discoverable=true) GROUP BY sg.genre_slug,g.name,g.source HAVING count(*) >= CASE WHEN $1::text IS NULL AND g.name IS NULL THEN 5 ELSE 1 END
+          WHERE (s.is_list_visible IS TRUE OR COALESCE(s.visibility_expires_at<=now(),false)) AND ${scope} AND (g.id IS NULL OR g.is_discoverable=true) GROUP BY sg.genre_slug,g.name,g.source HAVING count(*) >= CASE WHEN $1::text IS NULL AND g.name IS NULL THEN 5 ELSE 1 END
           ORDER BY count(*) DESC,sg.genre_slug LIMIT $3`, [dbCountry,selection,genreLimit]),
-        getPostgresPool().query("SELECT country AS _id,count(*)::int count,min(country_code) code FROM stations WHERE last_check_ok IS TRUE AND country IS NOT NULL AND country<>'' GROUP BY country ORDER BY count(*) DESC LIMIT 200"),
+        getPostgresPool().query("SELECT country AS _id,count(*)::int count,min(country_code) code FROM stations WHERE (is_list_visible IS TRUE OR COALESCE(visibility_expires_at<=now(),false)) AND country IS NOT NULL AND country<>'' GROUP BY country ORDER BY count(*) DESC LIMIT 200"),
       ]);
       const stationShape = (s: any) => ({ ...s.source, ...s, _id:s.id,urlResolved:s.url_resolved,countrycode:s.country_code,
-        tags:s.tags_raw,clickCount:Number(s.click_count),votes:Number(s.votes),logoAssets:s.logo_assets,lastCheckOk:s.last_check_ok });
+        tags:s.tags_raw,clickCount:Number(s.click_count),votes:Number(s.votes),logoAssets:s.logo_assets,lastCheckOk:s.last_check_ok,
+        ...stationVisibilityFields(s) });
       const popularStations = popular.rows.map(stationShape), trendingStations = trending.rows.map(stationShape);
       const countries = countryRows.rows;
       const genresRaw = { genres: genreRows.rows.map((g:any) => ({ ...g,posterImage:g.posterImage || `/images/genre-bg-grad-${(Math.abs(g.slug.split('').reduce((a:number,b:string)=>a+b.charCodeAt(0),0))%4)+1}.webp` })) };

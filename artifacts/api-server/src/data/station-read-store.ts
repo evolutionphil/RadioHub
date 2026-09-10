@@ -1,4 +1,5 @@
 import { getPostgresPool } from "../postgres-runtime";
+import { stationVisibilityFields } from '../utils/station-visibility';
 
 export type StationReadMode = "postgres";
 export const stationReadMode: StationReadMode = "postgres";
@@ -9,7 +10,8 @@ export const isPostgresStationReadMode = (): boolean => true;
 const CARD_COLUMNS = `id,station_uuid,name,slug,redirect_to_slug,url,url_resolved,
   homepage,favicon,country,country_code,state,language,language_codes,tags_raw,codec,
   bitrate,hls,votes,click_count,click_trend,average_rating,total_ratings,last_check_ok,
-  last_check_time,latitude,longitude,has_logo,logo_assets,is_featured,
+  last_check_time,is_list_visible,visibility_expires_at,availability_outcome,availability_checked_at,
+  latitude,longitude,has_logo,logo_assets,is_featured,
   show_in_global_popular,no_index,created_at,updated_at`;
 const CARD_SOURCE_KEYS = ['localImagePath','logo','genre','genres','sslError','mood','countrycode'];
 const CARD_SELECTION = `${CARD_COLUMNS},COALESCE((SELECT jsonb_object_agg(k,source->k)
@@ -35,6 +37,7 @@ function fromPostgres(row: Record<string, any> | undefined): any | null {
     clickCount: row.click_count, clickTrend: row.click_trend,
     averageRating: row.average_rating, totalRatings: row.total_ratings,
     lastCheckOk: row.last_check_ok, lastCheckTime: row.last_check_time,
+    ...stationVisibilityFields(row),
     geoLat: row.latitude, geoLong: row.longitude, hasLogo: row.has_logo,
     logoAssets: row.logo_assets, descriptions: row.descriptions || {},
     manualEditFields: row.manual_edit_fields || {}, mediaGroupId: row.media_group_id,
@@ -68,7 +71,7 @@ export async function getPopularStationsFromPostgres(options: {
   const limit = boundedInteger(options.limit, 12, 500);
   const result = await getPostgresPool().query(
     `SELECT * FROM stations
-     WHERE last_check_ok=true
+     WHERE (is_list_visible IS TRUE OR COALESCE(visibility_expires_at<=now(),false))
        AND ($1='' OR lower(country)=lower($1))
        AND ($2='%%' OR state ILIKE $2)
        AND (NOT $3 OR (logo_assets->>'status'='completed' OR NULLIF(favicon,'') IS NOT NULL))
@@ -96,7 +99,7 @@ export async function getPopularStationsFromPostgres(options: {
 
 export async function getGeoStationsFromPostgres(limit: number): Promise<any[]> {
   const result = await getPostgresPool().query(
-    `SELECT * FROM stations WHERE last_check_ok IS TRUE AND latitude IS NOT NULL AND longitude IS NOT NULL
+    `SELECT * FROM stations WHERE (is_list_visible IS TRUE OR COALESCE(visibility_expires_at<=now(),false)) AND latitude IS NOT NULL AND longitude IS NOT NULL
      ORDER BY votes DESC LIMIT $1`,
     [boundedInteger(limit, 1000, 5_000)],
   );
@@ -132,7 +135,7 @@ export async function getNearbyStationsFromPostgres(options: {
        FROM stations
        WHERE latitude BETWEEN $1-$3 AND $1+$3
          AND abs(mod((longitude-$2+540)::numeric,360)-180)<=$4
-         AND ($5='' OR lower(country)=lower($5)) AND last_check_ok IS TRUE AND $6::boolean
+         AND ($5='' OR lower(country)=lower($5)) AND (is_list_visible IS TRUE OR COALESCE(visibility_expires_at<=now(),false)) AND $6::boolean
      ) SELECT * FROM candidates WHERE distance<=$9
        ORDER BY COALESCE(country ILIKE $7,false) DESC,
        (NULLIF(btrim(favicon),'') IS NOT NULL AND favicon NOT IN ('null','undefined')) DESC,
@@ -167,7 +170,7 @@ export async function getRelatedStationsFromPostgres(stationId: string, limit: n
   const source = await postgresStation(stationId);
   if (!source) return null;
   const result = await getPostgresPool().query(
-    `SELECT * FROM stations WHERE id<>$1 AND last_check_ok=true
+    `SELECT * FROM stations WHERE id<>$1 AND (is_list_visible IS TRUE OR COALESCE(visibility_expires_at<=now(),false))
        AND ($2='' OR country=$2)
        AND ($3='' OR tags_raw ILIKE '%' || $3 || '%')
      ORDER BY votes DESC LIMIT $4`,
@@ -178,7 +181,7 @@ export async function getRelatedStationsFromPostgres(stationId: string, limit: n
 
 export async function getRandomCountryStationFromPostgres(country: string): Promise<any | null> {
   const result = await getPostgresPool().query(
-    "SELECT * FROM stations WHERE last_check_ok IS TRUE AND lower(country)=lower($1) ORDER BY random() LIMIT 1",
+    "SELECT * FROM stations WHERE (is_list_visible IS TRUE OR COALESCE(visibility_expires_at<=now(),false)) AND lower(country)=lower($1) ORDER BY random() LIMIT 1",
     [country],
   );
   return fromPostgres(result.rows[0]);
@@ -199,7 +202,7 @@ export async function listStationsFromPostgres(options: PostgresStationListOptio
   const values: unknown[] = [];
   // This is a public catalog reader. excludeBroken=false is a legacy client
   // preference, not permission to bypass current native health visibility.
-  const conditions: string[] = ['last_check_ok IS TRUE'];
+  const conditions: string[] = ['(is_list_visible IS TRUE OR COALESCE(visibility_expires_at<=now(),false))'];
   let genreCandidates = '';
   const bind = (value: unknown): string => { values.push(value); return `$${values.length}`; };
   if (options.country) conditions.push(`lower(country)=lower(${bind(options.country)})`);
@@ -294,5 +297,5 @@ export async function getStationByIdentifier(identifier: string): Promise<any | 
 
 export async function getPublicStationByIdentifier(identifier: string): Promise<any | null> {
   const station = await postgresStation(identifier);
-  return station?.lastCheckOk === true ? station : null;
+  return station?.isListVisible !== false ? station : null;
 }

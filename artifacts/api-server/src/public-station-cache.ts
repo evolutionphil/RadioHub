@@ -4,7 +4,7 @@ import { publicStationDeadlineContext as loaderDeadline } from './utils/public-s
 // Health is native, not the archived station.source payload. Never reuse the
 // former day/week-long public caches after this visibility policy changes.
 export const PUBLIC_STATION_CACHE_MAX_TTL = 60;
-export const publicStationCacheKey = (key: string): string => `public-health:v1:${key}`;
+export const publicStationCacheKey = (key: string): string => `public-health:v2:${key}`;
 const ttl = (value?: number): number => Number.isFinite(value) && value! > 0
   ? Math.min(value!, PUBLIC_STATION_CACHE_MAX_TTL) : PUBLIC_STATION_CACHE_MAX_TTL;
 type Options = { ttl?: number; useRedis?: boolean; refreshThreshold?: number };

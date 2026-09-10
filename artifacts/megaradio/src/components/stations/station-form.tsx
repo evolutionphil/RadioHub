@@ -15,26 +15,28 @@ import { api } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
 import { Upload, Star, Globe, Loader2, Zap, Check, AlertCircle, Radio, Sparkles, Languages } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, apiAuthHeaders, resolveApiUrl } from "@/lib/queryClient";
 import { buildDescriptionChanges, generateAdminStationDescription } from '@/lib/admin-station-description';
 
-const stationFormSchema = z.object({
-  name: z.string().min(1, "Station name is required"),
-  url: z.string().url("Please enter a valid stream URL"),
-  urlResolved: z.string().optional(),
-  homepage: z.string().optional(),
-  favicon: z.string().optional(),
+const httpUrl = (value: string) => {
+  try { return ['http:', 'https:'].includes(new URL(value).protocol); } catch { return false; }
+};
+const optionalHttpUrl = z.string().trim().max(4096).refine(value => !value || httpUrl(value), 'Enter a valid HTTP or HTTPS URL').optional();
+export const stationFormSchema = z.object({
+  name: z.string().trim().min(1, "Station name is required").max(4096),
+  url: z.string().trim().max(4096).refine(httpUrl, "Enter a valid HTTP or HTTPS stream URL"),
+  urlResolved: optionalHttpUrl,
+  homepage: optionalHttpUrl,
+  favicon: z.string().trim().max(4096).optional(),
   countryCode: z.string().optional(),
   country: z.string().optional(),
   state: z.string().optional(),
   codec: z.string().optional(),
-  bitrate: z.number().optional(),
+  bitrate: z.number().int().min(0).max(100000).nullable().optional(),
   tags: z.string().optional(),
   hls: z.boolean().optional(),
   isFeatured: z.boolean().optional(),
   showInGlobalPopular: z.boolean().optional(),
-  isActive: z.boolean().default(true),
-  lastCheckOk: z.boolean().optional(),
   descriptionsJson: z.string().optional(),
 });
 
@@ -83,7 +85,13 @@ interface GenreOption {
   stationCount?: number;
 }
 
-export default function StationForm({
+// A record/open-session key isolates drafts and asynchronous callbacks when
+// an administrator switches stations or closes/reopens the same record.
+export default function StationForm(props: StationFormProps) {
+  return <StationFormSession key={`${props.station?._id || props.station?.id || 'new'}:${props.open}`} {...props} />;
+}
+
+function StationFormSession({
   station,
   open,
   onClose,
@@ -97,15 +105,25 @@ export default function StationForm({
   const [activeTab, setActiveTab] = useState("basic");
   const baseline = useRef<StationData | undefined>(station);
   const wasOpen = useRef(false);
+  const mounted = useRef(true);
+  const analysisRequest = useRef(0);
+  const faviconInput = useRef<HTMLInputElement>(null);
+  const stationId = station?._id || station?.id;
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; analysisRequest.current++; };
+  }, []);
 
   const { data: countriesData } = useQuery<CountryOption[]>({
     queryKey: ['/api/admin/available-countries'],
     queryFn: () => api.getAvailableCountries(),
+    enabled: open,
   });
 
   const { data: genresData } = useQuery<{ genres: GenreOption[] }>({
     queryKey: ['/api/genres'],
     queryFn: () => api.getGenres(),
+    enabled: open,
   });
 
   const genres = genresData?.genres || [];
@@ -118,16 +136,14 @@ export default function StationForm({
     homepage: station?.homepage || "",
     favicon: station?.favicon || "",
     countryCode: station?.countryCode || "",
-    country: station?.country || station?.countryName || "",
+    country: typeof station?.country === 'string' ? station.country : station?.country?.name || station?.countryName || "",
     state: station?.state || "",
     codec: station?.codec || "",
-    bitrate: station?.bitrate || undefined,
+    bitrate: station?.bitrate ?? null,
     tags: station?.tags || "",
     hls: station?.hls ?? false,
     isFeatured: station?.isFeatured ?? false,
     showInGlobalPopular: station?.showInGlobalPopular ?? false,
-    isActive: station?.isActive ?? true,
-    lastCheckOk: station?.lastCheckOk ?? true,
     descriptionsJson: station?.descriptions ? JSON.stringify(station.descriptions, null, 2) : "",
   });
 
@@ -136,19 +152,25 @@ export default function StationForm({
     defaultValues: getDefaultValues(station),
   });
 
-  const { data: freshStation } = useQuery({
-    queryKey: station ? ['/api/admin/stations', station._id] : ['disabled'],
-    queryFn: async () => station ? (await apiRequest('GET', `/api/admin/stations/${station._id}`)).json() : null,
-    enabled: !!station && open,
+  const { data: freshStation, isFetching: isLoadingStation, isError: stationLoadFailed, refetch: reloadStation } = useQuery({
+    queryKey: ['/api/admin/stations', stationId || 'new'],
+    queryFn: async ({ signal }) => {
+      const data = await (await apiRequest('GET', `/api/admin/stations/${stationId}`, { signal })).json();
+      if (!data || (data._id || data.id) !== stationId) throw new Error('The station response did not match the requested record');
+      return data as StationData;
+    },
+    enabled: !!stationId && open,
     staleTime: 0,
+    refetchOnMount: 'always',
   });
 
   const generateAiMutation = useMutation({
     mutationFn: generateAdminStationDescription,
     onSuccess: (data) => {
+      if (!mounted.current) return;
       if (data.descriptions) {
-        baseline.current = data;
-        form.setValue('descriptionsJson', JSON.stringify(data.descriptions, null, 2));
+        baseline.current = { ...baseline.current!, descriptions: data.descriptions };
+        form.resetField('descriptionsJson', { defaultValue: JSON.stringify(data.descriptions, null, 2) });
       }
       toast({
         title: "AI Description Generated",
@@ -156,6 +178,7 @@ export default function StationForm({
       });
     },
     onError: (error: any) => {
+      if (!mounted.current) return;
       toast({
         title: "Generation Failed",
         description: error.message || "Could not generate AI descriptions",
@@ -169,35 +192,38 @@ export default function StationForm({
     wasOpen.current = open;
     if (open) {
       const dataToUse = freshStation || station;
-      if (alreadyOpen && baseline.current?._id === dataToUse?._id && form.formState.isDirty) return;
+      if (alreadyOpen && form.formState.isDirty) return;
       baseline.current = dataToUse;
       form.reset(getDefaultValues(dataToUse));
       setStreamAnalysis(null);
-      setActiveTab("basic");
+      if (!alreadyOpen) setActiveTab("basic");
     }
   }, [station, open, form, freshStation]);
 
   const analyzeStreamUrl = useCallback(async (url: string) => {
-    if (!url || !url.startsWith('http')) return;
+    if (!url || !httpUrl(url)) return;
+    const requestId = ++analysisRequest.current;
+    const isCurrent = () => mounted.current && requestId === analysisRequest.current && form.getValues('url') === url;
     
     setIsAnalyzingStream(true);
     try {
       const result = await api.analyzeStreamUrl(url);
+      if (!isCurrent()) return;
       setStreamAnalysis(result);
       
       if (result.codec && !form.getValues('codec')) {
-        form.setValue('codec', result.codec);
+        form.setValue('codec', result.codec, { shouldDirty: true, shouldValidate: true });
       }
       if (result.bitrate && !form.getValues('bitrate')) {
-        form.setValue('bitrate', result.bitrate);
+        form.setValue('bitrate', result.bitrate, { shouldDirty: true, shouldValidate: true });
       }
-      if (result.hls !== undefined) {
-        form.setValue('hls', result.hls);
+      if (typeof result.hls === 'boolean') {
+        form.setValue('hls', result.hls, { shouldDirty: true });
       }
-    } catch (error) {
-      console.error('Stream analysis failed:', error);
+    } catch {
+      if (isCurrent()) setStreamAnalysis({ success: false });
     } finally {
-      setIsAnalyzingStream(false);
+      if (mounted.current && requestId === analysisRequest.current) setIsAnalyzingStream(false);
     }
   }, [form]);
 
@@ -222,8 +248,8 @@ export default function StationForm({
   const handleCountryChange = (countryName: string) => {
     const selectedCountry = countries.find(c => c.name === countryName);
     if (selectedCountry) {
-      form.setValue('country', selectedCountry.name);
-      form.setValue('countryCode', selectedCountry.code);
+      form.setValue('country', selectedCountry.name, { shouldDirty: true, shouldValidate: true });
+      form.setValue('countryCode', selectedCountry.code, { shouldDirty: true });
     }
   };
 
@@ -233,32 +259,41 @@ export default function StationForm({
     
     if (!tagsArray.includes(genreSlug)) {
       tagsArray.push(genreSlug);
-      form.setValue('tags', tagsArray.join(', '));
+      form.setValue('tags', tagsArray.join(', '), { shouldDirty: true });
     }
   };
 
   const removeTag = (tagToRemove: string) => {
     const currentTags = form.getValues('tags') || '';
     const tagsArray = currentTags.split(',').map(t => t.trim()).filter(t => t && t !== tagToRemove);
-    form.setValue('tags', tagsArray.join(', '));
+    form.setValue('tags', tagsArray.join(', '), { shouldDirty: true });
   };
 
   const currentTags = (form.watch('tags') || '').split(',').map(t => t.trim()).filter(Boolean);
-  const descriptions = station?.descriptions || {};
+  const descriptions = baseline.current?.descriptions || {};
   const descriptionCount = Object.keys(descriptions).length;
+  const busy = isLoading || generateAiMutation.isPending || isUploadingFavicon;
+  const waitingForFreshStation = Boolean(stationId && !freshStation && isLoadingStation);
 
   return (
-    <Dialog open={open} onOpenChange={() => { if (!isLoading && !generateAiMutation.isPending) onClose(); }}>
+    <Dialog open={open} onOpenChange={nextOpen => { if (!nextOpen && !busy) onClose(); }}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto bg-white border border-gray-200 shadow-lg text-gray-900">
         <DialogHeader className="pb-2">
           <DialogTitle className="text-gray-900 flex items-center gap-2">
             <Radio className="w-5 h-5 text-blue-600" />
             {station ? 'Edit Station' : 'Add New Station'}
           </DialogTitle>
+          <DialogDescription>Update this station's metadata and translations. Stream availability is verified separately.</DialogDescription>
         </DialogHeader>
 
+        {waitingForFreshStation && <p role="status" className="text-sm text-gray-600">Loading latest station details…</p>}
+        {stationLoadFailed && <div role="alert" className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+          Latest station details could not be loaded. Retry before saving.
+          <Button type="button" variant="outline" size="sm" className="ml-2" onClick={() => void reloadStation()}>Retry</Button>
+        </div>}
+
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
+          <form onSubmit={form.handleSubmit(handleSubmit, errors => setActiveTab(errors.descriptionsJson && Object.keys(errors).length === 1 ? 'ai' : 'basic'))} className="space-y-4">
             
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
               <TabsList className="grid w-full grid-cols-2 h-9">
@@ -322,6 +357,7 @@ export default function StationForm({
                           onClick={() => analyzeStreamUrl(field.value)}
                           className="shrink-0"
                           title="Auto-detect stream info"
+                          aria-label="Analyze stream URL"
                         >
                           {isAnalyzingStream ? (
                             <Loader2 className="h-4 w-4 animate-spin" />
@@ -353,6 +389,15 @@ export default function StationForm({
                     </FormItem>
                   )}
                 />
+
+                <FormField control={form.control} name="urlResolved" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Resolved stream URL</FormLabel>
+                    <FormControl><Input {...field} value={field.value || ''} placeholder="Optional direct playback URL" className="text-gray-900" /></FormControl>
+                    <FormDescription className="text-xs">Leave empty to use the main stream URL. Changing the main URL clears an unchanged old resolved URL.</FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )} />
 
                 {/* Country & State - Side by Side */}
                 <div className="grid grid-cols-2 gap-3">
@@ -435,8 +480,10 @@ export default function StationForm({
                             {...field} 
                             type="number" 
                             placeholder="Auto-detect"
-                            value={field.value || ""}
-                            onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : undefined)}
+                            value={field.value ?? ""}
+                            min={0}
+                            max={100000}
+                            onChange={(e) => field.onChange(e.target.value ? Number(e.target.value) : null)}
                             className="text-gray-900"
                           />
                         </FormControl>
@@ -454,7 +501,7 @@ export default function StationForm({
                       <SelectValue placeholder="Add genre" />
                     </SelectTrigger>
                     <SelectContent className="max-h-[250px] bg-white">
-                      {genres.slice(0, 50).map((genre) => (
+                      {genres.map((genre) => (
                         <SelectItem key={genre._id} value={genre.slug}>
                           {genre.name} {genre.stationCount ? `(${genre.stationCount})` : ''}
                         </SelectItem>
@@ -465,14 +512,14 @@ export default function StationForm({
                   {currentTags.length > 0 && (
                     <div className="flex flex-wrap gap-1.5 mt-2">
                       {currentTags.map((tag) => (
-                        <Badge 
-                          key={tag} 
+                        <button key={tag} type="button" onClick={() => removeTag(tag)} aria-label={`Remove genre ${tag}`}>
+                        <Badge
                           variant="secondary" 
                           className="cursor-pointer hover:bg-red-100 hover:text-red-700 text-xs"
-                          onClick={() => removeTag(tag)}
                         >
                           {tag} ×
                         </Badge>
+                        </button>
                       ))}
                     </div>
                   )}
@@ -489,6 +536,7 @@ export default function StationForm({
                         <div className="flex gap-1.5">
                           {field.value && (
                             <img 
+                              key={field.value}
                               src={field.value} 
                               alt="" 
                               className="w-9 h-9 rounded object-cover border shrink-0"
@@ -500,35 +548,42 @@ export default function StationForm({
                           </FormControl>
                           <input
                             type="file"
+                            ref={faviconInput}
                             accept="image/*"
                             className="hidden"
-                            id="favicon-upload"
+                            aria-label="Upload station logo file"
                             onChange={async (e) => {
                               const file = e.target.files?.[0];
                               if (!file) return;
-                              
-                              const stationId = station?._id || station?.id;
+                              const input = e.currentTarget;
                               if (!stationId) {
                                 toast({ title: "Error", description: "Save station first", variant: "destructive" });
                                 return;
                               }
                               
                               setIsUploadingFavicon(true);
+                              const previousFavicon = form.getValues('favicon');
                               try {
                                 const formData = new FormData();
                                 formData.append('favicon', file);
-                                const response = await fetch(`/api/admin/stations/${stationId}/upload-favicon`, {
-                                  method: 'POST', credentials: 'include', body: formData,
+                                const endpoint = `/api/admin/stations/${stationId}/upload-favicon`;
+                                const response = await fetch(resolveApiUrl(endpoint), {
+                                  method: 'POST', credentials: 'include', headers: apiAuthHeaders(endpoint), body: formData,
                                 });
                                 if (!response.ok) throw new Error('Upload failed');
                                 const result = await response.json();
-                                field.onChange(result.favicon);
-                                toast({ title: "Success", description: "Logo uploaded" });
+                                if (result.success !== true || typeof result.favicon !== 'string' || !result.favicon) throw new Error('The uploaded logo could not be confirmed');
+                                if (!mounted.current) return;
+                                // Upload already persists the favicon. Refresh only this
+                                // baseline field; never resend it as an unrelated edit.
+                                baseline.current = { ...baseline.current!, favicon: result.favicon };
+                                if (form.getValues('favicon') === previousFavicon) form.resetField('favicon', { defaultValue: result.favicon });
+                                toast({ title: "Logo uploaded", description: result.warning || "The station logo was saved" });
                               } catch (error: any) {
-                                toast({ title: "Failed", description: error.message, variant: "destructive" });
+                                if (mounted.current) toast({ title: "Failed", description: error.message, variant: "destructive" });
                               } finally {
-                                setIsUploadingFavicon(false);
-                                e.target.value = '';
+                                if (mounted.current) setIsUploadingFavicon(false);
+                                input.value = '';
                               }
                             }}
                           />
@@ -536,8 +591,9 @@ export default function StationForm({
                             type="button"
                             variant="outline"
                             size="sm"
-                            disabled={isUploadingFavicon || !station?._id}
-                            onClick={() => document.getElementById('favicon-upload')?.click()}
+                            disabled={busy || !stationId || waitingForFreshStation || stationLoadFailed}
+                            onClick={() => faviconInput.current?.click()}
+                            aria-label="Upload station logo"
                             className="shrink-0"
                           >
                             {isUploadingFavicon ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
@@ -564,7 +620,7 @@ export default function StationForm({
                 </div>
 
                 {/* Featured Station Toggles */}
-                <div className="flex items-center gap-6 p-3 border rounded-lg bg-gray-50">
+                <div className="flex flex-wrap items-center gap-6 p-3 border rounded-lg bg-gray-50">
                   <FormField
                     control={form.control}
                     name="isFeatured"
@@ -605,7 +661,7 @@ export default function StationForm({
               <TabsContent value="ai" className="space-y-4 mt-4">
                 
                 {/* AI Generation Button */}
-                {station?._id && (
+                {stationId && (
                   <div className="flex items-center justify-between p-4 border rounded-lg bg-gradient-to-r from-purple-50 to-blue-50">
                     <div>
                       <h4 className="font-medium text-gray-900 flex items-center gap-2">
@@ -620,8 +676,8 @@ export default function StationForm({
                       type="button"
                       variant="outline"
                       size="sm"
-                      disabled={generateAiMutation.isPending || isLoading || form.formState.isDirty}
-                      onClick={() => station?._id && generateAiMutation.mutate(station._id)}
+                      disabled={busy || isLoadingStation || stationLoadFailed || form.formState.isDirty}
+                      onClick={() => generateAiMutation.mutate(stationId)}
                       className="bg-white"
                     >
                       {generateAiMutation.isPending ? (
@@ -679,10 +735,10 @@ export default function StationForm({
 
             {/* Submit Buttons */}
             <div className="flex justify-end gap-3 pt-3 border-t">
-              <Button type="button" variant="outline" onClick={onClose} disabled={isLoading || generateAiMutation.isPending}>
+              <Button type="button" variant="outline" onClick={onClose} disabled={busy}>
                 Cancel
               </Button>
-              <Button type="submit" disabled={isLoading || generateAiMutation.isPending} className="bg-blue-600 hover:bg-blue-700">
+              <Button type="submit" disabled={busy || waitingForFreshStation || stationLoadFailed} className="bg-blue-600 hover:bg-blue-700">
                 {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 {station ? 'Save Changes' : 'Add Station'}
               </Button>

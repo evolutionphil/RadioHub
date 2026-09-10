@@ -197,6 +197,13 @@
       "when": 1790809200000,
       "tag": "0028_station_stream_health",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1790895600000,
+      "tag": "0029_station_visibility_evidence",
+      "breakpoints": true
     }
   ]
 }

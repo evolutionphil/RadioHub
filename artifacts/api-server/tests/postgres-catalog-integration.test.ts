@@ -318,4 +318,36 @@ describe("PostgreSQL native catalog writes", { skip: !connectionString }, () => 
     assert.equal((await aux.issueSummary()).total,1);
     assert.equal((await aux.clearIssues()).deletedCount,2);
   });
+  it('keeps source-only false visible; provider failures never directly hide and fresh positives release a local exclusion',async()=>{
+    const now=Date.now();
+    await catalog.insertMany([{...station('source-health'),lastCheckOk:false,lastCheckTime:new Date(now-60_000)}]);
+    let doc=await catalog.findById('source-health');
+    assert.equal(doc?.lastCheckOk,false);assert.equal(doc?.isListVisible,true);assert.equal(doc?.availabilityStatus,'unverified');
+    await catalog.updateProviderBatch([{uuid:'uuid-source-health',patch:{lastCheckOk:false,lastCheckTime:new Date(now-30_000)}}]);
+    assert.equal((await catalog.findById('source-health'))?.isListVisible,true);
+    await pool.query("UPDATE stations SET is_list_visible=false,visibility_expires_at=now()+interval '24 hours' WHERE id='source-health'");
+    await catalog.updateProviderBatch([{uuid:'uuid-source-health',patch:{lastCheckOk:false,lastCheckTime:new Date(now-20_000)}}]);
+    assert.equal((await catalog.findById('source-health'))?.isListVisible,false);
+    await catalog.updateProviderBatch([{uuid:'uuid-source-health',patch:{lastCheckOk:true,lastCheckTime:new Date(now-10_000)}}]);
+    doc=await catalog.findById('source-health');assert.equal(doc?.isListVisible,true);assert.equal(doc?.visibilityExpiresAt,null);
+    assert.equal(doc?.availabilityStatus,'unverified');
+  });
+  it('a repaired raw URL clears obsolete resolution and releases only automatic visibility exclusions',async()=>{
+    await catalog.insertMany([{...station('url-health'),urlResolved:'https://example.invalid/stale',noIndex:true,
+      isListVisible:false,visibilityExpiresAt:new Date(Date.now()+86400000),availabilityOutcome:'failed'}]);
+    await catalog.patchById('url-health',{$set:{url:'https://example.invalid/repaired','manualEditFields.url':true}});
+    let doc=await catalog.findById('url-health');assert.equal(doc?.urlResolved,'');assert.equal(doc?.isListVisible,true);assert.equal(doc?.noIndex,true);
+    await catalog.updateProviderBatch([{uuid:'uuid-url-health',patch:{url:'https://example.invalid/provider',urlResolved:'https://example.invalid/provider-resolved'}}]);
+    doc=await catalog.findById('url-health');assert.equal(doc?.url,'https://example.invalid/repaired');assert.equal(doc?.urlResolved,'');
+    await catalog.patchById('url-health',{$set:{isListVisible:false,'manualEditFields.isListVisible':true}});
+    await catalog.patchById('url-health',{$set:{url:'https://example.invalid/another'}});
+    assert.equal((await catalog.findById('url-health'))?.isListVisible,false);
+  });
+  it('SQL filters and projected API metadata agree after an exclusion expires without the worker',async()=>{
+    await catalog.insertMany([{...station('expired-health'),lastCheckOk:false,isListVisible:false,
+      visibilityExpiresAt:new Date(Date.now()-1000),availabilityOutcome:'failed'}]);
+    const docs=await catalog.find({_id:'expired-health',isListVisible:true},{fields:['_id','lastCheckOk']});
+    assert.equal(docs.length,1);assert.equal(docs[0].lastCheckOk,false);assert.equal(docs[0].isListVisible,true);
+    assert.equal(docs[0].availabilityStatus,'unverified');
+  });
 });

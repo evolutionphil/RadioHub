@@ -1,14 +1,23 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import type pg from 'pg';
+import { stationVisibilityFields } from '../utils/station-visibility';
 
 export interface HealthCandidate {
-  id: string; url: string; lastCheckTime: Date | null; lastCheckOk: boolean; token: string;
+  id: string; url: string; urls: string[]; fingerprint: string;
+  lastCheckTime: Date | null; lastCheckOk: boolean; token: string;
+  availabilityCheckedAt: Date | null; availabilityOutcome: string | null;
+  isListVisible: boolean; visibilityExpiresAt: Date | null;
 }
 export interface HealthObservation {
   outcome: 'healthy' | 'failed' | 'inconclusive'; reason: string;
   checkedAt: string; bytesRead: number;
 }
 const minutes = (n: number) => n * 60_000;
+function streamInputs(row: Record<string, any>) {
+  const urls = [...new Set([row.url, row.url_resolved].filter(value => typeof value === 'string' && value.trim()).map(value => value.trim()))];
+  const fingerprint = createHash('sha256').update(JSON.stringify([urls, row.manual_edit_fields?.url === true])).digest('hex');
+  return { urls, fingerprint };
+}
 
 /** Small transactions only: no stream socket or long-lived DB lock in this store. */
 export class PostgresStreamHealthStore {
@@ -38,10 +47,13 @@ export class PostgresStreamHealthStore {
       ), claimed AS (
         UPDATE station_stream_health h SET lease_token=$2,lease_until=$1::timestamptz+interval '10 minutes'
         FROM due WHERE h.station_id=due.station_id RETURNING h.station_id
-      ) SELECT s.id,COALESCE(NULLIF(btrim(s.url_resolved),''),s.url) url,s.last_check_time,s.last_check_ok
+      ) SELECT s.id,s.url,s.url_resolved,s.manual_edit_fields,s.last_check_time,s.last_check_ok,
+        s.availability_checked_at,s.availability_outcome,s.is_list_visible,s.visibility_expires_at
         FROM claimed JOIN stations s ON s.id=claimed.station_id`, [now, token]);
       await client.query('COMMIT');
-      return result.rows.map(row => ({ id: row.id, url: row.url || '', lastCheckTime: row.last_check_time, lastCheckOk:row.last_check_ok, token }));
+      return result.rows.map(row => ({ id: row.id, url: row.url || '', ...streamInputs(row), lastCheckTime: row.last_check_time, lastCheckOk:row.last_check_ok, token,
+        availabilityCheckedAt:row.availability_checked_at, availabilityOutcome:row.availability_outcome,
+        isListVisible:row.is_list_visible, visibilityExpiresAt:row.visibility_expires_at }));
     } catch (error) { await client.query('ROLLBACK'); throw error; }
     finally { client.release(); }
   }
@@ -57,57 +69,77 @@ export class PostgresStreamHealthStore {
     try {
       await client.query('BEGIN');
       await client.query("SET LOCAL statement_timeout='2s'; SET LOCAL lock_timeout='500ms'");
+      // Same station -> queue lock order as catalog URL/provider updates.
+      // Inverting this order would deadlock a sync against probe completion.
+      const s = (await client.query(`SELECT id,url,url_resolved,last_check_ok,last_check_time,manual_edit_fields,
+        is_list_visible,visibility_expires_at,availability_outcome,availability_checked_at
+        FROM stations WHERE id=$1 FOR UPDATE`, [candidate.id])).rows[0];
+      if (!s) { await client.query('COMMIT'); return false; }
       const h = (await client.query(`SELECT * FROM station_stream_health
         WHERE station_id=$1 AND lease_token=$2 AND lease_until>$3 FOR UPDATE`,
       [candidate.id, candidate.token, now])).rows[0];
       if (!h) { await client.query('COMMIT'); return false; }
-      const s = (await client.query(`SELECT id,url,url_resolved,last_check_ok,last_check_time,manual_edit_fields
-        FROM stations WHERE id=$1 FOR UPDATE`, [candidate.id])).rows[0];
-      if (!s) { await client.query('COMMIT'); return false; }
-      const sameUrl = (s.url_resolved?.trim() || s.url || '') === candidate.url;
+      const sameUrl = streamInputs(s).fingerprint === candidate.fingerprint;
       const sameHealth = s.last_check_ok === candidate.lastCheckOk &&
         (s.last_check_time?.getTime() ?? null) === (candidate.lastCheckTime?.getTime() ?? null);
-      const eligible = sameUrl && sameHealth && !s.manual_edit_fields?.lastCheckOk &&
-        (!s.last_check_time || +checkedAt >= +s.last_check_time);
-      const priorSameUrl = h.stream_url === candidate.url && !(s.last_check_ok === true &&
-        h.first_failure_at && s.last_check_time && +s.last_check_time > +h.first_failure_at);
+      const sameLocalEvidence = s.availability_outcome === candidate.availabilityOutcome &&
+        (s.availability_checked_at?.getTime() ?? null) === (candidate.availabilityCheckedAt?.getTime() ?? null) &&
+        s.is_list_visible === candidate.isListVisible &&
+        (s.visibility_expires_at?.getTime() ?? null) === (candidate.visibilityExpiresAt?.getTime() ?? null);
+      const manuallyHidden = (s.manual_edit_fields?.isListVisible && s.is_list_visible === false) ||
+        (s.manual_edit_fields?.lastCheckOk && s.last_check_ok === false);
+      const eligible = sameUrl && sameHealth && sameLocalEvidence && !manuallyHidden &&
+        (!s.last_check_time || +checkedAt >= +s.last_check_time) &&
+        (!s.availability_checked_at || +checkedAt >= +s.availability_checked_at);
+      const priorSameUrl = h.stream_fingerprint === candidate.fingerprint && h.first_failure_at &&
+        +now - +h.first_failure_at <= minutes(24 * 60) && !(s.last_check_ok === true &&
+        s.last_check_time && +s.last_check_time > +h.first_failure_at) && !(s.availability_outcome === 'healthy' &&
+        s.availability_checked_at && +s.availability_checked_at >= +h.first_failure_at);
       let failures = priorSameUrl ? h.failure_count : 0;
       let firstFailure: Date | null = priorSameUrl ? h.first_failure_at : null;
       let health: boolean | null = null;
+      let visible = stationVisibilityFields(s,+now).isListVisible;
+      let expires = s.visibility_expires_at;
       let next = new Date(+now + minutes(6 * 60));
       if (!eligible) {
         failures = 0; firstFailure = null; next = new Date(+now + minutes(15));
+        if (!sameUrl && !manuallyHidden) { visible = true; expires = null; }
       } else if (observation.outcome === 'healthy') {
         health = true; failures = 0; firstFailure = null;
+        visible = true; expires = null;
         next = new Date(+now + minutes(7 * 24 * 60));
       } else if (observation.outcome === 'failed') {
         if (!firstFailure) { firstFailure = now; failures = 1; }
         else if (+now - +firstFailure >= minutes(10)) failures = 2;
-        if (failures >= 2) { health = false; next = new Date(+now + minutes(12 * 60)); }
+        if (failures >= 2) { health = false; visible = false; expires = new Date(+now + minutes(24 * 60)); next = new Date(+now + minutes(12 * 60)); }
         else next = new Date(+now + minutes(15));
       } else {
         // A timeout/geo-block/429 is not proof of a dead station. Break the
-        // consecutive-failure chain, preserve the last confirmed availability.
+        // consecutive-failure chain and release an old exclusion: uncertainty
+        // cannot keep a station hidden when the reported endpoint may work.
         failures = 0; firstFailure = null;
+        visible = true; expires = null;
       }
-      let changed = false;
+      const changed = stationVisibilityFields(s,+now).isListVisible !== visible;
       if (health !== null) {
-        changed = s.last_check_ok !== health;
         // Preserve articles, logos, votes, favorites, manual noIndex and archive.
         // Health sampling alone must not bump sitemap content lastmod.
-        await client.query(`UPDATE stations SET last_check_ok=$2,last_check_time=$3,
-          source=COALESCE(source,'{}'::jsonb) || $4::jsonb WHERE id=$1`,
-        [candidate.id, health, checkedAt, JSON.stringify({
-          ...(health ? { lastCheckOkTime: checkedAt.toISOString() } : {}),
+        await client.query(`UPDATE stations SET source=COALESCE(source,'{}'::jsonb) || $2::jsonb WHERE id=$1`,
+        [candidate.id, JSON.stringify({
           streamHealth: { actor: 'bounded-local-probe', outcome: observation.outcome,
             checkedAt: checkedAt.toISOString(), reason: observation.reason.slice(0,80) },
         })]);
       }
+      if (!manuallyHidden && (eligible || !sameUrl || s.is_list_visible !== visible)) {
+        await client.query(`UPDATE stations SET is_list_visible=$2,visibility_expires_at=$3,
+          availability_outcome=$4,availability_checked_at=$5 WHERE id=$1`,
+        [candidate.id,visible,expires,eligible ? observation.outcome : 'inconclusive',checkedAt]);
+      }
       await client.query(`UPDATE station_stream_health SET lease_token=NULL,lease_until=NULL,
         next_check_at=$3,stream_url=$4,checked_at=$5,outcome=$6,failure_count=$7,
-        first_failure_at=$8,reason=$9,bytes_read=$10 WHERE station_id=$1 AND lease_token=$2`,
+        first_failure_at=$8,reason=$9,bytes_read=$10,stream_fingerprint=$11 WHERE station_id=$1 AND lease_token=$2`,
       [candidate.id,candidate.token,next,candidate.url,checkedAt,eligible ? observation.outcome : 'inconclusive',
-        failures,firstFailure,eligible ? observation.reason.slice(0,80) : 'concurrent-station-change',observation.bytesRead]);
+        failures,firstFailure,eligible ? observation.reason.slice(0,80) : 'concurrent-station-change',observation.bytesRead,candidate.fingerprint]);
       await client.query('COMMIT');
       return changed;
     } catch (error) { await client.query('ROLLBACK'); throw error; }

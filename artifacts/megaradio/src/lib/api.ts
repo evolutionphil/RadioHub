@@ -13,6 +13,7 @@ export interface StationFilters {
   hasDescriptions?: 'all' | 'yes' | 'no' | 'partial';
   tagsStatus?: 'all' | 'empty-cooldown' | 'never-checked';
   hasLogo?: 'all' | 'yes' | 'no';
+  healthStatus?: 'all' | 'working' | 'unavailable' | 'unverified' | 'source-offline';
 }
 
 export interface DashboardStats {
@@ -22,7 +23,8 @@ export interface DashboardStats {
   updatedToday: number;
   syncStatus: {
     isRunning: boolean;
-    lastFullSync: Date | null;
+    lastFullSync?: string | Date | null;
+    lastSync?: string | null;
   };
   recentSyncLogs: any[];
 }
@@ -48,6 +50,11 @@ export const api = {
   },
 
   // Admin Stations (for admin interface) - uses dedicated admin endpoint
+  getAdminStationFilterOptions: async (): Promise<{ countries: Array<{ name: string; code: string }>; languages: string[]; genres: string[]; codecs: string[] }> => {
+    const response = await apiRequest('GET', '/api/admin/stations/filter-options');
+    return response.json();
+  },
+
   getAdminStations: async (filters: StationFilters = {}) => {
     const params = new URLSearchParams();
     Object.entries(filters).forEach(([key, value]) => {

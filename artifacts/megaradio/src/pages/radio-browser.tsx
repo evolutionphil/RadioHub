@@ -408,14 +408,14 @@ export default function RadioBrowser() {
                 <div>
                   <Label htmlFor="codec">Codec</Label>
                   <Select 
-                    value={searchParams.codec} 
-                    onValueChange={(value) => setSearchParams({...searchParams, codec: value})}
+                    value={searchParams.codec || 'all'}
+                    onValueChange={(value) => setSearchParams({...searchParams, codec: value==='all'?'':value})}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Select codec" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">Any</SelectItem>
+                      <SelectItem value="all">Any</SelectItem>
                       <SelectItem value="MP3">MP3</SelectItem>
                       <SelectItem value="AAC">AAC</SelectItem>
                       <SelectItem value="OGG">OGG</SelectItem>

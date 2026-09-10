@@ -337,7 +337,7 @@ export default function AdminDashboard() {
 
       {/* Station Quality Metrics */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-        <StatCard label="Stations Online" value={(stats?.workingStations || 0).toLocaleString()} icon={CheckCircle} accent="green" caption={`${stats?.workingPercentage || 0}% working`} progress={stats?.workingPercentage || 0} />
+        <StatCard label="Source reports working" value={(stats?.workingStations || 0).toLocaleString()} icon={CheckCircle} accent="green" caption={`${stats?.workingPercentage || 0}% · provider signal, not a live test`} progress={stats?.workingPercentage || 0} />
 
         <StatCard label="With Favicons" value={(stats?.stationsWithFavicon || 0).toLocaleString()} icon={Image} accent="blue" caption={`${stats?.faviconPercentage || 0}% have logos`} progress={stats?.faviconPercentage || 0} />
 

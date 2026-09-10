@@ -3,7 +3,7 @@ import { getAdminSetting } from '../data/postgres-admin-settings-store';
 import crypto from 'node:crypto';
 import { pgAdminAux } from '../data/postgres-admin-auxiliary-store';
 import { pgCatalog, pgBlacklistAdd, pgBlacklistGet, pgBlacklistFind, pgBlacklistPage } from '../data/postgres-catalog-store';
-import { pgAdminCatalogPage, pgContentDuplicateGroups, pgDuplicateCityGroups, pgDuplicateStationGroups, pgDatabaseSizeReport, pgPurgeOperationalData } from '../data/postgres-admin-catalog-store';
+import { pgAdminCatalogPage, pgAdminStationFilterOptions, pgContentDuplicateGroups, pgDuplicateCityGroups, pgDuplicateStationGroups, pgDatabaseSizeReport, pgPurgeOperationalData } from '../data/postgres-admin-catalog-store';
 import type { Express } from "express";
 import express from "express";
 import multer from "multer";
@@ -35,6 +35,8 @@ import {
 import { pgUserManagementStats } from "../data/postgres-user-store";
 import { registerAdminDescriptionRoutes } from './admin-description-routes';
 import { registerAdminStreamHealthRoutes } from './admin-stream-health-routes';
+import { slugifyStationName } from '../seo/junk-station-rules';
+import { SITEMAP_PRIORITY_LANGUAGES } from '@workspace/seo-shared/seo-config';
 
 // AdminSetting key used to record the most recent coverage drop alert
 // acknowledgement (Task #238). The stored value is keyed by snapshotDate
@@ -480,8 +482,8 @@ function maybeFinishCoverageJob(job: CoverageBackfillJob) {
 }
 
 const STATION_UPDATE_ALLOWED_FIELDS = [
-  'name', 'url', 'homepage', 'favicon', 'country', 'countryCode',
-  'language', 'tags', 'bitrate', 'codec', 'hls', 'noIndex'
+  'name', 'url', 'urlResolved', 'homepage', 'favicon', 'country', 'countryCode', 'state',
+  'language', 'tags', 'bitrate', 'codec', 'hls', 'noIndex', 'isFeatured', 'showInGlobalPopular'
 ] as const;
 
 function pickAllowedStationFields(body: Record<string, any>): Record<string, any> {
@@ -498,6 +500,7 @@ function pickAllowedStationFields(body: Record<string, any>): Record<string, any
   }
   if (typeof out.favicon === 'string') out.favicon = out.favicon.trim();
   if (typeof out.url === 'string') out.url = out.url.trim();
+  if (typeof out.urlResolved === 'string') out.urlResolved = out.urlResolved.trim();
   if (typeof out.homepage === 'string') out.homepage = out.homepage.trim();
   if (typeof out.name === 'string') out.name = out.name.trim();
   return out;
@@ -568,9 +571,27 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
   });
 
   // ADMIN STATIONS API - Paginated stations for admin interface
-  app.get('/api/admin/stations', requireAdmin, async (req, res) => {
+  app.get('/api/admin/stations/filter-options', requireAdmin, async (_req, res) => {
+    res.setHeader('Cache-Control', 'private, no-store');
     try {
-      logger.log(`📋 Admin stations request - Session ID: ${req.sessionID}, Query: ${JSON.stringify(req.query)}`);
+      const key = 'admin-station-filter-options:v1';
+      const cached = await CacheManager.get(key);
+      if (cached) return void res.json(cached);
+      const result = await pgAdminStationFilterOptions();
+      await CacheManager.set(key, result, { ttl: 300 });
+      res.json(result);
+    } catch {
+      res.status(503).json({ error: 'Station filter options are temporarily unavailable' });
+    }
+  });
+
+  app.get('/api/admin/stations', requireAdmin, async (req, res) => {
+    res.setHeader('Cache-Control', 'private, no-store');
+    try {
+      // Never log session identifiers or unbounded free-text admin searches.
+      if (Object.values(req.query).some(value => typeof value !== 'string' || value.length > 300)) {
+        return void res.status(400).json({ error: 'Filters must be single text values of at most 300 characters' });
+      }
       const { 
         page = 1, 
         limit = 50, 
@@ -578,20 +599,27 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
         country = '', 
         language = '', 
         genre = '',
+        codec = '',
+        healthStatus = 'all',
         hasDescriptions = 'all',
         tagsStatus = 'all',
         hasLogo = 'all',
         sortBy = 'name',
         sortOrder = 'asc'
       } = req.query;
+      if (!['all','working','unavailable','unverified','source-offline'].includes(String(healthStatus))) {
+        return void res.status(400).json({ error: 'Invalid station health filter' });
+      }
 
-      const cacheKey = `admin_stations:${JSON.stringify({
+      const cacheKey = `admin_stations:v2:${JSON.stringify({
         page: String(page),
         limit: String(limit),
         search: String(search),
         country: String(country),
         language: String(language),
         genre: String(genre),
+        codec: String(codec),
+        healthStatus: String(healthStatus),
         hasDescriptions: String(hasDescriptions),
         tagsStatus: String(tagsStatus),
         hasLogo: String(hasLogo),
@@ -611,7 +639,11 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
         filter.$or = [
           { name: { $regex: pattern } },
           { country: { $regex: pattern } },
-          { tags: { $regex: pattern } }
+          { tags: { $regex: pattern } },
+          { url: { $regex: pattern } },
+          { urlResolved: { $regex: pattern } },
+          { _id: String(search) },
+          { stationuuid: String(search) }
         ];
       }
       
@@ -626,6 +658,7 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
       if (genre && genre !== '' && genre !== 'all') {
         filter.tags = { $regex: literalListPattern(genre) };
       }
+      if (codec && codec !== 'all') filter.codec = { $regex: new RegExp('^' + literalListPattern(codec).source + '$', 'i') };
       
       if (tagsStatus && tagsStatus !== '' && tagsStatus !== 'all') {
         // Empty-tags predicate: tags missing, null, or empty/whitespace-only string
@@ -679,10 +712,10 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
         }
       }
 
-      const pageNumber = Math.max(1,Number.parseInt(String(page),10) || 1);
+      const pageNumber = Math.max(1,Math.min(1_000_000,Number.parseInt(String(page),10) || 1));
       const pageSize = Math.max(1,Math.min(500,Number.parseInt(String(limit),10) || 50));
       const { total,stations } = await pgAdminCatalogPage(filter,{
-        descriptionState:String(hasDescriptions),sortBy:String(sortBy),direction:sortOrder==='asc' ? 1 : -1,
+        descriptionState:String(hasDescriptions),healthStatus:String(healthStatus),sortBy:String(sortBy),direction:sortOrder==='asc' ? 1 : -1,
         limit:pageSize,offset:(pageNumber-1)*pageSize,
       });
       
@@ -693,12 +726,12 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
         totalPages: Math.ceil(total / pageSize)
       };
       
-      await CacheManager.set(cacheKey, result, { ttl: 60 });
+      await CacheManager.set(cacheKey, result, { ttl: 15 });
       res.json(result);
     } catch (error: any) {
       logger.error(`Error in /api/admin/stations: ${error?.message || error}`);
       if (error?.stack) logger.error(error.stack.split('\n').slice(0, 5).join('\n'));
-      res.status(500).json({ error: 'Failed to fetch stations', details: error?.message || 'Unknown error' });
+      res.status(500).json({ error: 'Failed to fetch stations' });
     }
   });
 
@@ -1021,6 +1054,72 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
     }
   );
 
+  // Manual creation is deliberately separate from provider import: identity,
+  // counters and availability evidence are server-owned, never accepted from
+  // the form. No stream, logo, AI or provider request is made during this write.
+  app.post('/api/stations', requireAdmin, express.json({ limit: '512kb' }), async (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body) || Buffer.byteLength(JSON.stringify(req.body)) > 512 * 1024) {
+      return void res.status(400).json({ error: 'Station fields must be a bounded object' });
+    }
+    const allowed = new Set<string>([...STATION_UPDATE_ALLOWED_FIELDS, 'descriptions']);
+    if (Object.keys(req.body).some(key => !allowed.has(key))) {
+      return void res.status(400).json({ error: 'Unsupported station fields; identity and health evidence are assigned by the server' });
+    }
+    for (const field of ['hls', 'noIndex', 'isFeatured', 'showInGlobalPopular']) {
+      if (req.body[field] !== undefined && typeof req.body[field] !== 'boolean') return void res.status(400).json({ error: `${field} must be a boolean` });
+    }
+    for (const field of ['name', 'url', 'urlResolved', 'homepage', 'favicon', 'country', 'countryCode', 'state', 'language', 'tags', 'codec']) {
+      if (req.body[field] !== undefined && (typeof req.body[field] !== 'string' || req.body[field].length > 4096)) {
+        return void res.status(400).json({ error: `${field} must be text of at most 4096 characters` });
+      }
+    }
+    if (req.body.bitrate !== undefined && req.body.bitrate !== null &&
+      (typeof req.body.bitrate !== 'number' || !Number.isInteger(req.body.bitrate) || req.body.bitrate < 0 || req.body.bitrate > 100000)) {
+      return void res.status(400).json({ error: 'Bitrate must be an integer between 0 and 100000, or null' });
+    }
+    const fields = pickAllowedStationFields(req.body);
+    for (const [key, value] of Object.entries(fields)) if (typeof value === 'string') fields[key] = value.trim();
+    if (!fields.name || !fields.url) return void res.status(400).json({ error: 'Station name and stream URL are required' });
+    for (const field of ['url', 'urlResolved', 'homepage', 'favicon']) {
+      if (!fields[field] || (field === 'favicon' && /^\/(?!\/)/.test(fields[field]))) continue;
+      try { if (!['http:', 'https:'].includes(new URL(fields[field]).protocol)) throw new Error(); }
+      catch { return void res.status(400).json({ error: `${field} must be a valid HTTP or HTTPS URL` }); }
+    }
+    if (fields.countryCode) {
+      if (!/^[a-z]{2}$/i.test(fields.countryCode)) return void res.status(400).json({ error: 'Country code must contain two letters' });
+      fields.countryCode = fields.countryCode.toUpperCase();
+    }
+    const descriptions = req.body.descriptions === undefined ? {} : req.body.descriptions;
+    const object = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
+    if (!object(descriptions) || Object.keys(descriptions).some(locale => !SITEMAP_PRIORITY_LANGUAGES.universal14.includes(locale as any)) ||
+      Object.values(descriptions).some(value => !object(value) || !Object.keys(value).length || Object.entries(value).some(([key, text]) =>
+        !['full', 'meta'].includes(key) || typeof text !== 'string' || !text.trim() || text.length > (key === 'full' ? 20000 : 1000)))) {
+      return void res.status(400).json({ error: 'Descriptions must contain supported website languages and non-empty full/meta text' });
+    }
+    try {
+      const id = crypto.randomBytes(12).toString('hex');
+      const slugBase = slugifyStationName(fields.name).slice(0, 180).replace(/-+$/, '') || 'station';
+      const manualEditFields = Object.fromEntries([...Object.keys(fields), ...(Object.keys(descriptions).length ? ['descriptions'] : [])].map(key => [key, true]));
+      const [station] = await pgCatalog().insertMany([{
+        ...fields, _id: id, stationuuid: crypto.randomUUID(), slug: `${slugBase}-${id}`, descriptions, manualEditFields,
+        lastCheckOk: false, lastCheckTime: null, availabilityOutcome: 'inconclusive', availabilityCheckedAt: null,
+        isListVisible: true, visibilityExpiresAt: null, healthSource: 'manual-unchecked',
+      }]);
+      if (!station) return void res.status(409).json({ error: 'A station with this name, stream URL and country already exists' });
+      const cacheResults = await Promise.allSettled([
+        Promise.resolve().then(() => performanceCache.invalidateStationCache(station.slug)),
+        ...['admin_stations:', 'stations', 'popular_stations', 'community_favorites', 'genres'].map(pattern =>
+          Promise.resolve().then(() => CacheManager.clearByPattern(pattern))),
+        Promise.resolve().then(() => CacheManager.del('admin-station-filter-options:v1')),
+      ]);
+      return void res.status(201).json({ success: true, station, cacheInvalidated: cacheResults.every(result => result.status === 'fulfilled') });
+    } catch (error: any) {
+      logger.error('Manual station creation failed', { code: error?.code || 'unknown' });
+      return void res.status(error?.code === '23505' ? 409 : 500).json({ error: error?.code === '23505' ? 'Station identity already exists; retry creating the station' : 'Station creation failed' });
+    }
+  });
+
   // STATION UPDATE - Edit station metadata (Admin only)
   // PUT /api/stations/:stationId   (frontend updateMutation hits this exact path)
   app.put("/api/stations/:stationId", requireAdmin, express.json({ limit: '1mb' }), async (req, res) => {
@@ -1030,7 +1129,30 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
         return void res.status(400).json({ error: 'Invalid station id' });
       }
 
-      const update = pickAllowedStationFields(req.body || {});
+      if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) {
+        return void res.status(400).json({ error: 'Station fields must be an object' });
+      }
+      for (const field of ['hls','noIndex','isFeatured','showInGlobalPopular']) {
+        if (req.body[field] !== undefined && typeof req.body[field] !== 'boolean') {
+          return void res.status(400).json({ error: `${field} must be a boolean` });
+        }
+      }
+      for (const field of ['name','url','urlResolved','homepage','favicon','country','countryCode','state','language','tags','codec']) {
+        if (req.body[field] !== undefined && (typeof req.body[field] !== 'string' || req.body[field].length>4096)) {
+          return void res.status(400).json({ error: `${field} must be text of at most 4096 characters` });
+        }
+      }
+      const update = pickAllowedStationFields(req.body);
+      if (update.name === '' || update.url === '') return void res.status(400).json({ error: 'Station name and stream URL cannot be empty' });
+      for (const field of ['url','urlResolved','homepage']) {
+        if (!update[field]) continue;
+        try { if (!['http:','https:'].includes(new URL(update[field]).protocol)) throw new Error(); }
+        catch { return void res.status(400).json({ error: `${field} must be a valid HTTP or HTTPS URL` }); }
+      }
+      if (req.body.bitrate !== undefined && req.body.bitrate !== '' && req.body.bitrate !== null &&
+        (!Number.isInteger(Number(req.body.bitrate)) || Number(req.body.bitrate)<0 || Number(req.body.bitrate)>100000)) {
+        return void res.status(400).json({ error: 'Bitrate must be a non-negative number' });
+      }
       if (Object.hasOwn(req.body || {}, 'descriptions')) {
         return void res.status(400).json({ error: 'Save descriptions through PATCH /api/admin/stations/:id/descriptions with expected current values' });
       }
@@ -1080,14 +1202,16 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
           });
       }
 
-      if ((updated as any)?.slug) {
-        performanceCache.invalidateStationCache((updated as any).slug);
-      }
-
-      return void res.json({ success: true, station: updated });
+      const cacheResults = await Promise.allSettled([
+        Promise.resolve().then(()=>performanceCache.invalidateStationCache(updated.slug)),
+        CacheManager.clearByPattern('admin_stations:'),
+        CacheManager.del('admin-station-filter-options:v1'),
+      ]);
+      // A cache failure after a committed write must not invite a duplicate save.
+      return void res.json({ success: true, station: updated, cacheInvalidated:cacheResults.every(r=>r.status==='fulfilled') });
     } catch (error: any) {
       logger.error(`Station update failed: ${error.message}`);
-      return void res.status(500).json({ error: error.message || 'Update failed' });
+      return void res.status(500).json({ error: 'Station update failed' });
     }
   });
 
@@ -1111,10 +1235,10 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
       const cached = await publicStationCache.get(cacheKey);
       if (cached) return void res.json(cached);
 
-      const stations = await pgCatalog().find({ _id: { $in: stationIds }, lastCheckOk: true }, slim ? {
+      const stations = await pgCatalog().find({ _id: { $in: stationIds }, isListVisible: true }, slim ? {
         fields: ['_id','stationuuid','name','slug','url','urlResolved','favicon','country','countryCode','state','language',
           'tags','codec','bitrate','hls','votes','clickCount','averageRating','totalRatings','lastCheckOk','lastCheckTime',
-          'hasLogo','logoAssets','isFeatured','noIndex'], limit: 50,
+          'hasLogo','logoAssets','isFeatured','noIndex','isListVisible','availabilityStatus'], limit: 50,
       } : { limit: 50 });
       const stationMap = stations.reduce((acc: any, station: any) => {
         acc[station._id.toString()] = station;

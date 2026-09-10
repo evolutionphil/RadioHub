@@ -102,7 +102,7 @@ export function registerGenresCountriesRoutes(app: Express, deps: any) {
       const recentStations = await pgRecentSessionListening(sessionId, 5);
 
       if (recentStations.length === 0) {
-        const popularStations = await pgCatalog().find({ lastCheckOk: true }, { sort: { votes: -1 }, limit: limit || 6 });
+        const popularStations = await pgCatalog().find({ isListVisible: true }, { sort: { votes: -1 }, limit: limit || 6 });
         
         const starterRecommendations = popularStations.map(station => ({
           ...station,
@@ -127,7 +127,7 @@ export function registerGenresCountriesRoutes(app: Express, deps: any) {
 
       if (recommendations.length > 0) {
         const stationIds = recommendations.map(rec => rec.stationId);
-        const stations = await pgCatalog().find({ _id: { $in: stationIds }, lastCheckOk: true });
+        const stations = await pgCatalog().find({ _id: { $in: stationIds }, isListVisible: true });
         
         const enhancedStations = stations.map(station => {
           const rec = recommendations.find(r => r.stationId === station._id.toString());

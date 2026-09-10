@@ -107,7 +107,7 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
     try {
       const { identifier } = req.params;
 
-      const cacheKey = `station:detail:${identifier}`;
+      const cacheKey = `station:detail:visibility-v2:${identifier}`;
       const cached = await CacheManager.get(cacheKey);
       if (cached) return void res.json(cached);
 
@@ -143,12 +143,12 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
       }
 
       const result = stripPlaceholders(station);
-      await CacheManager.set(cacheKey, result, { ttl: 300 });
+      await CacheManager.set(cacheKey, result, { ttl: 60 });
       res.json(result);
     } catch (error: any) {
       logger.error(`❌ /api/station/:identifier failed: code=${error?.code || 'unknown'} msg=${error?.message || error}`);
       let stale: any = null;
-      try { stale = await CacheManager.get(`station:detail:${req.params.identifier}`); } catch {}
+      try { stale = await CacheManager.get(`station:detail:visibility-v2:${req.params.identifier}`); } catch {}
       res.set('Cache-Control', 'no-store');
       if (stale != null) { res.set('X-Data-Stale', 'true'); return void res.json(stale); }
       res.status(503).json({ error: 'Station data is temporarily unavailable' });

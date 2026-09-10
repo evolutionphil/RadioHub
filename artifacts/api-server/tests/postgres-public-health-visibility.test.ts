@@ -16,7 +16,7 @@ describe('Native public station health visibility', { skip: !process.env.PG_TEST
       recentlyPlayedStations: [{ stationId: 'offline' }, { stationId: 'healthy' }, { stationId: 'healthy2' }] });
     for (const [id, healthy, votes] of [['offline', false, 10000], ['healthy', true, 20], ['healthy2', true, 10]] as const) {
       await fixture.insert('stations', { _id: id, stationuuid: `fixture-${id}`, name: id, slug: id, country: 'Germany', countryCode: 'DE',
-        url: `https://stream.invalid/${id}`, tags: 'jazz', lastCheckOk: healthy, votes, latitude: 52.5, longitude: 13.4,
+        url: `https://stream.invalid/${id}`, tags: 'jazz', lastCheckOk: healthy, isListVisible: healthy, votes, latitude: 52.5, longitude: 13.4,
         source: { lastCheckOk: !healthy, descriptions: { de: { full: 'Retained editorial content' } } } });
       await fixture.insert('station_genres', { stationId: id, genreSlug: 'jazz' });
       await fixture.insert('user_favorites', { userId: 'viewer', stationId: id });
@@ -52,11 +52,20 @@ describe('Native public station health visibility', { skip: !process.env.PG_TEST
     assert.equal((await engagement.pgCommunityFavorites(undefined, undefined, 10)).favorites.length, 2);
     const before = (await fixture.pool.query("SELECT source FROM users WHERE id='viewer'")).rows[0].source;
     assert.equal((await fixture.pool.query('SELECT count(*)::int count FROM user_favorites')).rows[0].count, 3);
-    await fixture.pool.query("UPDATE stations SET last_check_ok=true WHERE id='offline'");
+    await fixture.pool.query("UPDATE stations SET is_list_visible=true WHERE id='offline'");
     assert.equal((await engagement.pgFavoriteStationsForUser('viewer', 'newest', 1, 10)).total, 3);
     assert.deepEqual((await engagement.pgRecentlyPlayedStations('viewer', 1)).map(s => s._id), ['offline']);
     assert.equal((await read.listStationsFromPostgres({ page: 1, limit: 10 })).totalCount, 3);
     assert.equal((await taxonomy.pgGenreBySlug('jazz')).stationCount, 3);
     assert.deepEqual((await fixture.pool.query("SELECT source FROM users WHERE id='viewer'")).rows[0].source, before);
+  });
+  it('source-only false stays visible across SQL lists, compact cards and favorites without pretending verified healthy', async () => {
+    const raw = await read.getStationByIdentifier('offline');
+    assert.equal(raw.lastCheckOk,false);assert.equal(raw.isListVisible,true);assert.equal(raw.availabilityStatus,'unverified');
+    const listed = await read.listStationsFromPostgres({page:1,limit:10,search:'offline'});
+    assert.equal(listed.totalCount,1);assert.equal(listed.stations[0].lastCheckOk,false);
+    assert.equal(listed.stations[0].isListVisible,true);assert.equal(listed.stations[0].availabilityStatus,'unverified');
+    const favorite = (await engagement.pgUserFavorites('viewer',1,10)).favorites.find((station:any)=>station._id==='offline');
+    assert.equal(favorite.isListVisible,true);assert.equal(favorite.lastCheckOk,false);
   });
 });

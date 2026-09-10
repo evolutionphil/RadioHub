@@ -184,11 +184,11 @@ export class PrecomputedStationsService {
 
     return trackOperation('precompute-country', async () => {
     const fields = ['_id', 'slug', 'name', 'url', 'urlResolved', 'favicon', 'country', 'state', 'votes', 'hasLogo', 'tags', 'codec', 'bitrate', 'logoAssets'];
-    let stations = await pgCatalog().find({ country: countryName, lastCheckOk: true },
+    let stations = await pgCatalog().find({ country: countryName, isListVisible: true },
       { sort: { hasLogo: -1, votes: -1 }, limit: 3000, fields });
     if (stations.length === 0) {
       const escapedName = countryName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      stations = await pgCatalog().find({ country: { $regex: new RegExp(`^${escapedName}$`, 'i') }, lastCheckOk: true },
+      stations = await pgCatalog().find({ country: { $regex: new RegExp(`^${escapedName}$`, 'i') }, isListVisible: true },
         { sort: { hasLogo: -1, votes: -1 }, limit: 3000, fields });
     }
     stations = stations.map(station => ({ ...station, url_resolved: station.urlResolved }));
@@ -268,11 +268,11 @@ export class PrecomputedStationsService {
     const data = await CacheManager.getOrSetSWR<PrecomputedCountryData>(cacheKey, async () => {
       cached = false;
       const catalog = pgCatalog();
-      let filter: CatalogFilter = { country: resolvedName, lastCheckOk: true };
+      let filter: CatalogFilter = { country: resolvedName, isListVisible: true };
       let total = await catalog.count(filter);
       if (total === 0) {
         const escapedName = resolvedName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        filter = { country: { $regex: new RegExp(`^${escapedName}$`, 'i') }, lastCheckOk: true };
+        filter = { country: { $regex: new RegExp(`^${escapedName}$`, 'i') }, isListVisible: true };
         total = await catalog.count(filter);
       }
       // DB errors must propagate to the renderer's retryable503 path rather
@@ -410,7 +410,7 @@ export class PrecomputedStationsService {
     // winning cards. Never cache a partial country merge after a DB failure.
     const [stations, totalCount] = await Promise.all([
       pgCatalog().globalStationCards(GLOBAL_STATIONS_LIMIT, 200),
-      pgCatalog().count({ lastCheckOk: true }),
+      pgCatalog().count({ isListVisible: true }),
     ]);
 
     const data: PrecomputedCountryData = {

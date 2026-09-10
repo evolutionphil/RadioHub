@@ -1,784 +1,174 @@
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Edit, Play, Pause, Trash2, ArrowUpDown, Radio, Circle, Sparkles, Tag } from "lucide-react";
-import { useState, useRef } from "react";
-import { useTranslation } from "@/hooks/useTranslation";
-// The station API retains its stable _id identifier field.
-interface MongoStation {
-  _id: string;
-  name: string;
-  url: string;
-  country?: string;
-  countryName?: string;
-  language?: string;
-  codec?: string;
-  bitrate?: number;
-  votes?: number;
-  clickCount?: number;
-  clickTrend?: number | null;
-  lastCheckOk?: boolean;
-  tags?: string;
-  favicon?: string;
-  localImagePath?: string;
-  homepage?: string;
+import { Fragment, useState } from 'react';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { Edit, Play, Pause, Trash2, ArrowUp, ArrowDown, ArrowUpDown, MoreHorizontal, Sparkles, Tag, ChevronDown, ChevronUp, Loader2, Languages } from 'lucide-react';
+import StationLogo from '@/components/ui/station-logo';
+import { adminStationDescriptionCount, adminStationHealth } from '@/lib/admin-station-list';
+
+interface AdminStation {
+  _id: string; name: string; url: string; country?: string; countryName?: string;
+  language?: string; codec?: string; bitrate?: number; votes?: number;
+  clickCount?: number; clickTrend?: number | null; lastCheckOk?: boolean;
+  tags?: string; favicon?: string; localImagePath?: string; homepage?: string;
+  availabilityStatus?: string; isListVisible?: boolean;
   [key: string]: any;
 }
 
-
-
 interface StationTableProps {
-  stations: MongoStation[];
-  onEdit: (station: MongoStation) => void;
-  onDelete: (station: MongoStation) => void;
+  stations: AdminStation[];
+  onEdit: (station: AdminStation) => void;
+  onDelete: (station: AdminStation) => void;
   onSort: (field: string) => void;
-  onPlay: (station: MongoStation) => void;
-  onGenerateAi?: (station: MongoStation) => void;
-  onTranslate?: (station: MongoStation) => void;
-  onRecheckTags?: (station: MongoStation) => void;
-  sortBy: string;
-  sortOrder: 'asc' | 'desc';
-  generatingStationId?: string | null;
-  recheckingTagsStationId?: string | null;
+  onPlay: (station: AdminStation) => void | Promise<void>;
+  onGenerateAi?: (station: AdminStation) => void;
+  onTranslate?: (station: AdminStation) => void;
+  onRecheckTags?: (station: AdminStation) => void;
+  sortBy: string; sortOrder: 'asc' | 'desc';
+  generatingStationId?: string | null; recheckingTagsStationId?: string | null;
+  playingStationId?: string | null; loadingStationId?: string | null;
   selectedStations?: Set<string>;
   onSelectedStationsChange?: (selected: Set<string>) => void;
 }
 
+const SORTS = [['name', 'Station name'], ['country', 'Country'], ['healthStatus', 'Health · offline first'], ['votes', 'Votes'], ['clickcount', 'Listeners / clicks'], ['bitrate', 'Bitrate'], ['tagsCheckedAt', 'Tag check date'], ['favicon', 'Logo']] as const;
+const dateText = (value: unknown) => {
+  const date = typeof value === 'string' || value instanceof Date ? new Date(value) : null;
+  return date && Number.isFinite(date.getTime()) ? date.toLocaleString() : 'Not recorded';
+};
+
+export function AdminStationHealthBadge({ station }: { station: AdminStation }) {
+  const health = adminStationHealth(station);
+  const tone = health.tone === 'offline' ? 'border-red-200 bg-red-50 text-red-800' : health.tone === 'working' ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-amber-200 bg-amber-50 text-amber-800';
+  return <div className="space-y-1">
+    <Badge variant="outline" className={tone + ' whitespace-normal leading-snug'} title={health.detail}>{health.label}</Badge>
+    {station.lastCheckOk === false && station.healthSource !== 'manual-unchecked' && health.tone !== 'offline' && <p className="text-xs text-muted-foreground">Source reports offline</p>}
+  </div>;
+}
+
+function DescriptionBadge({ station }: { station: AdminStation }) {
+  const count = adminStationDescriptionCount(station.descriptions);
+  return <Badge variant="outline" className={count === 14 ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'text-muted-foreground'} title="Languages with a non-empty full description; this is not an SEO quality score">{count} / 14 languages</Badge>;
+}
+
+function StationDetails({ station }: { station: AdminStation }) {
+  const tags = typeof station.tags === 'string' ? station.tags.split(',').map(tag => tag.trim()).filter(Boolean) : [];
+  const checkedAt = Date.parse(station.tagsCheckedAt || '');
+  const cooldown = !tags.length && Number.isFinite(checkedAt) && Date.now() - checkedAt < 30 * 86400000;
+  return <div className="grid gap-4 bg-muted/30 p-4 text-sm sm:grid-cols-2 xl:grid-cols-3">
+    <div className="space-y-1 min-w-0"><p className="font-medium">Stream &amp; format</p><p className="break-all text-xs text-muted-foreground">{station.url}</p>
+      {station.urlResolved && station.urlResolved !== station.url && <p className="break-all text-xs text-muted-foreground">Resolved: {station.urlResolved}</p>}
+      <p className="text-xs text-muted-foreground">{station.codec || 'Unknown codec'} · {station.bitrate ? station.bitrate + ' kbps' : 'Bitrate unknown'}{station.language ? ' · ' + station.language : ''}</p>
+      {station.sslError && <p className="text-xs text-amber-700">Source reported a TLS / certificate issue.</p>}
+    </div>
+    <div className="space-y-1"><p className="font-medium">Health evidence</p><p className="text-xs text-muted-foreground">{adminStationHealth(station).detail}</p>
+      <p className="text-xs text-muted-foreground">Latest check: {dateText(station.lastCheckTime)}</p>
+      <p className="text-xs text-muted-foreground">Latest positive: {dateText(station.lastCheckOkTime)}</p>
+      <p className="text-xs text-muted-foreground">Source-local check: {dateText(station.lastLocalCheckTime)}</p>
+    </div>
+    <div className="space-y-1"><p className="font-medium">Genres &amp; source checks</p>
+      <p className="break-words text-xs text-muted-foreground">{tags.length ? tags.join(', ') : 'No genres recorded'}</p>
+      <p className="text-xs text-muted-foreground">Tags checked: {dateText(station.tagsCheckedAt)}</p>
+      {cooldown && <p className="text-xs text-amber-700">No source tags · cooldown until {dateText(new Date(checkedAt + 30 * 86400000))}</p>}
+      <p className="text-xs text-muted-foreground">Click trend: {station.clickTrend ?? 'Not recorded'} · Last click: {dateText(station.clickTimestamp)}</p>
+    </div>
+  </div>;
+}
+
 export default function StationTable({
-  stations,
-  onEdit,
-  onDelete,
-  onSort,
-  onPlay,
-  onGenerateAi,
-  onTranslate,
-  onRecheckTags,
-  sortBy,
-  sortOrder,
-  generatingStationId,
-  recheckingTagsStationId,
-  selectedStations = new Set(),
-  onSelectedStationsChange,
+  stations, onEdit, onDelete, onSort, onPlay, onGenerateAi, onTranslate, onRecheckTags,
+  sortBy, sortOrder, generatingStationId, recheckingTagsStationId, playingStationId, loadingStationId,
+  selectedStations = new Set(), onSelectedStationsChange,
 }: StationTableProps) {
-  const { t } = useTranslation();
-
-  const [playingStationId, setPlayingStationId] = useState<string | null>(null);
-  const [loadingStationId, setLoadingStationId] = useState<string | null>(null);
-  const audioRefs = useRef<{ [key: string]: HTMLAudioElement }>({});
-
-
-  // Properly manage which station is playing - automatically switches stations
-  const updatePlayingState = (newPlayingId: string | null) => {
-    // Updating playing state
-    
-    // Stop all other stations first when switching to a new one
-    Object.keys(audioRefs.current).forEach(key => {
-      if (key !== newPlayingId) {
-        // Auto-stopping station
-        stopCurrentStation(key);
-      }
-    });
-    
-    setPlayingStationId(newPlayingId);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const pageSelectedCount = stations.filter(station => selectedStations.has(station._id)).length;
+  const allSelected = stations.length > 0 && pageSelectedCount === stations.length;
+  const selectAllState = allSelected ? true : pageSelectedCount ? 'indeterminate' : false;
+  const selectStation = (id: string, checked: boolean) => {
+    const selected = new Set(selectedStations);
+    if (checked) selected.add(id); else selected.delete(id);
+    onSelectedStationsChange?.(selected);
   };
-
-  const handleSelectAll = (checked: boolean) => {
-    const pageIds = stations.map(s => s._id);
-    const newSelected = new Set(selectedStations);
-    if (checked) {
-      pageIds.forEach(id => newSelected.add(id));
-    } else {
-      pageIds.forEach(id => newSelected.delete(id));
-    }
-    onSelectedStationsChange?.(newSelected);
+  const selectPage = (checked: boolean) => {
+    const selected = new Set(selectedStations);
+    for (const station of stations) { if (checked) selected.add(station._id); else selected.delete(station._id); }
+    onSelectedStationsChange?.(selected);
   };
-
-  const pageSelectedCount = stations.reduce(
-    (acc, s) => acc + (selectedStations.has(s._id) ? 1 : 0),
-    0
-  );
-  const allPageSelected = stations.length > 0 && pageSelectedCount === stations.length;
-  const somePageSelected = pageSelectedCount > 0 && !allPageSelected;
-  const selectAllCheckedValue: boolean | 'indeterminate' = allPageSelected
-    ? true
-    : somePageSelected
-    ? 'indeterminate'
-    : false;
-
-  const handleSelectStation = (stationId: string, checked: boolean) => {
-    const newSelected = new Set(selectedStations);
-    if (checked) {
-      newSelected.add(stationId);
-    } else {
-      newSelected.delete(stationId);
-    }
-    onSelectedStationsChange?.(newSelected);
-  };
-
-  const handlePlayStation = async (station: MongoStation) => {
-    const stationId = station._id;
-    // handlePlayStation called
-    
-    try {
-      // If this station is already playing, pause it
-      if (playingStationId === stationId) {
-        await stopCurrentStation(stationId);
-        updatePlayingState(null);
-        return;
-      }
-
-      // Set loading state
-      setLoadingStationId(stationId);
-      
-      // All streams are now handled by the backend - use server proxy exclusively
-      await playServerProcessedStream(station, stationId);
-
-    } catch (error: any) {
-      // Play error
-      setLoadingStationId(null);
-      updatePlayingState(null);
-      // Failed to start playback
-    }
-  };
-
-  const stopCurrentStation = async (stationId: string) => {
-    // Stop audio element
-    const audioElement = audioRefs.current[stationId];
-    if (audioElement) {
-      audioElement.pause();
-      audioElement.src = '';
-      delete audioRefs.current[stationId];
-    }
-  };
-
-  const playServerProcessedStream = async (station: MongoStation, stationId: string) => {
-    // Playing server-processed stream
-    
-    // Backend handles all stream processing - use server proxy exclusively
-    const { getStreamProxyUrl } = await import('@/lib/utils');
-    const streamUrl = getStreamProxyUrl(`/api/stream/${stationId}`);
-    
-    try {
-      // Using backend-processed stream
-      
-      const audioElement = new Audio();
-      audioRefs.current[stationId] = audioElement;
-      
-      audioElement.src = streamUrl;
-      audioElement.volume = 0.7;
-      audioElement.crossOrigin = 'anonymous';
-      audioElement.preload = 'none';
-
-      audioElement.oncanplay = () => {
-        setLoadingStationId(null);
-        // Backend stream ready
-      };
-
-      audioElement.onplay = () => {
-        setLoadingStationId(null);
-        updatePlayingState(stationId);
-        // Backend stream playing
-        onPlay(station);
-      };
-
-      audioElement.onerror = (e) => {
-        // Backend stream failed
-        setLoadingStationId(null);
-        updatePlayingState(null);
-        // Backend processing failed - station may be offline
-      };
-
-      audioElement.onended = () => {
-        updatePlayingState(null);
-      };
-
-      audioElement.onloadstart = () => {
-        // Audio load started
-      };
-
-      audioElement.onloadeddata = () => {
-        // Audio data loaded
-      };
-
-      await audioElement.play();
-      // Backend stream started successfully
-
-    } catch (error) {
-      // Backend stream failed
-      setLoadingStationId(null);
-      updatePlayingState(null);
-      // All backend processing failed
-    }
-  };
-
-  const isTagsEmpty = (station: MongoStation) => {
-    const t = station.tags;
-    return !t || (typeof t === 'string' && t.trim() === '');
-  };
-
-  const formatRelativeTime = (date: Date) => {
-    const diffMs = Date.now() - date.getTime();
-    const minutes = Math.floor(diffMs / 60000);
-    if (minutes < 1) return 'just now';
-    if (minutes < 60) return `${minutes}m ago`;
-    const hours = Math.floor(minutes / 60);
-    if (hours < 24) return `${hours}h ago`;
-    const days = Math.floor(hours / 24);
-    if (days < 30) return `${days}d ago`;
-    const months = Math.floor(days / 30);
-    return `${months}mo ago`;
-  };
-
-  // 30-day cooldown matches services/sync.ts (background tag-hydration job).
-  const TAGS_COOLDOWN_MS = 30 * 24 * 60 * 60 * 1000;
-
-  const getTagsCheckedCell = (station: MongoStation) => {
-    const checkedAt = station.tagsCheckedAt ? new Date(station.tagsCheckedAt) : null;
-    const empty = isTagsEmpty(station);
-
-    if (!checkedAt || isNaN(checkedAt.getTime())) {
-      if (empty) {
-        return (
-          <Badge
-            variant="secondary"
-            className="bg-gray-100 text-gray-700"
-            title="Tagless and never re-checked against Radio-Browser"
-          >
-            Never re-checked
-          </Badge>
-        );
-      }
-      return <span className="text-xs text-gray-400">—</span>;
-    }
-
-    const inCooldown = Date.now() - checkedAt.getTime() < TAGS_COOLDOWN_MS;
-    const stuck = empty && inCooldown;
-    const cooldownEnds = new Date(checkedAt.getTime() + TAGS_COOLDOWN_MS);
-    const tooltip = stuck
-      ? `Stuck on empty upstream — Radio-Browser returned no tags on ${checkedAt.toLocaleString()}. Background hydration will skip this station until ${cooldownEnds.toLocaleString()}.`
-      : `Last re-checked against Radio-Browser on ${checkedAt.toLocaleString()}`;
-
-    return (
-      <div className="flex flex-col">
-        <span className="text-xs text-gray-700" title={tooltip}>
-          {formatRelativeTime(checkedAt)}
-        </span>
-        {stuck && (
-          <Badge
-            variant="secondary"
-            className="mt-1 bg-amber-100 text-amber-800 w-fit"
-            title={tooltip}
-            data-testid={`badge-tags-stuck-${station._id}`}
-          >
-            Empty (cooldown)
-          </Badge>
-        )}
-      </div>
-    );
-  };
-
-  const getDescriptionStatusBadge = (station: MongoStation) => {
-    const descriptions = station.descriptions;
-    const languageCount = descriptions ? Object.keys(descriptions).length : 0;
-    
-    if (languageCount === 0) {
-      return (
-        <Badge variant="secondary" className="bg-red-100 text-red-800" title="No AI description available">
-          🔴 No Description
-        </Badge>
-      );
-    } else if (languageCount === 1) {
-      return (
-        <Badge variant="secondary" className="bg-yellow-100 text-yellow-800" title={`${languageCount} language translated`}>
-          🟡 1 Language
-        </Badge>
-      );
-    } else {
-      return (
-        <Badge variant="secondary" className="bg-green-100 text-green-800" title={`${languageCount} languages translated`}>
-          🟢 {languageCount} Languages
-        </Badge>
-      );
-    }
-  };
-
-  const getStatusBadge = (station: MongoStation) => {
-    const lastCheckTime = station.lastCheckTime ? new Date(station.lastCheckTime) : null;
-    const lastCheckOkTime = station.lastCheckOkTime ? new Date(station.lastCheckOkTime) : null;
-    const lastLocalCheckTime = station.lastLocalCheckTime ? new Date(station.lastLocalCheckTime) : null;
-    
-    const timeSinceCheck = lastCheckTime ? Math.floor((Date.now() - lastCheckTime.getTime()) / (1000 * 60 * 60)) : null;
-    const timeSinceOkCheck = lastCheckOkTime ? Math.floor((Date.now() - lastCheckOkTime.getTime()) / (1000 * 60 * 60)) : null;
-    const timeSinceLocalCheck = lastLocalCheckTime ? Math.floor((Date.now() - lastLocalCheckTime.getTime()) / (1000 * 60 * 60)) : null;
-    
-    const formatTime = (date: Date | null) => date ? date.toLocaleDateString() + ' ' + date.toLocaleTimeString() : 'Never';
-    
-    const tooltipText = `Status Details:
-Last Check: ${formatTime(lastCheckTime)} (${timeSinceCheck ? timeSinceCheck + 'h ago' : 'Unknown'})
-Last Successful: ${formatTime(lastCheckOkTime)} (${timeSinceOkCheck ? timeSinceOkCheck + 'h ago' : 'Unknown'})
-Last Local Check: ${formatTime(lastLocalCheckTime)} (${timeSinceLocalCheck ? timeSinceLocalCheck + 'h ago' : 'Unknown'})`;
-    
-    // Check for SSL error first
-    if (station.sslError === true || station.sslError === 1) {
-      return (
-        <Badge variant="secondary" className="bg-yellow-100 text-yellow-800" title={tooltipText}>
-          <Circle className="w-2 h-2 text-yellow-400 fill-current mr-1" />
-          SSL Error
-        </Badge>
-      );
-    }
-    
-    // If lastCheckOk is true, station is online
-    if (station.lastCheckOk === true) {
-      return (
-        <Badge variant="secondary" className="bg-green-100 text-green-800" title={tooltipText}>
-          <Circle className="w-2 h-2 text-green-400 fill-current mr-1" />
-          Online
-        </Badge>
-      );
-    }
-    
-    // If lastCheckOk is explicitly false, station is offline
-    if (station.lastCheckOk === false) {
-      return (
-        <Badge variant="secondary" className="bg-red-100 text-red-800" title={tooltipText}>
-          <Circle className="w-2 h-2 text-red-400 fill-current mr-1" />
-          Offline
-        </Badge>
-      );
-    }
-    
-    // Unknown status
-    return (
-      <Badge variant="secondary" className="bg-gray-100 text-gray-800" title={tooltipText}>
-        <Circle className="w-2 h-2 text-gray-400 fill-current mr-1" />
-        Unknown
-      </Badge>
-    );
-  };
-
-  const SortableHeader = ({ field, children }: { field: string; children: React.ReactNode }) => (
-    <TableHead 
-      className="cursor-pointer hover:bg-gray-100 select-none"
-      onClick={() => onSort(field)}
-    >
-      <div className="flex items-center space-x-1">
-        <span>{children}</span>
-        <ArrowUpDown className="w-4 h-4" />
-      </div>
-    </TableHead>
-  );
-
-  // StationTable render - stations received
-  
-  return (
-    <div>
-      {/* Mobile Card View */}
-      <div className="block lg:hidden space-y-4 px-2">
-        {/* Select All Checkbox for Mobile */}
-        <div className="flex items-center space-x-3 py-2 px-1 border-b border-gray-200 bg-gray-50 rounded-t-lg">
-          <Checkbox
-            checked={selectAllCheckedValue}
-            onCheckedChange={(checked) => handleSelectAll(checked === true)}
-          />
-          <span className="text-sm font-medium text-gray-700">
-            Select page ({pageSelectedCount}/{stations.length})
-            {selectedStations.size > 0 && (
-              <span className="ml-2 text-blue-600">
-                — Total selected: {selectedStations.size}
-              </span>
-            )}
-          </span>
-        </div>
-        {stations.map(station => (
-          <div key={station._id} className="bg-white border rounded-lg p-4 shadow-sm">
-            <div className="flex items-start justify-between mb-3">
-              <div className="flex items-center space-x-3 flex-1 min-w-0">
-                <Checkbox
-                  checked={selectedStations.has(station._id)}
-                  onCheckedChange={(checked) => handleSelectStation(station._id, checked as boolean)}
-                />
-                <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center overflow-hidden">
-                  {station.localImagePath ? (
-                    <img
-                      src={`/station-images/${station.localImagePath}`}
-                      alt={station.name}
-                      className="w-8 h-8 rounded-full object-cover"
-                      onError={(e) => {
-                        (e.target as HTMLImageElement).style.display = 'none';
-                      }}
-                    />
-                  ) : station.favicon ? (
-                    <img
-                      src={station.favicon}
-                      alt={station.name}
-                      className="w-8 h-8 rounded-full object-cover"
-                      onError={(e) => {
-                        (e.target as HTMLImageElement).style.display = 'none';
-                      }}
-                    />
-                  ) : (
-                    <Radio className="w-4 h-4 text-gray-400" />
-                  )}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <h3 className="font-medium text-gray-900 truncate text-sm">{station.name}</h3>
-                  <p className="text-xs text-gray-500 truncate">{station.country || 'Unknown'}</p>
-                </div>
-              </div>
-              <div className="flex items-center space-x-1">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => handlePlayStation(station)}
-                  disabled={loadingStationId === station._id}
-                  className="h-8 w-8 p-0"
-                >
-                  {loadingStationId === station._id ? (
-                    <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-600"></div>
-                  ) : playingStationId === station._id ? (
-                    <Pause className="h-3 w-3" />
-                  ) : (
-                    <Play className="h-3 w-3" />
-                  )}
-                </Button>
-                {onGenerateAi && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => onGenerateAi(station)}
-                    disabled={generatingStationId === station._id}
-                    className={`h-8 w-8 p-0 ${generatingStationId === station._id ? 'text-purple-400 opacity-50 cursor-not-allowed animate-pulse' : 'text-purple-600 hover:text-purple-700'}`}
-                    title={generatingStationId === station._id ? 'Generating AI description...' : 'Generate AI description'}
-                  >
-                    {generatingStationId === station._id ? (
-                      <div className="animate-spin"><Sparkles className="h-3 w-3" /></div>
-                    ) : (
-                      <Sparkles className="h-3 w-3" />
-                    )}
-                  </Button>
-                )}
-                {onTranslate && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => onTranslate(station)}
-                    className="h-8 w-8 p-0 text-blue-600 hover:text-blue-700"
-                    title="Translate to common languages"
-                  >
-                    🌍
-                  </Button>
-                )}
-                {onRecheckTags && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => onRecheckTags(station)}
-                    disabled={recheckingTagsStationId === station._id}
-                    className={`h-8 w-8 p-0 ${recheckingTagsStationId === station._id ? 'text-emerald-400 opacity-50 cursor-not-allowed animate-pulse' : 'text-emerald-600 hover:text-emerald-700'}`}
-                    title={recheckingTagsStationId === station._id ? 'Re-checking tags...' : 'Re-check tags from Radio-Browser'}
-                    data-testid={`button-recheck-tags-${station._id}`}
-                  >
-                    <Tag className="h-3 w-3" />
-                  </Button>
-                )}
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => onEdit(station)}
-                  className="h-8 w-8 p-0"
-                >
-                  <Edit className="h-3 w-3" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => onDelete(station)}
-                  className="text-red-600 hover:text-red-700 h-8 w-8 p-0"
-                >
-                  <Trash2 className="h-3 w-3" />
-                </Button>
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-2 text-xs">
-              <div>
-                <span className="text-gray-500">Description:</span>
-                <div className="ml-1">{getDescriptionStatusBadge(station)}</div>
-              </div>
-              <div>
-                <span className="text-gray-500">Codec:</span>
-                <span className="ml-1 font-medium">{station.codec || 'Unknown'}</span>
-              </div>
-              <div>
-                <span className="text-gray-500">Votes:</span>
-                <span className="ml-1 font-medium">{station.votes || 0}</span>
-              </div>
-              <div>
-                <span className="text-gray-500">Status:</span>
-                <Badge variant={station.lastCheckOk ? "default" : "destructive"} className="ml-1 text-xs">
-                  <Circle className={`w-1.5 h-1.5 mr-1 ${station.lastCheckOk ? 'fill-green-500' : 'fill-red-500'}`} />
-                  {station.lastCheckOk ? 'Online' : 'Offline'}
-                </Badge>
-              </div>
-              <div className="col-span-2">
-                <span className="text-gray-500">Tags re-checked:</span>
-                <div className="ml-1 inline-block align-middle">{getTagsCheckedCell(station)}</div>
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Desktop Table View */}
-      <div className="hidden lg:block overflow-x-auto">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="w-12">
-                <Checkbox
-                  checked={selectAllCheckedValue}
-                  onCheckedChange={(checked) => handleSelectAll(checked === true)}
-                  title={`Page: ${pageSelectedCount}/${stations.length} — Total selected across all filters: ${selectedStations.size}`}
-                />
-              </TableHead>
-              <TableHead className="w-16">Logo</TableHead>
-              <SortableHeader field="name">Station Name</SortableHeader>
-              <SortableHeader field="country">Country</SortableHeader>
-              <TableHead>Description</TableHead>
-              <TableHead>Genre</TableHead>
-              <SortableHeader field="tagsCheckedAt">Tags Re-checked</SortableHeader>
-              <SortableHeader field="bitrate">Technical Details</SortableHeader>
-              <TableHead>Status & Analytics</TableHead>
-              <SortableHeader field="clickcount">Popularity</SortableHeader>
-              <SortableHeader field="votes">Quality Ratings</SortableHeader>
-              <TableHead>Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-        <TableBody>
-          {stations.map((station) => (
-            <TableRow key={station._id} className="hover:bg-gray-50">
-              <TableCell>
-                <Checkbox
-                  checked={selectedStations.has(station._id)}
-                  onCheckedChange={(checked) => handleSelectStation(station._id, !!checked)}
-                />
-              </TableCell>
-              <TableCell>
-                <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center overflow-hidden">
-                  {station.localImagePath ? (
-                    <img
-                      src={`/station-images/${station.localImagePath}`}
-                      alt={station.name}
-                      className="w-10 h-10 rounded-full object-cover"
-                      onError={(e) => {
-                        const target = e.target as HTMLImageElement;
-                        target.style.display = 'none';
-                        const fallback = target.parentElement?.querySelector('.fallback-icon') as HTMLElement;
-                        if (fallback) fallback.style.display = 'block';
-                      }}
-                    />
-                  ) : station.favicon ? (
-                    <img
-                      src={station.favicon}
-                      alt={station.name}
-                      className="w-10 h-10 rounded-full object-cover"
-                      onError={(e) => {
-                        const target = e.target as HTMLImageElement;
-                        target.style.display = 'none';
-                        const fallback = target.parentElement?.querySelector('.fallback-icon') as HTMLElement;
-                        if (fallback) fallback.style.display = 'block';
-                      }}
-                    />
-                  ) : null}
-                  <Radio className="w-4 h-4 text-gray-400 fallback-icon" style={{ display: (station.localImagePath || station.favicon) ? 'none' : 'block' }} />
-                </div>
-              </TableCell>
-              <TableCell>
-                <div>
-                  <div className="text-sm font-medium text-gray-900 truncate max-w-xs">{station.name}</div>
-                  <div className="text-xs text-gray-500 truncate max-w-xs">{station.url}</div>
-                </div>
-              </TableCell>
-              <TableCell>
-                <div className="flex items-center">
-                  {station.country && (
-                    <span className="text-sm text-gray-900 dark:text-gray-100">
-                      {station.country}
-                    </span>
-                  )}
-                  {!station.country && station.countryCode && (
-                    <span className="text-sm text-gray-900 dark:text-gray-100">{station.countryCode}</span>
-                  )}
-                  {!station.country && !station.countryCode && (
-                    <span className="text-xs text-gray-400">Unknown</span>
-                  )}
-                </div>
-              </TableCell>
-              <TableCell>
-                {getDescriptionStatusBadge(station)}
-              </TableCell>
-              <TableCell>
-                {station.tags && (
-                  <div className="flex flex-wrap gap-1">
-                    {station.tags.split(',').slice(0, 2).map((tag, index) => (
-                      <Badge key={`${station._id}-tag-${index}`} variant="outline" className="text-xs">
-                        {tag.trim()}
-                      </Badge>
-                    ))}
-                  </div>
-                )}
-              </TableCell>
-              <TableCell>{getTagsCheckedCell(station)}</TableCell>
-              <TableCell>
-                <div className="flex flex-col">
-                  <span className="text-sm text-gray-900 dark:text-gray-100">{station.bitrate || 0} kbps</span>
-                  {station.codec && (
-                    <span className="text-xs text-gray-500 dark:text-gray-400 uppercase">{station.codec}</span>
-                  )}
-                  {!station.codec && (
-                    <span className="text-xs text-gray-400">Unknown</span>
-                  )}
-                </div>
-              </TableCell>
-              <TableCell>{getStatusBadge(station)}</TableCell>
-              <TableCell>
-                <div className="flex flex-col space-y-1">
-                  <div className="flex items-center space-x-1">
-                    <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
-                      🎵 {(station.clickCount || 0).toLocaleString()}
-                    </Badge>
-                    {station.clickTrend !== undefined && station.clickTrend !== null && station.clickTrend !== 0 && (
-                      <Badge 
-                        variant="outline" 
-                        className={`text-xs ${station.clickTrend > 0 ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-700 border-red-200'}`}
-                      >
-                        {station.clickTrend > 0 ? '↗' : '↘'}{Math.abs(station.clickTrend)}
-                      </Badge>
-                    )}
-                  </div>
-                  {station.clickTimestamp && (
-                    <div className="text-xs text-gray-500">
-                      Last: {new Date(station.clickTimestamp).toLocaleDateString()}
-                    </div>
-                  )}
-                </div>
-              </TableCell>
-              <TableCell>
-                <div className="flex flex-col space-y-1">
-                  <Badge variant="outline" className="text-xs text-blue-600 border-blue-200 bg-blue-50 w-fit">
-                    ⭐ {station.votes || 0}
-                  </Badge>
-                  {station.votes && station.votes > 0 && (
-                    <div className="text-xs text-gray-500">
-                      {station.votes >= 100 ? 'Excellent' : 
-                       station.votes >= 50 ? 'Very Good' : 
-                       station.votes >= 20 ? 'Good' : 
-                       station.votes >= 10 ? 'Fair' : 'New'}
-                    </div>
-                  )}
-                </div>
-              </TableCell>
-              <TableCell>
-                <div className="flex items-center space-x-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      // Button clicked for station
-                      handlePlayStation(station);
-                    }}
-                    disabled={loadingStationId === station._id}
-                    className="w-8 h-8 p-0"
-                    title={playingStationId === station._id ? t('player_stop', 'Stop') : t('player_play_station', 'Play Station')}
-                  >
-                    {(() => {
-                      const stationId = station._id;
-                      const isLoading = loadingStationId === stationId;
-                      const isPlaying = playingStationId === stationId;
-                      // Station status checked
-                      
-                      if (isLoading) {
-                        return <div className="w-3 h-3 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>;
-                      } else if (isPlaying) {
-                        return <Pause className="w-4 h-4" />;
-                      } else {
-                        return <Play className="w-4 h-4" />;
-                      }
-                    })()}
-                  </Button>
-                  {onGenerateAi && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => onGenerateAi(station)}
-                      disabled={generatingStationId === station._id}
-                      className={`w-8 h-8 p-0 ${generatingStationId === station._id ? 'text-purple-400 opacity-50 cursor-not-allowed animate-pulse' : 'text-purple-600 hover:text-purple-700'}`}
-                      title={generatingStationId === station._id ? 'Generating AI description...' : 'Generate AI description'}
-                    >
-                      {generatingStationId === station._id ? (
-                        <div className="animate-spin"><Sparkles className="w-4 h-4" /></div>
-                      ) : (
-                        <Sparkles className="w-4 h-4" />
-                      )}
-                    </Button>
-                  )}
-                  {onTranslate && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => onTranslate(station)}
-                      className="w-8 h-8 p-0 text-blue-600 hover:text-blue-700"
-                      title="Translate to common languages"
-                    >
-                      🌍
-                    </Button>
-                  )}
-                  {onRecheckTags && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => onRecheckTags(station)}
-                      disabled={recheckingTagsStationId === station._id}
-                      className={`w-8 h-8 p-0 ${recheckingTagsStationId === station._id ? 'text-emerald-400 opacity-50 cursor-not-allowed animate-pulse' : 'text-emerald-600 hover:text-emerald-700'}`}
-                      title={recheckingTagsStationId === station._id ? 'Re-checking tags...' : 'Re-check tags from Radio-Browser'}
-                      data-testid={`button-recheck-tags-desktop-${station._id}`}
-                    >
-                      <Tag className="w-4 h-4" />
-                    </Button>
-                  )}
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => onEdit(station)}
-                    className="w-8 h-8 p-0"
-                    title={t('admin_edit_station', 'Edit Station')}
-                  >
-                    <Edit className="w-4 h-4" />
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => onDelete(station)}
-                    className="w-8 h-8 p-0"
-                    title="Delete Station"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </Button>
-                </div>
-              </TableCell>
-            </TableRow>
-          ))}
-          {stations.length === 0 && (
-            <TableRow>
-              <TableCell colSpan={12} className="text-center py-8">
-                No stations found.
-              </TableCell>
-            </TableRow>
-          )}
-        </TableBody>
-        </Table>
+  const toggleDetails = (id: string) => setExpanded(previous => {
+    const next = new Set(previous); if (next.has(id)) next.delete(id); else next.add(id); return next;
+  });
+  const SortHeader = ({ field, children }: { field: string; children: React.ReactNode }) => <TableHead aria-sort={sortBy === field ? sortOrder === 'asc' ? 'ascending' : 'descending' : 'none'}>
+    <button type="button" onClick={() => onSort(field)} className="flex items-center gap-1.5 py-3 text-left hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2">
+      {children}{sortBy !== field ? <ArrowUpDown className="h-3.5 w-3.5 shrink-0" /> : sortOrder === 'asc' ? <ArrowUp className="h-3.5 w-3.5 shrink-0" /> : <ArrowDown className="h-3.5 w-3.5 shrink-0" />}
+    </button>
+  </TableHead>;
+  const identity = (station: AdminStation) => <div className="flex min-w-0 items-center gap-3">
+    <StationLogo station={station} size="md" className="shrink-0 rounded-lg" />
+    <div className="min-w-0"><p className="font-medium leading-snug text-foreground break-words">{station.name}</p>
+      <p className="mt-1 text-xs text-muted-foreground">{station.countryName || station.country || station.countryCode || 'Country not recorded'}{station.state ? ' · ' + station.state : ''}</p>
+      <button type="button" onClick={() => toggleDetails(station._id)} aria-expanded={expanded.has(station._id)} className="mt-1 flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground" aria-label={'Details for ' + station.name}>
+        {expanded.has(station._id) ? 'Hide details' : 'Stream & details'}{expanded.has(station._id) ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+      </button>
+    </div>
+  </div>;
+  const actions = (station: AdminStation) => <div className="flex shrink-0 items-center gap-1">
+    <Button type="button" variant="outline" size="icon" className="h-9 w-9" onClick={() => onPlay(station)} disabled={loadingStationId === station._id}
+      aria-label={(playingStationId === station._id ? 'Pause ' : 'Play ') + station.name} title="Try this stream; a source warning does not prevent an admin preview">
+      {loadingStationId === station._id ? <Loader2 className="h-4 w-4 animate-spin" /> : playingStationId === station._id ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+    </Button>
+    <Button type="button" variant="ghost" size="icon" className="h-9 w-9" onClick={() => onEdit(station)} aria-label={'Edit ' + station.name}><Edit className="h-4 w-4" /></Button>
+    <DropdownMenu><DropdownMenuTrigger asChild><Button type="button" variant="ghost" size="icon" className="h-9 w-9" aria-label={'More actions for ' + station.name}><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        {onGenerateAi && <DropdownMenuItem disabled={generatingStationId === station._id} onSelect={() => onGenerateAi(station)}><Sparkles className="h-4 w-4" />{generatingStationId === station._id ? 'Generating…' : 'Generate AI description'}</DropdownMenuItem>}
+        {onTranslate && <DropdownMenuItem disabled={generatingStationId === station._id} onSelect={() => onTranslate(station)}><Languages className="h-4 w-4" />Translate descriptions</DropdownMenuItem>}
+        {onRecheckTags && <DropdownMenuItem disabled={recheckingTagsStationId === station._id} onSelect={() => onRecheckTags(station)} data-testid={'button-recheck-tags-' + station._id}><Tag className="h-4 w-4" />{recheckingTagsStationId === station._id ? 'Re-checking…' : 'Re-check source tags'}</DropdownMenuItem>}
+        <DropdownMenuSeparator />
+        <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={() => onDelete(station)}><Trash2 className="h-4 w-4" />Delete station…</DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  </div>;
+  return <div>
+    <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6 border-b border-border">
+      <label className="flex cursor-pointer items-center gap-2 text-sm text-muted-foreground"><Checkbox checked={selectAllState} onCheckedChange={checked => selectPage(checked === true)} aria-label="Select all stations on this page" disabled={!stations.length} />Select page ({pageSelectedCount}/{stations.length})</label>
+      <div className="flex items-center gap-2"><span className="text-xs text-muted-foreground">Sort</span>
+        <Select value={sortBy} onValueChange={onSort}><SelectTrigger className="h-8 w-[185px]" aria-label="Sort stations by"><SelectValue /></SelectTrigger><SelectContent>{SORTS.map(([key, name]) => <SelectItem key={key} value={key}>{name}</SelectItem>)}</SelectContent></Select>
+        <Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={() => onSort(sortBy)} aria-label={sortOrder === 'asc' ? 'Switch to descending order' : 'Switch to ascending order'}>{sortOrder === 'asc' ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />}</Button>
       </div>
     </div>
-  );
+    {!stations.length && <div className="px-6 py-12 text-center"><p className="font-medium">No matching stations</p><p className="mt-1 text-sm text-muted-foreground">Try another health status or clear the filters.</p></div>}
+    {stations.length > 0 && <>
+      <div className="space-y-3 p-3 lg:hidden">
+        {stations.map(station => <article key={station._id} className="overflow-hidden rounded-lg border border-border bg-background" aria-label={station.name}>
+          <div className="space-y-3 p-3">
+            <div className="flex items-start gap-2"><Checkbox className="mt-3 shrink-0" aria-label={'Select ' + station.name} checked={selectedStations.has(station._id)} onCheckedChange={checked => selectStation(station._id, checked === true)} />{identity(station)}</div>
+            <div className="flex flex-wrap items-center gap-2"><AdminStationHealthBadge station={station} /><DescriptionBadge station={station} /></div>
+            <div className="flex flex-wrap items-center justify-between gap-2"><p className="text-xs text-muted-foreground tabular-nums">{(station.clickCount || 0).toLocaleString()} clicks · {(station.votes || 0).toLocaleString()} votes</p>{actions(station)}</div>
+          </div>
+          {expanded.has(station._id) && <StationDetails station={station} />}
+        </article>)}
+      </div>
+      <div className="hidden lg:block overflow-x-auto">
+        <Table><TableHeader><TableRow>
+          <TableHead className="w-10"><span className="sr-only">Selection</span></TableHead>
+          <SortHeader field="name">Station</SortHeader><SortHeader field="healthStatus">Broadcast health</SortHeader>
+          <TableHead>Content</TableHead><SortHeader field="clickcount">Clicks</SortHeader><SortHeader field="votes">Votes</SortHeader><TableHead className="w-[124px]">Actions</TableHead>
+        </TableRow></TableHeader><TableBody>
+          {stations.map(station => <Fragment key={station._id}>
+            <TableRow className={selectedStations.has(station._id) ? 'bg-muted/40' : ''}>
+              <TableCell><Checkbox aria-label={'Select ' + station.name} checked={selectedStations.has(station._id)} onCheckedChange={checked => selectStation(station._id, checked === true)} /></TableCell>
+              <TableCell className="min-w-[210px] max-w-[330px]">{identity(station)}</TableCell>
+              <TableCell className="min-w-[155px]"><AdminStationHealthBadge station={station} /></TableCell>
+              <TableCell><DescriptionBadge station={station} /></TableCell>
+              <TableCell className="tabular-nums">{(station.clickCount || 0).toLocaleString()}</TableCell><TableCell className="tabular-nums">{(station.votes || 0).toLocaleString()}</TableCell>
+              <TableCell>{actions(station)}</TableCell>
+            </TableRow>
+            {expanded.has(station._id) && <TableRow><TableCell colSpan={7} className="p-0"><StationDetails station={station} /></TableCell></TableRow>}
+          </Fragment>)}
+        </TableBody></Table>
+      </div>
+    </>}
+  </div>;
 }

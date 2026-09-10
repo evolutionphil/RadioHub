@@ -28,15 +28,33 @@ const { parseStreamPlaylist, probeStreamAvailability } = await import('../src/ut
 test('pure playlist parser handles relative PLS/M3U, HLS master/audio rendition and actual media segment', () => {
   const base = 'https://radio.example.invalid/dir/list.m3u';
   assert.deepEqual(parseStreamPlaylist('[playlist]\nFile2=/second\nFile1=../live\nTitle1=Radio', base),
-    { kind: 'playlist', nextUrl: 'https://radio.example.invalid/live', segment: false });
+    { kind: 'playlist', nextUrl: 'https://radio.example.invalid/live', segment: false,
+      alternatives: [{ nextUrl: 'https://radio.example.invalid/second', segment: false }] });
   assert.deepEqual(parseStreamPlaylist('#EXTM3U\n#EXTINF:-1,Name\nstream', base),
     { kind: 'playlist', nextUrl: 'https://radio.example.invalid/dir/stream', segment: false });
   assert.deepEqual(parseStreamPlaylist('#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=64000\nlow.m3u8', base),
     { kind: 'playlist', nextUrl: 'https://radio.example.invalid/dir/low.m3u8', segment: false });
   assert.deepEqual(parseStreamPlaylist('#EXTM3U\n#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="a",URI="audio.m3u8"\nvideo.m3u8', base),
-    { kind: 'playlist', nextUrl: 'https://radio.example.invalid/dir/audio.m3u8', segment: false });
+    { kind: 'playlist', nextUrl: 'https://radio.example.invalid/dir/audio.m3u8', segment: false,
+      alternatives: [{ nextUrl: 'https://radio.example.invalid/dir/video.m3u8', segment: false }] });
   assert.deepEqual(parseStreamPlaylist('#EXTM3U\n#EXT-X-TARGETDURATION:6\n#EXT-X-MAP:URI="init.mp4"\n#EXTINF:6,\nchunk.m4s', base),
     { kind: 'playlist', nextUrl: 'https://radio.example.invalid/dir/chunk.m4s', segment: true });
+});
+
+test('playlist alternatives are deduplicated, bounded, and retain unsupported-entry uncertainty', () => {
+  const base = 'https://radio.example.invalid/list.m3u';
+  assert.deepEqual(parseStreamPlaylist('#EXTM3U\n/live#one\n/live#two', base),
+    { kind: 'playlist', nextUrl: 'https://radio.example.invalid/live', segment: false });
+  assert.deepEqual(parseStreamPlaylist('#EXTM3U\nfile:///invalid\n/live', base),
+    { kind: 'playlist', nextUrl: 'https://radio.example.invalid/live', segment: false, inconclusiveReason: 'unsafe-playlist-url' });
+  const capped = parseStreamPlaylist('#EXTM3U\n' + Array.from({ length: 100 }, (_, i) => `/stream-${i}`).join('\n'), base);
+  assert.equal(capped?.kind, 'playlist');
+  if (capped?.kind === 'playlist') {
+    assert.equal(capped.alternatives?.length, 15);
+    assert.equal(capped.inconclusiveReason, 'playlist-candidate-budget');
+  }
+  assert.deepEqual(parseStreamPlaylist('#EXTM3U\n' + 'x'.repeat(17000), base),
+    { kind: 'unsupported', reason: 'playlist-body-budget' });
 });
 
 test('pure parsing refuses encrypted, credentialed, non-HTTP, empty or malformed playlist references', () => {
@@ -60,16 +78,31 @@ test('isolated HTTP availability samples enforce safe hops, budgets and conserva
     assert.match(request.headers.range || '', /^bytes=0-\d+$/);
     const path = request.url || '';
     if (/^\/status\/\d+$/.test(path)) { response.writeHead(Number(path.split('/').pop())); response.end(); return; }
+    if (path.startsWith('/missing/')) { response.writeHead(404); response.end(); return; }
     if (path === '/redirect') { response.writeHead(302, { location: '/audio' }); response.end(); return; }
     if (path === '/private') { response.writeHead(302, { location: 'http://169.254.169.254/latest/meta-data' }); response.end(); return; }
     if (path === '/credential') { response.writeHead(302, { location: 'http://user:secret@source.invalid/audio' }); response.end(); return; }
     if (path === '/loop') { response.writeHead(302, { location: '/loop' }); response.end(); return; }
+    if (path === '/loop-a' || path === '/loop-b') { response.writeHead(302, { location: path === '/loop-a' ? '/loop-b' : '/loop-a' }); response.end(); return; }
+    if (path === '/redirect-missing') { response.writeHead(302, { location: '/status/404' }); response.end(); return; }
     if (path.startsWith('/hop/')) { response.writeHead(302, { location: `/hop/${Number(path.slice(5)) + 1}` }); response.end(); return; }
     if (path === '/stalled') { response.writeHead(200, { 'content-type': 'audio/mpeg' }); response.flushHeaders(); return; }
     if (path === '/reset') { request.socket.destroy(); return; }
     const playlists: Record<string, string> = {
       '/list.pls': '[playlist]\nFile1=/audio\nNumberOfEntries=1\nVersion=2',
       '/list.m3u': '#EXTM3U\n#EXTINF:-1,Fixture\n/audio',
+      '/alternates.pls': '[playlist]\nFile1=/status/404\nFile2=/audio\nNumberOfEntries=2',
+      '/alternates.m3u': '#EXTM3U\n/status/404\n/audio',
+      '/unknown-alternates.m3u': '#EXTM3U\n/status/403\n/status/404',
+      '/unknown-working.m3u': '#EXTM3U\n/status/403\n/audio',
+      '/unsafe-alternates.m3u': '#EXTM3U\nfile:///unsafe\n/status/404',
+      '/unsafe-working.m3u': '#EXTM3U\nhttp://127.0.0.1/private\n/audio',
+      '/all-dead.m3u': '#EXTM3U\n/status/404\n/status/410',
+      '/partial-range.m3u': '#EXTM3U\n/status/404',
+      '/complete-range.m3u': '#EXTM3U\n/audio',
+      '/many-alternates.m3u': '#EXTM3U\n' + Array.from({ length: 30 }, (_, i) => `/missing/${i}`).join('\n'),
+      '/master-alternates.m3u8': '#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=64000\n/status/404\n#EXT-X-STREAM-INF:BANDWIDTH=128000\n/media.m3u8',
+      '/audio-alternates.m3u8': '#EXTM3U\n#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="one",URI="/status/404"\n#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="two",URI="/media.m3u8"',
       '/master.m3u8': '#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=64000\n/media.m3u8',
       '/media.m3u8': '#EXTM3U\n#EXT-X-TARGETDURATION:6\n#EXTINF:6,\n/segment.ts',
       '/missing-segment.m3u8': '#EXTM3U\n#EXT-X-TARGETDURATION:6\n#EXTINF:6,\n/status/404',
@@ -80,7 +113,12 @@ test('isolated HTTP availability samples enforce safe hops, budgets and conserva
       '/partial.m3u': '#EXTM3U\n#' + 'x'.repeat(1100),
     };
     if (playlists[path]) {
-      response.writeHead(200, { 'content-type': path.endsWith('.pls') ? 'audio/x-scpls' : 'application/vnd.apple.mpegurl' });
+      const rangePlaylist = path.endsWith('-range.m3u');
+      const bytes = Buffer.byteLength(playlists[path]);
+      response.writeHead(rangePlaylist ? 206 : 200, {
+        'content-type': path.endsWith('.pls') ? 'audio/x-scpls' : 'application/vnd.apple.mpegurl',
+        ...(rangePlaylist ? { 'content-range': `bytes 0-${bytes - 1}/${path === '/partial-range.m3u' ? bytes + 100 : bytes}` } : {}),
+      });
       if (path === '/partial.m3u') response.write(playlists[path]); else response.end(playlists[path]);
       return;
     }
@@ -114,13 +152,54 @@ test('isolated HTTP availability samples enforce safe hops, budgets and conserva
         assert.equal(requests.at(-1)?.path, path === '/master.m3u8' ? '/segment.ts' : '/audio');
       }
     });
-    await t.test('only firm404/410 are failed; access/rate/server errors remain inconclusive', async () => {
+    await t.test('only firm 404/410 are failed; access/rate/server errors remain inconclusive', async () => {
       for (const status of [404, 410, 401, 403, 429, 451, 500, 503]) {
         const result = await probe(`/status/${status}`);
         assert.equal(result.outcome, [404, 410].includes(status) ? 'failed' : 'inconclusive');
         assert.equal(result.reason, `http-${status}`); assert.equal(result.bytesRead, 0);
       }
       assert.equal((await probe('/missing-segment.m3u8')).outcome, 'inconclusive', 'live HLS segment rollover is not a dead station');
+    });
+    await t.test('original and resolved URLs are alternatives, never independent station failures', async () => {
+      for (const paths of [
+        ['/status/404', '/audio'], ['/status/403', '/audio'], ['/reset', '/audio'],
+        ['/encrypted.m3u8', '/audio'], ['/fake-audio', '/audio'], ['/audio', '/status/404'],
+      ]) {
+        const start = requests.length;
+        const result = await probeStreamAvailability(paths.map(path => `http://source.invalid${path}`));
+        assert.equal(result.outcome, 'healthy', paths.join(', '));
+        assert.ok(requests.length - start <= 2);
+      }
+      const failed = await probeStreamAvailability(['http://source.invalid/status/404', 'http://source.invalid/status/410']);
+      assert.equal(failed.outcome, 'failed'); assert.equal(failed.reason, 'all-candidates-failed');
+      for (const second of ['/status/403', '/reset', '/encrypted.m3u8', '/short']) {
+        assert.equal((await probeStreamAvailability(['http://source.invalid/status/404', `http://source.invalid${second}`])).outcome, 'inconclusive', second);
+      }
+      assert.equal((await probeStreamAvailability([])).reason, 'no-candidates');
+    });
+    await t.test('PLS, M3U, HLS variants and audio renditions try a working alternative after the first fails', async () => {
+      for (const path of ['/alternates.pls', '/alternates.m3u', '/master-alternates.m3u8', '/audio-alternates.m3u8', '/unknown-working.m3u', '/unsafe-working.m3u']) {
+        const start = requests.length;
+        const result = await probe(path);
+        assert.equal(result.outcome, 'healthy', path);
+        assert.ok(requests.length - start <= 4);
+        assert.ok(result.bytesRead <= 65536);
+      }
+      assert.equal((await probe('/all-dead.m3u')).outcome, 'failed');
+      assert.equal((await probe('/complete-range.m3u')).outcome, 'healthy');
+      for (const path of ['/unknown-alternates.m3u', '/unsafe-alternates.m3u', '/many-alternates.m3u', '/partial-range.m3u']) {
+        assert.equal((await probe(path)).outcome, 'inconclusive', path);
+      }
+    });
+    await t.test('duplicate candidates and converging branches consume a single sample, but unresolved cycles never fail', async () => {
+      let start = requests.length;
+      const duplicate = await probeStreamAvailability(['http://source.invalid/status/404#one', 'http://source.invalid/status/404#two']);
+      assert.equal(duplicate.outcome, 'failed'); assert.equal(requests.length - start, 1);
+      start = requests.length;
+      const convergent = await probeStreamAvailability([`http://source.invalid:${port}/status/404`, `http://source.invalid:${port}/redirect-missing`]);
+      assert.equal(convergent.outcome, 'failed'); assert.equal(requests.length - start, 2);
+      const cycle = await probeStreamAvailability(['/loop-a', '/loop-b', '/status/404'].map(path => `http://source.invalid:${port}${path}`));
+      assert.equal(cycle.outcome, 'inconclusive'); assert.equal(cycle.reason, 'redirect-or-playlist-cycle');
     });
     await t.test('HTML, fake audio, short sample, encrypted and oversized playlists never healthy', async () => {
       for (const path of ['/html', '/fake-audio', '/short', '/encrypted.m3u8', '/huge.m3u']) {
@@ -152,6 +231,18 @@ test('isolated HTTP availability samples enforce safe hops, budgets and conserva
       assert.equal(bytes.reason, 'byte-budget'); assert.equal(requests.length - start, 1);
       assert.ok(bytes.bytesRead < 1024);
       for (const path of ['/loop', '/playlist-loop.m3u']) assert.equal((await probe(path)).reason, 'redirect-or-playlist-cycle');
+      start = requests.length;
+      const alternatives = await probeStreamAvailability(Array.from({ length: 5 }, (_, i) => `http://source.invalid/missing/${i}`), { maxRequests: 100 });
+      assert.equal(alternatives.outcome, 'inconclusive'); assert.equal(alternatives.reason, 'request-budget');
+      assert.equal(requests.length - start, 4, 'budget is per station, not per URL');
+      start = requests.length;
+      const playlistCapped = await probe('/alternates.m3u', { maxRequests: 2 });
+      assert.equal(playlistCapped.outcome, 'inconclusive'); assert.equal(playlistCapped.reason, 'request-budget');
+      assert.equal(requests.length - start, 2, 'untested playable alternative must not be classified failed');
+      const sharedBytes = await probeStreamAvailability(['/html', '/fake-audio', '/audio'].map(path => `http://source.invalid${path}`), { maxBytes: 2048 });
+      assert.equal(sharedBytes.outcome, 'inconclusive'); assert.equal(sharedBytes.reason, 'byte-budget');
+      assert.equal(sharedBytes.bytesRead, 2048);
+      assert.equal((await probeStreamAvailability(['/html', '/fake-audio', '/audio'].map(path => `http://source.invalid${path}`), { maxBytes: 4096 })).outcome, 'healthy');
     });
     await t.test('one whole deadline covers stalled DNS/body; external cancellation sends no request', async () => {
       for (const path of ['/stalled', '/partial.m3u']) {
@@ -171,8 +262,8 @@ test('isolated HTTP availability samples enforce safe hops, budgets and conserva
     denied = false; dnsDelay = false;
     server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve()));
   }
-  await t.test('connection refusal is a failed observation, not an internal retry', async () => {
+  await t.test('one pinned DNS address refusing a connection does not prove the station unavailable', async () => {
     const result = await probe('/audio');
-    assert.equal(result.outcome, 'failed'); assert.equal(result.reason, 'connection-refused');
+    assert.equal(result.outcome, 'inconclusive'); assert.equal(result.reason, 'connection-refused');
   });
 });

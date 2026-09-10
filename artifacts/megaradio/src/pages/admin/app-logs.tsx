@@ -55,7 +55,7 @@ function LogRow({ log }: { log: AppLog }) {
               </Badge>
             ) : (
               <Badge className="bg-blue-100 text-blue-800">
-                <Smartphone className="w-3 h-3 mr-1" /> iOS
+                <Smartphone className="w-3 h-3 mr-1" /> {log.platform === 'android' ? 'Android' : 'iOS'}
               </Badge>
             )}
             {hasErrors && (
@@ -106,7 +106,7 @@ export default function AdminAppLogs() {
   const [deviceSearch, setDeviceSearch] = useState("");
   const [limit, setLimit] = useState("50");
 
-  const { data, isLoading, refetch } = useQuery<AppLogsResponse>({
+  const { data, isLoading, isError, refetch } = useQuery<AppLogsResponse>({
     queryKey: ["/api/admin/app-logs", platform, isCarPlay, deviceSearch, limit],
     queryFn: async () => {
       const params = new URLSearchParams({ limit });
@@ -114,6 +114,7 @@ export default function AdminAppLogs() {
       if (isCarPlay) params.set("isCarPlay", isCarPlay);
       if (deviceSearch) params.set("deviceId", deviceSearch);
       const res = await fetch(`/api/admin/app-logs?${params}`);
+      if (!res.ok) throw new Error('Unable to load application logs');
       return res.json() as Promise<AppLogsResponse>;
     },
     staleTime: 30000,
@@ -121,7 +122,11 @@ export default function AdminAppLogs() {
 
   const { data: crashes } = useQuery<{ success: boolean; count: number; logs: AppLog[] }>({
     queryKey: ["/api/admin/app-logs/crashes"],
-    queryFn: () => fetch("/api/admin/app-logs/crashes").then((r) => r.json() as Promise<{ success: boolean; count: number; logs: AppLog[] }>),
+    queryFn: async () => {
+      const response = await fetch("/api/admin/app-logs/crashes");
+      if (!response.ok) throw new Error('Unable to load crash logs');
+      return response.json() as Promise<{ success: boolean; count: number; logs: AppLog[] }>;
+    },
     staleTime: 60000,
   });
 
@@ -177,10 +182,10 @@ export default function AdminAppLogs() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div>
               <label className="text-sm font-medium">Platform</label>
-              <Select value={platform} onValueChange={setPlatform}>
+              <Select value={platform || 'all'} onValueChange={value=>setPlatform(value==='all'?'':value)}>
                 <SelectTrigger><SelectValue placeholder="All" /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All</SelectItem>
+                  <SelectItem value="all">All</SelectItem>
                   <SelectItem value="ios">iOS</SelectItem>
                   <SelectItem value="android">Android</SelectItem>
                 </SelectContent>
@@ -188,10 +193,10 @@ export default function AdminAppLogs() {
             </div>
             <div>
               <label className="text-sm font-medium">Type</label>
-              <Select value={isCarPlay} onValueChange={setIsCarPlay}>
+              <Select value={isCarPlay || 'all'} onValueChange={value=>setIsCarPlay(value==='all'?'':value)}>
                 <SelectTrigger><SelectValue placeholder="All" /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All</SelectItem>
+                  <SelectItem value="all">All</SelectItem>
                   <SelectItem value="true">CarPlay only</SelectItem>
                   <SelectItem value="false">iPhone only</SelectItem>
                 </SelectContent>
@@ -220,6 +225,8 @@ export default function AdminAppLogs() {
       {/* Log list */}
       {isLoading ? (
         <Card><CardContent className="p-8 text-center"><RefreshCw className="w-8 h-8 animate-spin mx-auto mb-4 text-gray-400" /><p>Loading logs…</p></CardContent></Card>
+      ) : isError ? (
+        <p role="alert" className="rounded-lg border border-destructive/30 p-4 text-sm text-destructive">Application logs could not be loaded. Use Refresh to retry.</p>
       ) : logs.length === 0 ? (
         <Card>
           <CardContent className="p-8 text-center">

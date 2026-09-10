@@ -722,7 +722,7 @@ export function registerRegionsRecommendationsRoutes(app: Express, deps: any) {
       const payload = await CacheManager.getOrSetSingleFlight(
         cacheKey,
         async () => {
-          const counts = await pgCatalog().groupCount("country", { lastCheckOk: true });
+          const counts = await pgCatalog().groupCount("country", { isListVisible: true });
           const accurateCountMap = new Map(
             counts
               .filter((row) => row._id)
@@ -951,7 +951,7 @@ export function registerRegionsRecommendationsRoutes(app: Express, deps: any) {
         }));
 
         const stationFilter: any = {
-          lastCheckOk: true,
+          isListVisible: true,
           $or: countryOrConditions,
         };
 

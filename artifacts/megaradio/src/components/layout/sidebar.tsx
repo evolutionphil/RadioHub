@@ -1,6 +1,6 @@
 import { Link, useLocation } from "wouter";
 import { cn } from "@/lib/utils";
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   Radio,
   BarChart3,
@@ -184,20 +184,23 @@ export default function Sidebar({ isMobileMenuOpen, setIsMobileMenuOpen }: Sideb
     );
   };
 
-  const isActiveLink = (href?: string) => {
+  const isActiveLink = useCallback((href?: string) => {
     if (!href) return false;
     return location === href || (href !== "/admin" && href !== "/" && location.startsWith(href));
-  };
+  }, [location]);
 
-  // Auto-expand every ancestor group of the active route.
-  const autoExpand = getGroupsToAutoExpand(navigation, isActiveLink);
-  const effectiveExpanded = Array.from(new Set([...expandedItems, ...autoExpand]));
+  // Reveal the active route when navigation changes, but respect a subsequent
+  // manual collapse. Unioning active groups during every render prevented it.
+  useEffect(() => {
+    const autoExpand = getGroupsToAutoExpand(navigation, isActiveLink);
+    setExpandedItems(previous => Array.from(new Set([...previous, ...autoExpand])));
+  }, [isActiveLink]);
 
   // Render an item at a given nesting depth (0 = top-level group, 1 = inside group, 2 = inside sub-group).
   const renderItem = (item: NavigationItem, depth: number, onLinkClick?: () => void): React.ReactNode => {
     const Icon = item.icon;
     const hasChildren = !!item.children?.length;
-    const isExpanded = effectiveExpanded.includes(item.name);
+    const isExpanded = expandedItems.includes(item.name);
     const isActive = isActiveLink(item.href);
     const hasActiveChild = hasActiveDescendant(item, isActiveLink);
 
@@ -207,6 +210,8 @@ export default function Sidebar({ isMobileMenuOpen, setIsMobileMenuOpen }: Sideb
       return (
         <div key={item.name}>
           <button
+            type="button"
+            aria-expanded={isExpanded}
             onClick={() => toggleExpanded(item.name)}
             className={cn(
               "w-full group flex items-center text-sm font-medium rounded-md text-left transition-colors",
@@ -255,7 +260,7 @@ export default function Sidebar({ isMobileMenuOpen, setIsMobileMenuOpen }: Sideb
     );
   };
 
-  const NavContent = ({ onLinkClick }: { onLinkClick?: () => void }) => (
+  const renderNavContent = (onLinkClick?: () => void) => (
     <>
       <div className="flex items-center flex-shrink-0 px-4">
         <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 mr-3">
@@ -278,7 +283,7 @@ export default function Sidebar({ isMobileMenuOpen, setIsMobileMenuOpen }: Sideb
       <div className="hidden md:flex md:flex-shrink-0">
         <div className="flex flex-col w-64">
           <div className="flex flex-col flex-grow pt-5 pb-4 overflow-y-auto bg-white border-r border-gray-200">
-            <NavContent />
+            {renderNavContent()}
           </div>
         </div>
       </div>
@@ -292,7 +297,7 @@ export default function Sidebar({ isMobileMenuOpen, setIsMobileMenuOpen }: Sideb
         )}
       >
         <div className="flex flex-col flex-grow pt-5 pb-4 overflow-y-auto bg-white border-r border-gray-200 h-full">
-          <NavContent onLinkClick={() => setIsMobileMenuOpen(false)} />
+          {renderNavContent(() => setIsMobileMenuOpen(false))}
         </div>
       </div>
     </>

@@ -51,10 +51,10 @@ test('automatic health status is admin-only, bounded, uncached and contains no s
   dbFailure=true;const failure=await fetch(`${base}/api/admin/stream-health/status`,{headers:{'x-test-admin':'1'}});
   assert.equal(failure.status,503);assert.ok(!(await failure.text()).includes('secret'));
 });
-test('only exact persisted resolved URL is probed and committed result invalidates same-station keys', async () => {
+test('only persisted raw and resolved candidates are probed and committed result invalidates same-station keys', async () => {
   const response = await post(); assert.equal(response.status, 200); assert.equal(response.headers.get('cache-control'), 'no-store');
   const result = await response.json(); assert.equal(result.success, true); assert.equal(result.noIndex, false); assert.equal(result.cacheInvalidated, true);
-  assert.equal(calls.find(call => call[0] === 'probe')[1], station.urlResolved);
+  assert.deepEqual(calls.find(call => call[0] === 'probe')[1], [station.urlResolved,station.url]);
   assert.deepEqual(calls.find(call => call[0] === 'save').slice(1, 3), [id, body().expected]);
   assert.ok(calls.some(call => call[1] === 'station:detail:old-nrj'));
   assert.ok(calls.some(call => call[1] === `station:detail:${id}`));

@@ -22,7 +22,7 @@ function genreShape(row: Record<string, any>): any {
 export async function pgCountryCounts(): Promise<Array<{ name: string; count: number }>> {
   const result = await getPostgresPool().query<{ name: string; count: string }>(
     `SELECT country AS name,count(*)::text count FROM stations
-     WHERE last_check_ok IS TRUE AND NULLIF(country,'') IS NOT NULL GROUP BY country ORDER BY country`,
+     WHERE (is_list_visible IS TRUE OR COALESCE(visibility_expires_at<=now(),false)) AND NULLIF(country,'') IS NOT NULL GROUP BY country ORDER BY country`,
   );
   return result.rows.map((row) => ({ name: row.name, count: Number(row.count) }));
 }
@@ -36,7 +36,7 @@ export async function pgGenres(country?: string, includeDynamic = false): Promis
          COALESCE(g.is_discoverable,true) is_discoverable,g.source,g.created_at,g.updated_at
        FROM station_genres sg JOIN stations s ON s.id=sg.station_id
        LEFT JOIN genres g ON g.slug=sg.genre_slug
-       WHERE s.last_check_ok IS TRUE AND ($1='' OR lower(s.country)=lower($1))
+       WHERE (s.is_list_visible IS TRUE OR COALESCE(s.visibility_expires_at<=now(),false)) AND ($1='' OR lower(s.country)=lower($1))
        GROUP BY sg.genre_slug,g.id,g.name,g.is_discoverable,g.source,g.created_at,g.updated_at`,
       [country || ''],
     );
@@ -72,7 +72,7 @@ export async function pgGenreBySlug(slug: string): Promise<any | null> {
   const result = await getPostgresPool().query(
     `WITH genre_count AS (
        SELECT count(*)::int station_count FROM station_genres sg
-       JOIN stations s ON s.id=sg.station_id WHERE sg.genre_slug=$1 AND s.last_check_ok IS TRUE
+       JOIN stations s ON s.id=sg.station_id WHERE sg.genre_slug=$1 AND (s.is_list_visible IS TRUE OR COALESCE(s.visibility_expires_at<=now(),false))
      )
      SELECT g.id,g.name,g.slug,g.is_discoverable,c.station_count,g.source,g.created_at,g.updated_at
      FROM genres g CROSS JOIN genre_count c WHERE g.slug=$1

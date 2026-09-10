@@ -78,7 +78,7 @@ export async function pgCollaborativeRecommendations(sourceStationId: string, se
       avg(CASE WHEN (h.context->>'rating') ~ '^[0-5](\\.[0-9]+)?$' THEN (h.context->>'rating')::float8 END) score,
       count(*)::int AS "listenerCount",avg(h.listen_duration)::float8 AS "avgListenDuration"
     FROM listening_history h JOIN peers p USING(session_id)
-    JOIN stations s ON s.id=h.station_id AND s.last_check_ok=true
+    JOIN stations s ON s.id=h.station_id AND (s.is_list_visible IS TRUE OR COALESCE(s.visibility_expires_at<=now(),false))
     WHERE h.station_id<>$1 AND NOT EXISTS(SELECT 1 FROM own_stations o WHERE o.station_id=h.station_id)
       AND h.listen_duration>=30 GROUP BY h.station_id HAVING count(*)>=2
     ORDER BY score DESC NULLS LAST,"listenerCount" DESC,h.station_id LIMIT 20`, [sourceStationId, sessionId]);

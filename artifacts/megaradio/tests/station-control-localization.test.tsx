@@ -73,8 +73,8 @@ it('preserves custom dictionary labels and repairs only missing/empty/key-echo v
   }
 });
 
-it.each(ACTIVE_SITEMAP_LANGUAGES)('%s: unavailable notice and disabled play recover without removing other controls', language => {
-  const labels = getStationControlLabels(language), failed = { ...station, lastCheckOk: false };
+it.each(ACTIVE_SITEMAP_LANGUAGES)('%s: confirmed-unavailable notice retains manual retry and all other controls', language => {
+  const labels = getStationControlLabels(language), failed = { ...station, lastCheckOk: false,isListVisible:false };
   const content = (record: any) => <QueryClientProvider client={client}>
     <article>Preserved station article</article>
     <StationControlButtonGroup currentPageStation={record} labels={labels} />
@@ -82,18 +82,18 @@ it.each(ACTIVE_SITEMAP_LANGUAGES)('%s: unavailable notice and disabled play reco
   </QueryClientProvider>;
   const view = render(content(failed));
   expect(screen.getByRole('status')).toHaveTextContent(getStationStreamUnavailableNotice(language));
-  expect(screen.getByTestId('button-play-stop')).toBeDisabled();
+  expect(screen.getByTestId('button-play-stop')).toBeEnabled();
   expect(screen.getByTestId('button-play-stop')).toHaveAttribute('aria-describedby', 'station-stream-unavailable');
   fireEvent.click(screen.getByTestId('button-play-stop'));
-  expect(state.playStation).not.toHaveBeenCalled();
+  expect(state.playStation).toHaveBeenCalledWith(failed);
   expect(screen.getByRole('article')).toHaveTextContent('Preserved station article');
   expect(screen.getByTestId('button-next-station')).toBeEnabled();
   expect(screen.getByRole('button', { name: 'fixture favorite' })).toBeEnabled();
-  view.rerender(content({ ...station, lastCheckOk: true }));
+  view.rerender(content({ ...station, lastCheckOk: false,isListVisible:true }));
   expect(screen.queryByRole('status')).not.toBeInTheDocument();
   expect(screen.getByTestId('button-play-stop')).toBeEnabled();
   fireEvent.click(screen.getByTestId('button-play-stop'));
-  expect(state.playStation).toHaveBeenCalledWith({ ...station, lastCheckOk: true });
+  expect(state.playStation).toHaveBeenCalledWith({ ...station, lastCheckOk: false,isListVisible:true });
 });
 
 it('keeps Stop enabled for an already playing failed station and normalizes notice locale variants', () => {

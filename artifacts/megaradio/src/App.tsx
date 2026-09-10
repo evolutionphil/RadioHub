@@ -53,6 +53,7 @@ import * as LazyAdminRoutes from "@/components/lazy-admin-routes";
 // Keep these imports - they're small and used across many routes
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { AdminRoute } from "@/components/auth/AdminRoute";
+import { AdminPageErrorBoundary } from '@/components/admin/AdminPageErrorBoundary';
 import { useGlobalPlayer } from "@/hooks/useGlobalPlayer.shell";
 import { LazyGlobalPlayerProvider } from "@/hooks/LazyGlobalPlayerProvider";
 
@@ -132,7 +133,9 @@ Object.entries(COUNTRY_TO_CODE).forEach(([country, code]) => {
 });
 
 function AdminRouterContent() {
+  const [adminLocation] = useLocation();
   return (
+    <AdminPageErrorBoundary key={adminLocation.split('?')[0]}>
     <Suspense fallback={<div className="flex items-center justify-center min-h-screen bg-[#0E0E0E] text-white"><div className="text-lg">Loading...</div></div>}>
       <Switch>
         <Route path="/admin/dashboard" component={LazyAdminRoutes.AdminDashboard} />
@@ -214,6 +217,7 @@ function AdminRouterContent() {
         <Route component={LazyRoutes.NotFound} />
       </Switch>
     </Suspense>
+    </AdminPageErrorBoundary>
   );
 }
 

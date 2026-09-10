@@ -23,10 +23,10 @@ beforeEach(() => { state.language = 'en'; state.translations = {}; state.isPlayi
 describe('station card accessible text', () => {
   it('hides explicitly failed stations and restores the unchanged card on recovery', () => {
     const onPlay = vi.fn(), onNavigate = vi.fn();
-    const { container, rerender } = render(<StationCard station={{ ...station, lastCheckOk: false }} onPlay={onPlay} onNavigate={onNavigate} />);
+    const { container, rerender } = render(<StationCard station={{ ...station, lastCheckOk: false,isListVisible:false }} onPlay={onPlay} onNavigate={onNavigate} />);
     expect(container).toBeEmptyDOMElement();
     expect(onPlay).not.toHaveBeenCalled(); expect(onNavigate).not.toHaveBeenCalled();
-    rerender(<StationCard station={{ ...station, lastCheckOk: true }} onPlay={onPlay} onNavigate={onNavigate} />);
+    rerender(<StationCard station={{ ...station, lastCheckOk: false,isListVisible:true }} onPlay={onPlay} onNavigate={onNavigate} />);
     expect(container).not.toBeEmptyDOMElement();
     expect(station).not.toHaveProperty('lastCheckOk');
   });

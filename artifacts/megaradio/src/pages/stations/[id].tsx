@@ -19,7 +19,6 @@ import { useBreadcrumbLastItemName } from "@/components/RouteBreadcrumbs";
 import { getStationUrl } from "@/utils/slugs";
 import StationControlButtonGroup from "@/components/ui/station-control-button-group";
 import { StationStreamAvailability } from '@/components/StationStreamAvailability';
-import { isExplicitlyFailedStation } from '@/utils/station-availability';
 import youtubeIcon from "@assets/youtube-logo.png";
 import spotifyIcon from "@assets/spotify-logo.png";
 import deezerIcon from "@assets/deezer.png";
@@ -338,7 +337,6 @@ export default function StationDetails() {
       if (currentStation?._id === station._id && isPlaying) {
         pauseStation();
       } else {
-        if (isExplicitlyFailedStation(station)) return;
         // This will automatically stop current station and play new one
         await playStation(station);
       }
@@ -353,7 +351,6 @@ export default function StationDetails() {
 
   // Function to handle play from station cards (always play new station and navigate)
   const handleStationCardPlay = async (selectedStation: any) => {
-    if (isExplicitlyFailedStation(selectedStation)) return;
     try {
       // Always play the selected station (will auto-stop current if different)
       await playStation(selectedStation);
