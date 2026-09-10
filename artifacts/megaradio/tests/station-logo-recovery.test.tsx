@@ -2,7 +2,7 @@ import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 vi.mock('@/hooks/useTranslation', () => ({ useTranslation: () => ({ t: (_key: string, fallback: string) => fallback }) }));
-import { StationLogo, getStationLogoUrl } from '../src/components/ui/station-logo';
+import { StationLogo, getStationLogoUrl, hasOptimizedLogo } from '../src/components/ui/station-logo';
 import { clearStationLogoFailureCache, hasRecentStationLogoFailure, rememberStationLogoFailure } from '../src/lib/station-logo-failure-cache';
 
 beforeEach(() => clearStationLogoFailureCache());
@@ -16,6 +16,59 @@ describe('station logo source recovery', () => {
     expect(getStationLogoUrl({ ...station, localImagePath: 'obsolete.png' }, 48)).toBe(station.logoAssets.webp48);
     expect(getStationLogoUrl({ ...station, logoAssets: { folder: 'one', status: 'completed', webp48: station.logoAssets.webp48 } })).toBe(station.logoAssets.webp48);
     expect(getStationLogoUrl({ ...station, logoAssets: { folder: 'one', status: 'completed', webp256: station.logoAssets.webp256 } }, 48)).toBe(station.logoAssets.webp256);
+  });
+  it('uses concrete absolute S3 assets even when projected folder and status metadata are absent', () => {
+    const projected = { ...station, localImagePath: 'obsolete.png', logoAssets: {
+      webp96: station.logoAssets.webp96, webp256: station.logoAssets.webp256,
+    } };
+    expect(getStationLogoUrl(projected)).toBe(station.logoAssets.webp96);
+    expect(hasOptimizedLogo(projected)).toBe(true);
+    render(<StationLogo station={projected} />);
+    expect(screen.getByRole('img')).toHaveAttribute('src', station.logoAssets.webp96);
+    expect(screen.getByRole('img').getAttribute('srcset')).toContain(station.logoAssets.webp256);
+  });
+  it('preserves already rooted asset and legacy paths instead of double-prefixing them', () => {
+    expect(getStationLogoUrl({ ...station, logoAssets: { status: 'completed', folder: 'one', webp96: '/station-logos/one/logo-96.webp' } }))
+      .toBe('/station-logos/one/logo-96.webp');
+    expect(getStationLogoUrl({ ...station, logoAssets: { status: 'completed', webp96: '/preferred.webp' } })).toBe('/preferred.webp');
+    expect(getStationLogoUrl({ ...station, logoAssets: { status: 'completed', webp96: ' //logos.example/96.webp ' } })).toBe('https://logos.example/96.webp');
+    for (const path of ['old.png', '/station-images/old.png', 'station-images/old.png']) {
+      expect(getStationLogoUrl({ ...station, logoAssets: undefined, localImagePath: path })).toBe('/station-images/old.png');
+    }
+  });
+  it('tries the stored original before stale local files without inventing asset filenames', () => {
+    const withOriginal = { ...station, localImagePath: 'obsolete.png', logoAssets: {
+      folder: 'one', status: 'completed' as const, webp96: station.logoAssets.webp96,
+      original: 'https://logos.example/one-original.png',
+    } };
+    render(<StationLogo station={withOriginal} />);
+    fireEvent.error(screen.getByRole('img'));
+    expect(screen.getByRole('img')).toHaveAttribute('src', withOriginal.logoAssets.original);
+    fireEvent.error(screen.getByRole('img'));
+    expect(screen.getByRole('img')).toHaveAttribute('src', '/station-images/obsolete.png');
+    expect(getStationLogoUrl({ name: 'Original only', logoAssets: { folder: 'one', original: 'original.png' } })).toBe('/station-logos/one/original.png');
+  });
+  it('does not retry a failed S3 variant again through the favicon proxy', () => {
+    const mirrored = { ...station, favicon: station.logoAssets.webp256 };
+    render(<StationLogo station={mirrored} size="hero" />);
+    fireEvent.error(screen.getByRole('img'));
+    fireEvent.error(screen.getByRole('img'));
+    fireEvent.error(screen.getByRole('img'));
+    expect(screen.getByRole('img').tagName).toBe('DIV');
+    // Search suggestions use the same recent-failure knowledge as cards.
+    expect(getStationLogoUrl(mirrored)).toBe('/images/no-image.webp');
+  });
+  it('ignores incomplete jobs and filenames with no folder but retains their independent favicon fallback', () => {
+    for (const assets of [
+      { folder: 'one', status: 'processing' as const, webp96: station.logoAssets.webp96 },
+      { status: 'completed' as const, webp96: 'logo-96.webp' },
+      { folder: 'one', status: 'completed' as const },
+      { folder: 'one', status: 'completed' as const, webp96: 'javascript:invalid' },
+    ]) {
+      const unresolved = { name: 'Unresolved', favicon: '/known-favicon.png', logoAssets: assets };
+      expect(getStationLogoUrl(unresolved)).toBe('/known-favicon.png');
+      expect(hasOptimizedLogo(unresolved)).toBe(false);
+    }
   });
   it('retries the preferred src when a different high-DPI srcSet candidate failed', () => {
     render(<StationLogo station={station} size="card" />);

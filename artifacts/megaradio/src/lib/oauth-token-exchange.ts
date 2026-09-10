@@ -1,4 +1,5 @@
 import { queryClient } from './queryClient';
+import { logger } from './logger';
 
 // Module-level + window-level guard. The module flag handles normal startup;
 // the window flag survives Vite HMR re-evaluations in dev, where the module
@@ -23,9 +24,6 @@ export function initOAuthTokenExchange(): void {
   const params = new URLSearchParams(window.location.search);
   const authToken = params.get('auth_token');
 
-  console.log('[AUTH] init — URL:', window.location.href);
-  console.log('[AUTH] init — auth_token:', authToken ? `${authToken.slice(0, 16)}…(${authToken.length})` : 'NONE');
-
   if (!authToken) return;
 
   params.delete('auth_token');
@@ -36,14 +34,13 @@ export function initOAuthTokenExchange(): void {
     window.location.pathname +
     (search ? `?${search}` : '') +
     (window.location.hash || '');
-  console.log('[AUTH] init — cleaning URL →', cleanUrl);
   window.history.replaceState({}, '', cleanUrl);
 
   queryClient.cancelQueries({ queryKey: ['/api/auth/me'] }).catch(() => {});
   queryClient.setQueryData(['/api/auth/me'], { user: null, authenticated: false, _pendingTokenExchange: true });
 
-  const t0 = performance.now();
-  console.log('[AUTH] init — POST /api/auth/token-session');
+  // Never log the callback URL, token (even a prefix), response body or user.
+  logger.debug('[AUTH] Starting session exchange');
   fetch('/api/auth/token-session', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -51,11 +48,8 @@ export function initOAuthTokenExchange(): void {
     credentials: 'include',
   })
     .then(async (res) => {
-      const elapsed = Math.round(performance.now() - t0);
-      console.log(`[AUTH] init — token-session status:${res.status} elapsed:${elapsed}ms`);
       if (!res.ok) {
-        const errBody = await res.text().catch(() => '(unreadable)');
-        console.error('[AUTH] init — token-session FAILED:', res.status, errBody);
+        logger.error('[AUTH] Session exchange failed; recovering existing session', res.status);
         // Use fetchQuery (not invalidateQueries) so the /me refetch fires even
         // when useAuth has enabled:false (set because ?auth_token was in the URL
         // at module load time). This recovers the user from their active session
@@ -66,11 +60,11 @@ export function initOAuthTokenExchange(): void {
       let body: any = null;
       try {
         body = await res.json();
-      } catch (e) {
-        console.error('[AUTH] init — token-session JSON parse failed:', e);
+      } catch {
+        logger.error('[AUTH] Session exchange returned invalid JSON');
       }
       if (body?.user) {
-        console.log('[AUTH] init — hydrating user from token-session response');
+        logger.debug('[AUTH] Session exchange completed');
         await queryClient.cancelQueries({ queryKey: ['/api/auth/me'] }).catch(() => {});
         queryClient.setQueryData(['/api/auth/me'], { user: body.user, authenticated: true });
         // Persist the auth token as a Bearer fallback so subsequent API
@@ -78,14 +72,14 @@ export function initOAuthTokenExchange(): void {
         // browser (SameSite=None cookies dropped in strict privacy modes).
         try { sessionStorage.setItem('_mrt_oat', authToken); } catch (_) {}
       } else {
-        console.log('[AUTH] init — no user in body, fetching /me to recover session');
+        logger.debug('[AUTH] Recovering existing session');
         // fetchQuery bypasses the enabled:false guard so the user is restored
         // from their active session/Bearer token rather than stuck logged-out.
         queryClient.fetchQuery({ queryKey: ['/api/auth/me'] }).catch(() => {});
       }
     })
-    .catch((err) => {
-      console.error('[AUTH] init — token-session fetch threw:', err);
+    .catch(() => {
+      logger.error('[AUTH] Session exchange request failed; recovering existing session');
       queryClient.fetchQuery({ queryKey: ['/api/auth/me'] }).catch(() => {});
     });
 }

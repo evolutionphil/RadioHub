@@ -46,6 +46,7 @@ import { startOperation, endOperation, getActiveOperations, getGcStats, getActiv
 import { geoBlockMiddleware } from './middleware/geo-block';
 import { databaseMaintenanceMiddleware } from './middleware/database-maintenance';
 import { privateApiCachePolicy, setHealthCacheHeaders } from './middleware/cache-policy';
+import { createAdminSpaHandler, registerAdminAssets } from './admin-spa';
 
 const app = express();
 // Allows a staging/read-serving replica to boot the production code path without
@@ -413,15 +414,14 @@ app.get('/', (_req, res) => {
         '<h1>Mega Radio API</h1>' +
         '<p>This host serves the JSON API for <a href="https://themegaradio.com">themegaradio.com</a>.</p>' +
         '<ul>' +
-          '<li>Health: <code>GET /api/healthz</code></li>' +
+          '<li>Health: <code>GET /healthz</code></li>' +
           '<li>API base: <code>/api/*</code></li>' +
           '<li>Browsable docs: <a href="https://themegaradio.com/api-docs">themegaradio.com/api-docs</a></li>' +
         '</ul>',
     );
 });
 
-app.use('/assets', express.static(path.join(distPublicPath, 'assets'), { maxAge: '1y', immutable: true }));
-app.use('/admin', express.static(distPublicPath, { index: false }));
+registerAdminAssets(app, distPublicPath);
 
 // Serve locally-processed station logos. When S3 is not configured, logo-processor.ts
 // writes WebP files to public/station-logos/ — this makes them reachable from both the
@@ -438,15 +438,10 @@ app.use('/station-logos', express.static(stationLogosPath, {
   },
 }));
 
-app.get('/admin', (_req, res) => {
-  res.sendFile(path.join(distPublicPath, 'index.html'));
-});
-app.get('/admin/*path', (_req, res) => {
-  res.sendFile(path.join(distPublicPath, 'index.html'));
-});
-app.get('/admin-login', (_req, res) => {
-  res.sendFile(path.join(distPublicPath, 'index.html'));
-});
+const sendAdminSpa = createAdminSpaHandler(distPublicPath);
+app.get('/admin', sendAdminSpa);
+app.get('/admin/*path', sendAdminSpa);
+app.get('/admin-login', sendAdminSpa);
 
 const isReplit = !!process.env.REPLIT_DOMAINS;
 const useSecureCookies = process.env.NODE_ENV === 'production' || isReplit;

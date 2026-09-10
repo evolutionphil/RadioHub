@@ -19,6 +19,7 @@ import { logger } from './utils/logger';
 import { urlRedirectMiddleware } from './url-redirect-middleware';
 import { stationCountryValidator } from './station-country-validator';
 import { serveStatic, log, HTML_CACHE_CONTROL } from "./serve-static";
+import { createAdminSpaHandler } from './admin-spa';
 import { SeoRenderer, getSeoRenderStats } from './seo-renderer';
 import { markSeoTemporarilyUnavailable } from './seo/temporary-unavailable';
 import { parseSeoCatalogPage } from './seo/catalog-pagination';
@@ -576,15 +577,9 @@ const apiProxy = createProxyMiddleware({
 // direct navigation to any sub-route (e.g. /admin/stripe-plans) mounts the
 // SPA and lets Wouter handle routing. Keep X-Robots-Tag so crawlers never
 // index admin pages — no change to the SEO posture.
-function sendAdminSpa(_req: any, res: any) {
-  res.setHeader('X-Robots-Tag', 'noindex, nofollow');
-  res.setHeader('Cache-Control', 'no-store');
-  // Match serveStatic/getProdAssetTags: the deployed Vite shell is beside the
-  // server bundle under dist/public, not the optional user-upload public dir.
-  res.sendFile(path.resolve(import.meta.dirname, 'public', 'index.html'), (err: any) => {
-    if (err) res.status(500).send('Admin shell unavailable');
-  });
-}
+// Match serveStatic/getProdAssetTags; preserve public SSR and remove only
+// explicitly marked public preloads/analytics from this private shell.
+const sendAdminSpa = createAdminSpaHandler(path.resolve(import.meta.dirname, 'public'));
 app.get('/admin-login', sendAdminSpa);
 app.get('/admin', sendAdminSpa);
 app.get('/admin/*path', sendAdminSpa);

@@ -70,9 +70,11 @@ export const throttle = <T extends (...args: any[]) => void>(
   };
 };
 
-// Core Web Vitals monitoring
+// Debug-only observers. Real analytics reporting is separate from console diagnostics.
+let vitalsObserversStarted = false;
 export const measureCoreWebVitals = () => {
-  if (typeof window === 'undefined') return;
+  if (!import.meta.env.DEV || typeof window === 'undefined' || typeof PerformanceObserver === 'undefined' || vitalsObserversStarted) return;
+  vitalsObserversStarted = true;
 
   // Largest Contentful Paint (LCP)
   const observer = new PerformanceObserver((list) => {
@@ -124,7 +126,7 @@ export const measureCoreWebVitals = () => {
 };
 
 // Initialize performance monitoring in development
-if (process.env.NODE_ENV === 'development') {
+if (import.meta.env.DEV) {
   if (typeof window !== 'undefined') {
     window.addEventListener('load', measureCoreWebVitals);
   }

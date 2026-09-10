@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@/hooks/useTranslation', () => ({ useTranslation: () => ({ t: (_key: string, fallback: string) => fallback }) }));
 vi.mock('@/hooks/use-toast', () => ({ useToast: () => ({ toast: mocks.toast }) }));
 vi.mock('@/hooks/useGlobalPlayer', () => ({ useGlobalPlayer: () => ({ ...mocks.player, playStation: mocks.play, pause: mocks.pause }) }));
+vi.mock('@/hooks/useAdminAuth', () => ({ useAdminAuth: () => ({ isAuthenticated: true, isAdmin: true, user: { username: 'test-admin', role: 'admin' } }) }));
 vi.mock('@/lib/api', () => ({ api: { getAdminStationFilterOptions: mocks.options, getAdminStations: mocks.stations, getStationsTagsStatusSummary: async () => ({ neverChecked: 0, emptyCooldown: 0 }) } }));
 vi.mock('@/lib/queryClient', async () => {
   const { QueryClient } = await import('@tanstack/react-query');
@@ -155,6 +156,17 @@ describe('station management integration', () => {
     expect(within(dialog).getByText(/No generation has started/)).toBeInTheDocument();
     expect(within(dialog).getByRole('button', { name: 'Review and start generation' })).toBeEnabled();
     expect(mocks.request).not.toHaveBeenCalled();
+  });
+  it('explains expired saved jobs and stops offering a broken status retry or a new generation', async () => {
+    localStorage.setItem('bulkAiJobId', 'fix-en-expired'); mocks.request.mockRejectedValue(new Error('404: Job not found'));
+    wrapper(<Stations />);
+    expect(await screen.findByText(/This saved AI job no longer exists on the server/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Retry status' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Review and start generation' })).not.toBeInTheDocument();
+    expect(localStorage.getItem('bulkAiJobId')).toBeNull();
+    expect(localStorage.getItem('admin:station-description-job:v2:test-admin')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Close expired job' }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
   it('retains existing mutation paths and does not silently strip functional actions', async () => {
     const page = await readFile('src/pages/stations.tsx', 'utf8');

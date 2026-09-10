@@ -1,4 +1,4 @@
-const isProduction = typeof window !== 'undefined' && window.location.hostname !== 'localhost' && !window.location.hostname.includes('.replit.');
+const isProduction = import.meta.env.PROD;
 
 const noop = (..._args: any[]) => {};
 

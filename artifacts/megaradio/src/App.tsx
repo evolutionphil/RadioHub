@@ -1268,11 +1268,15 @@ function App() {
   // Initialize Google Analytics and background playback after initial render
   useEffect(() => {
     const deferInit = () => {
+      const isAdminRoute = /^\/admin(?:\/|$|-login(?:\/|$))/.test(window.location.pathname);
       // Verify required environment variable is present
-      if (!import.meta.env.VITE_GA_MEASUREMENT_ID) {
-        logger.warn('Missing required Google Analytics key: VITE_GA_MEASUREMENT_ID');
-      } else {
-        initGA();
+      if (!isAdminRoute) {
+        // Admin activity must not bootstrap public analytics/Partytown.
+        if (!import.meta.env.VITE_GA_MEASUREMENT_ID) {
+          logger.warn('Missing required Google Analytics key: VITE_GA_MEASUREMENT_ID');
+        } else {
+          initGA();
+        }
       }
       // Initialize background playback if user previously accepted
       initializeBackgroundPlayback();

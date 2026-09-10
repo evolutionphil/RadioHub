@@ -4,11 +4,12 @@ import { useTranslation } from '@/hooks/useTranslation';
 import { hasRecentStationLogoFailure, rememberStationLogoFailure, clearStationLogoFailure } from '@/lib/station-logo-failure-cache';
 
 interface LogoAssets {
-  folder: string;
+  folder?: string;
+  original?: string;
   webp48?: string;
   webp96?: string;
   webp256?: string;
-  status: 'pending' | 'processing' | 'completed' | 'failed';
+  status?: 'pending' | 'processing' | 'completed' | 'failed';
 }
 
 interface Station {
@@ -85,9 +86,27 @@ function NoImageFallback({ className, label }: { className?: string; label: stri
 // Local data: value is a filename → prefix with API base so the request goes
 // to the API container (which stores the files), not the web container.
 const _API_ORIGIN = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
-function resolveLogoUrl(folder: string, value: string): string {
-  if (value.startsWith('https://') || value.startsWith('http://')) return value;
-  return `${_API_ORIGIN}/station-logos/${folder}/${value}`;
+function resolveLogoUrl(folder: string | undefined, value: string | undefined): string | undefined {
+  const path = typeof value === 'string' ? value.trim() : '';
+  if (!path) return undefined;
+  if (/^https?:\/\//i.test(path)) return path;
+  if (path.startsWith('//')) return `https:${path}`;
+  if (path.startsWith('/station-logos/')) return `${_API_ORIGIN}${path}`;
+  if (path.startsWith('station-logos/')) return `${_API_ORIGIN}/${path}`;
+  if (path.startsWith('/')) return path;
+  // Absolute assets do not need folder metadata. A bare filename does.
+  if (!folder?.trim() || /^[a-z][a-z\d+.-]*:/i.test(path)) return undefined;
+  return `${_API_ORIGIN}/station-logos/${folder.trim().replace(/^\/+|\/+$/g, '')}/${path}`;
+}
+
+function resolveLegacyLogoUrl(value: string | undefined): string | undefined {
+  const path = typeof value === 'string' ? value.trim() : '';
+  if (!path) return undefined;
+  if (/^https?:\/\//i.test(path)) return path;
+  if (path.startsWith('//')) return `https:${path}`;
+  if (path.startsWith('/')) return path;
+  if (/^[a-z][a-z\d+.-]*:/i.test(path)) return undefined;
+  return path.startsWith('station-images/') ? `/${path}` : `/station-images/${path}`;
 }
 
 // LOGO OUTAGE FIX (2026-07-03): the per-country precomputed pools projected
@@ -99,37 +118,30 @@ function resolveLogoUrl(folder: string, value: string): string {
 // when concrete asset filenames exist (pending/failed jobs don't have them);
 // an explicit non-completed status still blocks as before.
 function logoAssetsUsable(assets: Station['logoAssets']): boolean {
-  if (!assets?.folder) return false;
-  if (assets.status === 'completed') return true;
-  return assets.status === undefined && !!(assets.webp48 || assets.webp96 || assets.webp256);
+  return !!assets && (assets.status === 'completed' || assets.status === undefined);
 }
 
-function getLogoUrl(station: Station, preferredSize: 48 | 96 | 256 = 96): string {
+function getLogoSources(station: Station, preferredSize: 48 | 96 | 256 = 96): string[] {
+  const sources: string[] = [];
   const assets = station.logoAssets;
-  if (assets && logoAssetsUsable(assets) && assets.folder) {
-    const sizeKey = `webp${preferredSize}` as keyof typeof assets;
-    const value = (assets[sizeKey] || assets.webp96 || assets.webp256 || assets.webp48) as string | undefined;
-    if (value) {
-      return resolveLogoUrl(assets.folder, value);
+  if (assets && logoAssetsUsable(assets)) {
+    for (const key of [`webp${preferredSize}`, 'webp96', 'webp256', 'webp48', 'original'] as const) {
+      const url = resolveLogoUrl(assets.folder, assets[key]);
+      if (url) sources.push(url);
     }
   }
 
-  // 2. Second priority: Old local image path
-  if (station.localImagePath) {
-    return `/station-images/${station.localImagePath}`;
+  const legacyUrl = resolveLegacyLogoUrl(station.localImagePath);
+  if (legacyUrl) sources.push(legacyUrl);
+
+  const favicon = normalizeFaviconUrl(station.favicon?.trim());
+  // Processing mirrors the S3 256px URL into favicon. Retrying that same
+  // failed object through the image proxy adds a request, not a fallback.
+  if (favicon !== FALLBACK_IMAGE && !sources.some(url => normalizeFaviconUrl(url) === favicon)) {
+    sources.push(favicon);
   }
 
-  // 3. Third priority: External favicon URL (critical for backward compatibility)
-  // Uses shared helper for SSR-safe URL normalization and proxy
-  if (station.favicon) {
-    const normalizedUrl = normalizeFaviconUrl(station.favicon);
-    if (normalizedUrl !== '/images/no-image.webp') {
-      return normalizedUrl;
-    }
-  }
-
-  // 4. Final fallback: Default placeholder
-  return FALLBACK_IMAGE;
+  return [...new Set([...sources, FALLBACK_IMAGE])];
 }
 
 // getSrcSet moved inline to StationLogo component to handle error levels
@@ -163,38 +175,8 @@ export function StationLogo({
 }: StationLogoProps) {
   const sizeConfig = SIZES[size];
 
-  const preferredAssetSize = sizeConfig.px > 96 ? 'webp256' : 'webp96';
-
-  const sources = useMemo(() => {
-    const list: string[] = [];
-    
-    if (logoAssetsUsable(station.logoAssets) && station.logoAssets?.folder) {
-      // A failed high-DPI asset must not skip the station's working smaller
-      // files. srcSet is removed after an error so each candidate is tried once.
-      for (const key of [preferredAssetSize, 'webp96', 'webp256', 'webp48'] as const) {
-        const value = station.logoAssets[key];
-        if (value) list.push(resolveLogoUrl(station.logoAssets.folder, value));
-      }
-    }
-    
-    // 2. Legacy local image path
-    if (station.localImagePath) {
-      list.push(`/station-images/${station.localImagePath}`);
-    }
-    
-    // 3. External favicon URL
-    if (station.favicon) {
-      const normalizedUrl = normalizeFaviconUrl(station.favicon);
-      if (normalizedUrl !== FALLBACK_IMAGE) {
-        list.push(normalizedUrl);
-      }
-    }
-    
-    // 4. Final fallback always available
-    list.push(FALLBACK_IMAGE);
-    
-    return [...new Set(list)];
-  }, [station, preferredAssetSize]);
+  const preferredAssetSize = sizeConfig.px > 96 ? 256 : 96;
+  const sources = useMemo(() => getLogoSources(station, preferredAssetSize), [station, preferredAssetSize]);
 
   // Track current source index - reset when station changes
   const [sourceIndex, setSourceIndex] = useState(0);
@@ -221,7 +203,7 @@ export function StationLogo({
       activeSourceIndex !== 0 ||
       responsiveSourceFailed ||
       !logoAssetsUsable(station.logoAssets) ||
-      !station.logoAssets?.folder
+      !station.logoAssets
     ) {
       return undefined;
     }
@@ -231,7 +213,7 @@ export function StationLogo({
       const value = station.logoAssets[`webp${size}`];
       if (value) {
         const url = resolveLogoUrl(folder, value);
-        if (!hasRecentStationLogoFailure(url)) parts.push(`${url} ${size}w`);
+        if (url && !hasRecentStationLogoFailure(url)) parts.push(`${url} ${size}w`);
       }
     }
     return parts.length > 1 ? parts.join(', ') : undefined;
@@ -297,11 +279,13 @@ export function StationLogo({
 }
 
 export function getStationLogoUrl(station: Station, size: 48 | 96 | 256 = 96): string {
-  return getLogoUrl(station, size);
+  return getLogoSources(station, size).find(url => !hasRecentStationLogoFailure(url)) || FALLBACK_IMAGE;
 }
 
 export function hasOptimizedLogo(station: Station): boolean {
-  return station.logoAssets?.status === 'completed' && !!station.logoAssets.folder;
+  const assets = station.logoAssets;
+  return !!assets && logoAssetsUsable(assets) && [assets.webp48, assets.webp96, assets.webp256]
+    .some(value => !!resolveLogoUrl(assets.folder, value));
 }
 
 export default StationLogo;

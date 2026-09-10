@@ -73,6 +73,11 @@ export default defineConfig({
     dedupe: ["react", "react-dom"],
   },
   root: path.resolve(import.meta.dirname),
+  esbuild: {
+    // Remove only debug output from release bundles, preserving argument side
+    // effects and genuine console.warn/error diagnostics. Never override console.
+    pure: process.env.NODE_ENV === 'production' ? ['console.log', 'console.debug', 'console.info'] : [],
+  },
   build: {
     manifest: true,
     outDir: path.resolve(import.meta.dirname, "dist/public"),

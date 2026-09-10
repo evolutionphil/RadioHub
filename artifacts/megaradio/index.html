@@ -47,10 +47,10 @@
     <link rel="dns-prefetch" href="https://api.themegaradio.com">
     
     <!-- 🚀 Preload critical resources for LCP optimization -->
-    <link rel="preload" href="/header-logo-80w.webp" as="image" type="image/webp" fetchpriority="high">
+    <link data-public-preload rel="preload" href="/header-logo-80w.webp" as="image" type="image/webp" fetchpriority="high">
     <!-- 🚀 CRITICAL: Hero background - aligned with <picture> breakpoint (768px) in radio-frontend.tsx -->
-    <link rel="preload" href="/images/hero-bg-430w.webp" as="image" type="image/webp" media="(max-width: 767px)" fetchpriority="high">
-    <link rel="preload" href="/images/hero-bg.webp" as="image" type="image/webp" media="(min-width: 768px)" fetchpriority="high">
+    <link data-public-preload rel="preload" href="/images/hero-bg-430w.webp" as="image" type="image/webp" media="(max-width: 767px)" fetchpriority="high">
+    <link data-public-preload rel="preload" href="/images/hero-bg.webp" as="image" type="image/webp" media="(min-width: 768px)" fetchpriority="high">
     
     <!-- Preload the three distinct local Ubuntu files. The existing 600/700
          faces share identical outlines and metrics, and both use the 700 URL. -->
@@ -184,8 +184,9 @@
          dev the analytics scripts (`type="text/partytown"`) will simply
          be ignored by the browser — analytics keep working in prod and
          dev preview is hassle-free. -->
-    <script>
+    <script data-public-runtime>
       (function () {
+        if (/^\/admin(?:\/|$|-login(?:\/|$))/.test(window.location.pathname)) return;
         var host = window.location.hostname || '';
         var isReplitOrLocal =
           host.indexOf('replit') !== -1 ||
@@ -207,7 +208,7 @@
          — runs inside a Partytown Web Worker (type="text/partytown"),
          still deferred to requestIdleCallback to delay the script
          injection until after the main thread is idle. -->
-    <script type="text/partytown">
+    <script data-public-runtime type="text/partytown">
     if ('requestIdleCallback' in window) {
       requestIdleCallback(function() {
         (function(c,l,a,r,i,t,y){

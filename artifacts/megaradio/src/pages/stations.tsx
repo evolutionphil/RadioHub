@@ -23,6 +23,8 @@ import { Label } from "@/components/ui/label";
 import { useDebounce } from "@/hooks/use-debounce";
 import { useGlobalPlayer } from "@/hooks/useGlobalPlayer";
 import { ADMIN_STATION_DEFAULTS } from '@/lib/admin-station-list';
+import { useAdminAuth } from '@/hooks/useAdminAuth';
+import { useAdminDescriptionJob } from '@/hooks/useAdminDescriptionJob';
 
 function TagsStatusBadge({ onClick }: { onClick: () => void }) {
   const { data } = useQuery({
@@ -77,14 +79,14 @@ function NeverCheckedTagsBadge({ onClick }: { onClick: () => void }) {
 export default function Stations() {
   const { toast } = useToast();
   const { playStation, currentStation, isPlaying, isLoading: isPlayerLoading, pause } = useGlobalPlayer();
+  const adminAuth = useAdminAuth();
+  const { jobId: bulkAiJobId, setJobId: setBulkAiJobId, restoredJobId, expiredJobId,
+    status: aiJobStatus, isLoading: aiJobLoading, error: aiJobError, refetch: refetchAiJob,
+  } = useAdminDescriptionJob(adminAuth.isAuthenticated && adminAuth.isAdmin ? adminAuth.user?.username || null : null);
 
-  // Restore job ID from localStorage on mount (keep 24-hour cache)
+  // Tag hydration has an independent job lifecycle. AI job recovery is scoped
+  // to the authenticated admin and handles missing progress records separately.
   useEffect(() => {
-    const savedJobId = localStorage.getItem('bulkAiJobId');
-    if (savedJobId) {
-      setBulkAiJobId(savedJobId);
-      setShowAiDialog(true);
-    }
     const savedRecheckJobId = localStorage.getItem('recheckTagsJobId');
     if (savedRecheckJobId) {
       setRecheckTagsJobId(savedRecheckJobId);
@@ -99,7 +101,6 @@ export default function Stations() {
   const [showBlacklisted, setShowBlacklisted] = useState(false);
   const [selectedDuplicates, setSelectedDuplicates] = useState<Record<string, string[]>>({});
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
-  const [bulkAiJobId, setBulkAiJobId] = useState<string | null>(null);
   const [showAiDialog, setShowAiDialog] = useState(false);
   const [showCoverageDialog, setShowCoverageDialog] = useState(false);
   const [generatingStationId, setGeneratingStationId] = useState<string | null>(null);
@@ -111,14 +112,9 @@ export default function Stations() {
   const recheckJobCompletedRef = useRef<Set<string>>(new Set());
   const [selectedLanguages, setSelectedLanguages] = useState<Set<string>>(new Set(['en', 'es', 'fr', 'de', 'pt', 'it', 'ru', 'ar', 'zh', 'tr', 'ja', 'ko', 'hi', 'he']));
   
-  // Persist job ID to localStorage for recovery after navigation
   useEffect(() => {
-    if (bulkAiJobId) {
-      localStorage.setItem('bulkAiJobId', bulkAiJobId);
-    } else {
-      localStorage.removeItem('bulkAiJobId');
-    }
-  }, [bulkAiJobId]);
+    if (restoredJobId) setShowAiDialog(true);
+  }, [restoredJobId]);
 
   // Persist tag re-check job ID for recovery after page reload
   useEffect(() => {
@@ -379,21 +375,6 @@ export default function Stations() {
         description: error.message || "Failed to start bulk AI generation.",
         variant: "destructive",
       });
-    },
-  });
-
-  // Poll for AI job status
-  const { data: aiJobStatus, isLoading: aiJobLoading, error: aiJobError, refetch: refetchAiJob } = useQuery({
-    queryKey: ['/api/admin/stations/description-job-status', bulkAiJobId],
-    queryFn: async () => {
-      if (!bulkAiJobId) return null;
-      const response = await apiRequest('GET', `/api/admin/stations/description-job-status/${bulkAiJobId}`);
-      return response.json();
-    },
-    enabled: !!bulkAiJobId,
-    refetchInterval: (query) => {
-      const status = query.state.data?.status;
-      return status === 'running' ? 2000 : false; // Poll every 2s if running
     },
   });
 
@@ -2019,7 +2000,7 @@ export default function Stations() {
               AI Description Generation
             </DialogTitle>
             <DialogDescription>
-              {!bulkAiJobId ? 'Choose languages and review the scope before starting.' : aiJobStatus?.status === 'completed'
+              {expiredJobId ? 'The saved job progress is no longer available.' : !bulkAiJobId ? 'Choose languages and review the scope before starting.' : aiJobStatus?.status === 'completed'
                 ? 'AI generation completed successfully!'
                 : aiJobStatus?.status === 'failed'
                 ? 'AI generation failed'
@@ -2028,7 +2009,8 @@ export default function Stations() {
           </DialogHeader>
           
           <div className="space-y-4">
-            {!bulkAiJobId && <div className="space-y-4">
+            {expiredJobId && <div className="space-y-3"><p role="status" className="text-sm text-muted-foreground">This saved AI job no longer exists on the server. Its progress record may have expired or been cleared by a restart. Polling has stopped; saved station content has not been deleted and no new generation has started.</p><Button type="button" className="w-full" onClick={() => { setBulkAiJobId(null); setShowAiDialog(false); }}>Close expired job</Button></div>}
+            {!bulkAiJobId && !expiredJobId && <div className="space-y-4">
               <p className="text-sm">Prepare content for <strong>{generatingStationName || `${selectedStations.size} selected station(s)`}</strong>. No generation has started.</p>
               <fieldset><legend className="mb-2 text-sm font-medium">Translation languages</legend><div className="grid grid-cols-4 gap-2">
                 {['en', 'es', 'fr', 'de', 'pt', 'it', 'ru', 'ar', 'zh', 'tr', 'ja', 'ko', 'hi', 'he'].map(language => <label key={language} className="flex items-center gap-2 rounded border border-border px-2 py-2 text-xs uppercase">
