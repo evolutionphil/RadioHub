@@ -9,33 +9,43 @@ const fields = `s.id AS "_id",s.station_uuid AS stationuuid,s.name,s.url,s.count
   s.language,s.tags_raw AS tags,s.favicon,s.codec,s.bitrate,s.votes,s.click_count AS "clickCount",s.click_trend AS "clickTrend",
   s.last_check_ok AS "lastCheckOk",s.last_check_time AS "lastCheckTime",
   s.availability_checked_at AS "availabilityCheckedAt",(${visible}) AS "isListVisible",(${availability}) AS "availabilityStatus",
-  (s.source->>'sslError'='true') AS "sslError",s.source->>'lastCheckOkTime' AS "lastCheckOkTime"`;
+  NULL::boolean AS "sslError",CASE WHEN (${availability})='working' THEN s.availability_checked_at ELSE NULL END AS "lastCheckOkTime"`;
 
 /** Bounded operational reads: no full source/descriptions, worker triggers or provider calls. */
 export function registerAdminOperationsStatusRoutes(app: Express, requireAdmin: RequestHandler): void {
   let cache: { expires: number; value: unknown } | undefined;
   let pending: Promise<unknown> | undefined;
   const load = async () => {
+    let phase = 'connection';
     const client = await getPostgresPool().connect();
     try {
       await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
       await client.query("SET LOCAL statement_timeout='2000ms'");
+      phase = 'totals';
       const totals = (await client.query(`SELECT count(*)::int AS total,
         count(*) FILTER (WHERE (${availability})='working')::int AS working,
         count(*) FILTER (WHERE NOT (${visible}))::int AS unavailable,
         count(*) FILTER (WHERE (${availability})='unverified')::int AS unverified,
-        count(*) FILTER (WHERE source->>'sslError'='true')::int AS "sslErrors",
+        NULL::integer AS "sslErrors",
         count(*) FILTER (WHERE availability_checked_at>now()-interval '1 hour' AND availability_checked_at<=now()+interval '5 minutes')::int AS "recentChecks",
         count(*) FILTER (WHERE click_trend>0)::int AS uptrend,count(*) FILTER (WHERE click_trend<0)::int AS downtrend
         FROM stations s`)).rows[0];
+      phase = 'recent';
       const recent = await client.query(`SELECT ${fields} FROM stations s WHERE availability_checked_at>now()-interval '1 hour'
         AND availability_checked_at<=now()+interval '5 minutes' ORDER BY availability_checked_at DESC,id LIMIT 20`);
-      const problems = await client.query(`SELECT ${fields} FROM stations s WHERE NOT (${visible}) OR source->>'sslError'='true'
+      phase = 'problems';
+      const problems = await client.query(`SELECT ${fields} FROM stations s WHERE NOT (${visible})
         ORDER BY availability_checked_at DESC NULLS LAST,id LIMIT 50`);
+      phase = 'trends';
       const trends = await client.query(`SELECT ${fields} FROM stations s WHERE click_trend<>0 ORDER BY abs(click_trend) DESC,id LIMIT 20`);
       await client.query('COMMIT');
       return { totals, recentChecks: recent.rows, problemStations: problems.rows, stations: trends.rows, sampledAt: new Date().toISOString() };
-    } catch (error) { await client.query('ROLLBACK'); throw error; } finally { client.release(); }
+    } catch (error) {
+      // Only a fixed query phase and bounded PostgreSQL code, never SQL/data/connection details.
+      const code = typeof (error as any)?.code === 'string' && /^[A-Z0-9]{5}$/.test((error as any).code) ? (error as any).code : 'unknown';
+      console.warn(`[admin-operations-status] read failed phase=${phase} code=${code}`);
+      await client.query('ROLLBACK'); throw error;
+    } finally { client.release(); }
   };
   app.get('/api/admin/operations-status', requireAdmin, async (_req, res) => {
     res.set('Cache-Control', 'private, no-store');
@@ -66,15 +76,22 @@ export function registerAdminOperationsStatusRoutes(app: Express, requireAdmin: 
     const order = req.query.kind === 'recent' ? 's.updated_at DESC NULLS LAST' : req.query.kind === 'quality' ? 's.bitrate DESC' : req.query.kind === 'trending' ? 's.click_trend DESC' : 's.votes DESC';
     values.push(limit);
     let client: PoolClient | undefined;
+    let phase = 'connection';
     try {
       client = await getPostgresPool().connect();
       await client.query('BEGIN READ ONLY');
       await client.query("SET LOCAL statement_timeout='2000ms'");
+      phase = 'catalogue';
       const result = await client.query(`SELECT ${fields},count(*) OVER()::int AS "matchedTotal" FROM stations s
         WHERE ${filters.join(' AND ') || 'TRUE'} ORDER BY ${order},s.id LIMIT $${values.length}`, values);
       await client.query('COMMIT');
       res.json({ stations: result.rows.map(({ matchedTotal, ...station }) => station), total: result.rows[0]?.matchedTotal || 0 });
-    } catch { if (client) await client.query('ROLLBACK'); res.status(503).json({ error: 'Catalogue browser is temporarily unavailable' }); }
+    } catch (error) {
+      const code = typeof (error as any)?.code === 'string' && /^[A-Z0-9]{5}$/.test((error as any).code) ? (error as any).code : 'unknown';
+      console.warn(`[admin-catalogue-browser] read failed phase=${phase} code=${code}`);
+      if (client) await client.query('ROLLBACK');
+      res.status(503).json({ error: 'Catalogue browser is temporarily unavailable' });
+    }
     finally { client?.release(); }
   });
 }

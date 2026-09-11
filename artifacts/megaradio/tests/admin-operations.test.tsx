@@ -67,6 +67,15 @@ it('status shows catalogue totals and does not classify source false as offline'
     url.endsWith('/metrics')?{databaseStats:{dbSize:'1 MB'},systemHealth:{memoryUsage:32,cpuUsage:null,connectionPool:2}}:url.endsWith('/stats')?{totalStations:40000,workingStations:20000}: {isRunning:false,lastSyncLog:null});
   mount(<StatusMonitoring/>);await waitFor(()=>expect(screen.getAllByText('Hidden from Lists').length).toBeGreaterThan(0));expect(screen.queryByText('Offline Stations')).not.toBeInTheDocument();expect(screen.getByText('39991')).toBeInTheDocument();expect(screen.getByText('32%')).toBeInTheDocument();
 });
+it('a failed station-health read does not blank healthy performance and sync sections', async () => {
+  mocks.query.mockImplementation(async(url:string)=>{
+    if(url.endsWith('operations-status'))throw new Error('503');
+    return url.endsWith('/metrics')?{databaseStats:{dbSize:'1 MB'},systemHealth:{memoryUsage:32,cpuUsage:null,connectionPool:2}}:url.endsWith('/stats')?{totalStations:40000,workingStations:20000}:{isRunning:false,lastSyncLog:null};
+  });
+  mount(<StatusMonitoring/>);expect(await screen.findByRole('alert')).toHaveTextContent('Station health');
+  expect(screen.getByRole('heading',{name:'System Status Monitoring'})).toBeInTheDocument();expect(screen.getByText('32%')).toBeInTheDocument();
+  expect(screen.queryByText('No problem stations detected')).not.toBeInTheDocument();expect(screen.getByRole('button',{name:'Retry failed sections'})).toBeInTheDocument();
+});
 it('PostgreSQL table controls use retained operation aliases without a fictional512MB quota', async () => {
   mocks.query.mockResolvedValue({engine:'postgresql',countsAreEstimates:true,totalSizeMB:1000,storageSizeMB:1200,indexSizeMB:200,collections:[{name:'app_logs',count:5,sizeMB:1,storageSizeMB:1,indexSizeMB:0}],quotaStatus:{quotaExceeded:false}});
   vi.spyOn(window,'confirm').mockReturnValue(true);mount(<DbManagement/>);fireEvent.click(await screen.findByRole('button',{name:'Clear'}));

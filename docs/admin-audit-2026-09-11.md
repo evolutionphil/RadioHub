@@ -37,7 +37,15 @@ Detailed route-by-route source/contract matrices:
 - Independent source review caught and corrected the admin-vs-public identity issue before release.
 - A first parallel API test run hit a Node test-runner serialization error; the affected sitemap tests passed independently and the entire suite passed on rerun. A new stylesheet test initially used a jsdom URL object with Node fs; that test harness mismatch was corrected before the clean final run.
 
-## Honest limits
+## Live rollout findings and follow-up
+
+The initial `ff32c3ad` rollout reached Railway SUCCESS for API and WEB. Runtime settings reported PostgreSQL Online, the admin-only user menu rendered, footer forms reset/cancelled correctly and production cards were opaque. Anonymous protected routes remained 401; fonts, manifest, favicon, API and public health endpoints passed. The existing 14-language MANGORADIO smoke check passed: all 200, matching language/self-canonical, 14 alternates, parseable JSON-LD and no noindex. This is a representative regression check, not proof of indexing every station.
+
+Live verification also caught two issues that small SQL fixtures did not reveal: the new operation/catalogue reads returned 503 against the production catalogue, and the pre-existing Cloudflare Web Vitals query returned GraphQL errors. A fresh, temporary admin diagnostic session was used with existing deployment credentials held only in process memory; it performed GET-only business reads and then closed its own session. No browser credentials were extracted or real accounts changed.
+
+Follow-up removes full-catalogue historical source-JSON reads, retains a server-side SQL deadline and logs only fixed query phase/error code. Optional failures no longer blank the complete status page. The unsupported historical global SSL count is explicitly unmeasured rather than fabricated. Cloudflare's actual schema, units and hostname filtering are checked; genuine missing access/data must remain visible, not replaced by zero or invented percentiles. Final follow-up deployment verification is reported with the published commit in the task handoff.
+
+## Remaining limits
 
 - Live rollout and post-deployment checks must use the published commit; local test/build success alone is not deployment evidence.
 - Existing logo jobs remain process-local and can report `lost` after restart. UI polling/recovery feedback is repaired; durable logo recovery is not claimed.

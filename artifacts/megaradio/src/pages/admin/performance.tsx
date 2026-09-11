@@ -67,11 +67,15 @@ interface VitalAggregate {
   status: VitalStatus;
 }
 interface WebVitalsData {
+  status: 'available' | 'configuration_required' | 'no_data' | 'upstream_unavailable';
+  message: string;
+  hosts: string[];
+  period: { start: string; end: string };
+  estimatedPageViews: number | null;
   lcp: VitalAggregate;
   inp: VitalAggregate;
   cls: VitalAggregate;
   lastUpdated: string;
-  totalSamples?: number;
 }
 
 interface CacheClearResponse {
@@ -120,7 +124,7 @@ export default function AdminPerformance() {
   });
 
   // Fetch Web Vitals from Cloudflare
-  const { data: webVitals, isLoading: webVitalsLoading, isError: vitalsError, refetch: fetchWebVitals } = useQuery<WebVitalsData>({
+  const { data: webVitals, isFetching: webVitalsLoading, isError: vitalsError, refetch: fetchWebVitals } = useQuery<WebVitalsData>({
     queryKey: ['/api/admin/performance/web-vitals'],
     queryFn: async ({ signal }) => {
       const response = await apiRequest('GET', '/api/admin/performance/web-vitals', { signal });
@@ -277,7 +281,7 @@ export default function AdminPerformance() {
   };
 
   const formatVital = (value: number | null, suffix: string, decimals = 0): string => {
-    if (value === null || value === undefined) return '—';
+    if (value === null || value === undefined || !Number.isFinite(value) || value < 0) return '—';
     return `${value.toFixed(decimals)}${suffix}`;
   };
 
@@ -481,7 +485,7 @@ export default function AdminPerformance() {
                 <Gauge className="h-4 w-4" />
                 <div>
                   <CardTitle>Cloudflare Web Vitals (RUM)</CardTitle>
-                  <CardDescription>Real User Monitoring metrics for Core Web Vitals</CardDescription>
+                  <CardDescription>Real visitor measurements from Cloudflare, not a PageSpeed or Google CrUX score</CardDescription>
                 </div>
               </div>
               <Button
@@ -489,6 +493,7 @@ export default function AdminPerformance() {
                 size="sm"
                 onClick={() => fetchWebVitals()}
                 disabled={webVitalsLoading}
+                aria-label="Refresh Web Vitals"
               >
                 <RefreshCw className={`h-3 w-3 mr-1 ${webVitalsLoading ? 'animate-spin' : ''}`} />
                 Refresh
@@ -496,6 +501,19 @@ export default function AdminPerformance() {
             </div>
           </CardHeader>
           <CardContent className="space-y-6">
+            {webVitals.status !== 'available' && (
+              <Alert>
+                <AlertDescription>
+                  <strong>{webVitals.status === 'configuration_required' ? 'Analytics configuration required. ' : webVitals.status === 'no_data' ? 'No measurement data yet. ' : 'Analytics temporarily unavailable. '}</strong>
+                  {webVitals.message} This does not mean the radio website is down. Missing measurements are not zero results.
+                </AlertDescription>
+              </Alert>
+            )}
+            <p className="text-xs text-muted-foreground">
+              Scope: {webVitals.hosts?.join(', ')} · {webVitals.period && `${new Date(webVitals.period.start).toLocaleDateString()} – ${new Date(webVitals.period.end).toLocaleDateString()}`} · All device types.
+              {' '}Cloudflare uses adaptive sampling; results may vary. Percentiles are reported for the full period, not averaged across pages.
+              {webVitals.estimatedPageViews !== null && webVitals.estimatedPageViews !== undefined && ` Estimated page views: ${webVitals.estimatedPageViews.toLocaleString()}.`}
+            </p>
             {/* LCP */}
             <div className="space-y-3">
               <div className="flex items-center justify-between">
@@ -506,19 +524,19 @@ export default function AdminPerformance() {
               </div>
               <div className="grid grid-cols-3 gap-4">
                 <div className="border rounded-lg p-3">
-                  <div className="text-xs text-muted-foreground mb-1">P50 (Good)</div>
-                  <div className="text-2xl font-bold text-green-600">{formatVital(webVitals.lcp.p50, 'ms')}</div>
+                  <div className="text-xs text-muted-foreground mb-1">P50 (Median)</div>
+                  <div className="text-2xl font-bold">{formatVital(webVitals.lcp.p50, 'ms')}</div>
                 </div>
                 <div className="border rounded-lg p-3">
                   <div className="text-xs text-muted-foreground mb-1">P75 (Target)</div>
-                  <div className="text-2xl font-bold text-yellow-600">{formatVital(webVitals.lcp.p75, 'ms')}</div>
+                  <div className="text-2xl font-bold">{formatVital(webVitals.lcp.p75, 'ms')}</div>
                 </div>
                 <div className="border rounded-lg p-3">
-                  <div className="text-xs text-muted-foreground mb-1">P95 (Check)</div>
-                  <div className="text-2xl font-bold text-red-600">{formatVital(webVitals.lcp.p95, 'ms')}</div>
+                  <div className="text-xs text-muted-foreground mb-1">P95</div>
+                  <div className="text-2xl font-bold">{formatVital(webVitals.lcp.p95, 'ms')}</div>
                 </div>
               </div>
-              <p className="text-xs text-muted-foreground">Target: P75 &lt; 2500ms (Good), &lt; 4000ms (Needs Improvement)</p>
+              <p className="text-xs text-muted-foreground">Target: P75 ≤ 2500ms (Good), ≤ 4000ms (Needs Improvement)</p>
             </div>
 
             {/* INP */}
@@ -532,19 +550,19 @@ export default function AdminPerformance() {
               </div>
               <div className="grid grid-cols-3 gap-4">
                 <div className="border rounded-lg p-3">
-                  <div className="text-xs text-muted-foreground mb-1">P50 (Good)</div>
-                  <div className="text-2xl font-bold text-green-600">{formatVital(webVitals.inp.p50, 'ms')}</div>
+                  <div className="text-xs text-muted-foreground mb-1">P50 (Median)</div>
+                  <div className="text-2xl font-bold">{formatVital(webVitals.inp.p50, 'ms')}</div>
                 </div>
                 <div className="border rounded-lg p-3">
                   <div className="text-xs text-muted-foreground mb-1">P75 (Target)</div>
-                  <div className="text-2xl font-bold text-yellow-600">{formatVital(webVitals.inp.p75, 'ms')}</div>
+                  <div className="text-2xl font-bold">{formatVital(webVitals.inp.p75, 'ms')}</div>
                 </div>
                 <div className="border rounded-lg p-3">
-                  <div className="text-xs text-muted-foreground mb-1">P95 (Check)</div>
-                  <div className="text-2xl font-bold text-red-600">{formatVital(webVitals.inp.p95, 'ms')}</div>
+                  <div className="text-xs text-muted-foreground mb-1">P95</div>
+                  <div className="text-2xl font-bold">{formatVital(webVitals.inp.p95, 'ms')}</div>
                 </div>
               </div>
-              <p className="text-xs text-muted-foreground">Target: P75 &lt; 200ms (Good), &lt; 500ms (Needs Improvement)</p>
+              <p className="text-xs text-muted-foreground">Target: P75 ≤ 200ms (Good), ≤ 500ms (Needs Improvement)</p>
             </div>
 
             {/* CLS */}
@@ -558,19 +576,19 @@ export default function AdminPerformance() {
               </div>
               <div className="grid grid-cols-3 gap-4">
                 <div className="border rounded-lg p-3">
-                  <div className="text-xs text-muted-foreground mb-1">P50 (Good)</div>
-                  <div className="text-2xl font-bold text-green-600">{formatVital(webVitals.cls.p50, '', 3)}</div>
+                  <div className="text-xs text-muted-foreground mb-1">P50 (Median)</div>
+                  <div className="text-2xl font-bold">{formatVital(webVitals.cls.p50, '', 3)}</div>
                 </div>
                 <div className="border rounded-lg p-3">
                   <div className="text-xs text-muted-foreground mb-1">P75 (Target)</div>
-                  <div className="text-2xl font-bold text-yellow-600">{formatVital(webVitals.cls.p75, '', 3)}</div>
+                  <div className="text-2xl font-bold">{formatVital(webVitals.cls.p75, '', 3)}</div>
                 </div>
                 <div className="border rounded-lg p-3">
-                  <div className="text-xs text-muted-foreground mb-1">P95 (Check)</div>
-                  <div className="text-2xl font-bold text-red-600">{formatVital(webVitals.cls.p95, '', 3)}</div>
+                  <div className="text-xs text-muted-foreground mb-1">P95</div>
+                  <div className="text-2xl font-bold">{formatVital(webVitals.cls.p95, '', 3)}</div>
                 </div>
               </div>
-              <p className="text-xs text-muted-foreground">Target: P75 &lt; 0.1 (Good), &lt; 0.25 (Needs Improvement)</p>
+              <p className="text-xs text-muted-foreground">Target: P75 ≤ 0.1 (Good), ≤ 0.25 (Needs Improvement)</p>
             </div>
 
             {webVitals.lastUpdated && (

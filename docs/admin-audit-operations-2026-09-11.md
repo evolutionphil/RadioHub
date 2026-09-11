@@ -22,12 +22,14 @@ Scope: assigned 13 operational screens, their request/response contracts, startu
 
 ## Regression evidence
 
-- `artifacts/api-server/tests/admin-operations-status.test.ts`: **4/4 passed**, actual isolated PostgreSQL schema on loopback55437. Tests admin protection, thin payload, source-false/local-positive separation, expired exclusion, accurate totals, literal wildcard search, quality/HTTPS/limits and 60-second snapshot cache.
-- `artifacts/megaradio/tests/admin-operations.test.tsx`: **11/11 passed**. Tests non-overlap/abort/error-stop polling, paused vs terminal logo states, city failure/success/confirmation, real optimization response, catalogue health totals, native DB actions, stale completed-logo reattachment and log pagination/filter reset.
+- `artifacts/api-server/tests/admin-operations-status.test.ts`: **5/5 passed**, actual isolated PostgreSQL schema on loopback55437. Tests admin protection, thin payload, source-false/local-positive separation, expired exclusion, accurate totals, literal wildcard search, quality/HTTPS/limits, 60-second snapshot cache and absence of legacy source/document SQL reads.
+- `artifacts/megaradio/tests/admin-operations.test.tsx`: **12/12 passed**. Tests non-overlap/abort/error-stop polling, paused vs terminal logo states, city failure/success/confirmation, real optimization response, catalogue health totals, native DB actions, stale completed-logo reattachment, log pagination/filter reset and partial dashboard availability when one endpoint fails.
 - Existing `admin-coverage-compare-dashed.test.tsx`: **3/3 passed**. Existing fixture emits missing-default-query-function warnings; assertions pass and production supplies that default.
 - Frontend and API TypeScript checks passed after final server-side statement-timeout tightening. Existing `admin-log-pages.test.tsx` also **4/4 passed** alongside the 11 new frontend regressions.
 
 ## Limits / follow-up evidence
+
+- Production follow-up: both new operational endpoints returned HTTP 503, while performance and sync reads succeeded. Removed legacy `source` JSON reads from all status aggregates, filters and sample projections; only small native columns are queried now. Historical SSL data is explicitly **Not measured**, not zero. Server-side 2-second statement deadlines remain, with sanitized query-phase/PostgreSQL-code diagnostics. Independent working dashboard sections remain visible if another section fails. Native and frontend regressions plus both TypeScript checks passed. Live SQL timing could not be measured because the authorized Postgres environment has only a private connection URL and no public TCP endpoint; no infrastructure change or production database mutation was performed. Production verification of this follow-up remains with the parent rollout.
 
 - No production mutation was exercised. Destructive/expensive controls were inspected and mocked, not actually executed.
 - Existing logo jobs are process-local and can report `lost` after restart. This pass fixes the UI lifecycle and reports that state honestly; it does not claim durable logo-job recovery.

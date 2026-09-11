@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
 import { before, beforeEach, after, afterEach, test } from 'node:test';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
@@ -28,6 +29,7 @@ test('operational reads require admin and never expose station source/descriptio
   const response=await get('/api/admin/operations-status'); assert.equal(response.status,200); assert.equal(response.headers.get('cache-control'),'private, no-store');
   const data=await response.json(); assert.equal(data.totals.total,1);assert.equal(data.totals.working,1);assert.equal(data.totals.unavailable,0);
   assert.equal(data.recentChecks[0].lastCheckOk,false);assert.equal(data.recentChecks[0].availabilityStatus,'working');
+  assert.equal(data.totals.sslErrors,null);assert.equal(data.recentChecks[0].sslError,null);
   assert.equal(JSON.stringify(data).includes('Private large document'),false); assert.equal('source' in data.stations[0],false);
 });
 test('provider-false and expired failures stay unverified; only current visibility exclusions populate problems', async () => {
@@ -53,4 +55,10 @@ test('operational summary and samples are cached together for sixty seconds', as
   const first=await (await get('/api/admin/operations-status')).json();
   await insertStation({_id:'b'.repeat(24),name:'After',url:'https://radio.example/two'});
   const second=await (await get('/api/admin/operations-status')).json();assert.deepEqual(second,first);
+});
+test('operational endpoints never detoast legacy multilingual source documents', async () => {
+  const source=await readFile(new URL('../src/routes/admin-operations-status-routes.ts',import.meta.url),'utf8');
+  assert.doesNotMatch(source,/source\s*->|s\.source|s\.descriptions/);
+  assert.match(source,/SET LOCAL statement_timeout='2000ms'/);
+  assert.match(source,/phase=\$\{phase\} code=\$\{code\}/);
 });

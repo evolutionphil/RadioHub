@@ -65,7 +65,7 @@ interface PerformanceMetrics {
   systemHealth: { memoryUsage: number; cpuUsage: number | null; connectionPool: number };
 }
 interface OperationsStatus {
-  totals: { total: number; working: number; unavailable: number; unverified: number; sslErrors: number; recentChecks: number; uptrend: number; downtrend: number };
+  totals: { total: number; working: number; unavailable: number; unverified: number; sslErrors: number | null; recentChecks: number; uptrend: number; downtrend: number };
   recentChecks: any[]; problemStations: any[]; stations: any[]; sampledAt: string;
 }
 function monitoringStation(s: any): StationStatus {
@@ -107,7 +107,7 @@ export default function StatusMonitoring() {
   });
 
   const stationList = (stations?.stations || []).map(monitoringStation);
-  const isLoading = loadingStations || loadingStats || loadingSync || loadingPerformance;
+  const isLoading = !stations && !dashboardStats && !syncStatus && !performanceMetrics && (loadingStations || loadingStats || loadingSync || loadingPerformance);
 
   if (!isAuthenticated) {
     return (
@@ -126,13 +126,13 @@ export default function StatusMonitoring() {
   const totalStations = stations?.totals.total || 0;
   const onlineStations = stations?.totals.working || 0;
   const offlineStations = stations?.totals.unavailable || 0;
-  const sslErrorStations = stations?.totals.sslErrors || 0;
+  const sslErrorStations = stations?.totals.sslErrors ?? null;
   const uptrend = stations?.totals.uptrend || 0;
   const downtrend = stations?.totals.downtrend || 0;
   const uptimePercentage = totalStations > 0 ? Math.round(onlineStations / totalStations * 100) : 0;
   const recentChecks = (stations?.recentChecks || []).map(monitoringStation);
   const problemStations = (stations?.problemStations || []).map(monitoringStation);
-  if (stationsError || statsError || syncError || performanceError) return <div role="alert" className="p-6">Some operational status could not be loaded; missing data is not a healthy or zero measurement. <Button variant="outline" onClick={() => { void refreshStations(); void refreshStats(); void refreshSync(); void refreshPerformance(); }}>Retry</Button></div>;
+  const failedSections = [stationsError && 'Station health', statsError && 'Dashboard statistics', syncError && 'Synchronization', performanceError && 'Performance metrics'].filter(Boolean).join(', ');
 
   if (isLoading) {
     return (
@@ -151,6 +151,7 @@ export default function StatusMonitoring() {
 
   return (
     <div className="mx-auto w-full max-w-[1600px] px-4 py-5 sm:px-6 sm:py-6 lg:px-8 space-y-5 sm:space-y-6">
+      {failedSections && <div role="alert">Could not load: {failedSections}. Other available sections remain visible. <Button variant="outline" onClick={() => { if (stationsError) void refreshStations(); if (statsError) void refreshStats(); if (syncError) void refreshSync(); if (performanceError) void refreshPerformance(); }}>Retry failed sections</Button></div>}
       <div className="mb-4 sm:mb-6">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
@@ -171,7 +172,7 @@ export default function StatusMonitoring() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-xl sm:text-2xl font-bold text-green-600">
-                  {uptimePercentage}%
+                  {stations ? `${uptimePercentage}%` : '—'}
                 </p>
                 <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">Locally Verified Working</p>
               </div>
@@ -188,7 +189,7 @@ export default function StatusMonitoring() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-xl sm:text-2xl font-bold text-blue-600">
-                  {dashboardStats?.totalStations?.toLocaleString() || '0'}
+                  {dashboardStats?.totalStations?.toLocaleString() ?? '—'}
                 </p>
                 <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">Total Stations</p>
               </div>
@@ -202,7 +203,7 @@ export default function StatusMonitoring() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-xl sm:text-2xl font-bold text-purple-600">
-                  {dashboardStats?.totalUsers?.toLocaleString() || '0'}
+                  {dashboardStats?.totalUsers?.toLocaleString() ?? '—'}
                 </p>
                 <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">Active Users</p>
               </div>
@@ -342,6 +343,7 @@ export default function StatusMonitoring() {
       )}
 
       {/* Station Status Overview Cards */}
+      {stations && <>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-4 sm:mb-6">
         <Card>
           <CardContent className="p-3 sm:p-4">
@@ -375,7 +377,7 @@ export default function StatusMonitoring() {
           <CardContent className="p-3 sm:p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-xl sm:text-2xl font-bold text-yellow-600">{sslErrorStations}</p>
+                <p className="text-xl sm:text-2xl font-bold text-yellow-600">{sslErrorStations ?? 'Not measured'}</p>
                 <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">SSL Errors</p>
               </div>
               <AlertTriangle className="w-6 h-6 sm:w-8 sm:h-8 text-yellow-500" />
@@ -418,7 +420,7 @@ export default function StatusMonitoring() {
                 <div className="space-y-3 sm:space-y-4">
                   <div className="flex justify-between items-center">
                     <span className="text-sm sm:text-base">Total Stations</span>
-                    <Badge variant="outline">{dashboardStats?.totalStations?.toLocaleString() || '0'}</Badge>
+                    <Badge variant="outline">{dashboardStats?.totalStations?.toLocaleString() ?? '—'}</Badge>
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-sm sm:text-base">Source Reports Working</span>
@@ -457,8 +459,8 @@ export default function StatusMonitoring() {
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-sm sm:text-base">SSL Errors</span>
-                    <Badge variant={sslErrorStations > 0 ? "destructive" : "secondary"}>
-                      {sslErrorStations}
+                    <Badge variant={(sslErrorStations ?? 0) > 0 ? "destructive" : "outline"}>
+                      {sslErrorStations ?? 'Not measured'}
                     </Badge>
                   </div>
                   <div className="flex justify-between items-center">
@@ -791,6 +793,7 @@ export default function StatusMonitoring() {
           </Card>
         </TabsContent>
       </Tabs>
+      </>}
     </div>
   );
 }
