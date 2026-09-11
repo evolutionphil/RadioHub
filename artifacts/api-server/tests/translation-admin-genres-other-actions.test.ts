@@ -7,9 +7,7 @@
  *
  *   - `GET  /api/admin/genres`        — list with pagination, search,
  *                                       demoted-only filter, sort options,
- *                                       and the empty-collection bootstrap
- *                                       that auto-populates from station
- *                                       tags.
+ *                                       and read-only empty-catalogue behavior.
  *   - `GET  /api/admin/genres/:id/merge-preview` — read-only preview of
  *                                       the stations a merge-into-winner
  *                                       call would re-tag, plus its 404 /
@@ -316,7 +314,7 @@ test('GET /api/admin/genres?sortBy=demotedAt orders most recently demoted first'
   );
 });
 
-test('GET /api/admin/genres bootstraps from station tags when collection is empty', async () => {
+test('GET /api/admin/genres stays read-only when the catalogue is empty', async () => {
   stations.push(
     { _id: 's1', slug: 's1', tags: 'rock,pop' },
     { _id: 's2', slug: 's2', tags: 'rock' },
@@ -331,19 +329,28 @@ test('GET /api/admin/genres bootstraps from station tags when collection is empt
     populated?: boolean;
   };
 
-  assert.equal(body.populated, true, 'response should flag the bootstrap path');
-  // rock (2), pop (1), jazz (1)
-  const slugs = body.data.map((g) => g.slug).sort();
-  assert.deepEqual(slugs, ['jazz', 'pop', 'rock']);
-  assert.equal(body.total, 3);
-  // Verify the upsert payload shape: discoverable iff station count >= 2.
-  const rockUpsert = upsertCalls.find((c) => c.filter.slug === 'rock');
-  assert.ok(rockUpsert, 'rock should have been upserted');
-  assert.equal(rockUpsert!.payload.stationCount, 2);
-  assert.equal(rockUpsert!.payload.isDiscoverable, true);
-  const popUpsert = upsertCalls.find((c) => c.filter.slug === 'pop');
-  assert.ok(popUpsert);
-  assert.equal(popUpsert!.payload.isDiscoverable, false, 'single-station tag is not discoverable');
+  assert.equal(body.populated, undefined);
+  assert.deepEqual(body.data, []);
+  assert.equal(body.total, 0);
+  assert.equal(upsertCalls.length, 0, 'only the explicit populate action may create rows');
+});
+
+test('GET genres discoverable filtering precedes pagination and keeps total consistent', async () => {
+  for (let i=1;i<=5;i++) genres.push({_id:`g${i}`,name:`Genre ${i}`,slug:`g${i}`,stationCount:10-i,isDiscoverable:i%2===0});
+  const response=await fetch(`${baseUrl}/api/admin/genres?discoverable=true&limit=1&page=2`);
+  assert.equal(response.status,200);
+  const body=await response.json() as any;
+  assert.equal(body.total,2);assert.equal(body.totalPages,2);
+  assert.deepEqual(body.data.map((row:any)=>row._id),['g4']);
+});
+
+test('GET genres search treats regex characters literally',async()=>{
+  genres.push({_id:'literal',name:'[Rock.*]',slug:'rock',stationCount:1},{_id:'other',name:'Rock Music',slug:'other',stationCount:1});
+  for(const search of ['[','.*']) {
+    const response=await fetch(`${baseUrl}/api/admin/genres?search=${encodeURIComponent(search)}`);
+    assert.equal(response.status,200);const body=await response.json() as any;
+    assert.equal(body.total,1);assert.equal(body.data[0]._id,'literal');
+  }
 });
 
 // ---------------------------------------------------------------------------

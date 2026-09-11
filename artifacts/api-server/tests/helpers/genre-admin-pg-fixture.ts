@@ -31,8 +31,8 @@ export function genreAdminPgFixture(state:{genres:()=>any[];stations:()=>any[];a
     }
     if(sql.startsWith('SELECT * FROM genres WHERE id=$1'))return result(state.genres().filter(g=>g._id===values[0]).map(row));
     if(sql.startsWith('SELECT * FROM genres WHERE (')||sql.startsWith('SELECT count(*)::int total FROM genres WHERE (')){
-      const [search,demotedOnly,limit,offset]=values;
-      const rows=state.genres().filter(g=>(!search||new RegExp(search,'i').test(g.name))&&(!demotedOnly||['empty-slug','collision'].includes(g.cleanupDemotion?.reason)));
+      const [search,demotedOnly,discoverableOnly,limit,offset]=values;
+      const rows=state.genres().filter(g=>(!search||new RegExp(search,'i').test(g.name))&&(!demotedOnly||['empty-slug','collision'].includes(g.cleanupDemotion?.reason))&&(!discoverableOnly||g.isDiscoverable!==false));
       if(sql.startsWith('SELECT count'))return result([{total:rows.length}]);
       rows.sort((a,b)=>{
         let av:any,bv:any,direction=1;

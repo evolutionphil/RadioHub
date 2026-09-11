@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,6 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
+import { translationDraftKey, translationDraftPayload, removeAcknowledgedDrafts } from '@/lib/admin-content-state';
 import { 
   Plus, 
   Search, 
@@ -108,7 +109,7 @@ export default function AdminTranslations() {
   const [pendingTranslationChanges, setPendingTranslationChanges] = useState<Record<string, string>>({});
 
   // Check admin auth status first
-  const { data: adminAuth } = useQuery<{ user: any; authenticated: boolean }>({
+  const { data: adminAuth, error: authError } = useQuery<{ user: any; authenticated: boolean }>({
     queryKey: ['/api/admin/auth/me'],
     queryFn: async () => {
       const response = await fetch('/api/admin/auth/me', { credentials: 'include' });
@@ -127,10 +128,10 @@ export default function AdminTranslations() {
       const response = await fetch('/api/admin/translation-metadata', {
         credentials: 'include'
       });
-      if (!response.ok) return { languagesVersion: 0 };
+      if (!response.ok) throw new Error('Translation metadata could not load');
       return response.json();
     },
-    refetchInterval: 15000, // Poll every 15 seconds
+    refetchInterval: query => query.state.status === 'error' ? false : 15000,
     enabled: isAdmin,
     retry: false
   });
@@ -138,7 +139,7 @@ export default function AdminTranslations() {
   const cacheVersion = translationMetadata?.languagesVersion || 0;
   
   // Fetch translation keys with optimized caching - ONLY when authenticated as admin
-  const { data: translationKeys = [], isLoading: keysLoading } = useQuery<TranslationKey[]>({
+  const { data: translationKeys = [], isLoading: keysLoading, error: keysError } = useQuery<TranslationKey[]>({
     queryKey: ['/api/admin/translation-keys', cacheVersion],
     queryFn: async () => {
       const response = await fetch('/api/admin/translation-keys', {
@@ -153,7 +154,7 @@ export default function AdminTranslations() {
   });
 
   // Fetch languages with optimized caching - ONLY when authenticated as admin
-  const { data: languages = [], isLoading: languagesLoading } = useQuery<TranslationLanguage[]>({
+  const { data: languages = [], isLoading: languagesLoading, error: languagesError } = useQuery<TranslationLanguage[]>({
     queryKey: ['/api/admin/translation-languages', cacheVersion],
     queryFn: async () => {
       const response = await fetch('/api/admin/translation-languages', {
@@ -168,7 +169,7 @@ export default function AdminTranslations() {
   });
 
   // Fetch all translations for filtering purposes with caching - ONLY when authenticated as admin
-  const { data: allTranslations = [] } = useQuery<Translation[]>({
+  const { data: allTranslations = [], error: translationsError } = useQuery<Translation[]>({
     queryKey: ['/api/admin/all-translations', cacheVersion],
     queryFn: async () => {
       const response = await fetch('/api/admin/all-translations', {
@@ -182,6 +183,21 @@ export default function AdminTranslations() {
     enabled: isAdmin, // Only fetch when admin is authenticated
   });
 
+  const translationIndex = useMemo(() => {
+    const enabled = new Set(languages.filter(language => language.isEnabled).map(language => language.code));
+    const values = new Map<string, Translation>();
+    const completed = new Map<string, number>();
+    for (const row of allTranslations) {
+      values.set(translationDraftKey(row.language, row.keyId), row);
+      if (row.language !== 'en' && enabled.has(row.language) && row.isCompleted && row.value.trim()) completed.set(row.keyId, (completed.get(row.keyId) || 0) + 1);
+    }
+    // English is the source text and is intentionally not AI-translated.
+    if (enabled.has('en')) for (const key of translationKeys) {
+      if (key.defaultValue.trim()) completed.set(key._id, (completed.get(key._id) || 0) + 1);
+    }
+    return { values, completed, enabledCount: enabled.size };
+  }, [allTranslations, languages, translationKeys]);
+
   // Fetch translations for selected key
   const { data: translations = [] } = useQuery<Translation[]>({
     queryKey: ['/api/admin/translations', selectedKey?._id],
@@ -193,7 +209,7 @@ export default function AdminTranslations() {
       if (!response.ok) throw new Error('Failed to fetch translations');
       return response.json();
     },
-    enabled: !!selectedKey
+    enabled: isAdmin && !!selectedKey
   });
 
   // Create translation key mutation
@@ -262,6 +278,7 @@ export default function AdminTranslations() {
     onSuccess: () => {
       toast({ title: "Success", description: "Translation saved successfully" });
       queryClient.invalidateQueries({ queryKey: ['/api/admin/translations', selectedKey?._id] });
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/all-translations'] });
       queryClient.invalidateQueries({ queryKey: ['/api/admin/translation-languages'] });
       setTranslationForm({ language: "", value: "" });
       setIsTranslateDialogOpen(false);
@@ -278,12 +295,12 @@ export default function AdminTranslations() {
   // Scan frontend mutation
   const scanFrontendMutation = useMutation({
     mutationFn: async () => {
-      return apiRequest("POST", "/api/admin/scan-frontend-strings");
+      return apiRequest("POST", "/api/admin/scan-frontend-strings").then(response => response.json());
     },
     onSuccess: (data: any) => {
       toast({ 
         title: "Scan Complete", 
-        description: `Found ${data.newKeysAdded} new translation keys` 
+        description: `Found ${data.added ?? data.newKeysAdded ?? 0} new translation keys`
       });
       queryClient.invalidateQueries({ queryKey: ['/api/admin/translation-keys'] });
       setIsScanning(false);
@@ -301,12 +318,12 @@ export default function AdminTranslations() {
   // Seed FAQ keys mutation
   const seedFaqKeysMutation = useMutation({
     mutationFn: async () => {
-      return apiRequest("POST", "/api/admin/translation-keys/add-faq-keys");
+      return apiRequest("POST", "/api/admin/translation-keys/add-faq-keys").then(response => response.json());
     },
     onSuccess: (data: any) => {
       toast({ 
         title: "FAQ Keys Added", 
-        description: `Added ${data.created} new FAQ translation keys. You can now translate them!` 
+        description: `Added ${data.createdCount ?? data.added ?? data.created ?? 0} new FAQ translation keys. You can now translate them!`
       });
       queryClient.invalidateQueries({ queryKey: ['/api/admin/translation-keys'] });
     },
@@ -448,7 +465,9 @@ export default function AdminTranslations() {
   // Reset to page 1 when filters change
   useEffect(() => {
     setCurrentPage(1);
+    setEditingTranslation(null);
   }, [searchTerm, selectedCategory, selectedLanguage, itemsPerPage]);
+  useEffect(() => { setCurrentPage(page => Math.max(1, Math.min(page, totalPages || 1))); }, [totalPages]);
 
   // Get unique categories
   const categories = Array.from(new Set(translationKeys.map(key => key.category)));
@@ -485,7 +504,7 @@ export default function AdminTranslations() {
   // Inline editing handlers
   const handleDefaultValueEdit = (keyId: string, currentValue: string) => {
     setEditingDefaultValue(keyId);
-    setEditingValues({ ...editingValues, [keyId]: currentValue });
+    setEditingValues(previous => ({ ...previous, [keyId]: pendingChanges[keyId] ?? currentValue }));
     // Focus and select all text after a brief delay to ensure the input is rendered
     setTimeout(() => {
       const input = document.querySelector(`input[data-default-key="${keyId}"]`) as HTMLInputElement;
@@ -520,7 +539,8 @@ export default function AdminTranslations() {
   // Translation inline editing handlers
   const handleTranslationEdit = (keyId: string, currentValue: string) => {
     setEditingTranslation(keyId);
-    setEditingTranslationValues(prev => ({ ...prev, [keyId]: currentValue }));
+    const identity = translationDraftKey(selectedLanguage, keyId);
+    setEditingTranslationValues(prev => ({ ...prev, [identity]: pendingTranslationChanges[identity] ?? currentValue }));
     // Focus and select all text after a brief delay to ensure the input is rendered
     setTimeout(() => {
       const input = document.querySelector(`input[data-translation-key="${keyId}"]`) as HTMLInputElement;
@@ -532,8 +552,9 @@ export default function AdminTranslations() {
   };
 
   const handleTranslationChange = (keyId: string, value: string) => {
-    setEditingTranslationValues(prev => ({ ...prev, [keyId]: value }));
-    setPendingTranslationChanges(prev => ({ ...prev, [keyId]: value }));
+    const identity = translationDraftKey(selectedLanguage, keyId);
+    setEditingTranslationValues(prev => ({ ...prev, [identity]: value }));
+    setPendingTranslationChanges(prev => ({ ...prev, [identity]: value }));
   };
 
   const handleTranslationSave = (keyId: string) => {
@@ -544,22 +565,22 @@ export default function AdminTranslations() {
   const handleTranslationCancel = (keyId: string) => {
     setEditingTranslation(null);
     const newEditingValues = { ...editingTranslationValues };
-    delete newEditingValues[keyId];
+    delete newEditingValues[translationDraftKey(selectedLanguage, keyId)];
     setEditingTranslationValues(newEditingValues);
     
     const newPendingChanges = { ...pendingTranslationChanges };
-    delete newPendingChanges[keyId];
+    delete newPendingChanges[translationDraftKey(selectedLanguage, keyId)];
     setPendingTranslationChanges(newPendingChanges);
   };
 
   // Mutation to save pending changes in bulk
   const savePendingChangesMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (snapshot: { defaults: Record<string, string>; translations: Record<string, string> }) => {
       const promises = [];
       
       // Save default value changes
-      if (Object.keys(pendingChanges).length > 0) {
-        const updates = Object.entries(pendingChanges).map(([keyId, newDefaultValue]) => ({
+      if (Object.keys(snapshot.defaults).length > 0) {
+        const updates = Object.entries(snapshot.defaults).map(([keyId, newDefaultValue]) => ({
           keyId,
           defaultValue: newDefaultValue
         }));
@@ -567,21 +588,16 @@ export default function AdminTranslations() {
       }
       
       // Save translation changes
-      if (Object.keys(pendingTranslationChanges).length > 0 && selectedLanguage !== "all") {
-        const translationUpdates = Object.entries(pendingTranslationChanges).map(([keyId, value]) => ({
-          keyId,
-          language: selectedLanguage,
-          value,
-          isCompleted: true
-        }));
+      if (Object.keys(snapshot.translations).length > 0) {
+        const translationUpdates = translationDraftPayload(snapshot.translations);
         promises.push(apiRequest("POST", "/api/admin/translations/bulk-upsert", { body: { translations: translationUpdates } }));
       }
       
       return Promise.all(promises);
     },
-    onSuccess: () => {
-      const defaultChanges = Object.keys(pendingChanges).length;
-      const translationChanges = Object.keys(pendingTranslationChanges).length;
+    onSuccess: (_responses, snapshot) => {
+      const defaultChanges = Object.keys(snapshot.defaults).length;
+      const translationChanges = Object.keys(snapshot.translations).length;
       
       toast({ 
         title: "Success", 
@@ -590,10 +606,10 @@ export default function AdminTranslations() {
       queryClient.invalidateQueries({ queryKey: ['/api/admin/translation-keys'] });
       queryClient.invalidateQueries({ queryKey: ['/api/admin/all-translations'] });
       queryClient.invalidateQueries({ queryKey: ['/api/admin/translation-languages'] });
-      setPendingChanges({});
-      setPendingTranslationChanges({});
-      setEditingValues({});
-      setEditingTranslationValues({});
+      setPendingChanges(current => removeAcknowledgedDrafts(current, snapshot.defaults));
+      setPendingTranslationChanges(current => removeAcknowledgedDrafts(current, snapshot.translations));
+      setEditingValues(current => removeAcknowledgedDrafts(current, snapshot.defaults));
+      setEditingTranslationValues(current => removeAcknowledgedDrafts(current, snapshot.translations));
     },
     onError: (error: any) => {
       toast({ 
@@ -611,6 +627,7 @@ export default function AdminTranslations() {
 
   return (
     <div className="mx-auto w-full max-w-[1600px] px-4 py-5 sm:px-6 sm:py-6 lg:px-8 space-y-5 sm:space-y-6">
+      {(authError || keysError || languagesError || translationsError) && <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-900">Translation data could not load. Existing translations have not been deleted. <Button variant="outline" size="sm" onClick={() => queryClient.invalidateQueries({ predicate: query => String(query.queryKey[0]).startsWith('/api/admin/') })}>Retry loading translations</Button></div>}
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
@@ -797,7 +814,7 @@ export default function AdminTranslations() {
                 </span>
                 <Button
                   size="sm"
-                  onClick={() => savePendingChangesMutation.mutate()}
+                  onClick={() => savePendingChangesMutation.mutate({ defaults: { ...pendingChanges }, translations: { ...pendingTranslationChanges } })}
                   disabled={savePendingChangesMutation.isPending}
                 >
                   Save All Changes
@@ -826,16 +843,15 @@ export default function AdminTranslations() {
               <TableBody>
                 {paginatedKeys.map((key) => {
                   // Calculate completion for this key across all languages
-                  const keyTranslations = translations.filter(t => t.keyId === key._id);
-                  const completedTranslations = keyTranslations.filter(t => t.isCompleted).length;
-                  const enabledLanguagesCount = languages.filter(l => l.isEnabled).length;
+                  const completedTranslations = translationIndex.completed.get(key._id) || 0;
+                  const enabledLanguagesCount = translationIndex.enabledCount;
                   const completionRate = enabledLanguagesCount > 0 
                     ? (completedTranslations / enabledLanguagesCount) * 100 
                     : 0;
 
                   // Get translation for selected language if any
                   const selectedLanguageTranslation = selectedLanguage !== "all" 
-                    ? allTranslations.find(t => t.keyId === key._id && t.language === selectedLanguage)
+                    ? translationIndex.values.get(translationDraftKey(selectedLanguage, key._id))
                     : null;
 
                   return (
@@ -878,8 +894,8 @@ export default function AdminTranslations() {
                             className="truncate cursor-pointer hover:bg-gray-100 p-1 rounded"
                             onClick={() => handleDefaultValueEdit(key._id, key.defaultValue)}
                           >
-                            {pendingChanges[key._id] || key.defaultValue}
-                            {pendingChanges[key._id] && <span className="ml-2 text-orange-500">*</span>}
+                            {pendingChanges[key._id] ?? key.defaultValue}
+                            {Object.hasOwn(pendingChanges, key._id) && <span className="ml-2 text-orange-500">*</span>}
                           </div>
                         )}
                       </TableCell>
@@ -889,7 +905,7 @@ export default function AdminTranslations() {
                             <div className="flex items-center gap-2">
                               <Input
                                 data-translation-key={key._id}
-                                value={editingTranslationValues[key._id] !== undefined ? editingTranslationValues[key._id] : (selectedLanguageTranslation?.value || '')}
+                                value={editingTranslationValues[translationDraftKey(selectedLanguage, key._id)] ?? selectedLanguageTranslation?.value ?? ''}
                                 onChange={(e) => handleTranslationChange(key._id, e.target.value)}
                                 onKeyDown={(e) => {
                                   if (e.key === 'Enter') {
@@ -922,10 +938,10 @@ export default function AdminTranslations() {
                               className="truncate cursor-pointer hover:bg-blue-50 p-1 rounded text-blue-600 font-medium"
                               onClick={() => handleTranslationEdit(key._id, selectedLanguageTranslation?.value || '')}
                             >
-                              {pendingTranslationChanges[key._id] || selectedLanguageTranslation?.value || (
+                              {pendingTranslationChanges[translationDraftKey(selectedLanguage, key._id)] ?? selectedLanguageTranslation?.value ?? (
                                 <span className="text-gray-400 italic">Click to add translation</span>
                               )}
-                              {pendingTranslationChanges[key._id] && <span className="ml-2 text-orange-500">*</span>}
+                              {Object.hasOwn(pendingTranslationChanges, translationDraftKey(selectedLanguage, key._id)) && <span className="ml-2 text-orange-500">*</span>}
                             </div>
                           )}
                         </TableCell>
@@ -979,7 +995,7 @@ export default function AdminTranslations() {
           {/* Pagination */}
           <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-100">
             <div className="flex items-center gap-2 text-sm text-gray-500">
-              <span>Showing {startIndex + 1}-{Math.min(endIndex, filteredKeys.length)} of {filteredKeys.length}</span>
+              <span>Showing {filteredKeys.length ? startIndex + 1 : 0}-{Math.min(endIndex, filteredKeys.length)} of {filteredKeys.length}</span>
               <span className="text-gray-300">|</span>
               <span>Show:</span>
               <div className="flex gap-1">
@@ -1004,7 +1020,8 @@ export default function AdminTranslations() {
                 variant="outline"
                 size="sm"
                 onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                disabled={currentPage === 1}
+                disabled={currentPage <= 1}
+                aria-label="Previous translation page"
                 className="h-8 w-8 p-0"
               >
                 <ChevronLeft className="w-4 h-4" />
@@ -1042,8 +1059,9 @@ export default function AdminTranslations() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                disabled={currentPage === totalPages}
+                onClick={() => setCurrentPage(p => Math.max(1, Math.min(totalPages, p + 1)))}
+                disabled={currentPage >= totalPages}
+                aria-label="Next translation page"
                 className="h-8 w-8 p-0"
               >
                 <ChevronRight className="w-4 h-4" />

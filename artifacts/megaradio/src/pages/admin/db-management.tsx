@@ -18,6 +18,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { queryClient } from "@/lib/queryClient";
+import { OPERATIONAL_TABLES } from '@/lib/admin-operations';
 
 const FLUSH_CONFIRM_PHRASE = "FLUSH";
 
@@ -38,6 +39,8 @@ interface CollectionStat {
 }
 
 interface DbStatus {
+  engine?: string;
+  countsAreEstimates?: boolean;
   totalSizeMB: number;
   storageSizeMB: number;
   indexSizeMB: number;
@@ -56,7 +59,7 @@ export default function DbManagement() {
   const [flushResult, setFlushResult] = useState<FlushStationsResult | null>(null);
   const { toast } = useToast();
 
-  const { data: dbStatus, isLoading, refetch } = useQuery<DbStatus>({
+  const { data: dbStatus, isLoading, isError, refetch } = useQuery<DbStatus>({
     queryKey: ["/api/admin/db-status"],
   });
 
@@ -67,8 +70,8 @@ export default function DbManagement() {
       )?.count ?? 0;
     return {
       stations: findCount("stations"),
-      synclogs: findCount("synclogs"),
-      blacklistedstations: findCount("blacklistedstations"),
+      synclogs: findCount("catalog_sync_runs"),
+      blacklistedstations: findCount("blacklisted_stations"),
     };
   }, [dbStatus]);
 
@@ -114,6 +117,7 @@ export default function DbManagement() {
       setCleanupResult(data);
       queryClient.invalidateQueries({ queryKey: ["/api/admin/db-status"] });
     },
+    onError: (error: Error) => toast({ title: 'Cleanup failed', description: error.message, variant: 'destructive' }),
   });
 
   const dropMutation = useMutation({
@@ -125,9 +129,9 @@ export default function DbManagement() {
       setCleanupResult(data);
       queryClient.invalidateQueries({ queryKey: ["/api/admin/db-status"] });
     },
+    onError: (error: Error) => toast({ title: 'Clear failed', description: error.message, variant: 'destructive' }),
   });
-
-  const usagePct = dbStatus ? Math.round((dbStatus.storageSizeMB / 512) * 100) : 0;
+  const mutationPending = flushMutation.isPending || cleanupMutation.isPending || dropMutation.isPending;
 
   return (
     <AdminPage
@@ -154,6 +158,7 @@ export default function DbManagement() {
     >
 
       {isLoading && <p className="text-gray-600">Loading...</p>}
+      {isError && <p role="alert" className="text-destructive">Unable to load database status. Refresh to retry.</p>}
 
       {dbStatus && (
         <>
@@ -182,14 +187,13 @@ export default function DbManagement() {
                 <p className="text-2xl font-bold text-gray-900">{dbStatus.indexSizeMB} MB</p>
               </CardContent>
             </Card>
-            <Card className={`border ${usagePct >= 90 ? 'bg-red-50 border-red-300' : 'bg-white'}`}>
+            <Card className="border bg-white">
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm text-gray-500">Quota Usage (512 MB)</CardTitle>
+                <CardTitle className="text-sm text-gray-500">Database Engine</CardTitle>
               </CardHeader>
               <CardContent>
-                <p className={`text-2xl font-bold ${usagePct >= 90 ? 'text-red-600' : 'text-gray-900'}`}>
-                  {usagePct}%
-                </p>
+                <p className="text-2xl font-bold text-gray-900">PostgreSQL</p>
+                <p className="text-xs text-gray-500 mt-1">Storage limits and billing are managed in Railway.</p>
                 {dbStatus.quotaStatus.quotaExceeded && (
                   <p className="text-xs text-red-500 mt-1">Writes paused!</p>
                 )}
@@ -199,10 +203,10 @@ export default function DbManagement() {
 
           <Card className="bg-white border">
             <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle className="text-lg text-gray-900">Collections</CardTitle>
+              <CardTitle className="text-lg text-gray-900">Tables {dbStatus.countsAreEstimates ? '(estimated row counts)' : ''}</CardTitle>
               <Button
-                onClick={() => cleanupMutation.mutate(undefined)}
-                disabled={cleanupMutation.isPending}
+                onClick={() => { if (confirm('Delete operational records under the retention policy? Analytics events are cleared entirely; old logs and listening history are removed.')) cleanupMutation.mutate(undefined); }}
+                disabled={mutationPending}
                 variant="destructive"
                 size="sm"
               >
@@ -214,8 +218,8 @@ export default function DbManagement() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b">
-                      <th className="text-left py-2 px-3 text-gray-700">Collection</th>
-                      <th className="text-right py-2 px-3 text-gray-700">Documents</th>
+                      <th className="text-left py-2 px-3 text-gray-700">Table</th>
+                      <th className="text-right py-2 px-3 text-gray-700">Rows</th>
                       <th className="text-right py-2 px-3 text-gray-700">Data (MB)</th>
                       <th className="text-right py-2 px-3 text-gray-700">Storage (MB)</th>
                       <th className="text-right py-2 px-3 text-gray-700">Indexes (MB)</th>
@@ -224,14 +228,9 @@ export default function DbManagement() {
                   </thead>
                   <tbody>
                     {dbStatus.collections.map((col) => {
-                      const cleanable = [
-                        'analyticsevents', 'synclogs', 'stationdebuglogs',
-                        'bulkdescriptionjobs', 'visitorsessions', 'userlisteninghistories',
-                        'applogs'
-                      ].includes(col.name.toLowerCase());
-                      const droppable = [
-                        'applogs', 'analyticsevents', 'stationdebuglogs', 'bulkdescriptionjobs'
-                      ].includes(col.name.toLowerCase());
+                      const operation = OPERATIONAL_TABLES[col.name];
+                      const cleanable = !!operation;
+                      const droppable = operation?.clearable;
                       return (
                         <tr key={col.name} className="border-b hover:bg-gray-50">
                           <td className="py-2 px-3 text-gray-900 font-medium">{col.name}</td>
@@ -245,8 +244,8 @@ export default function DbManagement() {
                                 variant="outline"
                                 size="sm"
                                 className="text-red-600 border-red-300 hover:bg-red-50"
-                                disabled={cleanupMutation.isPending}
-                                onClick={() => cleanupMutation.mutate([col.name])}
+                                disabled={mutationPending}
+                                onClick={() => { if (confirm(`Apply retention cleanup to ${col.name}? Deleted rows cannot be restored here.`)) cleanupMutation.mutate([operation.target]); }}
                               >
                                 Clean
                               </Button>
@@ -255,14 +254,14 @@ export default function DbManagement() {
                               <Button
                                 variant="destructive"
                                 size="sm"
-                                disabled={dropMutation.isPending}
+                                disabled={mutationPending}
                                 onClick={() => {
-                                  if (confirm(`"${col.name}" collection tamamen silinecek. Emin misin?`)) {
-                                    dropMutation.mutate(col.name);
+                                  if (confirm(`Clear records in "${col.name}"? The PostgreSQL table and indexes will be preserved.`)) {
+                                    dropMutation.mutate(operation.target);
                                   }
                                 }}
                               >
-                                Drop
+                                Clear
                               </Button>
                             )}
                           </td>
@@ -276,7 +275,7 @@ export default function DbManagement() {
           </Card>
 
           {cleanupResult && (
-            <Card className="bg-green-50 border-green-300">
+            <Card className={cleanupResult.success === false ? 'bg-red-50 border-red-300' : 'bg-green-50 border-green-300'}>
               <CardHeader>
                 <CardTitle className="text-lg text-green-800">Cleanup Results</CardTitle>
               </CardHeader>

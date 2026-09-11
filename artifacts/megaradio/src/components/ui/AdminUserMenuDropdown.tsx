@@ -1,6 +1,8 @@
 import { useState, useRef, useEffect } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
+import { useMutation } from "@tanstack/react-query";
+import { useAdminAuth } from '@/hooks/useAdminAuth';
+import { logoutAccount } from '@/lib/logout';
+import { useToast } from '@/hooks/use-toast';
 import { User, LogOut, Settings } from "lucide-react";
 import { useLocation } from "wouter";
 
@@ -30,25 +32,22 @@ interface User {
 
 export function AdminUserMenuDropdown() {
   const [isOpen, setIsOpen] = useState(false);
+  const [failedAvatar, setFailedAvatar] = useState<string | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
-  const queryClient = useQueryClient();
+  const { toast } = useToast();
   const [, setLocation] = useLocation();
 
   // Get current user data
-  const { data: user, isLoading } = useQuery<User>({
-    queryKey: ['/api/auth/me'],
-    retry: false,
-  });
+  const { user: adminUser, isAuthenticated, isLoading } = useAdminAuth();
+  const user = isAuthenticated ? adminUser as Partial<User> | null : null;
 
   // Logout mutation
   const logoutMutation = useMutation({
-    mutationFn: () => apiRequest('POST', '/api/auth/logout'),
+    mutationFn: logoutAccount,
     onSuccess: () => {
-      // Clear all cached data
-      queryClient.clear();
-      // CRITICAL: Use wouter navigation to prevent audio interruption
-      setLocation('/');
+      setLocation('/admin/login');
     },
+    onError: () => toast({ title: 'Sign out failed', description: 'Your session is still active. Please try again.', variant: 'destructive' }),
   });
 
   // Close dropdown when clicking outside
@@ -81,19 +80,12 @@ export function AdminUserMenuDropdown() {
         aria-haspopup="true"
         aria-label="User menu"
       >
-        {user.avatar ? (
+        {user.avatar && failedAvatar !== user.avatar ? (
           <img
             className="h-5 w-5 sm:h-6 sm:w-6 rounded-full object-cover"
             src={user.avatar}
             alt={user.fullName || user.username || "User Avatar"}
-            onError={(e) => {
-              const img = e.target as HTMLImageElement;
-              img.style.display = 'none';
-              const parent = img.parentElement;
-              if (parent) {
-                parent.innerHTML = `<div class="h-5 w-5 sm:h-6 sm:w-6 rounded-full bg-gray-500 flex items-center justify-center text-white font-bold text-xs">${(user.fullName || user.username || 'U').charAt(0).toUpperCase()}</div>`;
-              }
-            }}
+            onError={() => setFailedAvatar(user.avatar!)}
           />
         ) : (
           <div className="h-5 w-5 sm:h-6 sm:w-6 rounded-full bg-gray-500 flex items-center justify-center text-white font-bold text-xs">
@@ -109,10 +101,10 @@ export function AdminUserMenuDropdown() {
           <div className="px-4 py-3">
             <p className="text-sm text-gray-500">Signed in as</p>
             <p className="truncate text-sm font-medium text-gray-900">
-              {user.email}
+              {user.email || user.username}
             </p>
             <p className="text-xs text-gray-500 mt-1 capitalize">
-              {user.role} • {user.status}
+              {user.role}{user.status ? ` • ${user.status}` : ''}
             </p>
           </div>
 

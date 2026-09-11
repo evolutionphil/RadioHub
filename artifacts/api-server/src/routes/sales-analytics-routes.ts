@@ -23,8 +23,13 @@ export function registerSalesAnalyticsRoutes(app: Express, deps: any) {
     //   groupBy     day | week | month (default: day)
     app.get("/api/admin/sales", requireAdmin, async (req: Request, res: Response) => {
         try {
+            for (const key of ['from', 'to'] as const) {
+                if (req.query[key] !== undefined && (typeof req.query[key] !== 'string' || !Number.isFinite(new Date(req.query[key] as string).getTime())))
+                    return void res.status(400).json({ error: `${key} must be a valid date` });
+            }
             const to = parseDateParam(req.query.to, new Date());
             const from = parseDateParam(req.query.from, new Date(Date.now() - 30 * 24 * 60 * 60 * 1000));
+            if (from > to) return void res.status(400).json({ error: 'from must be on or before to' });
             const platform = (req.query.platform as string) || "all";
             const plan = (req.query.plan as string) || "all";
             const groupBy = (req.query.groupBy as string) || "day";
@@ -60,7 +65,8 @@ export function registerSalesAnalyticsRoutes(app: Express, deps: any) {
                 date: string;
                 iapCount: number;
                 stripeCount: number;
-                stripeAmount: number;
+                stripeAmount: number | null;
+                stripeCurrency?: string | null;
             }>();
             for (const row of iap.timeline) {
                 const k = (row as any)._id.date;
@@ -72,8 +78,12 @@ export function registerSalesAnalyticsRoutes(app: Express, deps: any) {
                 const k = (row as any)._id.date;
                 if (!timelineMap.has(k))
                     timelineMap.set(k, { date: k, iapCount: 0, stripeCount: 0, stripeAmount: 0 });
-                timelineMap.get(k)!.stripeCount += (row as any).count;
-                timelineMap.get(k)!.stripeAmount += (row as any).amount ?? 0;
+                const entry = timelineMap.get(k)!;
+                const currency = (row as any).currency ?? null;
+                entry.stripeAmount = entry.stripeAmount === null || (row as any).amount === null || !currency ||
+                  entry.stripeCount > 0 && entry.stripeCurrency !== currency ? null : entry.stripeAmount + (row as any).amount;
+                entry.stripeCurrency = entry.stripeAmount === null ? null : currency;
+                entry.stripeCount += (row as any).count;
             }
             const timeline = Array.from(timelineMap.values()).sort((a, b) => a.date.localeCompare(b.date));
             res.json({
@@ -84,13 +94,15 @@ export function registerSalesAnalyticsRoutes(app: Express, deps: any) {
                     stripeSales: stripe.count,
                     stripeRevenue: stripe.totalAmount, // smallest unit
                     stripeCurrency: stripe.currency,
+                    revenueByCurrency: stripe.byCurrency,
                 },
                 byPlan: (() => {
                     const map = new Map<string, {
                         plan: string;
                         iapCount: number;
                         stripeCount: number;
-                        stripeAmount: number;
+                        stripeAmount: number | null;
+                        stripeCurrency?: string | null;
                     }>();
                     for (const r of iap.byPlan) {
                         const k = (r as any)._id || "unknown";
@@ -101,7 +113,8 @@ export function registerSalesAnalyticsRoutes(app: Express, deps: any) {
                         if (!map.has(k))
                             map.set(k, { plan: k, iapCount: 0, stripeCount: 0, stripeAmount: 0 });
                         map.get(k)!.stripeCount = (r as any).count;
-                        map.get(k)!.stripeAmount = (r as any).total ?? 0;
+                        map.get(k)!.stripeAmount = (r as any).total;
+                        map.get(k)!.stripeCurrency = (r as any).currency;
                     }
                     return Array.from(map.values()).sort((a, b) => (b.iapCount + b.stripeCount) - (a.iapCount + a.stripeCount));
                 })(),

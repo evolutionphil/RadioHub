@@ -13,6 +13,7 @@ import type { Express, Request, Response } from 'express';
 import { getTvVersion, saveTvVersion } from '../data/postgres-tv-store';
 import { logger } from '../utils/logger';
 import CacheManager from '../cache';
+import { validateTvVersionUpdate } from '../utils/admin-account-validation';
 
 const CACHE_KEY = 'tv_version_config';
 const CACHE_TTL = 300; // 5 minutes
@@ -97,22 +98,13 @@ export function registerTvVersionRoutes(app: Express, deps: any) {
   // PUT /api/admin/tv-version — admin write
   app.put('/api/admin/tv-version', requireAdmin, async (req: Request, res: Response) => {
     try {
-      const { latest, minimum, releaseNotes, storeUrl } = req.body ?? {};
-
-      if (!latest || typeof latest !== 'object') {
-        return void res.status(400).json({ error: '`latest` object is required' });
-      }
-
-      const update = {
-        latest,
-        minimum:      typeof minimum === 'object'      ? minimum      : {},
-        releaseNotes: typeof releaseNotes === 'object' ? releaseNotes : {},
-        storeUrl:     typeof storeUrl === 'object'     ? storeUrl     : {},
-        updatedAt:    new Date(),
-      };
+      const validation = validateTvVersionUpdate(req.body);
+      if (validation.error) return void res.status(400).json({ error: validation.error });
+      const update = { ...validation.value!, updatedAt: new Date() };
 
       await saveTvVersion(update);
-      await CacheManager.del(CACHE_KEY);
+      // The database commit already succeeded: a cache outage is not a failed save.
+      await CacheManager.del(CACHE_KEY).catch(() => logger.warn('TV version saved; cached manifest may remain until its five-minute expiry'));
 
       logger.log('TV version config updated');
       res.json({ message: 'TV version config updated', ...update });

@@ -215,6 +215,7 @@ export default function AdminSeoMaintenanceRunPage() {
     enabled: !!id,
     staleTime: 30_000,
     refetchOnWindowFocus: false,
+    refetchInterval: query => query.state.status !== 'error' && query.state.data?.run?.status === 'running' ? 5000 : false,
   });
 
   const run = runQuery.data?.run;

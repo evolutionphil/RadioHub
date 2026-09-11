@@ -443,7 +443,7 @@ export default function AdminCoverageCompare() {
     return match?.id ?? null;
   }, [visibleSharedPresets, selected]);
 
-  const { data: coverageData } = useQuery<CoverageResponse>({
+  const { data: coverageData, isError: coverageError, refetch: refreshCoverage } = useQuery<CoverageResponse>({
     queryKey: ['/api/admin/coverage/by-country'],
     staleTime: 60_000,
     refetchOnWindowFocus: false,
@@ -456,7 +456,7 @@ export default function AdminCoverageCompare() {
     ? `/api/admin/coverage/trends?days=${days}&countryCode=${encodeURIComponent(csvSelected)}`
     : '';
 
-  const { data: trendsData, isLoading: trendsLoading } =
+  const { data: trendsData, isLoading: trendsLoading, isError: trendsError, refetch: refreshTrends } =
     useQuery<TrendsResponse>({
       queryKey: [trendsKey],
       enabled: selected.length > 0,
@@ -712,6 +712,8 @@ export default function AdminCoverageCompare() {
     const c = countries.find((x) => x.countryCode === code);
     return c ? c.countryName : code;
   };
+
+  if (coverageError || trendsError) return <div role="alert" className="p-6">Unable to load coverage comparison. <Button variant="outline" onClick={() => { void refreshCoverage(); if (selected.length) void refreshTrends(); }}>Retry</Button></div>;
 
   return (
     <div className="mx-auto w-full max-w-[1600px] px-4 py-5 sm:px-6 sm:py-6 lg:px-8 space-y-5 sm:space-y-6">

@@ -12,6 +12,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useAdminViewPrefs } from "@/hooks/useAdminViewPrefs";
+import { isCalendarDate } from "@/lib/admin-account-utils";
 import { ResetViewButton } from "@/components/admin/ResetViewButton";
 import {
   Table,
@@ -41,7 +42,7 @@ import { getAvatarUrl } from "@/lib/utils";
 
 interface UserSubscription {
   plan: 'none' | 'remove_ads' | 'premium_monthly' | 'premium_yearly' | 'premium_lifetime';
-  platform: 'ios' | 'android' | 'tvos' | 'macos' | 'web' | 'admin';
+  platform: 'ios' | 'android' | 'tvos' | 'macos' | 'web' | 'stripe' | 'paddle' | 'admin';
   productId?: string;
   transactionId?: string;
   originalTransactionId?: string;
@@ -122,6 +123,8 @@ type PlatformFilter =
   | "tvos"
   | "macos"
   | "web"
+  | "stripe"
+  | "paddle"
   | "admin";
 
 const PLATFORM_FILTER_VALUES: readonly PlatformFilter[] = [
@@ -131,6 +134,8 @@ const PLATFORM_FILTER_VALUES: readonly PlatformFilter[] = [
   "tvos",
   "macos",
   "web",
+  "stripe",
+  "paddle",
   "admin",
 ] as const;
 
@@ -344,7 +349,7 @@ function useDebounce<T>(value: T, delay: number): T {
   return debounced;
 }
 
-// Sorts handled server-side (MongoDB can sort these cheaply with an index).
+// Indexed PostgreSQL sorts are handled server-side.
 const SERVER_SORT_COLUMNS = new Set<SortColumn>(["createdAt", "updatedAt", "name", "email", "followers"]);
 
 export default function AdminUsers() {
@@ -365,6 +370,8 @@ export default function AdminUsers() {
   const limitPerPage = prefs.limit;
   // Page resets to 1 whenever any filter/sort changes — not persisted.
   const [page, setPage] = useState(1);
+  const resizeCleanup = useRef<(() => void) | null>(null);
+  useEffect(() => () => resizeCleanup.current?.(), []);
   const debouncedSearch = useDebounce(searchQuery, 350);
 
   const setSearchQuery = (value: string) => {
@@ -411,6 +418,7 @@ export default function AdminUsers() {
       event.stopPropagation();
       if (event.button !== 0) return;
       const handle = event.currentTarget;
+      resizeCleanup.current?.();
       const th = handle.closest("th") as HTMLTableCellElement | null;
       if (!th) return;
       const tr = th.parentElement;
@@ -456,12 +464,16 @@ export default function AdminUsers() {
           };
         });
       };
+      const oldCursor = document.body.style.cursor;
+      const oldUserSelect = document.body.style.userSelect;
       const onUp = () => {
         window.removeEventListener("mousemove", onMove);
         window.removeEventListener("mouseup", onUp);
-        document.body.style.cursor = "";
-        document.body.style.userSelect = "";
+        document.body.style.cursor = oldCursor;
+        document.body.style.userSelect = oldUserSelect;
+        resizeCleanup.current = null;
       };
+      resizeCleanup.current = onUp;
       window.addEventListener("mousemove", onMove);
       window.addEventListener("mouseup", onUp);
       document.body.style.cursor = "col-resize";
@@ -521,7 +533,7 @@ export default function AdminUsers() {
     return p;
   }, [page, limitPerPage, debouncedSearch, planFilter, authMethodFilter, platformFilter, serverSortBy, serverSortDir]);
 
-  const { data: usersResponse, isLoading: isLoadingUsers, error: usersError } = useQuery<{ users: UserProfile[]; total: number; totalPages: number }>({
+  const { data: usersResponse, isLoading: isLoadingUsers, isFetching: isFetchingUsers, error: usersError } = useQuery<{ users: UserProfile[]; total: number; totalPages: number }>({
     queryKey: ["/api/admin/users", queryParams],
     staleTime: 30000,
     queryFn: async () => {
@@ -537,7 +549,8 @@ export default function AdminUsers() {
   });
   const users = usersResponse?.users || [];
   const totalUsers = usersResponse?.total ?? 0;
-  const totalPages = usersResponse?.totalPages ?? 1;
+  const totalPages = Math.max(1, usersResponse?.totalPages ?? 1);
+  useEffect(() => { if (usersResponse && page > totalPages) setPage(totalPages); }, [usersResponse, page, totalPages]);
 
   // Server handles search/plan/authMethod/platform/most-sorts.
   // Client only sorts by plan or favorites (within the loaded page).
@@ -711,6 +724,7 @@ export default function AdminUsers() {
     if (trimmed) params.set("search", trimmed);
     if (planFilter !== "all") params.set("plan", planFilter);
     if (authMethodFilter !== "all") params.set("authMethod", authMethodFilter);
+    if (platformFilter !== "all") params.set("platform", platformFilter);
     const qs = params.toString();
     // Same-origin navigation through the shared proxy. The browser handles
     // streaming + the file save dialog without any in-memory build.
@@ -726,10 +740,10 @@ export default function AdminUsers() {
       apiRequest("PATCH", `/api/admin/users/${data.userId}`, {
         body: data.updates,
       }),
-    onSuccess: () => {
+    onSuccess: (_result, saved) => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
       toast({ title: "Success", description: "User updated successfully" });
-      setEditingUserId(null);
+      setEditingUserId(current => current === saved.userId ? null : current);
     },
     onError: () => {
       toast({ title: "Error", description: "Failed to update user", variant: "destructive" });
@@ -796,8 +810,17 @@ export default function AdminUsers() {
     },
   });
 
+  const accountBusy = updateUserMutation.isPending || deleteUserMutation.isPending || cancelSubMutation.isPending || grantLifetimeMutation.isPending || updateSubMutation.isPending;
   const handleSaveEdit = (userId: string) => {
-    updateUserMutation.mutate({ userId, updates: editData });
+    if (accountBusy) return;
+    const fullName = editData.fullName?.trim() || '';
+    const email = editData.email?.trim() || '';
+    if (!fullName || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      toast({ title: "Check user details", description: "Enter a name and a valid email address.", variant: "destructive" });
+      return;
+    }
+    // Do not replay stale subscription, avatar or account status fields while editing name/email.
+    updateUserMutation.mutate({ userId, updates: { fullName, email } });
   };
 
   const formatDate = (dateString?: string) => {
@@ -932,6 +955,8 @@ export default function AdminUsers() {
                 <SelectItem value="tvos">tvOS</SelectItem>
                 <SelectItem value="macos">macOS</SelectItem>
                 <SelectItem value="web">Web</SelectItem>
+                <SelectItem value="stripe">Stripe</SelectItem>
+                <SelectItem value="paddle">Paddle</SelectItem>
                 <SelectItem value="admin">Admin-granted</SelectItem>
               </SelectContent>
             </Select>
@@ -1288,12 +1313,13 @@ export default function AdminUsers() {
                               setEditData(user);
                               setSubPlanDraft(user.subscription?.plan || "none");
                               setSubExpiresDraft(
-                                user.subscription?.expiresAt
+                                user.subscription?.expiresAt && Number.isFinite(new Date(user.subscription.expiresAt).getTime())
                                   ? new Date(user.subscription.expiresAt).toISOString().slice(0, 10)
                                   : "",
                               );
                             }}
                             title="Edit user"
+                            disabled={accountBusy}
                           >
                             <Edit2 size={16} />
                           </Button>
@@ -1310,6 +1336,7 @@ export default function AdminUsers() {
                               }
                             }}
                             title="Delete user"
+                            disabled={accountBusy}
                           >
                             <Trash2 size={16} />
                           </Button>
@@ -1334,7 +1361,7 @@ export default function AdminUsers() {
                   variant="outline"
                   size="sm"
                   onClick={() => setPage(1)}
-                  disabled={page <= 1 || isLoadingUsers}
+                  disabled={page <= 1 || isFetchingUsers}
                   aria-label="First page"
                   className="px-2"
                 >
@@ -1344,7 +1371,7 @@ export default function AdminUsers() {
                   variant="outline"
                   size="sm"
                   onClick={() => setPage((p) => Math.max(1, p - 1))}
-                  disabled={page <= 1 || isLoadingUsers}
+                  disabled={page <= 1 || isFetchingUsers}
                   aria-label="Previous page"
                 >
                   <ChevronLeft className="w-4 h-4" />
@@ -1359,7 +1386,7 @@ export default function AdminUsers() {
                     variant={p === page ? "default" : "outline"}
                     size="sm"
                     onClick={() => setPage(p)}
-                    disabled={isLoadingUsers}
+                    disabled={isFetchingUsers}
                     className="w-8"
                   >
                     {p}
@@ -1369,7 +1396,7 @@ export default function AdminUsers() {
                   variant="outline"
                   size="sm"
                   onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                  disabled={page >= totalPages || isLoadingUsers}
+                  disabled={page >= totalPages || isFetchingUsers}
                   aria-label="Next page"
                 >
                   <ChevronRight className="w-4 h-4" />
@@ -1378,7 +1405,7 @@ export default function AdminUsers() {
                   variant="outline"
                   size="sm"
                   onClick={() => setPage(totalPages)}
-                  disabled={page >= totalPages || isLoadingUsers}
+                  disabled={page >= totalPages || isFetchingUsers}
                   aria-label="Last page"
                   className="px-2"
                 >
@@ -1393,13 +1420,13 @@ export default function AdminUsers() {
       {editingUserId && (() => {
         const editUser = users.find(u => u._id === editingUserId);
         return (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setEditingUserId(null)}>
-            <div className="bg-white rounded-lg shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => { if (!accountBusy) setEditingUserId(null); }}>
+            <div role="dialog" aria-modal="true" aria-label="Edit user information" className="bg-white rounded-lg shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
               <div className="bg-white border-b px-6 py-4 rounded-t-lg">
                 <h2 className="text-xl font-bold text-gray-900">Edit User Information</h2>
                 <p className="text-sm text-gray-500 mt-1">User ID: {editingUserId}</p>
               </div>
-              <div className="bg-white px-6 py-5 space-y-5">
+              <fieldset disabled={accountBusy} className="bg-white px-6 py-5 space-y-5 min-w-0">
                 <div className="flex items-center gap-4 pb-4 border-b border-gray-200">
                   <img
                     src={getAvatarUrl(editUser || editData as UserProfile)}
@@ -1416,6 +1443,7 @@ export default function AdminUsers() {
                   <div className="col-span-2">
                     <label className="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
                     <Input
+                      aria-label="Full name"
                       value={editData.fullName || ""}
                       onChange={(e) => setEditData({ ...editData, fullName: e.target.value })}
                       placeholder="Full name"
@@ -1425,6 +1453,7 @@ export default function AdminUsers() {
                   <div className="col-span-2">
                     <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
                     <Input
+                      aria-label="Email"
                       value={editData.email || ""}
                       onChange={(e) => setEditData({ ...editData, email: e.target.value })}
                       placeholder="Email"
@@ -1585,7 +1614,7 @@ export default function AdminUsers() {
                           expiresAt: subExpiresDraft ? new Date(subExpiresDraft).toISOString() : null,
                         })
                       }
-                      disabled={updateSubMutation.isPending}
+                      disabled={accountBusy || !!subExpiresDraft && !isCalendarDate(subExpiresDraft)}
                       className="bg-blue-600 hover:bg-blue-700 text-white"
                     >
                       {updateSubMutation.isPending ? <Loader2 className="mr-1 animate-spin" size={14} /> : null}
@@ -1599,7 +1628,7 @@ export default function AdminUsers() {
                           grantLifetimeMutation.mutate(editingUserId);
                         }
                       }}
-                      disabled={grantLifetimeMutation.isPending}
+                      disabled={accountBusy}
                       className="bg-white text-purple-700 border-purple-300 hover:bg-purple-50"
                     >
                       <Crown size={14} className="mr-1" />
@@ -1613,7 +1642,7 @@ export default function AdminUsers() {
                           cancelSubMutation.mutate(editingUserId);
                         }
                       }}
-                      disabled={cancelSubMutation.isPending || !editUser?.subscription?.isActive}
+                      disabled={accountBusy || !editUser?.subscription?.isActive}
                       className="bg-white text-red-700 border-red-300 hover:bg-red-50 disabled:opacity-50"
                     >
                       <Ban size={14} className="mr-1" />
@@ -1626,14 +1655,14 @@ export default function AdminUsers() {
                   <Button
                     variant="outline"
                     onClick={() => setEditingUserId(null)}
-                    disabled={updateUserMutation.isPending}
+                    disabled={accountBusy}
                     className="bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
                   >
                     Cancel
                   </Button>
                   <Button
                     onClick={() => handleSaveEdit(editingUserId)}
-                    disabled={updateUserMutation.isPending}
+                    disabled={accountBusy}
                     className="bg-blue-600 hover:bg-blue-700 text-white"
                   >
                     {updateUserMutation.isPending ? (
@@ -1646,7 +1675,7 @@ export default function AdminUsers() {
                     )}
                   </Button>
                 </div>
-              </div>
+              </fieldset>
             </div>
           </div>
         );

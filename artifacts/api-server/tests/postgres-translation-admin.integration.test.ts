@@ -64,6 +64,23 @@ describe('Native PostgreSQL translation admin, genre merge and favorites', {skip
     assert.equal((await fetch(`${base}/api/radio-browser/broken`)).status,401);
     await pool.query('DELETE FROM stations WHERE id=ANY($1)',[[good._id,bad._id]]);
   });
+  it('admin genre reads filter before pagination and escape regex search without writes',async()=>{
+    const before=(await pool.query('SELECT count(*)::int total FROM genres')).rows[0].total;
+    const empty=await fetch(`${base}/api/admin/genres`,{headers:adminHeaders});
+    assert.equal(empty.status,200);
+    assert.equal((await pool.query('SELECT count(*)::int total FROM genres')).rows[0].total,before);
+    const ids=Array.from({length:5},()=>randomUUID());
+    try {
+      for(let i=0;i<ids.length;i++) await pool.query('INSERT INTO genres(id,name,slug,station_count,is_discoverable) VALUES($1,$2,$3,$4,$5)',[ids[i],`Audit[genre.*]${i}`,`audit-${ids[i]}`,50-i,i%2===0]);
+      const result=await genres.pgListAdminGenres('[genre.*]',false,'stationCount',1,1,true);
+      assert.equal(result.total,3);assert.equal(result.rows[0]._id,ids[2]);
+      const all=await genres.pgListAdminGenres('[genre.*]',false,'stationCount',50,0,false);
+      assert.equal(all.total,5);
+      const response=await fetch(`${base}/api/admin/genres?search=${encodeURIComponent('[genre.*]')}&discoverable=true&limit=1&page=3`,{headers:adminHeaders});
+      assert.equal(response.status,200);const body=await response.json() as any;
+      assert.equal(body.total,3);assert.equal(body.totalPages,3);assert.equal(body.data[0]._id,ids[4]);
+    } finally { await pool.query('DELETE FROM genres WHERE id=ANY($1::text[])',[ids]); }
+  });
   it('matches escaped whole tags in preview and serializes concurrent merge retries with one durable audit',async()=>{
     const f=await fixture();
     const preview=await fetch(`${base}/api/admin/genres/${f.demoted}/merge-preview?targetGenreId=${f.winner}`,{headers:adminHeaders});

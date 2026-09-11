@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { useToast } from "@/hooks/use-toast";
 import {
   Table,
   TableBody,
@@ -70,7 +71,7 @@ interface ApiKeyRow {
 }
 
 function fmtNum(n?: number) {
-  return (n ?? 0).toLocaleString();
+  return n == null ? "—" : n.toLocaleString();
 }
 
 function fmtDate(s?: string | null) {
@@ -117,6 +118,12 @@ function StatCard({ icon: Icon, label, value, sub }: { icon: any; label: string;
 
 export default function AdminApiKeys() {
   const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const invalidateKeys = () => {
+    queryClient.invalidateQueries({ queryKey: ["/api/admin/api-keys/keys"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/admin/api-keys/users"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/admin/api-keys/stats"] });
+  };
   const [tab, setTab] = useState<"developers" | "keys">("developers");
 
   // Developers tab
@@ -131,7 +138,7 @@ export default function AdminApiKeys() {
   const [keyStatus, setKeyStatus] = useState("");
   const [keyPage, setKeyPage] = useState(1);
 
-  const { data: stats } = useQuery<StatsResponse>({
+  const { data: stats, isError: statsError, refetch: refetchStats } = useQuery<StatsResponse>({
     queryKey: ["/api/admin/api-keys/stats"],
     queryFn: async () => {
       const res = await fetch("/api/admin/api-keys/stats", { credentials: "include" });
@@ -141,7 +148,7 @@ export default function AdminApiKeys() {
   });
 
   const devQs = new URLSearchParams({ page: String(devPage), limit: "25", search: devApplied }).toString();
-  const { data: devData, isLoading: devLoading, isFetching: devFetching, refetch: refetchDevs } = useQuery<{
+  const { data: devData, isLoading: devLoading, isFetching: devFetching, isError: devError, refetch: refetchDevs } = useQuery<{
     users: DeveloperRow[];
     totalCount: number;
     pages: number;
@@ -162,7 +169,7 @@ export default function AdminApiKeys() {
     plan: keyPlan,
     status: keyStatus,
   }).toString();
-  const { data: keyData, isLoading: keyLoading, isFetching: keyFetching, refetch: refetchKeys } = useQuery<{
+  const { data: keyData, isLoading: keyLoading, isFetching: keyFetching, isError: keyError, refetch: refetchKeys } = useQuery<{
     keys: ApiKeyRow[];
     totalCount: number;
     pages: number;
@@ -188,9 +195,10 @@ export default function AdminApiKeys() {
       return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/api-keys/keys", keyQs] });
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/api-keys/stats"] });
+      invalidateKeys();
+      toast({ title: "Key status updated" });
     },
+    onError: () => toast({ title: "Key status could not be updated", description: "No success was confirmed. Refresh before retrying.", variant: "destructive" }),
   });
 
   const planMutation = useMutation({
@@ -205,9 +213,10 @@ export default function AdminApiKeys() {
       return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/api-keys/keys", keyQs] });
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/api-keys/stats"] });
+      invalidateKeys();
+      toast({ title: "Key plan updated" });
     },
+    onError: () => toast({ title: "Key plan could not be updated", description: "No success was confirmed. Refresh before retrying.", variant: "destructive" }),
   });
 
   return (
@@ -220,7 +229,8 @@ export default function AdminApiKeys() {
         <Button
           variant="outline"
           size="sm"
-          onClick={() => (tab === "developers" ? refetchDevs() : refetchKeys())}
+          disabled={devFetching || keyFetching}
+          onClick={() => { refetchStats(); tab === "developers" ? refetchDevs() : refetchKeys(); }}
         >
           <RefreshCw className="w-4 h-4 mr-2" />
           Refresh
@@ -228,6 +238,7 @@ export default function AdminApiKeys() {
       </div>
 
       {/* Stats */}
+      {statsError && <p role="alert">Usage statistics could not be loaded. Use Refresh to retry.</p>}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <StatCard icon={Users} label="Developers" value={fmtNum(stats?.totalDevelopers)} sub="registered accounts" />
         <StatCard
@@ -311,7 +322,7 @@ export default function AdminApiKeys() {
               <Button type="submit" size="sm">Search</Button>
             </form>
 
-            {devLoading ? (
+            {devError ? <p role="alert">Developers could not be loaded. <Button variant="outline" disabled={devFetching} onClick={() => refetchDevs()}>Retry</Button></p> : devLoading ? (
               <div className="py-12 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-gray-400" /></div>
             ) : (
               <div className="overflow-x-auto">
@@ -412,7 +423,7 @@ export default function AdminApiKeys() {
               <Button type="submit" size="sm">Search</Button>
             </form>
 
-            {keyLoading ? (
+            {keyError ? <p role="alert">API keys could not be loaded. <Button variant="outline" disabled={keyFetching} onClick={() => refetchKeys()}>Retry</Button></p> : keyLoading ? (
               <div className="py-12 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-gray-400" /></div>
             ) : (
               <div className="overflow-x-auto">
@@ -431,8 +442,7 @@ export default function AdminApiKeys() {
                   </TableHeader>
                   <TableBody>
                     {(keyData?.keys || []).map((k) => {
-                      const busy = (statusMutation.isPending || planMutation.isPending) &&
-                        (statusMutation.variables?.id === k._id || planMutation.variables?.id === k._id);
+                      const busy = statusMutation.isPending || planMutation.isPending;
                       return (
                         <TableRow key={k._id}>
                           <TableCell>
@@ -448,7 +458,7 @@ export default function AdminApiKeys() {
                           <TableCell className="text-xs text-gray-500">{fmtDateTime(k.usage.lastUsedAt)}</TableCell>
                           <TableCell className="text-right">
                             {k.plan !== "demo" && (
-                              <div className="flex items-center gap-1 justify-end">
+                              <fieldset disabled={busy || keyFetching} className="flex items-center gap-1 justify-end">
                                 {busy && <Loader2 className="w-3.5 h-3.5 animate-spin text-gray-400" />}
                                 {k.plan === "free" ? (
                                   <Button variant="outline" size="sm" className="h-7 px-2 text-xs" title="Upgrade to Pro"
@@ -468,7 +478,7 @@ export default function AdminApiKeys() {
                                       <Ban className="w-3 h-3" />
                                     </Button>
                                     <Button variant="outline" size="sm" className="h-7 px-2 text-xs text-red-700 border-red-300" title="Revoke"
-                                      onClick={() => statusMutation.mutate({ id: k._id, status: "revoked" })}>
+                                      onClick={() => { if (window.confirm(`Revoke API key ${k.keyPrefix}…? Existing clients using this key will stop working.`)) statusMutation.mutate({ id: k._id, status: "revoked" }); }}>
                                       Revoke
                                     </Button>
                                   </>
@@ -478,7 +488,7 @@ export default function AdminApiKeys() {
                                     <ShieldCheck className="w-3 h-3 mr-1" />Activate
                                   </Button>
                                 )}
-                              </div>
+                              </fieldset>
                             )}
                           </TableCell>
                         </TableRow>

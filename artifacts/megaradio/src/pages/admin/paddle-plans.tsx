@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Switch } from "@/components/ui/switch";
+import { useAdminPriceVerification } from "@/hooks/use-admin-price-verification";
+import { formatAdminMoney as formatAmount } from "@/lib/admin-account-utils";
 import { Loader2, CheckCircle, XCircle, ExternalLink, Zap, Search } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -51,30 +52,25 @@ interface VerifyResult {
   error?: string;
 }
 
-function formatAmount(amount: number | undefined, currency: string | undefined): string {
-  if (!amount || !currency) return "—";
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: currency.toUpperCase(),
-    minimumFractionDigits: 2,
-  }).format(amount / 100);
-}
-
 function PlanCard({ plan }: { plan: PlanRecord }) {
   const [editing, setEditing] = useState(!plan.paddlePriceId);
   const [form, setForm] = useState({ paddlePriceId: plan.paddlePriceId ?? "" });
-  const [verifying, setVerifying] = useState(false);
-  const [verifyResult, setVerifyResult] = useState<VerifyResult | null>(null);
+  const { verifying, result: verifyResult, reset: resetVerification, verify } = useAdminPriceVerification<VerifyResult>("/api/admin/stripe-plans/verify-paddle-price");
+  const resetDraft = (editing: boolean) => {
+    resetVerification();
+    setForm({ paddlePriceId: plan.paddlePriceId ?? "" });
+    setEditing(editing);
+  };
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
   const saveMutation = useMutation({
-    mutationFn: async () => {
-      const body: Record<string, unknown> = { paddlePriceId: form.paddlePriceId };
+    mutationFn: async ({ priceId, verification }: { priceId: string; verification: VerifyResult | null }) => {
+      const body: Record<string, unknown> = { paddlePriceId: priceId.trim() };
       // Include amount + currency from Paddle when verified, so /premium shows real prices
-      if (verifyResult?.valid && verifyResult.unitAmount && verifyResult.currency) {
-        body.amount = verifyResult.unitAmount;
-        body.currency = verifyResult.currency.toLowerCase();
+      if (verification?.valid && typeof verification.unitAmount === "number" && verification.currency) {
+        body.amount = verification.unitAmount;
+        body.currency = verification.currency.toLowerCase();
       }
       const res = await apiRequest("PUT", `/api/admin/stripe-plans/${plan.planId}`, { body });
       return res.json();
@@ -89,20 +85,7 @@ function PlanCard({ plan }: { plan: PlanRecord }) {
     },
   });
 
-  async function handleVerify() {
-    setVerifying(true);
-    setVerifyResult(null);
-    try {
-      const res = await apiRequest("POST", "/api/admin/stripe-plans/verify-paddle-price", {
-        body: { priceId: form.paddlePriceId },
-      });
-      const data: VerifyResult = await res.json();
-      setVerifyResult(data);
-    } catch {
-      setVerifyResult({ valid: false, error: "Network error" });
-    }
-    setVerifying(false);
-  }
+  const handleVerify = () => verify(form.paddlePriceId);
 
   return (
     <Card className="border border-gray-200">
@@ -121,7 +104,7 @@ function PlanCard({ plan }: { plan: PlanRecord }) {
             ) : (
               <Badge variant="secondary">Inactive</Badge>
             )}
-            <Button variant="outline" size="sm" onClick={() => { setEditing(!editing); setVerifyResult(null); }}>
+            <Button variant="outline" size="sm" disabled={saveMutation.isPending} onClick={() => resetDraft(!editing)}>
               {editing ? "Cancel" : "Edit"}
             </Button>
           </div>
@@ -154,13 +137,14 @@ function PlanCard({ plan }: { plan: PlanRecord }) {
             </div>
           </div>
         ) : (
-          <div className="space-y-4">
+          <fieldset className="space-y-4" disabled={saveMutation.isPending}>
             <div className="space-y-1">
               <Label className="text-xs">Paddle Price ID</Label>
               <div className="flex gap-2">
                 <Input
+                  aria-label="Paddle Price ID"
                   value={form.paddlePriceId}
-                  onChange={e => { setForm({ paddlePriceId: e.target.value }); setVerifyResult(null); }}
+                  onChange={e => { resetVerification(); setForm({ paddlePriceId: e.target.value }); }}
                   placeholder="pri_xxx"
                   className="font-mono text-sm"
                 />
@@ -183,7 +167,7 @@ function PlanCard({ plan }: { plan: PlanRecord }) {
                   {verifyResult.valid ? (
                     <span>
                       Valid
-                      {verifyResult.unitAmount && verifyResult.currency
+                      {typeof verifyResult.unitAmount === "number" && verifyResult.currency
                         ? ` · ${formatAmount(verifyResult.unitAmount, verifyResult.currency)} ${verifyResult.currency.toUpperCase()}`
                         : ""}
                       {verifyResult.billingCycle
@@ -206,17 +190,17 @@ function PlanCard({ plan }: { plan: PlanRecord }) {
               <Button
                 className="bg-blue-600 hover:bg-blue-700 text-white"
                 size="sm"
-                onClick={() => saveMutation.mutate()}
-                disabled={saveMutation.isPending}
+                onClick={() => saveMutation.mutate({ priceId: form.paddlePriceId, verification: verifyResult })}
+                disabled={saveMutation.isPending || verifying}
               >
                 {saveMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
                 Save
               </Button>
-              <Button variant="outline" size="sm" onClick={() => { setEditing(false); setVerifyResult(null); }}>
+              <Button variant="outline" size="sm" onClick={() => resetDraft(false)}>
                 Cancel
               </Button>
             </div>
-          </div>
+          </fieldset>
         )}
       </CardContent>
     </Card>
@@ -231,7 +215,7 @@ const DEFAULT_PLANS: PlanRecord[] = [
 ];
 
 export default function PaddlePlansPage() {
-  const { data, isLoading } = useQuery<{ plans: any[] }>({
+  const { data, isLoading, isError, isFetching, refetch } = useQuery<{ plans: any[] }>({
     queryKey: ["/api/admin/stripe-plans"],
   });
 
@@ -271,6 +255,8 @@ export default function PaddlePlansPage() {
         <div className="flex items-center justify-center py-12">
           <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
         </div>
+      ) : isError ? (
+        <div role="alert" className="rounded border border-red-200 p-4 text-sm">Could not load payment plans. Editing is unavailable until the saved settings can be read. <Button variant="outline" size="sm" disabled={isFetching} onClick={() => refetch()}>Retry</Button></div>
       ) : (
         <div className="space-y-4">
           {plans.map(plan => (

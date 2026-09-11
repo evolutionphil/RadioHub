@@ -35,7 +35,7 @@ import { QueryClientProvider, useQuery } from "@tanstack/react-query";
 // Radix toast primitives don't land in the entry chunk.
 import NotificationContainer from "@/components/ui/NotificationContainer";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { ThemeProvider } from "@/lib/theme-provider";
+import { ThemeProvider, useTheme } from "@/lib/theme-provider";
 import { TranslationPreloader } from "@/components/translation/TranslationPreloader";
 import { RecommendationsPrefetcher } from "@/components/recommendations/RecommendationsPrefetcher";
 import { PushNotificationBridge } from "@/components/PushNotificationBridge";
@@ -136,7 +136,7 @@ function AdminRouterContent() {
   const [adminLocation] = useLocation();
   return (
     <AdminPageErrorBoundary key={adminLocation.split('?')[0]}>
-    <Suspense fallback={<div className="flex items-center justify-center min-h-screen bg-[#0E0E0E] text-white"><div className="text-lg">Loading...</div></div>}>
+    <Suspense fallback={<div role="status" className="flex items-center justify-center min-h-[40vh] bg-background text-foreground"><div className="text-lg">Loading admin page…</div></div>}>
       <Switch>
         <Route path="/admin/dashboard" component={LazyAdminRoutes.AdminDashboard} />
         <Route path="/admin">
@@ -1378,12 +1378,22 @@ const AdminHeaderFallback = () => (
 
 function AdminLayout() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const { theme } = useTheme();
 
   useEffect(() => {
-    // Ensure admin pages use light theme
+    // Include body-mounted dialogs without changing the public site's palette.
+    const hadRadioTheme = document.body.classList.contains('radio-theme');
+    document.body.classList.add('admin-theme');
     document.body.classList.remove('radio-theme');
     document.documentElement.classList.remove('dark');
-  }, []);
+    return () => {
+      document.body.classList.remove('admin-theme');
+      if (hadRadioTheme) document.body.classList.add('radio-theme');
+      const useDark = theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+      document.documentElement.classList.toggle('dark', useDark);
+      document.documentElement.classList.toggle('light', !useDark);
+    };
+  }, [theme]);
 
   return (
     <AdminRoute>
@@ -1399,7 +1409,8 @@ function AdminLayout() {
           {/* 🚀 LAZY: Header only loads for admin users */}
           <Suspense fallback={<AdminHeaderFallback />}>
             <Header 
-              onMobileMenuToggle={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+              onMobileMenuToggle={() => setIsMobileMenuOpen(open => !open)}
+              isMobileMenuOpen={isMobileMenuOpen}
             />
           </Suspense>
           <main className="flex-1 overflow-y-auto bg-background">

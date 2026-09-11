@@ -1,4 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
+import { analyticsParams, analyticsTimestamp } from '@/lib/admin-analytics';
+import { apiRequest } from '@/lib/queryClient';
 import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -44,30 +46,21 @@ export default function AnalyticsPage() {
     from: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000), // 7 days ago
     to: new Date(),
   });
-  const [selectedEvent, setSelectedEvent] = useState<string>('');
+  const [selectedEvent, setSelectedEvent] = useState<string>('all');
 
   // Fetch analytics data
-  const { data: analyticsData, isLoading, refetch } = useQuery({
+  const { data: analyticsData, isLoading, isError, refetch } = useQuery<AnalyticsEvent[]>({
     queryKey: ['/api/analytics', dateRange, selectedEvent],
-    queryFn: async () => {
-      const params = new URLSearchParams({
-        startDate: dateRange.from.toISOString(),
-        endDate: dateRange.to.toISOString(),
-        limit: '100',
-      });
-      
-      if (selectedEvent) {
-        params.append('event', selectedEvent);
-      }
-
-      const response = await fetch(`/api/analytics?${params}`);
-      if (!response.ok) throw new Error('Failed to fetch analytics');
-      return response.json();
+    queryFn: async ({ signal }) => {
+      const response = await apiRequest('GET', `/api/analytics?${analyticsParams(dateRange, selectedEvent)}`, { signal });
+      const rows = await response.json();
+      if (!Array.isArray(rows)) throw new Error('Invalid analytics response');
+      return rows;
     },
   });
 
   // Fetch analytics summary data  
-  const { data: summaryData } = useQuery({
+  const { data: summaryData, isError: summaryError, isPending: summaryLoading, refetch: refetchSummary } = useQuery({
     queryKey: ['/api/analytics/summary'],
     queryFn: async () => {
       const response = await fetch('/api/analytics/summary');
@@ -76,26 +69,16 @@ export default function AnalyticsPage() {
     },
   });
 
-  // Calculate summary statistics
-  const eventCounts = analyticsData?.reduce((acc: Record<string, number>, event: AnalyticsEvent) => {
-    acc[event.event] = (acc[event.event] || 0) + 1;
-    return acc;
-  }, {} as Record<string, number>) || {};
-
-  const totalEvents = analyticsData?.length || 0;
-  const uniqueStations = new Set(analyticsData?.map((e: AnalyticsEvent) => e.stationId)).size;
-  const uniqueUsers = new Set(analyticsData?.filter((e: AnalyticsEvent) => e.userId).map((e: AnalyticsEvent) => e.userId)).size;
-
   return (
     <div className="mx-auto w-full max-w-[1600px] px-4 py-5 sm:px-6 sm:py-6 lg:px-8 space-y-5 sm:space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Analytics Dashboard</h1>
           <p className="text-muted-foreground">
             Track user interactions and station usage patterns
           </p>
         </div>
-        <Button onClick={() => refetch()} size="sm">
+        <Button onClick={() => { void refetch(); void refetchSummary(); }} size="sm">
           <Activity className="w-4 h-4 mr-2" />
           Refresh Data
         </Button>
@@ -107,7 +90,7 @@ export default function AnalyticsPage() {
           <CardTitle>Filters</CardTitle>
           <CardDescription>Customize your analytics view</CardDescription>
         </CardHeader>
-        <CardContent className="flex gap-4">
+        <CardContent className="flex flex-wrap gap-4">
           <div className="flex gap-2">
             <Popover>
               <PopoverTrigger asChild>
@@ -171,7 +154,7 @@ export default function AnalyticsPage() {
       </Card>
 
       {/* Summary Statistics */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      {summaryError ? <p role="alert">Catalogue summary could not be loaded. Use Refresh Data to retry.</p> : summaryLoading ? <p role="status">Loading catalogue summary…</p> : <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total Stations</CardTitle>
@@ -180,33 +163,33 @@ export default function AnalyticsPage() {
           <CardContent>
             <div className="text-2xl font-bold">{summaryData?.totalStations?.toLocaleString() || '0'}</div>
             <p className="text-xs text-muted-foreground">
-              Active radio stations
+              Entire catalogue (independent of event filters)
             </p>
           </CardContent>
         </Card>
         
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Active Stations</CardTitle>
+            <CardTitle className="text-sm font-medium">Provider check: passed</CardTitle>
             <Play className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{summaryData?.activeStations?.toLocaleString() || '0'}</div>
             <p className="text-xs text-muted-foreground">
-              {summaryData?.healthPercentage || 0}% health rate
+              {summaryData?.healthPercentage || 0}% passed the last provider check
             </p>
           </CardContent>
         </Card>
         
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Broken Stations</CardTitle>
+            <CardTitle className="text-sm font-medium">Provider check: failed</CardTitle>
             <Activity className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{summaryData?.brokenStations?.toLocaleString() || '0'}</div>
             <p className="text-xs text-muted-foreground">
-              Need attention
+              Not proof that playback is unavailable
             </p>
           </CardContent>
         </Card>
@@ -225,10 +208,10 @@ export default function AnalyticsPage() {
             </p>
           </CardContent>
         </Card>
-      </div>
+      </div>}
 
       {/* Top Countries & Genres */}
-      <div className="grid gap-4 md:grid-cols-2">
+      {!summaryError && !summaryLoading && <div className="grid gap-4 md:grid-cols-2">
         <Card>
           <CardHeader>
             <CardTitle>Top Countries</CardTitle>
@@ -236,7 +219,7 @@ export default function AnalyticsPage() {
           </CardHeader>
           <CardContent>
             <div className="space-y-2">
-              {summaryData?.topCountries?.slice(0, 5).map((country: any, index: number) => (
+              {summaryData?.topCountries?.length ? summaryData.topCountries.slice(0, 5).map((country: any, index: number) => (
                 <div key={country.name} className="flex items-center justify-between">
                   <span className="text-sm font-medium">
                     #{index + 1} {country.name}
@@ -245,7 +228,7 @@ export default function AnalyticsPage() {
                     {country.count?.toLocaleString()}
                   </Badge>
                 </div>
-              )) || (
+              )) : (
                 <div className="text-sm text-muted-foreground">No country data available</div>
               )}
             </div>
@@ -259,7 +242,7 @@ export default function AnalyticsPage() {
           </CardHeader>
           <CardContent>
             <div className="space-y-2">
-              {summaryData?.topGenres?.slice(0, 5).map((genre: any, index: number) => (
+              {summaryData?.topGenres?.length ? summaryData.topGenres.slice(0, 5).map((genre: any, index: number) => (
                 <div key={genre.name} className="flex items-center justify-between">
                   <span className="text-sm font-medium">
                     #{index + 1} {genre.name}
@@ -268,27 +251,27 @@ export default function AnalyticsPage() {
                     {genre.count?.toLocaleString()}
                   </Badge>
                 </div>
-              )) || (
+              )) : (
                 <div className="text-sm text-muted-foreground">No genre data available</div>
               )}
             </div>
           </CardContent>
         </Card>
-      </div>
+      </div>}
 
       {/* Recent Events */}
       <Card>
         <CardHeader>
           <CardTitle>Recent Events</CardTitle>
-          <CardDescription>Latest user interactions</CardDescription>
+          <CardDescription>Latest 20 of up to 100 matching user interactions</CardDescription>
         </CardHeader>
         <CardContent>
-          {isLoading ? (
+          {isError ? <p role="alert">Analytics events could not be loaded. Use Refresh Data to retry.</p> : isLoading ? (
             <div className="text-center py-8">Loading analytics data...</div>
           ) : (
             <div className="space-y-2">
               {analyticsData?.slice(0, 20).map((event: AnalyticsEvent) => {
-                const Icon = eventIcons[event.event as keyof typeof eventIcons];
+                const Icon = eventIcons[event.event as keyof typeof eventIcons] || Activity;
                 return (
                   <div key={event._id} className="flex items-center justify-between p-3 border rounded-lg">
                     <div className="flex items-center space-x-3">
@@ -306,7 +289,7 @@ export default function AnalyticsPage() {
                       </div>
                     </div>
                     <div className="text-sm text-muted-foreground">
-                      {format(new Date(event.timestamp), 'MMM dd, HH:mm')}
+                      {analyticsTimestamp(event.timestamp)}
                     </div>
                   </div>
                 );

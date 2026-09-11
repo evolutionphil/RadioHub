@@ -38,6 +38,13 @@ export function ThemeProvider({
 
     root.classList.remove("light", "dark");
 
+    // Admin uses a dedicated light palette; don't reapply OS dark mode after
+    // the child admin layout mounts. The stored public preference is unchanged.
+    if (document.body.classList.contains('admin-theme')) {
+      root.classList.add('light');
+      return;
+    }
+
     if (theme === "system") {
       const systemTheme = window.matchMedia("(prefers-color-scheme: dark)")
         .matches

@@ -1,4 +1,5 @@
 import type { Express } from "express";
+import { socialLinkInput } from '../admin-social-link-input';
 import {
   pgListAdvertisements,
   pgSaveAdvertisement,
@@ -172,18 +173,11 @@ export function registerMiscRoutes(
     }
   });
   app.post("/api/admin/footer-social-media", requireAdmin, async (req, res) => {
+    let input: Record<string, unknown>;
+    try { input = socialLinkInput(req.body); }
+    catch (error) { return void res.status(400).json({ error: (error as Error).message }); }
     try {
-      const { platform, url, isActive, position } = req.body;
-      if (!platform || !url)
-        return void res
-          .status(400)
-          .json({ error: "Platform and URL are required" });
-      const socialLink = await pgSaveFooterSocialMedia(null, {
-        platform,
-        url,
-        isActive: isActive !== false,
-        position: position || 0,
-      });
+      const socialLink = await pgSaveFooterSocialMedia(null, input);
       res.status(201).json(socialLink);
     } catch (error) {
       res.status(500).json({ error: "Failed to create footer social media" });
@@ -193,10 +187,13 @@ export function registerMiscRoutes(
     "/api/admin/footer-social-media/:id",
     requireAdmin,
     async (req, res) => {
+      let input: Record<string, unknown>;
+      try { input = socialLinkInput(req.body, true); }
+      catch (error) { return void res.status(400).json({ error: (error as Error).message }); }
       try {
         const socialLink = await pgSaveFooterSocialMedia(
           String(req.params.id),
-          req.body,
+          input,
         );
         if (!socialLink)
           return void res
@@ -238,6 +235,8 @@ export function registerMiscRoutes(
         typeof req.query.plan === "string" ? req.query.plan : "all";
       const authRaw =
         typeof req.query.authMethod === "string" ? req.query.authMethod : "all";
+      const platformRaw = typeof req.query.platform === "string" ? req.query.platform : "all";
+      const platformFilter = ["all", "ios", "android", "tvos", "macos", "web", "stripe", "paddle", "admin"].includes(platformRaw) ? platformRaw : "all";
       const PLAN_VALUES = new Set([
         "all",
         "none",
@@ -306,6 +305,7 @@ export function registerMiscRoutes(
             search,
             plan: planFilter,
             authMethod: authFilter,
+            platform: platformFilter,
             sortBy: "createdAt",
             sortDir: "desc",
             page: exportPage,
@@ -402,6 +402,8 @@ export function registerMiscRoutes(
         "tvos",
         "macos",
         "web",
+        "stripe",
+        "paddle",
         "admin",
       ]);
       const planFilter = PLAN_VALUES.has(planRaw) ? planRaw : "all";

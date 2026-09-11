@@ -328,6 +328,7 @@ export default function AdminGenreWhitelist() {
     // as the background job finishes. Task #186: also poll while a search
     // engine push is in flight so step statuses update live.
     refetchInterval: (query) => {
+      if (query.state.status === 'error') return false;
       const d = query.state.data as WhitelistResponse | undefined;
       const pushInFlight = d?.lastPush && !d.lastPush.completedAt;
       if (pushInFlight) return 2000;

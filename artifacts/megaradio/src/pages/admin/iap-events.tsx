@@ -1,4 +1,5 @@
 import { AdminPage } from "./AdminPage";
+import { adminDateRange } from "@/lib/admin-account-utils";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -122,6 +123,8 @@ export default function AdminIapEvents() {
     to: "",
   });
 
+  const range = adminDateRange(applied.from, applied.to);
+  const draftRange = adminDateRange(filterFrom, filterTo);
   const qs = buildQs({
     page,
     limit,
@@ -130,8 +133,8 @@ export default function AdminIapEvents() {
     result: applied.result,
     platform: applied.platform,
     productId: applied.productId,
-    from: applied.from ? new Date(applied.from).toISOString() : "",
-    to: applied.to ? new Date(applied.to + "T23:59:59").toISOString() : "",
+    from: range.from,
+    to: range.to,
   });
 
   const { data, isLoading, isFetching, error, refetch } = useQuery<IapEventsResponse>({
@@ -144,7 +147,7 @@ export default function AdminIapEvents() {
     staleTime: 15000,
   });
 
-  const { data: stats } = useQuery<IapStatsResponse>({
+  const { data: stats, isError: statsError, refetch: refetchStats } = useQuery<IapStatsResponse>({
     queryKey: ["/api/admin/iap-events/stats"],
     queryFn: async () => {
       const res = await fetch(`/api/admin/iap-events/stats?days=7`, { credentials: "include" });
@@ -155,6 +158,7 @@ export default function AdminIapEvents() {
   });
 
   const applyFilters = () => {
+    if (!draftRange.valid) return;
     setPage(1);
     setApplied({
       email: filterEmail.trim(),
@@ -192,14 +196,14 @@ export default function AdminIapEvents() {
         <CardHeader>
           <CardTitle>Last 7 days</CardTitle>
           <CardDescription>
-            {stats ? `${stats.total} events since ${formatDateTime(stats.since)}` : "Loading…"}
+            {statsError ? "Summary unavailable — use Refresh to retry." : stats ? `${stats.total} events since ${formatDateTime(stats.since)}` : "Loading…"}
           </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="flex flex-wrap gap-2">
             {RESULTS.map((r) => (
               <Badge key={r} className={`${RESULT_BADGES[r] || ""} border text-xs`}>
-                {r}: {stats?.byResult?.[r] || 0}
+                {r}: {stats ? stats.byResult?.[r] || 0 : '—'}
               </Badge>
             ))}
           </div>
@@ -212,7 +216,7 @@ export default function AdminIapEvents() {
           <CardTitle className="flex items-center gap-2">
             <FilterIcon size={18} /> Filters
           </CardTitle>
-          <CardDescription>Filters apply on click. Date range is inclusive.</CardDescription>
+          <CardDescription>Filters apply on click. Date range is inclusive, in UTC.</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-3">
@@ -270,6 +274,7 @@ export default function AdminIapEvents() {
               <label className="block text-xs font-medium text-gray-700 mb-1">From</label>
               <Input
                 type="date"
+                aria-label="From date (UTC)"
                 value={filterFrom}
                 onChange={(e) => setFilterFrom(e.target.value)}
               />
@@ -278,19 +283,21 @@ export default function AdminIapEvents() {
               <label className="block text-xs font-medium text-gray-700 mb-1">To</label>
               <Input
                 type="date"
+                aria-label="To date (UTC)"
                 value={filterTo}
                 onChange={(e) => setFilterTo(e.target.value)}
               />
             </div>
           </div>
+          {!draftRange.valid && <p role="alert">Choose valid dates with From on or before To.</p>}
           <div className="flex gap-2 mt-4">
-            <Button onClick={applyFilters} className="bg-blue-600 hover:bg-blue-700 text-white">
+            <Button onClick={applyFilters} disabled={!draftRange.valid} className="bg-blue-600 hover:bg-blue-700 text-white">
               Apply
             </Button>
             <Button variant="outline" onClick={resetFilters}>
               Reset
             </Button>
-            <Button variant="outline" onClick={() => refetch()} disabled={isFetching}>
+            <Button variant="outline" onClick={() => { refetch(); refetchStats(); }} disabled={isFetching}>
               <RefreshCw size={16} className={`mr-1 ${isFetching ? "animate-spin" : ""}`} />
               Refresh
             </Button>

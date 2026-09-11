@@ -35,6 +35,7 @@ import {
 import { pgUserManagementStats } from "../data/postgres-user-store";
 import { registerAdminDescriptionRoutes } from './admin-description-routes';
 import { registerAdminStreamHealthRoutes } from './admin-stream-health-routes';
+import { registerAdminOperationsStatusRoutes } from './admin-operations-status-routes';
 import { slugifyStationName } from '../seo/junk-station-rules';
 import { SITEMAP_PRIORITY_LANGUAGES } from '@workspace/seo-shared/seo-config';
 import { registerAdminDuplicateJobRoutes } from './admin-duplicate-job-routes';
@@ -432,6 +433,7 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
   registerAdminDescriptionRoutes(app, requireAdmin);
   registerAdminDuplicateJobRoutes(app, requireAdmin);
   registerAdminStreamHealthRoutes(app, requireAdmin);
+  registerAdminOperationsStatusRoutes(app, requireAdmin);
 
   // 2026-05-15: manual on-demand trigger for the nightly Radio-Browser sync.
   // Same code path as the 03:00 Berlin cron (`scheduledStationSync.runOnce`)

@@ -615,22 +615,22 @@ export default function AdminCountryLanguageMappings() {
   };
 
   // Fetch available countries
-  const { data: countries, isLoading: isLoadingCountries } = useQuery<Country[]>({
+  const { data: countries, isLoading: isLoadingCountries, error: countriesError } = useQuery<Country[]>({
     queryKey: ['/api/admin/available-countries'],
   });
 
   // Fetch available languages
-  const { data: languages, isLoading: isLoadingLanguages } = useQuery<Language[]>({
+  const { data: languages, isLoading: isLoadingLanguages, error: languagesError } = useQuery<Language[]>({
     queryKey: ['/api/admin/available-languages'],
   });
 
   // Fetch existing mappings
-  const { data: existingMappings, isLoading: isLoadingMappings } = useQuery<CountryLanguageMapping[]>({
+  const { data: existingMappings, isLoading: isLoadingMappings, error: mappingsError } = useQuery<CountryLanguageMapping[]>({
     queryKey: ['/api/admin/country-language-mappings'],
   });
 
   // Fetch hardcoded country-language defaults (COUNTRY_TO_LANGUAGE)
-  const { data: countryLanguageDefaults, isLoading: isLoadingDefaults } = useQuery<CountryLanguageDefault[]>({
+  const { data: countryLanguageDefaults, isLoading: isLoadingDefaults, error: defaultsError } = useQuery<CountryLanguageDefault[]>({
     queryKey: ['/api/admin/country-language-defaults'],
   });
 
@@ -716,14 +716,20 @@ export default function AdminCountryLanguageMappings() {
         body: { mappings },
       });
     },
-    onSuccess: () => {
+    onSuccess: (_data, savedMappings) => {
       queryClient.invalidateQueries({ queryKey: ['/api/admin/country-language-mappings'] });
       // The server now writes a `bulk-save` audit entry — refresh the
       // history panel so admins see it without a manual reload.
       queryClient.invalidateQueries({
         queryKey: ['/api/admin/country-language-mappings/cleared-overrides-log'],
       });
-      setPendingChanges(new Map());
+      setPendingChanges(current => {
+        const next = new Map(current);
+        for (const saved of savedMappings) {
+          if (next.get(saved.countryCode) === saved.languageCode) next.delete(saved.countryCode);
+        }
+        return next;
+      });
       toast({
         title: 'Success',
         description: 'Country-language mappings saved successfully',
@@ -747,9 +753,9 @@ export default function AdminCountryLanguageMappings() {
       );
     },
     onSuccess: (_data, countryCode) => {
-      // Drop any pending change for this country so the UI returns to "unmapped"
+      // Acknowledge a pending clear, but preserve newer language edits.
       setPendingChanges(prev => {
-        if (!prev.has(countryCode)) return prev;
+        if (prev.get(countryCode) !== '') return prev;
         const next = new Map(prev);
         next.delete(countryCode);
         return next;
@@ -1317,7 +1323,7 @@ export default function AdminCountryLanguageMappings() {
 
   // Get effective language for a country (pending change or existing mapping)
   const getEffectiveLanguage = (countryCode: string): string => {
-    return pendingChanges.get(countryCode) || mappingsMap.get(countryCode) || '';
+    return pendingChanges.get(countryCode) ?? mappingsMap.get(countryCode) ?? '';
   };
 
   // Auto-fill from hardcoded defaults
@@ -1423,11 +1429,16 @@ export default function AdminCountryLanguageMappings() {
       }
       if (toUpsert.length > 0) {
         await bulkSaveMutation.mutateAsync(toUpsert);
-      } else if (toDelete.length > 0) {
-        // bulkSaveMutation's onSuccess clears pending changes; if we only
-        // deleted, do the same here so the dirty-state badge resets.
-        setPendingChanges(new Map());
       }
+      // Also acknowledge no-op clears for countries with no saved mapping.
+      // Do not remove edits entered while these requests were in flight.
+      setPendingChanges(current => {
+        const next = new Map(current);
+        for (const [code, saved] of entries) {
+          if (next.get(code) === saved) next.delete(code);
+        }
+        return next;
+      });
     } catch {
       // Individual mutation onError handlers already toast — nothing to do.
     }
@@ -1562,8 +1573,22 @@ export default function AdminCountryLanguageMappings() {
     return sort.direction === 'asc' ? 'ascending' : 'descending';
   };
 
-  // Loading state
-  if (isLoadingCountries || isLoadingLanguages || isLoadingMappings) {
+  const configurationError = countriesError || languagesError || mappingsError || defaultsError;
+  if (configurationError) {
+    return <div className="container mx-auto py-8 px-4" role="alert">
+      <Card><CardHeader><CardTitle>Country-language configuration could not be loaded</CardTitle></CardHeader>
+        <CardContent className="space-y-3"><p>{configurationError.message}</p>
+          <Button onClick={() => {
+            for (const path of ['available-countries', 'available-languages', 'country-language-mappings', 'country-language-defaults']) {
+              void queryClient.invalidateQueries({ queryKey: [`/api/admin/${path}`] });
+            }
+          }}>Retry</Button>
+        </CardContent></Card>
+    </div>;
+  }
+
+  // Defaults are needed before presenting override/reset actions.
+  if (isLoadingCountries || isLoadingLanguages || isLoadingMappings || isLoadingDefaults) {
     return (
       <div className="container mx-auto py-8 px-4">
         <Card>
@@ -1645,7 +1670,7 @@ export default function AdminCountryLanguageMappings() {
     <div className="mx-auto w-full max-w-[1600px] px-4 py-5 sm:px-6 sm:py-6 lg:px-8 space-y-5 sm:space-y-6">
       <Card>
         <CardHeader>
-          <CardTitle className="text-2xl">Country-Language Mappings</CardTitle>
+          <h1 className="text-2xl font-semibold leading-none tracking-tight">Country-Language Mappings</h1>
           <CardDescription>
             Configure which language each country should use for SEO and localization.
             Database mappings override hardcoded defaults.

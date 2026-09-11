@@ -1,0 +1,33 @@
+/* Scoped to admin, including body-mounted Radix portals. Public radio colors
+   intentionally retain their existing definitions. Tailwind expects HSL channels. */
+body.admin-theme {
+  color-scheme: light;
+  --background: 0 0% 100%;
+  --foreground: 0 0% 4%;
+  --card: 0 0% 100%;
+  --card-foreground: 0 0% 4%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 0 0% 4%;
+  --muted: 0 0% 96%;
+  --muted-foreground: 0 0% 45%;
+  --secondary: 0 0% 96%;
+  --secondary-foreground: 0 0% 4%;
+  --border: 0 0% 90%;
+  --destructive: 0 84.2% 60.2%;
+  --destructive-foreground: 0 0% 100%;
+  --ring: 332.2 100% 62.7%;
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+}
+
+/* The public compact country selector rules must not shrink admin forms. */
+@media (max-width: 768px) {
+  body.admin-theme select {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+  body.admin-theme select option {
+    background-color: #fff !important;
+    color: #0a0a0a !important;
+  }
+}

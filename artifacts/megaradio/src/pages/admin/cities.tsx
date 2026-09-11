@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { apiRequest } from '@/lib/queryClient';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -40,39 +41,40 @@ export default function AdminCities() {
   const [isLoading, setIsLoading] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [mergeResults, setMergeResults] = useState<MergeResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const analyzeDuplicates = async () => {
     setIsLoading(true);
     setMergeResults(null);
+    setError(null);
+    setDuplicates(null);
     try {
-      const response = await fetch('/api/admin/cities/duplicates');
+      const response = await apiRequest('GET', '/api/admin/cities/duplicates');
       const data = await response.json();
+      if (!Array.isArray(data.duplicates)) throw new Error('Invalid city analysis response');
       setDuplicates(data);
     } catch (error) {
-      // Failed to analyze duplicates
+      setError(error instanceof Error ? error.message : 'Failed to analyze duplicates');
     } finally {
       setIsLoading(false);
     }
   };
 
   const mergeDuplicates = async () => {
+    if (isLoading || isProcessing || !duplicates?.totalCityGroups) return;
+    if (!window.confirm('Standardize the city names in all previewed groups? Station records will not be deleted.')) return;
     setIsProcessing(true);
+    setError(null);
+    setMergeResults(null);
     try {
-      const response = await fetch('/api/admin/cities/merge-duplicates', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
-      });
+      const response = await apiRequest('POST', '/api/admin/cities/merge-duplicates');
       const data = await response.json();
+      if (data.success !== true || !Array.isArray(data.mergeOperations)) throw new Error(data.error || 'City merge did not complete');
       setMergeResults(data);
-      
-      // Refresh the analysis to show updated data
-      if (data.success) {
-        setTimeout(() => {
-          analyzeDuplicates();
-        }, 1000);
-      }
+      // Do not erase the successful result with a delayed analysis or leave a stale merge button.
+      setDuplicates(null);
     } catch (error) {
-      // Failed to merge duplicates
+      setError(error instanceof Error ? error.message : 'Failed to merge duplicates');
     } finally {
       setIsProcessing(false);
     }
@@ -94,7 +96,7 @@ export default function AdminCities() {
           <div className="flex gap-3">
             <Button 
               onClick={analyzeDuplicates} 
-              disabled={isLoading}
+              disabled={isLoading || isProcessing}
               variant="outline"
             >
               {isLoading ? (
@@ -109,7 +111,7 @@ export default function AdminCities() {
             {duplicates && duplicates.totalCityGroups > 0 && (
               <Button 
                 onClick={mergeDuplicates} 
-                disabled={isProcessing}
+                disabled={isProcessing || isLoading}
                 className="bg-[#FF4199] hover:bg-[#e6388a] text-white"
               >
                 {isProcessing ? (
@@ -129,10 +131,11 @@ export default function AdminCities() {
         </div>
       </div>
 
+      {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
       {mergeResults && (
         <Alert className="bg-green-50 border-green-200">
           <CheckCircle className="h-4 w-4 text-green-500" />
-          <AlertDescription className="text-green-300">
+          <AlertDescription className="text-green-800">
             <div className="font-medium mb-2">Merge Completed Successfully!</div>
             <div className="text-sm space-y-1">
               <div>• {mergeResults.stationsUpdated} stations updated</div>

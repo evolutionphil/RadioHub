@@ -6,6 +6,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { useToast } from "@/hooks/use-toast";
 import { RefreshCw, Play, Clock, CheckCircle, XCircle, AlertCircle } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
+import { apiRequest } from '@/lib/queryClient';
 
 interface SyncLog {
   _id: string;
@@ -30,22 +31,19 @@ export default function SyncStatus() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  const { data: syncStatus, isLoading: statusLoading } = useQuery<SyncStatus>({
+  const { data: syncStatus, isLoading: statusLoading, isError: statusError } = useQuery<SyncStatus>({
     queryKey: ['/api/sync/status'],
     refetchInterval: (query) => (query.state.data as any)?.isRunning ? 10000 : 30000, // 10s if running, 30s otherwise
   });
 
-  const { data: syncLogs, isLoading: logsLoading } = useQuery<SyncLog[]>({
+  const { data: syncLogs, isLoading: logsLoading, isError: logsError } = useQuery<SyncLog[]>({
     queryKey: ['/api/sync/logs'],
     refetchInterval: 30000, // Refresh every 30 seconds
   });
 
   const forceSyncMutation = useMutation({
     mutationFn: async () => {
-      const response = await fetch('/api/sync/force', {
-        method: 'POST',
-      });
-      if (!response.ok) throw new Error('Failed to start sync');
+      const response = await apiRequest('POST', '/api/sync/force');
       return response.json();
     },
     onSuccess: () => {
@@ -67,10 +65,7 @@ export default function SyncStatus() {
 
   const stopSyncMutation = useMutation({
     mutationFn: async () => {
-      const response = await fetch('/api/sync/stop', {
-        method: 'POST',
-      });
-      if (!response.ok) throw new Error('Failed to stop sync');
+      const response = await apiRequest('POST', '/api/sync/stop');
       return response.json();
     },
     onSuccess: () => {
@@ -115,6 +110,8 @@ export default function SyncStatus() {
         return <Badge variant="outline">Unknown</Badge>;
     }
   };
+
+  if (statusError || logsError) return <div role="alert" className="p-6">Unable to load synchronization status. <Button variant="outline" onClick={() => { void queryClient.invalidateQueries({ queryKey: ['/api/sync/status'] }); void queryClient.invalidateQueries({ queryKey: ['/api/sync/logs'] }); }}>Retry</Button></div>;
 
   if (statusLoading || logsLoading) {
     return (

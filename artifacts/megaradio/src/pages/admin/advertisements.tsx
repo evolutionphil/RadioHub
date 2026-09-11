@@ -282,6 +282,7 @@ export default function AdvertisementsAdmin() {
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-4" aria-busy={uploadingImage || saving}>
+              <fieldset disabled={saving} className="space-y-4 min-w-0">
               <div className="bg-blue-50 dark:bg-blue-900/20 p-3 rounded border border-blue-200 dark:border-blue-800">
                 <p className="text-sm font-medium">
                   {selectedPosition === 'desktop_sidebar' ? '🖥️ Desktop Ad (h-56, square)' : selectedPosition === 'mobile_bottom' ? '📱 Mobile Ad (h-64, rectangle)' : '📊 Middle Ad (h-40, wide)'}
@@ -400,6 +401,7 @@ export default function AdvertisementsAdmin() {
                   Cancel
                 </Button>
               </div>
+              </fieldset>
             </form>
           </CardContent>
         </Card>

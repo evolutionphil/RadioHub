@@ -186,7 +186,7 @@ export default function Sidebar({ isMobileMenuOpen, setIsMobileMenuOpen }: Sideb
 
   const isActiveLink = useCallback((href?: string) => {
     if (!href) return false;
-    return location === href || (href !== "/admin" && href !== "/" && location.startsWith(href));
+    return location === href || location.startsWith(`${href}/`);
   }, [location]);
 
   // Reveal the active route when navigation changes, but respect a subsequent
@@ -195,6 +195,15 @@ export default function Sidebar({ isMobileMenuOpen, setIsMobileMenuOpen }: Sideb
     const autoExpand = getGroupsToAutoExpand(navigation, isActiveLink);
     setExpandedItems(previous => Array.from(new Set([...previous, ...autoExpand])));
   }, [isActiveLink]);
+
+  useEffect(() => {
+    if (!isMobileMenuOpen) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setIsMobileMenuOpen(false);
+    };
+    document.addEventListener('keydown', closeOnEscape);
+    return () => document.removeEventListener('keydown', closeOnEscape);
+  }, [isMobileMenuOpen, setIsMobileMenuOpen]);
 
   // Render an item at a given nesting depth (0 = top-level group, 1 = inside group, 2 = inside sub-group).
   const renderItem = (item: NavigationItem, depth: number, onLinkClick?: () => void): React.ReactNode => {
@@ -242,9 +251,8 @@ export default function Sidebar({ isMobileMenuOpen, setIsMobileMenuOpen }: Sideb
 
     // Leaf link
     return (
-      <Link key={item.name} href={item.href!}>
+      <Link key={item.name} href={item.href!} aria-current={isActive ? 'page' : undefined} onClick={onLinkClick}>
         <span
-          onClick={onLinkClick}
           className={cn(
             "group relative flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium cursor-pointer transition-all",
             depth === 1 ? "min-h-[42px]" : "min-h-[38px]",
@@ -267,7 +275,7 @@ export default function Sidebar({ isMobileMenuOpen, setIsMobileMenuOpen }: Sideb
           <Radio className="w-5 h-5 text-primary" />
         </span>
         <div className="leading-tight">
-          <h1 className="text-base font-bold text-gray-900">RadioHub</h1>
+          <p className="text-base font-bold text-gray-900">RadioHub</p>
           <p className="text-[11px] font-medium uppercase tracking-wider text-gray-400">Admin</p>
         </div>
       </div>
@@ -290,9 +298,12 @@ export default function Sidebar({ isMobileMenuOpen, setIsMobileMenuOpen }: Sideb
 
       {/* Mobile Sidebar */}
       <div
+        id="admin-mobile-navigation"
+        aria-hidden={!isMobileMenuOpen}
+        inert={!isMobileMenuOpen}
         className={cn(
           "fixed inset-y-0 left-0 z-50 w-64 bg-white transform md:hidden",
-          isMobileMenuOpen ? "translate-x-0" : "-translate-x-full",
+          isMobileMenuOpen ? "translate-x-0 visible" : "-translate-x-full invisible pointer-events-none",
           "transition-transform duration-300 ease-in-out",
         )}
       >

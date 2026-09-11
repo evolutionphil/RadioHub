@@ -61,7 +61,7 @@ export default function AdminTranslationLanguages() {
   });
 
   // Fetch languages
-  const { data: languages = [], isLoading } = useQuery<TranslationLanguage[]>({
+  const { data: languages = [], isLoading, error, refetch } = useQuery<TranslationLanguage[]>({
     queryKey: ['/api/admin/translation-languages'],
     queryFn: async () => {
       const response = await fetch('/api/admin/translation-languages', {
@@ -152,7 +152,7 @@ export default function AdminTranslationLanguages() {
   // Seed all 55 translation languages mutation
   const seedLanguagesMutation = useMutation({
     mutationFn: async () => {
-      return apiRequest("POST", "/api/admin/seed-translation-languages");
+      return apiRequest("POST", "/api/admin/seed-translation-languages").then(response => response.json());
     },
     onSuccess: (data: any) => {
       toast({ 
@@ -173,7 +173,7 @@ export default function AdminTranslationLanguages() {
   // Auto-translate language via OpenAI
   const translateLanguageMutation = useMutation({
     mutationFn: async (code: string) => {
-      return apiRequest("POST", `/api/admin/translation-languages/${code}/translate`);
+      return apiRequest("POST", `/api/admin/translation-languages/${code}/translate`).then(response => response.json());
     },
     onSuccess: (data: any, code: string) => {
       toast({ 
@@ -245,6 +245,8 @@ export default function AdminTranslationLanguages() {
 
   return (
     <div className="mx-auto w-full max-w-[1600px] px-4 py-5 sm:px-6 sm:py-6 lg:px-8 space-y-5 sm:space-y-6">
+      {error && <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-900">Languages could not load; this does not mean there are no languages. <Button size="sm" variant="outline" onClick={() => refetch()}>Retry languages</Button></div>}
+      {isLoading && <p role="status">Loading languages…</p>}
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
@@ -379,8 +381,9 @@ export default function AdminTranslationLanguages() {
                           size="sm"
                           variant={language.completionPercentage === 0 ? "default" : "outline"}
                           onClick={() => translateLanguageMutation.mutate(language.code)}
-                          disabled={translateLanguageMutation.isPending}
-                          title={language.completionPercentage === 100 ? "Already translated" : "Translate via OpenAI"}
+                          disabled={translateLanguageMutation.isPending || !language.isEnabled || language.code === 'en'}
+                          aria-label={`Translate ${language.name}`}
+                          title={!language.isEnabled ? "Enable the language before translating" : language.code === 'en' ? "English uses the source values" : language.completionPercentage === 100 ? "Already translated" : "Translate via OpenAI"}
                         >
                           <Languages className="w-4 h-4" />
                         </Button>

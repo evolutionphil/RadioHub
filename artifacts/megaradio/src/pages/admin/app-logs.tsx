@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { apiRequest } from '@/lib/queryClient';
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -105,25 +106,26 @@ export default function AdminAppLogs() {
   const [isCarPlay, setIsCarPlay] = useState("");
   const [deviceSearch, setDeviceSearch] = useState("");
   const [limit, setLimit] = useState("50");
+  const [page, setPage] = useState(1);
 
   const { data, isLoading, isError, refetch } = useQuery<AppLogsResponse>({
-    queryKey: ["/api/admin/app-logs", platform, isCarPlay, deviceSearch, limit],
-    queryFn: async () => {
-      const params = new URLSearchParams({ limit });
+    queryKey: ["/api/admin/app-logs", platform, isCarPlay, deviceSearch, limit, page],
+    queryFn: async ({ signal }) => {
+      const params = new URLSearchParams({ limit, page: String(page) });
       if (platform) params.set("platform", platform);
       if (isCarPlay) params.set("isCarPlay", isCarPlay);
       if (deviceSearch) params.set("deviceId", deviceSearch);
-      const res = await fetch(`/api/admin/app-logs?${params}`);
+      const res = await apiRequest('GET', `/api/admin/app-logs?${params}`, { signal });
       if (!res.ok) throw new Error('Unable to load application logs');
       return res.json() as Promise<AppLogsResponse>;
     },
     staleTime: 30000,
   });
 
-  const { data: crashes } = useQuery<{ success: boolean; count: number; logs: AppLog[] }>({
+  const { data: crashes, refetch: refetchCrashes, isError: crashesError } = useQuery<{ success: boolean; count: number; logs: AppLog[] }>({
     queryKey: ["/api/admin/app-logs/crashes"],
-    queryFn: async () => {
-      const response = await fetch("/api/admin/app-logs/crashes");
+    queryFn: async ({ signal }) => {
+      const response = await apiRequest('GET', '/api/admin/app-logs/crashes', { signal });
       if (!response.ok) throw new Error('Unable to load crash logs');
       return response.json() as Promise<{ success: boolean; count: number; logs: AppLog[] }>;
     },
@@ -141,13 +143,14 @@ export default function AdminAppLogs() {
           <h1 className="text-3xl font-bold">iOS / CarPlay Logs</h1>
           <p className="text-gray-600 mt-1">Remote logs received from iPhone and CarPlay app</p>
         </div>
-        <Button onClick={() => refetch()} variant="outline">
+        <Button onClick={() => { void refetch(); void refetchCrashes(); }} variant="outline">
           <RefreshCw className="w-4 h-4 mr-2" />
           Refresh
         </Button>
       </div>
 
       {/* Stats */}
+      {crashesError && !isError && <p role="alert" className="text-destructive">Crash summary could not be loaded. Refresh to retry.</p>}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <Card>
           <CardContent className="p-4 text-center">
@@ -158,19 +161,19 @@ export default function AdminAppLogs() {
         <Card>
           <CardContent className="p-4 text-center">
             <p className="text-3xl font-bold text-purple-600">{carplayCount}</p>
-            <p className="text-sm text-gray-500 mt-1">CarPlay sessions</p>
+            <p className="text-sm text-gray-500 mt-1">CarPlay sessions (this page)</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4 text-center">
             <p className="text-3xl font-bold text-red-600">{errorCount}</p>
-            <p className="text-sm text-gray-500 mt-1">Sessions with errors</p>
+            <p className="text-sm text-gray-500 mt-1">Sessions with errors (this page)</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4 text-center">
             <p className="text-3xl font-bold text-orange-600">{crashes?.count ?? 0}</p>
-            <p className="text-sm text-gray-500 mt-1">Crash logs</p>
+            <p className="text-sm text-gray-500 mt-1">Recent crash logs (up to 50)</p>
           </CardContent>
         </Card>
       </div>
@@ -182,7 +185,7 @@ export default function AdminAppLogs() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div>
               <label className="text-sm font-medium">Platform</label>
-              <Select value={platform || 'all'} onValueChange={value=>setPlatform(value==='all'?'':value)}>
+              <Select value={platform || 'all'} onValueChange={value=>{setPlatform(value==='all'?'':value);setPage(1);}}>
                 <SelectTrigger><SelectValue placeholder="All" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All</SelectItem>
@@ -193,22 +196,22 @@ export default function AdminAppLogs() {
             </div>
             <div>
               <label className="text-sm font-medium">Type</label>
-              <Select value={isCarPlay || 'all'} onValueChange={value=>setIsCarPlay(value==='all'?'':value)}>
+              <Select value={isCarPlay || 'all'} onValueChange={value=>{setIsCarPlay(value==='all'?'':value);setPage(1);}}>
                 <SelectTrigger><SelectValue placeholder="All" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All</SelectItem>
                   <SelectItem value="true">CarPlay only</SelectItem>
-                  <SelectItem value="false">iPhone only</SelectItem>
+                  <SelectItem value="false">Non-CarPlay</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div>
               <label className="text-sm font-medium">Device ID</label>
-              <Input value={deviceSearch} onChange={(e) => setDeviceSearch(e.target.value)} placeholder="Search device..." />
+              <Input value={deviceSearch} onChange={(e) => {setDeviceSearch(e.target.value);setPage(1);}} placeholder="Search device..." />
             </div>
             <div>
               <label className="text-sm font-medium">Limit</label>
-              <Select value={limit} onValueChange={setLimit}>
+              <Select value={limit} onValueChange={value=>{setLimit(value);setPage(1);}}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="20">20</SelectItem>
@@ -240,6 +243,11 @@ export default function AdminAppLogs() {
           {logs.map((log: AppLog) => <LogRow key={log._id} log={log} />)}
         </div>
       )}
+      {(page > 1 || (data?.total ?? 0) > Number(limit)) && <div className="flex justify-center items-center gap-3">
+        <Button variant="outline" disabled={page === 1 || isLoading} onClick={() => setPage(current => Math.max(1,current-1))}>Previous</Button>
+        <span>Page {page} of {Math.max(page, Math.ceil((data?.total ?? 0)/Number(limit)))}</span>
+        <Button variant="outline" disabled={isLoading || isError || page*Number(limit)>=(data?.total ?? 0)} onClick={() => setPage(current=>current+1)}>Next</Button>
+      </div>}
     </div>
   );
 }

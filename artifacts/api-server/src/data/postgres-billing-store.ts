@@ -337,6 +337,13 @@ export async function pgSalesAnalytics(options: {
     "($4='all' OR COALESCE(plan,payload->>'plan')=$4)",
   ];
   const saleConditions = ["provider=ANY(ARRAY['stripe','paddle'])", "amount_minor IS NOT NULL",
+    // Lifecycle/refund/ignored deliveries are audit evidence, not sales.
+    `(status IN ('processed','success','paid','completed','recorded') AND (
+      (provider='stripe' AND event_type IN ('checkout.session.completed','checkout.session.async_payment_succeeded')
+        AND (COALESCE(payload#>>'{data,object,payment_status}','paid')='paid' OR amount_minor=0 AND payload#>>'{data,object,payment_status}'='no_payment_required'))
+      OR (provider='paddle' AND event_type='transaction.completed')
+      OR (provider='stripe' AND origin='mongo_migration' AND COALESCE(payload->>'stripeSessionId','')<>'')))`,
+    "amount_minor>=0",
     "occurred_at BETWEEN $1 AND $2", "$3=ANY(ARRAY['all','stripe'])",
     "($4='all' OR COALESCE(plan,payload->>'plan')=$4)",
   ];
@@ -349,20 +356,27 @@ export async function pgSalesAnalytics(options: {
     query(`SELECT ${iapPlatformExpression} _id,count(*)::int count FROM payment_events WHERE ${iapWhere} GROUP BY 1`),
     query(`SELECT ${bucket} date,COALESCE(plan,payload->>'plan','unknown') plan,count(*)::int count FROM payment_events WHERE ${iapWhere} GROUP BY 1,2 ORDER BY 1`),
     query(`SELECT count(*)::int count,COALESCE(sum(amount_minor),0)::bigint total_amount,
-      COALESCE(min(currency),'usd') currency FROM payment_events WHERE ${saleWhere}`),
+      NULLIF(lower(currency),'') currency FROM payment_events WHERE ${saleWhere} GROUP BY 3 ORDER BY 3`),
     query(`SELECT COALESCE(plan,payload->>'plan','unknown') _id,count(*)::int count,
-      COALESCE(sum(amount_minor),0)::bigint total FROM payment_events WHERE ${saleWhere} GROUP BY 1 ORDER BY 2 DESC`),
+      CASE WHEN count(DISTINCT COALESCE(NULLIF(lower(currency),''),'unknown'))=1 THEN sum(amount_minor)::bigint END total,
+      CASE WHEN count(DISTINCT COALESCE(NULLIF(lower(currency),''),'unknown'))=1 THEN min(NULLIF(lower(currency),'')) END currency
+      FROM payment_events WHERE ${saleWhere} GROUP BY 1 ORDER BY 2 DESC`),
     query(`SELECT ${bucket} date,COALESCE(plan,payload->>'plan','unknown') plan,count(*)::int count,
-      COALESCE(sum(amount_minor),0)::bigint amount FROM payment_events WHERE ${saleWhere} GROUP BY 1,2 ORDER BY 1`),
+      CASE WHEN count(DISTINCT COALESCE(NULLIF(lower(currency),''),'unknown'))=1 THEN sum(amount_minor)::bigint END amount,
+      CASE WHEN count(DISTINCT COALESCE(NULLIF(lower(currency),''),'unknown'))=1 THEN min(NULLIF(lower(currency),'')) END currency
+      FROM payment_events WHERE ${saleWhere} GROUP BY 1,2 ORDER BY 1`),
     query(`SELECT * FROM payment_events WHERE (${iapWhere}) OR (${saleWhere}) ORDER BY occurred_at DESC LIMIT 50`),
   ]);
   const iapRows = iapTimeline.rows.map((row) => ({ _id: { date: row.date, plan: row.plan }, count: row.count }));
-  const saleRows = saleTimeline.rows.map((row) => ({ _id: { date: row.date, plan: row.plan }, count: row.count, amount: Number(row.amount) }));
+  const saleRows = saleTimeline.rows.map((row) => ({ _id: { date: row.date, plan: row.plan }, count: row.count, amount: row.amount === null ? null : Number(row.amount), currency: row.currency }));
+  const byCurrency = saleSummary.rows.map(row => ({ currency: row.currency, count: row.count, amount: Number(row.total_amount) }));
   return {
     iap: { count: iapCount.rows[0]?.count || 0, byPlan: iapPlan.rows, byPlatform: iapPlatform.rows, timeline: iapRows },
     sales: {
-      count: saleSummary.rows[0]?.count || 0, totalAmount: Number(saleSummary.rows[0]?.total_amount || 0),
-      currency: saleSummary.rows[0]?.currency || "usd", byPlan: salePlan.rows.map((row) => ({ ...row, total: Number(row.total) })), timeline: saleRows,
+      count: byCurrency.reduce((sum, row) => sum + row.count, 0),
+      totalAmount: byCurrency.length === 1 && byCurrency[0].currency ? byCurrency[0].amount : byCurrency.length ? null : 0,
+      currency: byCurrency.length === 1 ? byCurrency[0].currency : null, byCurrency,
+      byPlan: salePlan.rows.map((row) => ({ ...row, total: row.total === null ? null : Number(row.total) })), timeline: saleRows,
     },
     recent: recent.rows.map((row) => {
       const isIap = row.event_type === "iap_audit" || row.payload?.result;

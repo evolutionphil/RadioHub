@@ -7,12 +7,14 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Activity, AlertTriangle, CheckCircle, Clock, TrendingDown, TrendingUp, Wifi, WifiOff, Database, Server, Users, BarChart3, Zap, RefreshCw } from "lucide-react";
 import { format } from "date-fns";
 import { useAdminAuth } from "@/hooks/useAdminAuth";
+import { Button } from "@/components/ui/button";
 
 interface StationStatus {
   _id: string;
   name: string;
   url: string;
   lastcheckok: boolean;
+  availabilityStatus: 'working' | 'unavailable' | 'unverified';
   lastchecktime: string;
   lastcheckoktime: string;
   sslError: boolean;
@@ -51,69 +53,60 @@ interface SyncStatus {
     status: string;
     startedAt: string;
     completedAt?: string;
-    totalStations?: number;
-    addedStations?: number;
-    updatedStations?: number;
+    stationsProcessed?: number;
+    stationsAdded?: number;
+    stationsUpdated?: number;
     errorMessage?: string;
   } | null;
 }
 
 interface PerformanceMetrics {
-  systemHealth: {
-    status: 'healthy' | 'warning' | 'critical';
-    uptime: number;
-    memoryUsage: {
-      used: number;
-      total: number;
-      percentage: number;
-    };
-    cpuUsage: number;
-  };
-  databaseHealth: {
-    status: 'connected' | 'disconnected' | 'error';
-    connectionCount: number;
-    responseTime: number;
-    collectionCounts: {
-      stations: number;
-      users: number;
-      genres: number;
-    };
-  };
-  apiHealth: {
-    averageResponseTime: number;
-    requestsPerMinute: number;
-    errorRate: number;
-    activeConnections: number;
-  };
+  databaseStats: { dbSize: string; totalStations: number; totalCountries: number; totalGenres: number; indexesCount: number };
+  systemHealth: { memoryUsage: number; cpuUsage: number | null; connectionPool: number };
+}
+interface OperationsStatus {
+  totals: { total: number; working: number; unavailable: number; unverified: number; sslErrors: number; recentChecks: number; uptrend: number; downtrend: number };
+  recentChecks: any[]; problemStations: any[]; stations: any[]; sampledAt: string;
+}
+function monitoringStation(s: any): StationStatus {
+  return { ...s, lastcheckok: s.availabilityStatus === 'working',
+    lastchecktime: s.availabilityCheckedAt, lastcheckoktime: s.lastCheckOkTime,
+    clickcount: s.clickCount || 0, clicktrend: s.clickTrend || 0 };
+}
+function safeTime(value: string | null | undefined, pattern: string): string {
+  const date = value ? new Date(value) : null;
+  return date && Number.isFinite(date.getTime()) ? format(date, pattern) : 'Unknown';
 }
 
 export default function StatusMonitoring() {
   const { isAuthenticated } = useAdminAuth();
 
-  const { data: stations, isLoading: loadingStations } = useQuery<{ stations: StationStatus[] }>({
-    queryKey: ['/api/stations'],
+  const { data: stations, isLoading: loadingStations, isError: stationsError, refetch: refreshStations } = useQuery<OperationsStatus>({
+    queryKey: ['/api/admin/operations-status'],
+    staleTime: 60000,
+    refetchInterval: 60000,
     enabled: isAuthenticated,
   });
 
-  const { data: dashboardStats, isLoading: loadingStats } = useQuery<DashboardStats>({
+  const { data: dashboardStats, isLoading: loadingStats, isError: statsError, refetch: refreshStats } = useQuery<DashboardStats>({
     queryKey: ['/api/dashboard/stats'],
     enabled: isAuthenticated,
     refetchInterval: 30000, // Refresh every 30 seconds
   });
 
-  const { data: syncStatus, isLoading: loadingSync } = useQuery<SyncStatus>({
+  const { data: syncStatus, isLoading: loadingSync, isError: syncError, refetch: refreshSync } = useQuery<SyncStatus>({
     queryKey: ['/api/sync/status'],
     enabled: isAuthenticated,
     refetchInterval: 10000, // Refresh every 10 seconds
   });
 
-  const { data: performanceMetrics, isLoading: loadingPerformance } = useQuery<PerformanceMetrics>({
+  const { data: performanceMetrics, isLoading: loadingPerformance, isError: performanceError, refetch: refreshPerformance } = useQuery<PerformanceMetrics>({
     queryKey: ['/api/admin/performance/metrics'],
     enabled: isAuthenticated,
-    refetchInterval: 15000, // Refresh every 15 seconds
+    refetchInterval: 60000,
   });
 
-  const stationList = stations?.stations || [];
+  const stationList = (stations?.stations || []).map(monitoringStation);
   const isLoading = loadingStations || loadingStats || loadingSync || loadingPerformance;
 
   if (!isAuthenticated) {
@@ -130,27 +123,16 @@ export default function StatusMonitoring() {
     );
   }
 
-  // Calculate status statistics
-  const totalStations = stationList.length;
-  const onlineStations = stationList.filter(s => s.lastcheckok).length;
-  const offlineStations = stationList.filter(s => !s.lastcheckok).length;
-  const sslErrorStations = stationList.filter(s => s.sslError).length;
-  const uptrend = stationList.filter(s => s.clicktrend > 0).length;
-  const downtrend = stationList.filter(s => s.clicktrend < 0).length;
-
-  const uptimePercentage = totalStations > 0 ? Math.round((onlineStations / totalStations) * 100) : 0;
-
-  // Get recent status changes (stations checked within last hour)
-  const recentChecks = stationList
-    .filter(s => s.lastchecktime && new Date(s.lastchecktime).getTime() > Date.now() - 3600000)
-    .sort((a, b) => new Date(b.lastchecktime).getTime() - new Date(a.lastchecktime).getTime())
-    .slice(0, 20);
-
-  // Get problem stations
-  const problemStations = stationList
-    .filter(s => !s.lastcheckok || s.sslError)
-    .sort((a, b) => new Date(b.lastchecktime).getTime() - new Date(a.lastchecktime).getTime())
-    .slice(0, 50);
+  const totalStations = stations?.totals.total || 0;
+  const onlineStations = stations?.totals.working || 0;
+  const offlineStations = stations?.totals.unavailable || 0;
+  const sslErrorStations = stations?.totals.sslErrors || 0;
+  const uptrend = stations?.totals.uptrend || 0;
+  const downtrend = stations?.totals.downtrend || 0;
+  const uptimePercentage = totalStations > 0 ? Math.round(onlineStations / totalStations * 100) : 0;
+  const recentChecks = (stations?.recentChecks || []).map(monitoringStation);
+  const problemStations = (stations?.problemStations || []).map(monitoringStation);
+  if (stationsError || statsError || syncError || performanceError) return <div role="alert" className="p-6">Some operational status could not be loaded; missing data is not a healthy or zero measurement. <Button variant="outline" onClick={() => { void refreshStations(); void refreshStats(); void refreshSync(); void refreshPerformance(); }}>Retry</Button></div>;
 
   if (isLoading) {
     return (
@@ -189,14 +171,14 @@ export default function StatusMonitoring() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-xl sm:text-2xl font-bold text-green-600">
-                  {dashboardStats?.workingPercentage || 0}%
+                  {uptimePercentage}%
                 </p>
-                <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">System Health</p>
+                <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">Locally Verified Working</p>
               </div>
               <CheckCircle className="w-6 h-6 sm:w-8 sm:h-8 text-green-500" />
             </div>
             <div className="mt-2">
-              <Progress value={dashboardStats?.workingPercentage || 0} className="h-2" />
+              <Progress value={uptimePercentage} className="h-2" />
             </div>
           </CardContent>
         </Card>
@@ -234,9 +216,9 @@ export default function StatusMonitoring() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-xl sm:text-2xl font-bold text-orange-600">
-                  {performanceMetrics?.apiHealth?.requestsPerMinute?.toFixed(0) || '0'}
+                  {stations?.totals.unverified ?? '—'}
                 </p>
-                <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">Requests/Min</p>
+                <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">Health Unverified</p>
               </div>
               <BarChart3 className="w-6 h-6 sm:w-8 sm:h-8 text-orange-500" />
             </div>
@@ -256,9 +238,9 @@ export default function StatusMonitoring() {
           <CardContent>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
               <div className="text-center">
-                <Badge 
-                  variant={syncStatus.isRunning ? "default" : 
-                          syncStatus.lastSyncLog?.status === 'completed' ? "secondary" : 
+                <Badge
+                  variant={syncStatus.isRunning ? "default" :
+                          syncStatus.lastSyncLog?.status === 'completed' ? "secondary" :
                           "destructive"}
                   className="mb-2"
                 >
@@ -268,26 +250,26 @@ export default function StatusMonitoring() {
               </div>
               <div className="text-center">
                 <div className="text-lg sm:text-xl font-bold">
-                  {syncStatus.lastSyncLog?.totalStations?.toLocaleString() || 'N/A'}
+                  {syncStatus.lastSyncLog?.stationsProcessed?.toLocaleString() || 'N/A'}
                 </div>
                 <div className="text-xs sm:text-sm text-muted-foreground">Total Stations</div>
               </div>
               <div className="text-center">
                 <div className="text-lg sm:text-xl font-bold text-green-600">
-                  {syncStatus.lastSyncLog?.addedStations?.toLocaleString() || '0'}
+                  {syncStatus.lastSyncLog?.stationsAdded?.toLocaleString() || '0'}
                 </div>
                 <div className="text-xs sm:text-sm text-muted-foreground">Stations Added</div>
               </div>
               <div className="text-center">
                 <div className="text-lg sm:text-xl font-bold text-blue-600">
-                  {syncStatus.lastSyncLog?.updatedStations?.toLocaleString() || '0'}
+                  {syncStatus.lastSyncLog?.stationsUpdated?.toLocaleString() || '0'}
                 </div>
                 <div className="text-xs sm:text-sm text-muted-foreground">Stations Updated</div>
               </div>
             </div>
             {syncStatus.lastFullSync && (
               <div className="mt-3 text-xs sm:text-sm text-muted-foreground text-center">
-                Last sync: {format(new Date(syncStatus.lastFullSync), 'MMM dd, yyyy HH:mm')}
+                Last sync: {safeTime(syncStatus.lastFullSync, 'MMM dd, yyyy HH:mm')}
               </div>
             )}
           </CardContent>
@@ -311,22 +293,22 @@ export default function StatusMonitoring() {
                   <div className="flex items-center justify-between">
                     <span className="text-xs sm:text-sm">Memory Usage</span>
                     <span className="text-xs sm:text-sm font-medium">
-                      {performanceMetrics.systemHealth?.memoryUsage?.percentage || 0}%
+                      {performanceMetrics.systemHealth?.memoryUsage || 0}%
                     </span>
                   </div>
-                  <Progress 
-                    value={performanceMetrics.systemHealth?.memoryUsage?.percentage || 0} 
-                    className="h-1.5 sm:h-2" 
+                  <Progress
+                    value={performanceMetrics.systemHealth?.memoryUsage || 0}
+                    className="h-1.5 sm:h-2"
                   />
                   <div className="flex items-center justify-between">
                     <span className="text-xs sm:text-sm">CPU Usage</span>
                     <span className="text-xs sm:text-sm font-medium">
-                      {performanceMetrics.systemHealth?.cpuUsage || 0}%
+                      {performanceMetrics.systemHealth?.cpuUsage ?? '—'}%
                     </span>
                   </div>
-                  <Progress 
-                    value={performanceMetrics.systemHealth?.cpuUsage || 0} 
-                    className="h-1.5 sm:h-2" 
+                  <Progress
+                    value={performanceMetrics.systemHealth?.cpuUsage || 0}
+                    className="h-1.5 sm:h-2"
                   />
                 </div>
               </div>
@@ -334,32 +316,23 @@ export default function StatusMonitoring() {
               <div>
                 <h4 className="font-semibold text-sm sm:text-base mb-2">Database Health</h4>
                 <div className="space-y-2">
-                  <Badge variant={
-                    performanceMetrics.databaseHealth?.status === 'connected' ? 'secondary' : 
-                    performanceMetrics.databaseHealth?.status === 'error' ? 'destructive' : 'outline'
-                  }>
-                    {performanceMetrics.databaseHealth?.status || 'Unknown'}
-                  </Badge>
-                  <div className="text-xs sm:text-sm text-muted-foreground">
-                    Response Time: {performanceMetrics.databaseHealth?.responseTime || 0}ms
-                  </div>
-                  <div className="text-xs sm:text-sm text-muted-foreground">
-                    Connections: {performanceMetrics.databaseHealth?.connectionCount || 0}
-                  </div>
+                  <Badge variant="secondary">PostgreSQL</Badge>
+                  <div className="text-xs sm:text-sm text-muted-foreground">Data size: {performanceMetrics.databaseStats.dbSize}</div>
+                  <div className="text-xs sm:text-sm text-muted-foreground">Connections: {performanceMetrics.systemHealth.connectionPool}</div>
                 </div>
               </div>
 
               <div>
-                <h4 className="font-semibold text-sm sm:text-base mb-2">API Health</h4>
+                <h4 className="font-semibold text-sm sm:text-base mb-2">API Metrics (not measured)</h4>
                 <div className="space-y-2">
                   <div className="text-xs sm:text-sm text-muted-foreground">
-                    Avg Response: {performanceMetrics.apiHealth?.averageResponseTime || 0}ms
+                    Avg Response: —ms
                   </div>
                   <div className="text-xs sm:text-sm text-muted-foreground">
-                    Error Rate: {performanceMetrics.apiHealth?.errorRate || 0}%
+                    Error Rate: —%
                   </div>
                   <div className="text-xs sm:text-sm text-muted-foreground">
-                    Active Connections: {performanceMetrics.apiHealth?.activeConnections || 0}
+                    Active Connections: —
                   </div>
                 </div>
               </div>
@@ -375,13 +348,13 @@ export default function StatusMonitoring() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-xl sm:text-2xl font-bold text-green-600">{onlineStations}</p>
-                <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">Online Stations</p>
+                <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">Locally Verified Working</p>
               </div>
               <CheckCircle className="w-6 h-6 sm:w-8 sm:h-8 text-green-500" />
             </div>
             <div className="mt-2">
               <Progress value={uptimePercentage} className="h-1.5 sm:h-2" />
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{uptimePercentage}% uptime</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{uptimePercentage}% locally verified</p>
             </div>
           </CardContent>
         </Card>
@@ -391,7 +364,7 @@ export default function StatusMonitoring() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-xl sm:text-2xl font-bold text-red-600">{offlineStations}</p>
-                <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">Offline Stations</p>
+                <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">Hidden from Lists</p>
               </div>
               <WifiOff className="w-6 h-6 sm:w-8 sm:h-8 text-red-500" />
             </div>
@@ -414,8 +387,8 @@ export default function StatusMonitoring() {
           <CardContent className="p-3 sm:p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-xl sm:text-2xl font-bold text-blue-600">{recentChecks.length}</p>
-                <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">Recent Checks</p>
+                <p className="text-xl sm:text-2xl font-bold text-blue-600">{stations?.totals.recentChecks ?? 0}</p>
+                <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">Recent Local Checks</p>
               </div>
               <Activity className="w-6 h-6 sm:w-8 sm:h-8 text-blue-500" />
             </div>
@@ -448,7 +421,7 @@ export default function StatusMonitoring() {
                     <Badge variant="outline">{dashboardStats?.totalStations?.toLocaleString() || '0'}</Badge>
                   </div>
                   <div className="flex justify-between items-center">
-                    <span className="text-sm sm:text-base">Working Stations</span>
+                    <span className="text-sm sm:text-base">Source Reports Working</span>
                     <Badge variant="secondary">{dashboardStats?.workingStations?.toLocaleString() || '0'}</Badge>
                   </div>
                   <div className="flex justify-between items-center">
@@ -477,7 +450,7 @@ export default function StatusMonitoring() {
               <CardContent>
                 <div className="space-y-3 sm:space-y-4">
                   <div className="flex justify-between items-center">
-                    <span className="text-sm sm:text-base">Offline Stations</span>
+                    <span className="text-sm sm:text-base">Hidden from Lists</span>
                     <Badge variant={offlineStations > 0 ? "destructive" : "secondary"}>
                       {offlineStations}
                     </Badge>
@@ -520,7 +493,7 @@ export default function StatusMonitoring() {
               {recentChecks.length === 0 ? (
                 <div className="text-center py-8 text-muted-foreground">
                   <Clock className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                  <p>No recent status checks in the last hour</p>
+                  <p>No recorded local status checks in the last hour</p>
                 </div>
               ) : (
                 <div className="hidden sm:block">
@@ -555,12 +528,12 @@ export default function StatusMonitoring() {
                             ) : (
                               <Badge className="bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-100">
                                 <WifiOff className="w-3 h-3 mr-1" />
-                                Offline
+                                {station.availabilityStatus === 'unavailable' ? 'Hidden from lists' : 'Unverified'}
                               </Badge>
                             )}
                           </TableCell>
                           <TableCell>
-                            {format(new Date(station.lastchecktime), 'MMM dd, HH:mm')}
+                            {safeTime(station.lastchecktime, 'MMM dd, HH:mm')}
                           </TableCell>
                           <TableCell>
                             <Badge variant="outline">{station.countryCode}</Badge>
@@ -595,13 +568,13 @@ export default function StatusMonitoring() {
                         ) : (
                           <Badge className="bg-red-100 text-red-800 text-xs">
                             <WifiOff className="w-3 h-3 mr-1" />
-                            Offline
+                            {station.availabilityStatus === 'unavailable' ? 'Hidden from lists' : 'Unverified'}
                           </Badge>
                         )}
                       </div>
                       <div className="flex items-center justify-between text-xs text-muted-foreground">
                         <span>{station.codec} • {station.bitrate} kbps</span>
-                        <span>{format(new Date(station.lastchecktime), 'MMM dd, HH:mm')}</span>
+                        <span>{safeTime(station.lastchecktime, 'MMM dd, HH:mm')}</span>
                       </div>
                     </CardContent>
                   </Card>
@@ -616,7 +589,7 @@ export default function StatusMonitoring() {
             <CardHeader>
               <CardTitle className="flex items-center text-base sm:text-lg">
                 <AlertTriangle className="w-4 h-4 sm:w-5 sm:h-5 mr-2" />
-                Problem Stations ({problemStations.length})
+                Problem Stations (up to 50 shown)
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -649,12 +622,12 @@ export default function StatusMonitoring() {
                               {station.sslError ? (
                                 <Badge className="bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-100">SSL Error</Badge>
                               ) : (
-                                <Badge className="bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-100">Connection Failed</Badge>
+                                <Badge className="bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-100">Hidden from Lists</Badge>
                               )}
                             </TableCell>
                             <TableCell>
-                              {station.lastcheckoktime ? 
-                                format(new Date(station.lastcheckoktime), 'MMM dd, HH:mm') : 
+                              {station.lastcheckoktime ?
+                                safeTime(station.lastcheckoktime, 'MMM dd, HH:mm') :
                                 'Never'
                               }
                             </TableCell>
@@ -662,9 +635,9 @@ export default function StatusMonitoring() {
                               <Badge variant="outline">{station.votes}</Badge>
                             </TableCell>
                             <TableCell>
-                              <a 
-                                href={station.url} 
-                                target="_blank" 
+                              <a
+                                href={station.url}
+                                target="_blank"
                                 rel="noopener noreferrer"
                                 className="text-blue-600 hover:underline text-sm truncate max-w-48 block"
                               >
@@ -687,13 +660,13 @@ export default function StatusMonitoring() {
                             {station.sslError ? (
                               <Badge className="bg-yellow-100 text-yellow-800 text-xs">SSL Error</Badge>
                             ) : (
-                              <Badge className="bg-red-100 text-red-800 text-xs">Connection Failed</Badge>
+                              <Badge className="bg-red-100 text-red-800 text-xs">Hidden from Lists</Badge>
                             )}
                           </div>
                           <div className="text-xs text-muted-foreground space-y-1">
                             <div>Country: {station.countryCode}</div>
-                            <div>Last OK: {station.lastcheckoktime ? 
-                              format(new Date(station.lastcheckoktime), 'MMM dd, HH:mm') : 
+                            <div>Last OK: {station.lastcheckoktime ?
+                              safeTime(station.lastcheckoktime, 'MMM dd, HH:mm') :
                               'Never'
                             }</div>
                             <div>Votes: {station.votes}</div>
@@ -733,7 +706,7 @@ export default function StatusMonitoring() {
                   </div>
                 </div>
               </div>
-              
+
               <div className="hidden sm:block">
                 <Table>
                   <TableHeader>
@@ -757,7 +730,7 @@ export default function StatusMonitoring() {
                             <div className="text-sm text-gray-500">{station.countryCode}</div>
                           </TableCell>
                           <TableCell>
-                            <Badge 
+                            <Badge
                               className={station.clicktrend > 0 ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-100' : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-100'}
                             >
                               {station.clicktrend > 0 ? <TrendingUp className="w-3 h-3 mr-1" /> : <TrendingDown className="w-3 h-3 mr-1" />}
@@ -774,7 +747,7 @@ export default function StatusMonitoring() {
                             {station.lastcheckok ? (
                               <Badge className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-100">Online</Badge>
                             ) : (
-                              <Badge className="bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-100">Offline</Badge>
+                              <Badge variant="outline">{station.availabilityStatus === 'unavailable' ? 'Hidden from Lists' : 'Unverified'}</Badge>
                             )}
                           </TableCell>
                         </TableRow>
@@ -794,7 +767,7 @@ export default function StatusMonitoring() {
                       <CardContent className="p-3">
                         <div className="flex items-center justify-between mb-2">
                           <div className="font-medium text-sm truncate">{station.name}</div>
-                          <Badge 
+                          <Badge
                             className={station.clicktrend > 0 ? 'bg-green-100 text-green-800 text-xs' : 'bg-red-100 text-red-800 text-xs'}
                           >
                             {station.clicktrend > 0 ? <TrendingUp className="w-3 h-3 mr-1" /> : <TrendingDown className="w-3 h-3 mr-1" />}
@@ -807,7 +780,7 @@ export default function StatusMonitoring() {
                           {station.lastcheckok ? (
                             <Badge className="bg-green-100 text-green-800 text-xs">Online</Badge>
                           ) : (
-                            <Badge className="bg-red-100 text-red-800 text-xs">Offline</Badge>
+                            <Badge variant="outline">{station.availabilityStatus === 'unavailable' ? 'Hidden from Lists' : 'Unverified'}</Badge>
                           )}
                         </div>
                       </CardContent>

@@ -118,21 +118,15 @@ export default function AdminGenres() {
       if (filters.showDemotedOnly) {
         params.append('demoted', '1');
       }
+      if (filters.showDiscoverableOnly) params.set('discoverable', 'true');
       
       // Fetch genres from admin endpoint with server-side filtering
       const response = await fetch(`/api/admin/genres?${params}`);
       if (!response.ok) throw new Error(`Failed to fetch genres: ${response.status}`);
       const data = await response.json();
       
-      // Apply client-side discoverable filter only (search is now server-side)
-      let filteredGenres = data.data || [];
-      
-      if (filters.showDiscoverableOnly) {
-        filteredGenres = filteredGenres.filter((g: Genre) => g.isDiscoverable || g.discoverable);
-      }
-      
       return {
-        data: filteredGenres,
+        data: data.data || [],
         count: data.total,
         currentPage: data.currentPage || pagination.page,
         totalPages: data.totalPages || 1,
@@ -144,6 +138,9 @@ export default function AdminGenres() {
   const genres = genresResponse?.data || [];
   const totalGenres = genresResponse?.count || 0;
   const totalPages = genresResponse?.totalPages || 1;
+  useEffect(() => {
+    if (genresResponse && !isLoading && !error) setPagination(previous => previous.page > totalPages ? { ...previous, page: totalPages } : previous);
+  }, [genresResponse, isLoading, error, totalPages]);
 
 
   // Reset form when dialogs close
@@ -168,7 +165,7 @@ export default function AdminGenres() {
       setFormData({
         name: selectedGenre.name || "",
         description: selectedGenre.description || "",
-        discoverable: selectedGenre.discoverable || selectedGenre.isDiscoverable || false,
+        discoverable: selectedGenre.isDiscoverable ?? selectedGenre.discoverable ?? false,
         posterImage: "",
         discoverableImage: selectedGenre.discoverableImage || "",
         displayOrder: selectedGenre.displayOrder || 0
@@ -877,7 +874,7 @@ export default function AdminGenres() {
                       Real
                     </Badge>
                   </div>
-                  {(genre.discoverable || genre.isDiscoverable) ? (
+                  {(genre.isDiscoverable ?? genre.discoverable ?? false) ? (
                     <Badge variant="default">
                       <Globe className="w-3 h-3 mr-1" />
                       Discoverable

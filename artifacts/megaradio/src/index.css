@@ -2,6 +2,7 @@
 @import './styles/responsive-images.css';
 @import './styles/inline-styles-fix.css';
 @import './styles/layout-stability.css';
+@import './styles/admin-theme.css';
 
 @tailwind base;
 @tailwind components;

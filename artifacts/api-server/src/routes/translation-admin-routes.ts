@@ -670,33 +670,15 @@ ${keysText}`;
             // migration so admins can review what went dark and decide whether to
             // merge stations, rename one duplicate, or delete the row.
             const demotedOnly = req.query.demoted === '1' || req.query.demoted === 'true';
+            const discoverableOnly = req.query.discoverable === '1' || req.query.discoverable === 'true';
             // Count and page the native genre records.
-            const initialGenres = await pgListAdminGenres(search, demotedOnly, sortBy, limit, (page - 1) * limit);
+            const initialGenres = await pgListAdminGenres(search, demotedOnly, sortBy, limit, (page - 1) * limit, discoverableOnly);
             const total = initialGenres.total;
             // Get paginated genres from database (not dynamic ones generated from stations)
-            const skip = (page - 1) * limit;
             const realGenres = initialGenres.rows;
             logger.log(`📊 Found ${realGenres.length} genres (page ${page}/${Math.ceil(total / limit)}, search: "${search}")`);
-            // If no genres exist at all, populate from station tags first
-            if (total === 0 && !search && !demotedOnly) {
-                logger.log('📊 No genres found, attempting to populate from station tags...');
-                try {
-                    await populateGenresFromStations();
-                    const populated = await pgListAdminGenres(search, demotedOnly, sortBy, limit, skip);
-                    const newTotal = populated.total, newGenres = populated.rows;
-                    logger.log(`✅ Successfully populated ${newTotal} genres from station data`);
-                    return void res.json({
-                        data: newGenres,
-                        total: newTotal,
-                        currentPage: page,
-                        totalPages: Math.ceil(newTotal / limit),
-                        populated: true
-                    });
-                }
-                catch (populateError) {
-                    console.error('Failed to populate genres:', populateError);
-                }
-            }
+            // Listing must stay read-only, including an empty catalogue.
+            // Explicit sync/population actions remain available to admins.
             // Return in the format expected by the frontend
             res.json({
                 data: realGenres,

@@ -219,7 +219,7 @@ export default function AdminCoverageCountry() {
     writeRememberedCoverageRange(next);
   };
 
-  const { data: trendsData, isLoading: trendsLoading } =
+  const { data: trendsData, isLoading: trendsLoading, isError: trendsError, refetch: refreshTrends } =
     useQuery<TrendsResponse>({
       queryKey: [
         `/api/admin/coverage/trends?days=${days}&countryCode=${encodeURIComponent(code)}`,
@@ -229,7 +229,7 @@ export default function AdminCoverageCountry() {
       refetchOnWindowFocus: false,
     });
 
-  const { data: coverageData } = useQuery<CoverageResponse>({
+  const { data: coverageData, isError: coverageError, refetch: refreshCoverage } = useQuery<CoverageResponse>({
     queryKey: ['/api/admin/coverage/by-country'],
     staleTime: 60_000,
     refetchOnWindowFocus: false,
@@ -339,6 +339,8 @@ export default function AdminCoverageCountry() {
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
   };
+
+  if (trendsError || coverageError) return <div role="alert" className="p-6">Unable to load country coverage. <Button variant="outline" onClick={() => { void refreshTrends(); void refreshCoverage(); }}>Retry</Button></div>;
 
   if (!code) {
     return (

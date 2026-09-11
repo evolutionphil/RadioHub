@@ -1,5 +1,5 @@
 import { AdminPage } from "./AdminPage";
-import { useState, useEffect } from "react";
+import { Fragment, useState, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
@@ -31,14 +31,17 @@ const EMPTY_CONFIG: TvVersionConfig = {
 export default function TvVersionPage() {
   const { toast } = useToast();
   const [config, setConfig] = useState<TvVersionConfig>(EMPTY_CONFIG);
+  const [dirty, setDirty] = useState(false);
+  const dirtyRef = useRef(false);
+  const markDirty = () => { dirtyRef.current = true; setDirty(true); };
 
-  const { data, isLoading, refetch } = useQuery<TvVersionConfig>({
+  const { data, isLoading, isError, isFetching, refetch } = useQuery<TvVersionConfig>({
     queryKey: ['/api/admin/tv-version'],
     refetchOnWindowFocus: false,
   });
 
   useEffect(() => {
-    if (data) setConfig(data);
+    if (data && !dirtyRef.current) setConfig(data);
   }, [data]);
 
   const saveMutation = useMutation({
@@ -46,7 +49,11 @@ export default function TvVersionPage() {
       const r = await apiRequest('PUT', '/api/admin/tv-version', { body: cfg });
       return r.json();
     },
-    onSuccess: () => {
+    onSuccess: (saved: TvVersionConfig) => {
+      dirtyRef.current = false;
+      setDirty(false);
+      setConfig(saved);
+      queryClient.setQueryData(['/api/admin/tv-version'], saved);
       toast({ title: 'Saved', description: 'TV version config updated.' });
       queryClient.invalidateQueries({ queryKey: ['/api/admin/tv-version'] });
     },
@@ -56,15 +63,19 @@ export default function TvVersionPage() {
   });
 
   function setLatest(platform: string, value: string) {
+    markDirty();
     setConfig((c) => ({ ...c, latest: { ...c.latest, [platform]: value } }));
   }
   function setMinimum(platform: string, value: string) {
+    markDirty();
     setConfig((c) => ({ ...c, minimum: { ...c.minimum, [platform]: value } }));
   }
   function setStoreUrl(platform: string, value: string) {
+    markDirty();
     setConfig((c) => ({ ...c, storeUrl: { ...c.storeUrl, [platform]: value } }));
   }
   function setNote(lang: string, value: string) {
+    markDirty();
     setConfig((c) => ({ ...c, releaseNotes: { ...c.releaseNotes, [lang]: value } }));
   }
 
@@ -76,13 +87,17 @@ export default function TvVersionPage() {
     );
   }
 
+  if (isError || !data) return <AdminPage title="TV / App Version Config"><div role="alert" className="rounded border border-red-200 p-4">Could not load the saved version configuration. No settings can be changed until it loads. <Button disabled={isFetching} variant="outline" onClick={() => refetch()}>Retry</Button></div></AdminPage>;
+
   return (
     <AdminPage
       title="TV / App Version Config"
       description={<>Manages <code>/api/tv/version</code>. Changes apply immediately without a code deploy.{data?.updatedAt && (<span className="ml-2">Last saved: {new Date(data.updatedAt).toLocaleString()}</span>)}</>}
-      actions={<Button variant="outline" size="sm" onClick={() => refetch()}><RefreshCw className="w-4 h-4 mr-1" /> Refresh</Button>}
+      actions={<Button variant="outline" size="sm" disabled={dirty || isFetching || saveMutation.isPending} onClick={() => refetch()}><RefreshCw className="w-4 h-4 mr-1" /> Refresh</Button>}
     >
 
+      {dirty && <div role="status" className="text-sm">Unsaved changes. <Button variant="outline" size="sm" disabled={saveMutation.isPending} onClick={() => { dirtyRef.current = false; setDirty(false); setConfig(data); }}>Discard changes</Button></div>}
+      <fieldset disabled={saveMutation.isPending} className="space-y-6 min-w-0">
       {/* Version numbers */}
       <Card>
         <CardHeader>
@@ -98,10 +113,11 @@ export default function TvVersionPage() {
             <div className="text-xs font-medium text-muted-foreground uppercase">Latest (required)</div>
             <div className="text-xs font-medium text-muted-foreground uppercase">Minimum (optional)</div>
             {PLATFORMS.map((p) => (
-              <>
+              <Fragment key={p}>
                 <Label key={`lbl-${p}`} className="font-mono text-sm">{p}</Label>
                 <Input
                   key={`lat-${p}`}
+                  aria-label={`${p} latest version`}
                   value={config.latest[p] ?? ''}
                   onChange={(e) => setLatest(p, e.target.value)}
                   placeholder="e.g. 1.0.3"
@@ -109,12 +125,13 @@ export default function TvVersionPage() {
                 />
                 <Input
                   key={`min-${p}`}
+                  aria-label={`${p} minimum version`}
                   value={config.minimum[p] ?? ''}
                   onChange={(e) => setMinimum(p, e.target.value)}
                   placeholder="leave blank"
                   className="h-8 font-mono text-sm"
                 />
-              </>
+              </Fragment>
             ))}
           </div>
         </CardContent>
@@ -133,6 +150,7 @@ export default function TvVersionPage() {
             <div key={p} className="flex items-center gap-3">
               <Label className="w-24 font-mono text-sm shrink-0">{p}</Label>
               <Input
+                aria-label={`${p} store URL`}
                 value={config.storeUrl[p] ?? ''}
                 onChange={(e) => setStoreUrl(p, e.target.value)}
                 placeholder="https://..."
@@ -154,6 +172,7 @@ export default function TvVersionPage() {
             <div key={lang} className="flex items-start gap-3">
               <Label className="w-24 font-mono text-sm pt-2 shrink-0">{lang}</Label>
               <Input
+                aria-label={`${lang} release notes`}
                 value={config.releaseNotes[lang] ?? ''}
                 onChange={(e) => setNote(lang, e.target.value)}
                 placeholder={lang === 'tr' ? 'Türkçe not…' : 'English note…'}
@@ -167,7 +186,7 @@ export default function TvVersionPage() {
       <div className="flex justify-end">
         <Button
           onClick={() => saveMutation.mutate(config)}
-          disabled={saveMutation.isPending}
+          disabled={saveMutation.isPending || !dirty}
           className="min-w-32"
         >
           {saveMutation.isPending ? (
@@ -177,6 +196,7 @@ export default function TvVersionPage() {
           )}
         </Button>
       </div>
+      </fieldset>
     </AdminPage>
   );
 }

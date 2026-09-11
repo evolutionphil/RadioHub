@@ -98,6 +98,7 @@ export default function SemrushIssues() {
     mutationFn: () => apiRequest("DELETE", "/api/admin/semrush/issues").then((r) => r.json()),
     onSuccess: (data) => {
       toast({ title: "Cleared", description: data.message });
+      setPage(1);
       queryClient.invalidateQueries({ queryKey: ["/api/admin/semrush/summary"] });
       queryClient.invalidateQueries({ queryKey: ["/api/admin/semrush/issues"] });
     },
@@ -112,6 +113,7 @@ export default function SemrushIssues() {
       const csv = ev.target?.result as string;
       if (csv) importMutation.mutate(csv);
     };
+    reader.onerror = () => toast({ title: 'Import failed', description: 'The CSV file could not be read. Please select it again.', variant: 'destructive' });
     reader.readAsText(file, "utf-8");
     // Reset so the same file can be re-selected
     e.target.value = "";
@@ -123,6 +125,7 @@ export default function SemrushIssues() {
 
   return (
     <div className="mx-auto w-full max-w-[1600px] px-4 py-5 sm:px-6 sm:py-6 lg:px-8 space-y-5 sm:space-y-6">
+      {(summaryQuery.error || issuesQuery.error) && <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-900">SEMrush audit data could not load; missing results do not mean all issues are fixed. <Button size="sm" variant="outline" onClick={() => { void summaryQuery.refetch(); void issuesQuery.refetch(); }}>Retry audit data</Button></div>}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">SEMrush Site Audit Issues</h1>
@@ -257,7 +260,9 @@ export default function SemrushIssues() {
           )}
         </CardHeader>
         <CardContent className="p-0">
-          {issuesQuery.isLoading ? (
+          {issuesQuery.error ? (
+            <p className="text-sm text-red-700">Issue list unavailable. Retry the audit data above.</p>
+          ) : issuesQuery.isLoading ? (
             <div className="flex items-center justify-center h-24 text-muted-foreground">
               <Loader2 className="animate-spin h-5 w-5 mr-2" /> Loading…
             </div>

@@ -64,9 +64,9 @@ interface DashboardStats {
   recentSyncDate?: string | null;
 }
 
-type HealthLevel = 'good' | 'degraded' | 'issue';
+type HealthLevel = 'good' | 'degraded' | 'issue' | 'unknown';
 function deriveOverallHealth(h: DashboardStats['health']): HealthLevel {
-  if (!h) return 'good';
+  if (!h) return 'unknown';
   if (h.database === 'offline' || h.translations === 'empty') return 'issue';
   if (h.radioBrowser === 'offline') return 'issue';
   if (h.radioBrowser === 'stale') return 'degraded';
@@ -76,7 +76,7 @@ function deriveOverallHealth(h: DashboardStats['health']): HealthLevel {
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316'];
 
 export default function AdminDashboard() {
-  const { data: stats, isLoading } = useQuery<DashboardStats>({
+  const { data: stats, isLoading, isError, refetch } = useQuery<DashboardStats>({
     queryKey: ["/api/dashboard/stats"],
     staleTime: 30000, // Cache for 30 seconds
     refetchOnWindowFocus: false,
@@ -282,6 +282,12 @@ export default function AdminDashboard() {
     );
   }
 
+  if (isError) return <section role="alert" className="m-6 space-y-3 rounded-xl border border-red-200 p-6">
+    <h1 className="text-xl font-semibold">Admin Dashboard</h1>
+    <p>Dashboard statistics could not be loaded. System health is unknown.</p>
+    <Button onClick={() => void refetch()}>Retry</Button>
+  </section>;
+
   return (
     <div className="container mx-auto p-6 space-y-6">
       {/* Header */}
@@ -294,6 +300,7 @@ export default function AdminDashboard() {
         </div>
         {(() => {
           const level = deriveOverallHealth(stats?.health);
+          if (level === 'unknown') return <div role="status" className="rounded-md border px-3 py-1 text-sm">System status unknown</div>;
           if (level === 'good') {
             return (
               <div className="flex items-center gap-2 px-3 py-1 border border-green-300 bg-green-50 rounded-md text-sm text-green-800">

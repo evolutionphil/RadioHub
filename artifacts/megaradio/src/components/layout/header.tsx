@@ -6,9 +6,10 @@ import { AdminUserMenuDropdown } from "@/components/ui/AdminUserMenuDropdown";
 
 interface HeaderProps {
   onMobileMenuToggle: () => void;
+  isMobileMenuOpen?: boolean;
 }
 
-export default function Header({ onMobileMenuToggle }: HeaderProps) {
+export default function Header({ onMobileMenuToggle, isMobileMenuOpen = false }: HeaderProps) {
   const { data: stats, isError, isLoading } = useQuery({
     queryKey: ['/api/dashboard/stats'],
     queryFn: () => api.getDashboardStats(),
@@ -39,15 +40,17 @@ export default function Header({ onMobileMenuToggle }: HeaderProps) {
               size="sm"
               onClick={onMobileMenuToggle}
               className="md:hidden inline-flex items-center justify-center p-3 -m-1 min-h-[48px] min-w-[48px] rounded-md text-gray-400 hover:text-gray-500 hover:bg-gray-100"
-              aria-label="Open menu"
+              aria-label={isMobileMenuOpen ? 'Close menu' : 'Open menu'}
+              aria-expanded={isMobileMenuOpen}
+              aria-controls="admin-mobile-navigation"
             >
               <Menu className="w-5 h-5" />
             </Button>
             
             {/* Page title */}
-            <h2 className="ml-4 md:ml-0 text-base sm:text-lg font-semibold text-gray-900 truncate">
-              Radio Station Management
-            </h2>
+            <span className="ml-4 md:ml-0 text-base sm:text-lg font-semibold text-gray-900 truncate">
+              Administration
+            </span>
           </div>
           
           {/* Header actions */}
@@ -56,13 +59,13 @@ export default function Header({ onMobileMenuToggle }: HeaderProps) {
             <div className="flex items-center text-sm text-gray-500">
               <Circle 
                 className={`w-2 h-2 mr-1 sm:mr-2 ${
-                  stats?.syncStatus.isRunning 
+                  stats?.syncStatus?.isRunning
                     ? 'text-warning fill-current' 
                     : 'text-accent fill-current'
                 }`} 
               />
               <span className="hidden sm:inline">
-                {stats?.syncStatus.isRunning 
+                {stats?.syncStatus?.isRunning
                   ? 'Sync in progress...' 
                   : isLoading ? 'Loading sync status…' : isError ? 'Sync status unavailable'
                   : `Last sync: ${formatLastSync(stats?.syncStatus?.lastSync || stats?.syncStatus?.lastFullSync || null)}`

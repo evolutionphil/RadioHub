@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -9,6 +9,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Image, RefreshCw, Play, Square, CheckCircle, XCircle, Clock, Loader2, ChevronLeft, ChevronRight, AlertTriangle, ExternalLink } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { apiRequest } from '@/lib/queryClient';
+import { isTerminalLogoJob } from '@/lib/admin-operations';
 
 interface LogoStats {
   totalStations: number;
@@ -110,18 +111,19 @@ export default function LogoManagement() {
   const [missingFilter, setMissingFilter] = useState<MissingFilter>('any');
   const [missingCountry, setMissingCountry] = useState('');
   const [failureFilter, setFailureFilter] = useState<FailureType>('any');
+  const dismissedJobs = useRef(new Set<string>());
 
   const { data: storageHealth } = useQuery<StorageHealth>({
     queryKey: ['/api/admin/logos/storage-health'],
     refetchInterval: 60_000,
   });
 
-  const { data: failedLogs, refetch: refetchFailed } = useQuery<FailedLogsResponse>({
+  const { data: failedLogs, refetch: refetchFailed, isError: failedLogsError } = useQuery<FailedLogsResponse>({
     queryKey: ['/api/admin/logos/failed', failureFilter],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const params = new URLSearchParams({ limit: '200' });
       if (failureFilter !== 'any') params.set('failureType', failureFilter);
-      const r = await fetch(`/api/admin/logos/failed?${params}`);
+      const r = await apiRequest('GET', `/api/admin/logos/failed?${params}`, { signal });
       if (!r.ok) throw new Error('Failed to load');
       return r.json();
     },
@@ -156,20 +158,21 @@ export default function LogoManagement() {
   });
 
   useEffect(() => {
-    if (activeJobData?.hasActiveJob && activeJobData.job && !currentJobId) {
+    if (activeJobData?.hasActiveJob && activeJobData.job && !isTerminalLogoJob(activeJobData.job.status) && !dismissedJobs.current.has(activeJobData.job.jobId) && !currentJobId) {
       setCurrentJobId(activeJobData.job.jobId);
     }
   }, [activeJobData, currentJobId]);
 
-  const { data: stats, isLoading: statsLoading, refetch: refetchStats } = useQuery<LogoStats>({
+  const { data: stats, isLoading: statsLoading, isError: statsError, refetch: refetchStats } = useQuery<LogoStats>({
     queryKey: ['/api/admin/logos/stats'],
     refetchInterval: currentJobId ? 5000 : false
   });
 
-  const { data: jobStatus, refetch: refetchJob } = useQuery<LogoJob>({
+  const { data: jobStatus, isError: jobError, refetch: refetchJob } = useQuery<LogoJob>({
     queryKey: ['/api/admin/logos/job-status', currentJobId],
     enabled: !!currentJobId,
-    refetchInterval: currentJobId ? 2000 : false
+    refetchInterval: (query) => query.state.status === 'error' || isTerminalLogoJob(query.state.data?.status) ? false : 2000,
+    retry: false,
   });
 
   const { data: optimizedStations, isLoading: optimizedLoading, isFetching: optimizedFetching } = useQuery<{ stations: OptimizedStation[]; total: number }>({
@@ -196,8 +199,8 @@ export default function LogoManagement() {
     page: number;
   }>({
     queryKey: ['/api/admin/logos/missing', missingQueryString],
-    queryFn: async () => {
-      const r = await apiRequest('GET', `/api/admin/logos/missing?${missingQueryString}`);
+    queryFn: async ({ signal }) => {
+      const r = await apiRequest('GET', `/api/admin/logos/missing?${missingQueryString}`, { signal });
       return r.json();
     },
     enabled: showMissingModal,
@@ -291,24 +294,30 @@ export default function LogoManagement() {
       const response = await apiRequest('POST', `/api/admin/logos/job/${jobId}/cancel`, {});
       return response.json();
     },
-    onSuccess: () => {
+    onSuccess: (_data, jobId) => {
       toast({
         title: "Job cancelled",
         description: "Logo processing has been stopped"
       });
-      setCurrentJobId(null);
+      dismissedJobs.current.add(jobId);
+      setCurrentJobId(current => current === jobId ? null : current);
       refetchStats();
-    }
+    },
+    onError: (error: Error) => toast({ title: 'Could not cancel job', description: error.message, variant: 'destructive' }),
   });
 
   useEffect(() => {
-    if (jobStatus?.status === 'completed' || jobStatus?.status === 'failed' || jobStatus?.status === 'cancelled' || jobStatus?.status === 'lost') {
-      setTimeout(() => {
-        setCurrentJobId(null);
+    if (currentJobId && isTerminalLogoJob(jobStatus?.status)) {
+      const finishedId = currentJobId;
+      dismissedJobs.current.add(finishedId);
+      const timer = setTimeout(() => {
+        setCurrentJobId(current => current === finishedId ? null : current);
         refetchStats();
       }, 3000);
+      return () => clearTimeout(timer);
     }
-  }, [jobStatus?.status]);
+    return undefined;
+  }, [currentJobId, jobStatus?.status, refetchStats]);
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -337,6 +346,8 @@ export default function LogoManagement() {
 
   return (
     <div className="mx-auto w-full max-w-[1600px] px-4 py-5 sm:px-6 sm:py-6 lg:px-8 space-y-5 sm:space-y-6">
+      {(statsError || failedLogsError) && <p role="alert" className="text-destructive">Some logo data could not be loaded. <Button variant="outline" onClick={() => { void refetchStats(); void refetchFailed(); }}>Retry</Button></p>}
+      {jobError && <p role="alert" className="text-destructive">Job status is unavailable; the worker may still be running. <Button variant="outline" onClick={() => void refetchJob()}>Retry status</Button></p>}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2" data-testid="text-page-title">

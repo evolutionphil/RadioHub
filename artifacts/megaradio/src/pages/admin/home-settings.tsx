@@ -25,11 +25,9 @@ export default function HomeSettings() {
                 <p className="text-sm text-gray-600 mb-4">
                   Configure which genres appear in the "Discover Genres" carousel on the homepage. Control images, labels, and visibility.
                 </p>
-                <Link href="/admin/genres">
-                  <Button variant="outline" className="w-full">
+                  <Button variant="outline" className="w-full" asChild><Link href="/admin/genres">
                     Manage Genres
-                  </Button>
-                </Link>
+                  </Link></Button>
               </CardContent>
             </Card>
 
@@ -50,11 +48,9 @@ export default function HomeSettings() {
                 <p className="text-sm text-gray-600 mb-4">
                   Add, edit, or remove social media links displayed in the footer. Control platform, URL, and visibility.
                 </p>
-                <Link href="/admin/footer-social-media">
-                  <Button variant="outline" className="w-full">
+                  <Button variant="outline" className="w-full" asChild><Link href="/admin/footer-social-media">
                     Manage Social Media
-                  </Button>
-                </Link>
+                  </Link></Button>
               </CardContent>
             </Card>
           </div>

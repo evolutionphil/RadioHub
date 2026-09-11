@@ -2,6 +2,7 @@ import { Fragment, useEffect, useRef, useState } from "react";
 import { Link } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { adminRunningPoll } from "@/lib/admin-content-state";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -272,7 +273,7 @@ export default function SeoMaintenancePage() {
 
   const tagsJobQuery = useQuery<{ job: BackfillJob | null }>({
     queryKey: ["/api/admin/maintenance/tags-backfill/status"],
-    refetchInterval: (q) => (q.state.data?.job?.isRunning ? 2000 : false),
+    refetchInterval: (q) => adminRunningPoll(q.state, q.state.data?.job?.isRunning, 2000),
   });
 
   const startTags = useMutation({
@@ -322,7 +323,7 @@ export default function SeoMaintenancePage() {
 
   const scheduledStatusQuery = useQuery<ScheduledBackfillStatusResponse>({
     queryKey: ["/api/admin/maintenance/scheduled-backfill/status"],
-    refetchInterval: (q) => (q.state.data?.status?.isRunning ? 3000 : false),
+    refetchInterval: (q) => adminRunningPoll(q.state, q.state.data?.status?.isRunning, 3000),
   });
 
   const initialDeepLinkRunId =
@@ -362,8 +363,7 @@ export default function SeoMaintenancePage() {
     },
     // Auto-refresh while a sweep is in flight so a freshly-finished run
     // appears in the table without a manual reload.
-    refetchInterval: () =>
-      scheduledStatusQuery.data?.status?.isRunning ? 5000 : false,
+    refetchInterval: (q) => adminRunningPoll(q.state, !scheduledStatusQuery.isError && scheduledStatusQuery.data?.status?.isRunning, 5000),
   });
 
   // Task #222: a deep link like ?runId=<id> can point to a run older
@@ -589,7 +589,7 @@ export default function SeoMaintenancePage() {
       if (!res.ok) throw new Error("failed");
       return res.json();
     },
-    refetchInterval: 60000,
+    refetchInterval: query => query.state.status === 'error' ? false : 60000,
   });
 
   // ONE-SHOT BACKFILL (2026-05-09): bumps every Station.updatedAt to NOW so
@@ -601,7 +601,7 @@ export default function SeoMaintenancePage() {
   // ONCE. Calls POST /api/admin/sitemap/touch-stations which also force-
   // rebuilds the manifests + purges caches + fires IndexNow ping.
   const touchStations = useMutation({
-    mutationFn: async () => apiRequest("POST", "/api/admin/sitemap/touch-stations", {}),
+    mutationFn: async () => (await apiRequest("POST", "/api/admin/sitemap/touch-stations", {})).json(),
     onSuccess: (data: any) => {
       const modified = data?.modifiedStations ?? 0;
       const matched = data?.matchedStations ?? 0;
@@ -654,7 +654,7 @@ export default function SeoMaintenancePage() {
     defaultBatchSize: number;
   }>({
     queryKey: ["/api/admin/gsc-inspection/status"],
-    refetchInterval: 30_000,
+    refetchInterval: query => query.state.status === 'error' ? false : 30_000,
   });
 
   // 2026-05-15: Station sync manual trigger. Same code path as the
@@ -673,11 +673,11 @@ export default function SeoMaintenancePage() {
     };
   }>({
     queryKey: ["/api/admin/sync/status"],
-    refetchInterval: 15_000,
+    refetchInterval: query => query.state.status === 'error' ? false : 15_000,
   });
 
   const rebuildSitemap = useMutation({
-    mutationFn: async () => apiRequest("POST", "/api/admin/sitemap/rebuild", {}),
+    mutationFn: async () => (await apiRequest("POST", "/api/admin/sitemap/rebuild", {})).json(),
     onSuccess: (data: any) => {
       const built = data?.built;
       const langs = Array.isArray(data?.qualifiedLanguages) ? data.qualifiedLanguages.length : 0;
@@ -703,7 +703,7 @@ export default function SeoMaintenancePage() {
 
   const stripSuffixJobQuery = useQuery<{ job: StripSuffixJob | null }>({
     queryKey: ["/api/admin/maintenance/descriptions/strip-suffix/status"],
-    refetchInterval: (q) => q.state.data?.job?.isRunning ? 2000 : false,
+    refetchInterval: (q) => adminRunningPoll(q.state, q.state.data?.job?.isRunning, 2000),
   });
 
   const startStripSuffix = useMutation({
@@ -714,7 +714,7 @@ export default function SeoMaintenancePage() {
 
   const fillTemplatesJobQuery = useQuery<{ job: FillTemplatesJob | null }>({
     queryKey: ["/api/admin/maintenance/descriptions/fill-templates/status"],
-    refetchInterval: (q) => q.state.data?.job?.isRunning ? 2000 : false,
+    refetchInterval: (q) => adminRunningPoll(q.state, q.state.data?.job?.isRunning, 2000),
   });
 
   const startFillTemplates = useMutation({
@@ -752,6 +752,15 @@ export default function SeoMaintenancePage() {
         <h1 className="text-2xl font-bold text-slate-900">SEO Maintenance</h1>
         <p className="text-sm text-slate-600 mt-1">İçerik eksiklikleri, bozuk stream'ler ve indexability kuralları için kontrol paneli.</p>
       </div>
+      {[tagsJobQuery, scheduledStatusQuery, stripSuffixJobQuery, fillTemplatesJobQuery, gscStatusQuery, stationSyncStatusQuery].some(query => query.isError) &&
+        <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-900">
+          Some maintenance statuses could not load. Cached progress may be out of date.
+          <Button size="sm" variant="outline" className="ml-2" onClick={() => {
+            for (const query of [tagsJobQuery, scheduledStatusQuery, stripSuffixJobQuery, fillTemplatesJobQuery, gscStatusQuery, stationSyncStatusQuery]) {
+              if (query.isError) void query.refetch();
+            }
+          }}>Retry status</Button>
+        </div>}
 
       {/* Country filter */}
       <Card className="bg-white">

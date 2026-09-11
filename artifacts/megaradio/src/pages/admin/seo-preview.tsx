@@ -36,9 +36,9 @@ const LANGUAGES = SEO_LANGUAGES
 export default function SeoPreview() {
   const [selectedLanguage, setSelectedLanguage] = useState('en');
 
-  const url = selectedLanguage === 'en' ? '/' : `/${selectedLanguage}`;
+  const url = `/${selectedLanguage}`;
   
-  const { data: seoData, isLoading } = useQuery<SeoData>({
+  const { data: seoData, isLoading, error, isFetching } = useQuery<SeoData>({
     queryKey: ['/api/seo/page-data', { url }],
   });
 
@@ -96,6 +96,7 @@ export default function SeoPreview() {
                 variant="outline"
                 size="sm"
                 data-testid="button-refresh"
+                disabled={isFetching}
               >
                 <RefreshCw className="h-4 w-4 mr-2" />
                 Refresh
@@ -111,7 +112,9 @@ export default function SeoPreview() {
               <span className="ml-3 text-muted-foreground">Loading SEO data...</span>
             </CardContent>
           </Card>
-        ) : seoData ? (
+        ) : error ? (
+          <Card><CardContent role="alert" className="py-8 text-red-700">SEO metadata could not load. This is not an empty SEO configuration. Use Refresh to try again.</CardContent></Card>
+        ) : seoData?.seoTags ? (
           <>
             <Card>
               <CardHeader>

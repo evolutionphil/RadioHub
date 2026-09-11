@@ -4,15 +4,27 @@ import { fireEvent, render, screen } from '@testing-library/react';
 const state = vi.hoisted(() => ({ location: '/admin/stations' }));
 vi.mock('wouter', () => ({
   useLocation: () => [state.location, vi.fn()],
-  Link: ({ children, href }: { children: React.ReactNode; href: string }) => <a href={href} onClick={event => event.preventDefault()}>{children}</a>,
+  Link: ({ children, href, onClick, ...props }: any) => <a {...props} href={href} onClick={event => { event.preventDefault(); onClick?.(event); }}>{children}</a>,
 }));
 import Sidebar from '../src/components/layout/sidebar';
 
-const groupButtons = (name: string) => screen.getAllByRole('button', { name, exact: true });
+const groupButtons = (name: string) => screen.getAllByRole('button', { name, exact: true, hidden: true });
 const expectExpanded = (name: string, expanded: boolean) => groupButtons(name).forEach(button => expect(button).toHaveAttribute('aria-expanded', String(expanded)));
 beforeEach(() => { state.location = '/admin/stations'; });
 
 describe('admin sidebar route-aware expansion', () => {
+  it('hides the closed mobile navigation and supports Escape to close it', () => {
+    const close = vi.fn(); const { rerender } = render(<Sidebar isMobileMenuOpen={false} setIsMobileMenuOpen={close} />);
+    expect(document.getElementById('admin-mobile-navigation')).toHaveAttribute('inert');
+    expect(screen.getAllByRole('link', { name: 'All Stations' })).toHaveLength(1);
+    rerender(<Sidebar isMobileMenuOpen setIsMobileMenuOpen={close} />);
+    fireEvent.keyDown(document, { key: 'Escape' }); expect(close).toHaveBeenCalledWith(false);
+  });
+  it('does not mark a route prefix sibling active', () => {
+    state.location = '/admin/coverage/compare'; render(<Sidebar isMobileMenuOpen={false} setIsMobileMenuOpen={vi.fn()} />);
+    expect(screen.getByRole('link', { name: 'SEO Coverage' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('link', { name: 'SEO Preview' })).not.toHaveAttribute('aria-current');
+  });
   it('allows the active group to collapse and keeps it collapsed on ordinary rerenders', () => {
     const close = vi.fn();
     const { rerender } = render(<Sidebar isMobileMenuOpen={false} setIsMobileMenuOpen={close} />);

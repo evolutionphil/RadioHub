@@ -5,6 +5,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { AudioLines, Search } from "lucide-react";
 import { useState } from "react";
+import { apiRequest } from '@/lib/queryClient';
+import { Button } from '@/components/ui/button';
 
 interface Codec {
   _id: string;
@@ -15,11 +17,11 @@ interface Codec {
 export default function Codecs() {
   const [searchTerm, setSearchTerm] = useState("");
 
-  const { data: codecs, isLoading } = useQuery<Codec[]>({
+  const { data: codecs, isLoading, isError, refetch } = useQuery<Codec[]>({
     queryKey: ['/api/codecs'],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       // Fetching codecs with station counts
-      const response = await fetch('/api/codecs');
+      const response = await apiRequest('GET', '/api/codecs', { signal });
       if (!response.ok) throw new Error('Failed to fetch codecs');
       const data = await response.json();
       // Codecs response
@@ -32,6 +34,8 @@ export default function Codecs() {
   );
 
   const totalStations = codecs?.reduce((sum, codec) => sum + codec.stationCount, 0) || 0;
+
+  if (isError) return <div role="alert" className="p-6">Unable to load codecs. <Button onClick={() => void refetch()} variant="outline">Retry</Button></div>;
 
   if (isLoading) {
     return (

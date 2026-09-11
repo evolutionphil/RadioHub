@@ -7,6 +7,8 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Progress } from '@/components/ui/progress';
 import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
+import { apiRequest } from '@/lib/queryClient';
+import { pollAdminOperation } from '@/lib/admin-operations';
 import {
   Zap,
   Database,
@@ -88,20 +90,27 @@ export default function AdminPerformance() {
   const [cacheClearResult, setCacheClearResult] = useState<CacheClearResponse | null>(null);
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const activeIntervalsRef = useRef<Map<string, ReturnType<typeof setInterval>>>(new Map());
+  const activePollsRef = useRef<Map<string, () => void>>(new Map());
+  const [starting, setStarting] = useState(false);
+  const startingRef = useRef(false);
+  const mountedRef = useRef(true);
+  const batchRef = useRef(false);
+  const [runningBatch, setRunningBatch] = useState(false);
 
   useEffect(() => {
+    mountedRef.current = true;
     return () => {
-      activeIntervalsRef.current.forEach(id => clearInterval(id));
-      activeIntervalsRef.current.clear();
+      mountedRef.current = false;
+      activePollsRef.current.forEach(stop => stop());
+      activePollsRef.current.clear();
     };
   }, []);
 
   // Optimized metrics fetching with React Query
-  const { data: metrics, isLoading, refetch: fetchMetrics } = useQuery<PerformanceMetrics>({
+  const { data: metrics, isLoading, isError: metricsError, refetch: fetchMetrics } = useQuery<PerformanceMetrics>({
     queryKey: ['/api/admin/performance/metrics'],
-    queryFn: async () => {
-      const response = await fetch('/api/admin/performance/metrics');
+    queryFn: async ({ signal }) => {
+      const response = await apiRequest('GET', '/api/admin/performance/metrics', { signal });
       if (!response.ok) throw new Error('Failed to fetch metrics');
       return response.json();
     },
@@ -111,10 +120,10 @@ export default function AdminPerformance() {
   });
 
   // Fetch Web Vitals from Cloudflare
-  const { data: webVitals, isLoading: webVitalsLoading, refetch: fetchWebVitals } = useQuery<WebVitalsData>({
+  const { data: webVitals, isLoading: webVitalsLoading, isError: vitalsError, refetch: fetchWebVitals } = useQuery<WebVitalsData>({
     queryKey: ['/api/admin/performance/web-vitals'],
-    queryFn: async () => {
-      const response = await fetch('/api/admin/performance/web-vitals');
+    queryFn: async ({ signal }) => {
+      const response = await apiRequest('GET', '/api/admin/performance/web-vitals', { signal });
       if (!response.ok) throw new Error('Failed to fetch Web Vitals');
       return response.json();
     },
@@ -123,15 +132,17 @@ export default function AdminPerformance() {
     refetchInterval: 300000, // Auto-refresh every 5 minutes
   });
 
-  const runOptimization = async (type: string, action: string) => {
+  const runOptimization = async (type: string, action: string, confirmedCleanup = false) => {
+    if (startingRef.current) return;
+    if (action === 'remove_orphaned_data' && !confirmedCleanup && !window.confirm('This cleanup permanently deletes stations with missing names, stream URLs or countries. Continue?')) return;
+    startingRef.current = true;
+    setStarting(true);
     try {
-      const response = await fetch('/api/admin/performance/optimize', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type, action })
-      });
+      const response = await apiRequest('POST', '/api/admin/performance/optimize', { body: { type, action } });
       
       const result = await response.json();
+      if (!mountedRef.current) return;
+      if (result.success !== true) throw new Error(result.message || 'Optimization could not be started');
       if (result.success) {
         const job: OptimizationJob = {
           id: result.jobId || `${type}-${Date.now()}`,
@@ -147,8 +158,7 @@ export default function AdminPerformance() {
           pollOptimizationJob(result.jobId);
         } else {
           // Immediate result
-          setTimeout(() => {
-            setOptimizationJobs(prev => 
+            setOptimizationJobs(prev =>
               prev.map(j => j.id === job.id ? {
                 ...j,
                 status: 'completed',
@@ -157,21 +167,24 @@ export default function AdminPerformance() {
                 results: result.results
               } : j)
             );
-            handleRefreshMetrics(); // Refresh metrics
-          }, 1000);
+            handleRefreshMetrics();
         }
       }
     } catch (error) {
-      // Failed to run optimization
+      toast({ title: 'Optimization failed', description: error instanceof Error ? error.message : 'Unable to start optimization', variant: 'destructive' });
+    } finally {
+      startingRef.current = false;
+      setStarting(false);
     }
   };
 
   const pollOptimizationJob = (jobId: string) => {
-    const intervalId = setInterval(async () => {
-      try {
-        const response = await fetch(`/api/admin/performance/jobs/${jobId}`);
-        const job = await response.json();
-
+    activePollsRef.current.get(jobId)?.();
+    const stop = pollAdminOperation<{ success: boolean; job: OptimizationJob }>({
+      url: `/api/admin/performance/jobs/${encodeURIComponent(jobId)}`,
+      onData: (payload) => {
+        const job = payload.job;
+        if (!payload.success || !job || !['running', 'completed', 'failed'].includes(job.status)) throw new Error('Invalid optimization status response');
         setOptimizationJobs(prev =>
           prev.map(j => j.id === jobId ? {
             ...j,
@@ -183,33 +196,39 @@ export default function AdminPerformance() {
         );
 
         if (job.status === 'completed' || job.status === 'failed') {
-          clearInterval(intervalId);
-          activeIntervalsRef.current.delete(jobId);
+          activePollsRef.current.delete(jobId);
           if (job.status === 'completed') {
             handleRefreshMetrics();
           }
         }
-      } catch (_error) {
-        clearInterval(intervalId);
-        activeIntervalsRef.current.delete(jobId);
-      }
-    }, 1000);
-    activeIntervalsRef.current.set(jobId, intervalId);
+      },
+      isTerminal: ({ job }) => job.status !== 'running',
+      onError: (error) => {
+        activePollsRef.current.delete(jobId);
+        setOptimizationJobs(prev => prev.map(j => j.id === jobId ? { ...j, status: 'failed', message: `Status unavailable: ${error.message}. The server job may still be running; do not repeat it blindly.` } : j));
+      },
+    });
+    activePollsRef.current.set(jobId, stop);
   };
 
   const runFullOptimization = async () => {
+    if (batchRef.current || startingRef.current) return;
+    if (!window.confirm('Full optimization includes permanently deleting stations with missing names, stream URLs or countries. Continue?')) return;
+    batchRef.current = true;
+    setRunningBatch(true);
     const optimizations = [
       { type: 'indexes', action: 'create_missing_indexes' },
       { type: 'cleanup', action: 'remove_orphaned_data' },
       { type: 'cache', action: 'warm_cache' },
-      { type: 'query', action: 'optimize_slow_queries' }
+      { type: 'query', action: 'analyze_performance' }
     ];
 
-    for (const opt of optimizations) {
-      await runOptimization(opt.type, opt.action);
-      // Small delay between optimizations
-      await new Promise(resolve => setTimeout(resolve, 500));
-    }
+    try {
+      for (const opt of optimizations) {
+        if (!mountedRef.current) break;
+        await runOptimization(opt.type, opt.action, true);
+      }
+    } finally { batchRef.current = false; if (mountedRef.current) setRunningBatch(false); }
   };
 
   // Remove useEffect since React Query handles initial fetching
@@ -265,10 +284,7 @@ export default function AdminPerformance() {
   const handleClearSeoCaches = async () => {
     setCacheClearLoading(true);
     try {
-      const response = await fetch('/api/admin/cache/clear-seo', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
-      });
+      const response = await apiRequest('POST', '/api/admin/cache/clear-seo');
       
       if (!response.ok) throw new Error('Failed to clear SEO caches');
       
@@ -292,6 +308,7 @@ export default function AdminPerformance() {
 
   return (
     <div className="mx-auto w-full max-w-[1600px] px-4 py-5 sm:px-6 sm:py-6 lg:px-8 space-y-5 sm:space-y-6">
+      {(metricsError || vitalsError) && <Alert variant="destructive"><AlertDescription>{metricsError ? 'Performance metrics could not be loaded. ' : ''}{vitalsError ? 'Web Vitals could not be loaded. ' : ''}Refresh to retry; missing data is not a zero measurement.</AlertDescription></Alert>}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">Performance Optimization</h1>
@@ -311,7 +328,7 @@ export default function AdminPerformance() {
           </Button>
           <Button 
             onClick={runFullOptimization}
-            disabled={isLoading || optimizationJobs.some(j => j.status === 'running')}
+            disabled={runningBatch || starting || isLoading || optimizationJobs.some(j => j.status === 'running')}
             className="flex items-center gap-2"
           >
             <Zap className="h-4 w-4" />
@@ -581,7 +598,7 @@ export default function AdminPerformance() {
             <div className="border rounded-lg p-4">
               <h4 className="font-medium mb-2">Manual Cache Clear</h4>
               <p className="text-sm text-muted-foreground mb-4">
-                Clear all SEO-related caches (server + Cloudflare) to force Google to crawl fresh content
+                Clear server SEO caches so subsequent requests can receive fresh content. This does not request or guarantee a Google recrawl.
               </p>
               <Button
                 onClick={handleClearSeoCaches}

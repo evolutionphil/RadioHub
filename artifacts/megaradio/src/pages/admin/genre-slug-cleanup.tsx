@@ -79,7 +79,7 @@ export default function AdminGenreSlugCleanupPage() {
       return res.json();
     },
     refetchInterval: (q) =>
-      q.state.data?.status?.isRunning ? 5000 : false,
+      q.state.status !== 'error' && q.state.data?.status?.isRunning ? 5000 : false,
   });
 
   // Task #263: kick off the same sweep the Sun 05:00 cron runs. The
@@ -118,7 +118,7 @@ export default function AdminGenreSlugCleanupPage() {
   const threshold = data?.alertThreshold ?? 5;
   const status = data?.status;
   const isRunning = !!status?.isRunning;
-  const runDisabled = isRunning || runNowMutation.isPending;
+  const runDisabled = isRunning || runNowMutation.isPending || runsQuery.isLoading || Boolean(runsQuery.error);
 
   return (
     <div className="mx-auto w-full max-w-[1600px] px-4 py-5 sm:px-6 sm:py-6 lg:px-8 space-y-5 sm:space-y-6">

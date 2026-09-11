@@ -333,14 +333,15 @@ export default function GscInspectionPage() {
       queryClient.invalidateQueries({ queryKey: ['/api/admin/gsc-inspection/oauth/status'] });
       window.history.replaceState({}, '', window.location.pathname);
     } else if (oauthError) {
-      toast({ title: 'OAuth failed', description: decodeURIComponent(oauthError), variant: 'destructive' });
+      // URLSearchParams has already decoded the value (including literal %).
+      toast({ title: 'OAuth failed', description: oauthError, variant: 'destructive' });
       window.history.replaceState({}, '', window.location.pathname);
     }
   }, []);
 
-  const { data: oauthStatus } = useQuery<OAuthStatus>({
+  const { data: oauthStatus, error: oauthError } = useQuery<OAuthStatus>({
     queryKey: ['/api/admin/gsc-inspection/oauth/status'],
-    refetchInterval: 60_000,
+    refetchInterval: query => query.state.status === 'error' ? false : 60_000,
   });
 
   const connectOAuth = useMutation({
@@ -371,17 +372,17 @@ export default function GscInspectionPage() {
     onError: (e: Error) => toast({ title: 'Disconnect failed', description: e.message, variant: 'destructive' }),
   });
 
-  const { data: status, isLoading: statusLoading } = useQuery<StatusResponse>({
+  const { data: status, isLoading: statusLoading, error: statusError } = useQuery<StatusResponse>({
     queryKey: ['/api/admin/gsc-inspection/status'],
-    refetchInterval: 30_000,
+    refetchInterval: query => query.state.status === 'error' ? false : 30_000,
   });
 
-  const { data: stats } = useQuery<StatsResponse>({
+  const { data: stats, error: statsError } = useQuery<StatsResponse>({
     queryKey: ['/api/admin/gsc-inspection/stats'],
-    refetchInterval: 30_000,
+    refetchInterval: query => query.state.status === 'error' ? false : 30_000,
   });
 
-  const { data: urls, isLoading: urlsLoading } = useQuery<UrlsResponse>({
+  const { data: urls, isLoading: urlsLoading, error: urlsError } = useQuery<UrlsResponse>({
     queryKey: [
       '/api/admin/gsc-inspection/urls',
       { language, group, state, search, noindexFilter, page },
@@ -403,14 +404,14 @@ export default function GscInspectionPage() {
     },
   });
 
-  const { data: noindexBreakdown } = useQuery<NoindexBreakdownResponse>({
+  const { data: noindexBreakdown, error: noindexError } = useQuery<NoindexBreakdownResponse>({
     queryKey: ['/api/admin/gsc-inspection/noindex-breakdown'],
     queryFn: async () => {
       const r = await fetch('/api/admin/gsc-inspection/noindex-breakdown');
       if (!r.ok) throw new Error('Failed to load noindex breakdown');
       return r.json();
     },
-    refetchInterval: 60_000,
+    refetchInterval: query => query.state.status === 'error' ? false : 60_000,
   });
 
   const refreshBatch = useMutation({
@@ -466,7 +467,7 @@ export default function GscInspectionPage() {
     },
   });
 
-  const { data: trends, isLoading: trendsLoading } = useQuery<TrendsResponse>({
+  const { data: trends, isLoading: trendsLoading, error: trendsError } = useQuery<TrendsResponse>({
     queryKey: [
       '/api/admin/gsc-inspection/trends',
       { days: trendDays, language: trendLanguage, group: trendGroup },
@@ -482,7 +483,7 @@ export default function GscInspectionPage() {
       if (!r.ok) throw new Error('Failed to load trends');
       return r.json();
     },
-    refetchInterval: 60_000,
+    refetchInterval: query => query.state.status === 'error' ? false : 60_000,
   });
 
   const recordSnapshot = useMutation({
@@ -601,6 +602,12 @@ export default function GscInspectionPage() {
   return (
     <div className="mx-auto w-full max-w-[1600px] px-4 py-5 sm:px-6 sm:py-6 lg:px-8 space-y-5 sm:space-y-6">
       <div className="max-w-7xl mx-auto space-y-6">
+        {(oauthError || statusError || statsError || urlsError || noindexError || trendsError) && <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-900">
+          Some Search Console data could not load. Missing or cached results are not a fresh inspection.
+          <Button size="sm" variant="outline" className="ml-2" onClick={() => {
+            void queryClient.invalidateQueries({ predicate: query => String(query.queryKey[0]).startsWith('/api/admin/gsc-inspection/') });
+          }}>Retry data</Button>
+        </div>}
         <div>
           <h1 className="text-3xl font-bold mb-2">GSC URL Inspection</h1>
           <p className="text-gray-500">

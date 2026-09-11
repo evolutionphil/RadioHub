@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { RefreshCw, AlertTriangle, CheckCircle, XCircle, Clock, Wifi, Volume2 } from 'lucide-react';
+import { apiRequest } from '@/lib/queryClient';
 
 interface ErrorLog {
   _id: string;
@@ -63,9 +64,9 @@ export function AdminErrorLogs() {
   const [resolved, setResolved] = useState('');
   const [stationSearch, setStationSearch] = useState('');
 
-  const { data, isLoading, refetch } = useQuery<ErrorLogsResponse>({
+  const { data, isLoading, isError, refetch } = useQuery<ErrorLogsResponse>({
     queryKey: ['/api/admin/error-logs', page, errorType, resolved, stationSearch],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const params = new URLSearchParams();
       params.set('page', page.toString());
       params.set('limit', '20');
@@ -73,7 +74,7 @@ export function AdminErrorLogs() {
       if (resolved) params.set('resolved', resolved);
       if (stationSearch) params.set('stationId', stationSearch);
 
-      const response = await fetch(`/api/admin/error-logs?${params}`);
+      const response = await apiRequest('GET', `/api/admin/error-logs?${params}`, { signal });
       if (!response.ok) throw new Error('Failed to fetch error logs');
       return response.json();
     },
@@ -125,6 +126,7 @@ export function AdminErrorLogs() {
         </Button>
       </div>
 
+      {isError && <Alert variant="destructive"><AlertDescription>Unable to load playback error logs. Refresh to retry.</AlertDescription></Alert>}
       {/* Summary Stats */}
       {data && (
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -145,7 +147,7 @@ export function AdminErrorLogs() {
               <div className="flex items-center">
                 <CheckCircle className="w-8 h-8 text-green-500" />
                 <div className="ml-3">
-                  <p className="text-sm font-medium text-gray-600">Resolved</p>
+                  <p className="text-sm font-medium text-gray-600">Resolved (this page)</p>
                   <p className="text-2xl font-bold">
                     {data.errors.filter(e => e.isResolved).length}
                   </p>
@@ -159,7 +161,7 @@ export function AdminErrorLogs() {
               <div className="flex items-center">
                 <XCircle className="w-8 h-8 text-red-500" />
                 <div className="ml-3">
-                  <p className="text-sm font-medium text-gray-600">Unresolved</p>
+                  <p className="text-sm font-medium text-gray-600">Unresolved (this page)</p>
                   <p className="text-2xl font-bold">
                     {data.errors.filter(e => !e.isResolved).length}
                   </p>
@@ -173,7 +175,7 @@ export function AdminErrorLogs() {
               <div className="flex items-center">
                 <Volume2 className="w-8 h-8 text-blue-500" />
                 <div className="ml-3">
-                  <p className="text-sm font-medium text-gray-600">Unique Stations</p>
+                  <p className="text-sm font-medium text-gray-600">Unique Stations (this page)</p>
                   <p className="text-2xl font-bold">
                     {new Set(data.errors.map(e => e.stationId)).size}
                   </p>
@@ -357,7 +359,7 @@ export function AdminErrorLogs() {
       )}
 
       {/* Pagination */}
-      {data && data.pagination.pages > 1 && (
+      {(page > 1 || (data?.pagination.pages ?? 0) > 1) && (
         <div className="flex justify-center gap-2">
           <Button
             onClick={() => setPage(page - 1)}
@@ -368,12 +370,12 @@ export function AdminErrorLogs() {
           </Button>
           
           <span className="flex items-center px-4 text-sm">
-            Page {page} of {data.pagination.pages}
+            Page {page} of {Math.max(page, data?.pagination.pages ?? 0)}
           </span>
           
           <Button
             onClick={() => setPage(page + 1)}
-            disabled={page === data.pagination.pages}
+            disabled={isLoading || isError || page >= (data?.pagination.pages ?? 0)}
             variant="outline"
           >
             Next

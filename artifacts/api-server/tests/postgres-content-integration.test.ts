@@ -632,5 +632,36 @@ describe(
       assert.ok(csv.body.includes("'=Formula"));
       assert.equal(csv.body.includes("must-not-leak"), false);
     });
+    it("keeps CSV platform filtering identical to the users list for Stripe and Paddle", async () => {
+      for (const platform of ['stripe', 'paddle']) {
+        const id = `csv-${platform}`;
+        await pool.query("INSERT INTO users(id,username,email,full_name) VALUES($1,$1,$2,$1)", [id, `${id}@example.invalid`]);
+        await pool.query("INSERT INTO subscriptions(user_id,platform,plan,is_active) VALUES($1,$2,'premium_monthly',true)", [id, platform]);
+      }
+      for (const platform of ['stripe', 'paddle']) {
+        const list = await request(`/api/admin/users?platform=${platform}`, 'GET', undefined, adminHeaders);
+        assert.equal(list.status, 200); assert.equal(list.body.total, 1); assert.equal(list.body.users[0].email, `csv-${platform}@example.invalid`);
+        const csv = await request(`/api/admin/users/export.csv?platform=${platform}`, 'GET', undefined, adminHeaders);
+        assert.equal(csv.status, 200); assert.ok(csv.body.includes(`csv-${platform}@example.invalid`));
+        assert.equal(csv.body.includes(platform === 'stripe' ? 'csv-paddle@example.invalid' : 'csv-stripe@example.invalid'), false);
+        assert.equal(csv.body.includes('listener@example.invalid'), false);
+      }
+    });
+    it("validates social-link writes before persistence and keeps partial updates compatible", async () => {
+      const route = '/api/admin/footer-social-media';
+      const original = await store.pgListFooterSocialMedia(true);
+      for (const body of [{ platform: 'unknown', url: 'https://example.invalid' }, { platform: 'youtube', url: 'javascript:bad()' },
+        { platform: 'youtube', url: 'https://example.invalid', isActive: 'false' }, { platform: 'youtube', url: 'https://example.invalid', position: -1 }]) {
+        assert.equal((await request(route, 'POST', body, adminHeaders)).status, 400);
+      }
+      assert.equal((await store.pgListFooterSocialMedia(true)).length, original.length);
+      const added = await request(route, 'POST', { platform: 'youtube', url: 'https://example.invalid/new', position: 0, isActive: false }, adminHeaders);
+      assert.equal(added.status, 201);
+      const id = added.body._id;
+      assert.ok(id);
+      const updated = await request(`${route}/${id}`, 'PATCH', { isActive: true }, adminHeaders);
+      assert.equal(updated.status, 200); assert.equal(updated.body.platform, 'youtube'); assert.equal(updated.body.isActive, true);
+      assert.equal((await request(`${route}/${id}`, 'PATCH', { url: 'https://user:pass@example.invalid' }, adminHeaders)).status, 400);
+    });
   },
 );

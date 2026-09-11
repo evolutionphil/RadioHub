@@ -25,6 +25,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
 import { URL_TRANSLATIONS } from '@workspace/seo-shared/url-translations';
 import { SEO_LANGUAGES } from '@workspace/seo-shared/seo-config';
+import { mergeUrlSuggestions, removeAcknowledgedUrlDrafts } from '@/lib/admin-content-state';
 
 interface UrlTranslation {
   _id?: string;
@@ -58,7 +59,7 @@ export default function AdminUrlTranslations() {
   const [isAutoTranslating, setIsAutoTranslating] = useState(false);
 
   // Fetch available English paths
-  const { data: apiPaths, isLoading: isLoadingPaths } = useQuery<string[]>({
+  const { data: apiPaths, isLoading: isLoadingPaths, error: pathsError, refetch: refetchPaths } = useQuery<string[]>({
     queryKey: ['/api/admin/url-translations/available-paths'],
   });
 
@@ -77,7 +78,7 @@ export default function AdminUrlTranslations() {
   }, [apiPaths]);
 
   // Fetch existing translations from database
-  const { data: existingTranslations, isLoading: isLoadingTranslations } = useQuery<UrlTranslation[]>({
+  const { data: existingTranslations, isLoading: isLoadingTranslations, error: translationsError, refetch: refetchTranslations } = useQuery<UrlTranslation[]>({
     queryKey: ['/api/admin/url-translations'],
   });
 
@@ -85,6 +86,7 @@ export default function AdminUrlTranslations() {
   const translationsMap = useMemo(() => {
     const map = new Map<string, string>();
     existingTranslations?.forEach(translation => {
+      if (translation.isActive === false) return;
       const key = `${translation.languageCode}:${translation.englishPath}`;
       map.set(key, translation.translatedPath);
     });
@@ -98,9 +100,9 @@ export default function AdminUrlTranslations() {
         body: { translations },
       });
     },
-    onSuccess: () => {
+    onSuccess: (_response, saved) => {
       queryClient.invalidateQueries({ queryKey: ['/api/admin/url-translations'] });
-      setPendingChanges(new Map());
+      setPendingChanges(current => removeAcknowledgedUrlDrafts(current, saved));
       toast({
         title: 'Success',
         description: 'URL translations saved successfully',
@@ -118,18 +120,16 @@ export default function AdminUrlTranslations() {
   // Auto-translate mutation
   const autoTranslateMutation = useMutation({
     mutationFn: async ({ languageCode, paths }: { languageCode: string; paths: string[] }) => {
-      return await apiRequest('POST', '/api/admin/url-translations/auto-translate', {
+      const response = await apiRequest('POST', '/api/admin/url-translations/auto-translate', {
         body: { languageCode, paths },
       });
+      const data = await response.json();
+      mergeUrlSuggestions(new Map(), data, { languageCode, paths });
+      return data;
     },
-    onSuccess: (data: any) => {
+    onSuccess: (data: any, request) => {
       // Apply the auto-translated paths to pending changes
-      const newChanges = new Map(pendingChanges);
-      Object.entries(data.translations).forEach(([englishPath, translatedPath]) => {
-        const key = `${data.languageCode}:${englishPath}`;
-        newChanges.set(key, translatedPath as string);
-      });
-      setPendingChanges(newChanges);
+      setPendingChanges(current => mergeUrlSuggestions(current, data, request));
       
       toast({
         title: 'Auto-translation Complete',
@@ -150,18 +150,16 @@ export default function AdminUrlTranslations() {
   // Handle translation change for a path
   const handleTranslationChange = (languageCode: string, englishPath: string, translatedPath: string) => {
     const key = `${languageCode}:${englishPath}`;
-    const newChanges = new Map(pendingChanges);
-    newChanges.set(key, translatedPath);
-    setPendingChanges(newChanges);
+    setPendingChanges(current => new Map(current).set(key, translatedPath));
   };
 
   // Get effective translation for a path (pending change or existing mapping or static translation)
   const getEffectiveTranslation = (languageCode: string, englishPath: string): string => {
     const key = `${languageCode}:${englishPath}`;
     // Priority: pending changes > database > static translations
-    return pendingChanges.get(key) || 
-           translationsMap.get(key) || 
-           URL_TRANSLATIONS[languageCode]?.[englishPath] || 
+    return pendingChanges.get(key) ??
+           translationsMap.get(key) ??
+           URL_TRANSLATIONS[languageCode]?.[englishPath] ??
            '';
   };
 
@@ -184,6 +182,10 @@ export default function AdminUrlTranslations() {
       };
     });
 
+    if (translations.some(row => !row.translatedPath.trim())) {
+      toast({ title: 'A translated path is required', description: 'Fill each edited path before saving. Empty input does not delete an existing URL.', variant: 'destructive' });
+      return;
+    }
     bulkSaveMutation.mutate(translations);
   };
 
@@ -209,8 +211,7 @@ export default function AdminUrlTranslations() {
     
     // Get paths that don't have translations yet
     const pathsToTranslate = availablePaths.filter(path => {
-      const key = `${selectedLanguage}:${path}`;
-      return !translationsMap.has(key) && !pendingChanges.has(key);
+      return !getEffectiveTranslation(selectedLanguage, path).trim();
     });
 
     if (pathsToTranslate.length === 0) {
@@ -265,21 +266,21 @@ export default function AdminUrlTranslations() {
   // Count translations for selected language
   const translatedCount = selectedLanguage
     ? availablePaths?.filter(path => {
-        const key = `${selectedLanguage}:${path}`;
-        return translationsMap.has(key) || pendingChanges.has(key);
+        return Boolean(getEffectiveTranslation(selectedLanguage, path).trim());
       }).length || 0
     : 0;
 
   return (
     <div className="mx-auto w-full max-w-[1600px] px-4 py-5 sm:px-6 sm:py-6 lg:px-8 space-y-5 sm:space-y-6">
+      {(pathsError || translationsError) && <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-900">URL translations could not load. Saved overrides are unavailable; changes are disabled until status is restored. <Button size="sm" variant="outline" onClick={() => { void refetchPaths(); void refetchTranslations(); }}>Retry URL translations</Button></div>}
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
-              <CardTitle className="text-2xl flex items-center gap-2">
+              <h1 className="text-2xl font-semibold leading-none tracking-tight flex items-center gap-2">
                 <Languages className="h-6 w-6" />
                 URL Translations Manager
-              </CardTitle>
+              </h1>
               <CardDescription>
                 Manage multilingual URL paths for SEO-friendly URLs. Database translations override static files.
               </CardDescription>
@@ -318,7 +319,7 @@ export default function AdminUrlTranslations() {
                 <Button
                   data-testid="button-auto-translate"
                   onClick={handleAutoTranslate}
-                  disabled={isAutoTranslating || autoTranslateMutation.isPending}
+                  disabled={Boolean(pathsError || translationsError) || isAutoTranslating || autoTranslateMutation.isPending || bulkSaveMutation.isPending}
                   variant="outline"
                 >
                   {isAutoTranslating || autoTranslateMutation.isPending ? (
@@ -337,7 +338,7 @@ export default function AdminUrlTranslations() {
                 <Button
                   data-testid="button-save-translations"
                   onClick={handleBulkSave}
-                  disabled={!hasChanges || bulkSaveMutation.isPending}
+                  disabled={Boolean(pathsError || translationsError) || !hasChanges || bulkSaveMutation.isPending || autoTranslateMutation.isPending}
                 >
                   {bulkSaveMutation.isPending ? (
                     <>

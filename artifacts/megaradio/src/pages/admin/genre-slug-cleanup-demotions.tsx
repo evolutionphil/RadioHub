@@ -47,6 +47,7 @@ export function GenreCleanupRunDemotions({ runId }: { runId: string }) {
       if (!res.ok) throw new Error("failed");
       return res.json();
     },
+    refetchInterval: query => query.state.status !== 'error' && query.state.data?.window.isOpenEnded ? 5000 : false,
   });
 
   if (query.isLoading) {
@@ -66,6 +67,7 @@ export function GenreCleanupRunDemotions({ runId }: { runId: string }) {
         data-testid={`text-demotions-error-${runId}`}
       >
         Could not load demoted genres for this run.
+        <button type="button" className="ml-2 underline" onClick={() => void query.refetch()}>Retry demotions</button>
       </div>
     );
   }

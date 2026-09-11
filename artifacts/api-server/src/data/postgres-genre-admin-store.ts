@@ -7,12 +7,13 @@ const newId=()=>randomBytes(12).toString('hex');
 const fail=(statusCode:number,message:string):never=>{throw Object.assign(new Error(message),{statusCode});};
 const shape=(row:any):any=>row?{...row.source,...seoShape(row)}:null;
 export async function pgStoredGenreById(id:string):Promise<any|null>{return shape((await getPostgresPool().query('SELECT * FROM genres WHERE id=$1',[id])).rows[0]);}
-export async function pgListAdminGenres(search='',demotedOnly=false,sort='stationCount',limit=50,offset=0):Promise<{rows:any[];total:number}> {
-  const where="($1='' OR name~*$1) AND (NOT $2 OR source#>>'{cleanupDemotion,reason}' IN ('empty-slug','collision'))";
+export async function pgListAdminGenres(search='',demotedOnly=false,sort='stationCount',limit=50,offset=0,discoverableOnly=false):Promise<{rows:any[];total:number}> {
+  const literalSearch = search.slice(0,300).replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+  const where="($1='' OR name~*$1) AND (NOT $2 OR source#>>'{cleanupDemotion,reason}' IN ('empty-slug','collision')) AND (NOT $3 OR COALESCE(is_discoverable,true))";
   const order=sort==='name'?'name ASC':sort==='recent'?'created_at DESC':sort==='demotedAt'?"source#>>'{cleanupDemotion,demotedAt}' DESC NULLS LAST":'station_count DESC';
   const [rows,count]=await Promise.all([
-    getPostgresPool().query(`SELECT * FROM genres WHERE ${where} ORDER BY ${order},id LIMIT $3 OFFSET $4`,[search,demotedOnly,Math.max(1,Math.min(500,limit)),Math.max(0,offset)]),
-    getPostgresPool().query(`SELECT count(*)::int total FROM genres WHERE ${where}`,[search,demotedOnly]),
+    getPostgresPool().query(`SELECT * FROM genres WHERE ${where} ORDER BY ${order},id LIMIT $4 OFFSET $5`,[literalSearch,demotedOnly,discoverableOnly,Math.max(1,Math.min(500,limit)),Math.max(0,offset)]),
+    getPostgresPool().query(`SELECT count(*)::int total FROM genres WHERE ${where}`,[literalSearch,demotedOnly,discoverableOnly]),
   ]);return {rows:rows.rows.map(shape),total:count.rows[0].total};
 }
 export async function pgUpsertPopulatedGenre(input:Record<string,any>):Promise<void> {

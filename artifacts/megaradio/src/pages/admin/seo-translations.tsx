@@ -102,7 +102,7 @@ export default function SeoTranslationsHub() {
   const invalidateMutation = useMutation<InvalidateResult, Error>({
     mutationFn: () => apiRequest("POST", "/api/admin/seo-translations/invalidate-cache").then((r) => r.json()),
     onSuccess: (data) => {
-      toast({ title: "Cache invalidated", description: `${data.newQualifiedCount} / 57 languages now qualified` });
+      toast({ title: "Cache invalidated", description: `${data.newQualifiedCount} languages now qualified` });
       queryClient.invalidateQueries({ queryKey: ["/api/admin/seo-translations/coverage"] });
     },
     onError: (e) => toast({ title: "Invalidate failed", description: e?.message, variant: "destructive" }),
@@ -133,7 +133,7 @@ export default function SeoTranslationsHub() {
         <div>
           <h1 className="text-2xl font-bold">SEO Translations Hub</h1>
           <p className="text-muted-foreground text-sm mt-1">
-            Manage the 15 required SEO keys across all 57 languages. Languages missing keys are excluded from Google indexing.
+            Review required SEO translations for the configured languages. Qualification describes this site's publishing checks, not a guarantee of Google indexing.
           </p>
         </div>
         <Button
@@ -169,7 +169,7 @@ export default function SeoTranslationsHub() {
         <OperationCard
           icon={<Database className="h-5 w-5" />}
           title="Apply Phase C Translations"
-          description="Upserts the pre-generated 57×15 SEO translation JSON into PostgreSQL. Safe to re-run — skips keys that already have a value."
+          description="Adds missing entries from the pre-generated SEO translation bundle to PostgreSQL. Existing values are preserved."
           buttonLabel="Apply Now"
           isPending={applyMutation.isPending}
           isDisabled={anyPending}
@@ -201,8 +201,8 @@ export default function SeoTranslationsHub() {
         />
         <OperationCard
           icon={<Thermometer className="h-5 w-5" />}
-          title="Warm All 57 Languages"
-          description="Pre-loads all 57 translation bundles into server memory (batched, 5 at a time). Prevents cold-miss latency after a server restart."
+          title="Warm Configured Languages"
+          description="Pre-loads configured translation bundles into server memory in batches to reduce cold-cache latency."
           buttonLabel="Warm All"
           isPending={warmAllMutation.isPending}
           isDisabled={anyPending}

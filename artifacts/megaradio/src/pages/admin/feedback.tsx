@@ -7,11 +7,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { Mail, MessageSquare, User, Calendar, Clock, CheckCircle, AlertCircle, Eye, Reply } from "lucide-react";
 import { format } from "date-fns";
-import { queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 
 interface Feedback {
   _id: string;
@@ -46,9 +46,9 @@ export default function AdminFeedback() {
   const [typeFilter, setTypeFilter] = useState<string>('all');
   const { toast } = useToast();
 
-  const { data: feedbackData, isLoading } = useQuery({
+  const { data: feedbackData, isLoading, isError, isFetching, refetch } = useQuery({
     queryKey: ['/api/admin/feedback', statusFilter, typeFilter],
-    queryFn: () => fetch(`/api/admin/feedback?status=${statusFilter}&type=${typeFilter}`).then(res => res.json()),
+    queryFn: async ({ signal }) => (await apiRequest("GET", `/api/admin/feedback?status=${statusFilter}&type=${typeFilter}`, { signal })).json(),
   });
 
   const updateStatusMutation = useMutation({
@@ -106,6 +106,8 @@ export default function AdminFeedback() {
       </div>
     );
   }
+
+  if (isError) return <div role="alert" className="p-6">Feedback could not be loaded. <Button variant="outline" disabled={isFetching} onClick={() => refetch()}>Retry</Button></div>;
 
   const feedbackList = feedbackData?.feedback || [];
   const stats = feedbackData?.stats || {
@@ -279,17 +281,22 @@ export default function AdminFeedback() {
                     <TableCell>
                       <div className="flex items-center space-x-2 text-sm text-gray-500">
                         <Calendar className="w-4 h-4" />
-                        <span>{format(new Date(feedback.createdAt), 'MMM dd, yyyy')}</span>
+                        <span>{Number.isFinite(new Date(feedback.createdAt).getTime()) ? format(new Date(feedback.createdAt), 'MMM dd, yyyy') : 'Unknown date'}</span>
                       </div>
                     </TableCell>
                     <TableCell>
                       <div className="flex space-x-2">
-                        <Dialog>
+                        <Dialog open={selectedFeedback?._id === feedback._id} onOpenChange={(open) => {
+                          if (updateStatusMutation.isPending) return;
+                          setSelectedFeedback(open ? feedback : null);
+                          setResponse('');
+                        }}>
                           <DialogTrigger asChild>
                             <Button 
                               variant="outline" 
                               size="sm"
-                              onClick={() => setSelectedFeedback(feedback)}
+                              aria-label={`View feedback: ${feedback.subject}`}
+                              disabled={updateStatusMutation.isPending || deleteFeedbackMutation.isPending}
                             >
                               <Eye className="w-4 h-4" />
                             </Button>
@@ -297,6 +304,7 @@ export default function AdminFeedback() {
                           <DialogContent className="max-w-2xl bg-white border border-gray-200 shadow-lg text-gray-900">
                             <DialogHeader>
                               <DialogTitle className="text-gray-900">Feedback Details</DialogTitle>
+                              <DialogDescription>Review this report and update its response or status.</DialogDescription>
                             </DialogHeader>
                             {selectedFeedback && (
                               <div className="space-y-4">
@@ -339,6 +347,8 @@ export default function AdminFeedback() {
                                 <div>
                                   <label className="text-sm font-medium text-gray-500">Add Response</label>
                                   <Textarea
+                                    aria-label="Admin response"
+                                    disabled={updateStatusMutation.isPending}
                                     value={response}
                                     onChange={(e) => setResponse(e.target.value)}
                                     placeholder="Enter your response..."
@@ -377,8 +387,8 @@ export default function AdminFeedback() {
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => deleteFeedbackMutation.mutate(feedback._id)}
-                          disabled={deleteFeedbackMutation.isPending}
+                          onClick={() => { if (window.confirm(`Delete feedback “${feedback.subject}”? This cannot be undone.`)) deleteFeedbackMutation.mutate(feedback._id); }}
+                          disabled={deleteFeedbackMutation.isPending || updateStatusMutation.isPending}
                           className="text-red-600 hover:text-red-700"
                         >
                           Delete

@@ -8,6 +8,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Loader2, TrendingUp, ShoppingCart, Smartphone, Globe, Crown, RefreshCw } from "lucide-react";
+import { adminDateRange, formatAdminMoney as fmt } from "@/lib/admin-account-utils";
+import { apiRequest } from "@/lib/queryClient";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -17,14 +19,15 @@ interface SalesData {
     totalSales: number;
     iapSales: number;
     stripeSales: number;
-    stripeRevenue: number;
-    stripeCurrency: string;
+    stripeRevenue: number | null;
+    stripeCurrency: string | null;
+    revenueByCurrency?: Array<{ currency: string | null; count: number; amount: number }>;
   };
-  byPlan: Array<{ plan: string; iapCount: number; stripeCount: number; stripeAmount: number }>;
+  byPlan: Array<{ plan: string; iapCount: number; stripeCount: number; stripeAmount: number | null; stripeCurrency?: string | null }>;
   byPlatform: Array<{ platform: string; count: number; source: string }>;
-  timeline: Array<{ date: string; iapCount: number; stripeCount: number; stripeAmount: number }>;
+  timeline: Array<{ date: string; iapCount: number; stripeCount: number; stripeAmount: number | null }>;
   recentSales: Array<{
-    source: "iap" | "stripe";
+    source: "iap" | "stripe" | "paddle";
     platform: string;
     plan: string;
     isTrial: boolean;
@@ -50,17 +53,10 @@ const PLAN_LABELS: Record<string, string> = {
 const PLATFORM_LABELS: Record<string, string> = {
   ios: "iOS",
   android: "Android",
-  stripe: "Stripe (TV/Web)",
+  stripe: "Web payments",
+  paddle: "Paddle (TV/Web)",
   unknown: "Unknown",
 };
-
-function fmt(amount: number, currency: string): string {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: currency.toUpperCase(),
-    minimumFractionDigits: 2,
-  }).format(amount / 100);
-}
 
 function fmtDate(iso: string): string {
   return new Date(iso).toLocaleString("en-GB", {
@@ -125,16 +121,17 @@ export default function SalesAnalyticsPage() {
   const [plan, setPlan] = useState("all");
   const [groupBy, setGroupBy] = useState("day");
 
-  const params = new URLSearchParams({ from, to, platform, plan, groupBy }).toString();
+  const range = adminDateRange(from, to, true);
+  const params = new URLSearchParams({ from: range.from, to: range.to, platform, plan, groupBy }).toString();
 
-  const { data, isLoading, isFetching, refetch } = useQuery<SalesData>({
+  const { data, isLoading, isFetching, isError, refetch } = useQuery<SalesData>({
     queryKey: ["/api/admin/sales", params],
-    queryFn: async () => {
-      const res = await fetch(`/api/admin/sales?${params}`, { credentials: "include" });
-      if (!res.ok) throw new Error("Failed to fetch sales data");
+    queryFn: async ({ signal }) => {
+      const res = await apiRequest("GET", `/api/admin/sales?${params}`, { signal });
       return res.json();
     },
     staleTime: 60_000,
+    enabled: range.valid,
   });
 
   function quickRange(days: number) {
@@ -165,9 +162,9 @@ export default function SalesAnalyticsPage() {
   return (
     <AdminPage
       title="Sales Analytics"
-      description="iOS, Android IAP + Stripe (TV/Web) combined"
+      description="iOS / Android IAP validations and Stripe / Paddle web payments. IAP audit counts are not unique purchases; revenue is gross and separated by currency."
       actions={
-        <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching}>
+        <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching || !range.valid}>
           {isFetching ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <RefreshCw className="w-4 h-4 mr-1" />}
           Refresh
         </Button>
@@ -179,12 +176,12 @@ export default function SalesAnalyticsPage() {
         <CardContent className="pt-4">
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3 items-end">
             <div className="space-y-1">
-              <Label className="text-xs">From</Label>
-              <Input type="date" value={from} onChange={e => setFrom(e.target.value)} className="text-sm" />
+              <Label className="text-xs" htmlFor="sales-from">From (UTC)</Label>
+              <Input id="sales-from" type="date" value={from} onChange={e => setFrom(e.target.value)} className="text-sm" />
             </div>
             <div className="space-y-1">
-              <Label className="text-xs">To</Label>
-              <Input type="date" value={to} onChange={e => setTo(e.target.value)} className="text-sm" />
+              <Label className="text-xs" htmlFor="sales-to">To (UTC, inclusive)</Label>
+              <Input id="sales-to" type="date" value={to} onChange={e => setTo(e.target.value)} className="text-sm" />
             </div>
             <div className="space-y-1">
               <Label className="text-xs">Platform</Label>
@@ -194,7 +191,7 @@ export default function SalesAnalyticsPage() {
                   <SelectItem value="all">All platforms</SelectItem>
                   <SelectItem value="ios">iOS</SelectItem>
                   <SelectItem value="android">Android</SelectItem>
-                  <SelectItem value="stripe">Stripe (TV/Web)</SelectItem>
+                  <SelectItem value="stripe">Stripe / Paddle (TV/Web)</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -231,7 +228,7 @@ export default function SalesAnalyticsPage() {
         </CardContent>
       </Card>
 
-      {isLoading ? (
+      {!range.valid ? <div role="alert">Choose valid dates with From on or before To.</div> : isError ? <div role="alert" className="rounded border border-red-200 p-4">Sales data could not be loaded. This is not a zero-sales report. <Button variant="outline" disabled={isFetching} onClick={() => refetch()}>Retry</Button></div> : isLoading ? (
         <div className="flex items-center justify-center py-16">
           <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
         </div>
@@ -241,17 +238,17 @@ export default function SalesAnalyticsPage() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <Card>
               <CardHeader className="pb-2">
-                <CardDescription className="flex items-center gap-1"><ShoppingCart className="w-4 h-4" /> Total Sales</CardDescription>
+                <CardDescription className="flex items-center gap-1"><ShoppingCart className="w-4 h-4" /> Recorded Activity</CardDescription>
                 <CardTitle className="text-3xl">{totalSales}</CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-xs text-gray-500">iOS + Android + Stripe</p>
+                <p className="text-xs text-gray-500">IAP validations + web payments</p>
               </CardContent>
             </Card>
 
             <Card>
               <CardHeader className="pb-2">
-                <CardDescription className="flex items-center gap-1"><Smartphone className="w-4 h-4" /> IAP Sales</CardDescription>
+                <CardDescription className="flex items-center gap-1"><Smartphone className="w-4 h-4" /> IAP Validations</CardDescription>
                 <CardTitle className="text-3xl">{iapSales}</CardTitle>
               </CardHeader>
               <CardContent>
@@ -261,21 +258,21 @@ export default function SalesAnalyticsPage() {
 
             <Card>
               <CardHeader className="pb-2">
-                <CardDescription className="flex items-center gap-1"><Globe className="w-4 h-4" /> Stripe Sales</CardDescription>
+                <CardDescription className="flex items-center gap-1"><Globe className="w-4 h-4" /> Web Payments</CardDescription>
                 <CardTitle className="text-3xl">{stripeSales}</CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-xs text-gray-500">via TV/Web Stripe Checkout</p>
+                <p className="text-xs text-gray-500">via Stripe / Paddle checkout</p>
               </CardContent>
             </Card>
 
             <Card>
               <CardHeader className="pb-2">
-                <CardDescription className="flex items-center gap-1"><TrendingUp className="w-4 h-4" /> Stripe Revenue</CardDescription>
-                <CardTitle className="text-2xl">{stripeRevenue > 0 ? fmt(stripeRevenue, stripeCurrency) : "—"}</CardTitle>
+                <CardDescription className="flex items-center gap-1"><TrendingUp className="w-4 h-4" /> Recorded Checkout Revenue</CardDescription>
+                <CardTitle className="text-2xl">{data?.summary.revenueByCurrency?.length ? data.summary.revenueByCurrency.map(row => <div key={row.currency ?? 'unknown'}>{row.currency ? fmt(row.amount, row.currency) : `${row.amount} minor units (currency unknown)`}</div>) : fmt(stripeRevenue, stripeCurrency)}</CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-xs text-gray-500">Gross (before Stripe fees)</p>
+                <p className="text-xs text-gray-500">Gross recorded receipts, before fees/refunds. Not a provider reconciliation; no currency conversion.</p>
               </CardContent>
             </Card>
           </div>
@@ -312,8 +309,8 @@ export default function SalesAnalyticsPage() {
                       <div key={p.plan} className="flex items-center justify-between text-xs">
                         <span className="text-gray-600">{PLAN_LABELS[p.plan] || p.plan}</span>
                         <div className="flex items-center gap-3">
-                          {p.stripeAmount > 0 && (
-                            <span className="text-purple-600 font-medium">{fmt(p.stripeAmount, stripeCurrency)}</span>
+                          {p.stripeAmount !== null && p.stripeAmount > 0 && p.stripeCurrency && (
+                            <span className="text-purple-600 font-medium">{fmt(p.stripeAmount, p.stripeCurrency)}</span>
                           )}
                           <span className="font-medium">{p.iapCount + p.stripeCount} sales</span>
                         </div>
@@ -351,7 +348,7 @@ export default function SalesAnalyticsPage() {
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Recent Transactions</CardTitle>
-              <CardDescription>Last 50 successful sales across all platforms</CardDescription>
+              <CardDescription>Last 50 recorded payments and successful IAP validations</CardDescription>
             </CardHeader>
             <CardContent>
               {(!data?.recentSales || data.recentSales.length === 0) ? (

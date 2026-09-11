@@ -131,7 +131,7 @@ export default function IndexNowMonitoring() {
     URL.revokeObjectURL(url);
   };
 
-  const { data: diffRunsResp, isLoading: diffRunsLoading } = useQuery<SitemapDiffRunsResponse>({
+  const { data: diffRunsResp, isLoading: diffRunsLoading, error: diffRunsError } = useQuery<SitemapDiffRunsResponse>({
     queryKey: ['/api/admin/indexnow/sitemap-diff-runs'],
     queryFn: async () => {
       const response = await fetch('/api/admin/indexnow/sitemap-diff-runs?days=14');
@@ -139,7 +139,7 @@ export default function IndexNowMonitoring() {
       return response.json();
     },
     staleTime: 60000,
-    refetchInterval: 60000,
+    refetchInterval: query => query.state.status === 'error' ? false : 60000,
     refetchOnWindowFocus: false,
   });
   const diffRuns = diffRunsResp?.runs ?? [];
@@ -202,15 +202,15 @@ export default function IndexNowMonitoring() {
     rerunMutation.isPending && rerunMutation.variables ? rerunMutation.variables.date : null;
 
   // Fetch stats with auto-refresh every 30 seconds
-  const { data: stats, isLoading: statsLoading } = useQuery<IndexNowStats>({
+  const { data: stats, isLoading: statsLoading, error: statsError } = useQuery<IndexNowStats>({
     queryKey: ['/api/admin/indexnow/stats'],
     staleTime: 30000,
-    refetchInterval: 30000,
+    refetchInterval: query => query.state.status === 'error' ? false : 30000,
     refetchOnWindowFocus: false,
   });
 
   // Fetch logs with filters and auto-refresh every 30 seconds
-  const { data: logs, isLoading: logsLoading } = useQuery<IndexNowLog[]>({
+  const { data: logs, isLoading: logsLoading, error: logsError } = useQuery<IndexNowLog[]>({
     queryKey: ['/api/admin/indexnow/logs', { host: hostFilter, status: statusFilter }],
     queryFn: async () => {
       const params = new URLSearchParams();
@@ -222,7 +222,7 @@ export default function IndexNowMonitoring() {
       return response.json();
     },
     staleTime: 30000,
-    refetchInterval: 30000,
+    refetchInterval: query => query.state.status === 'error' ? false : 30000,
     refetchOnWindowFocus: false,
   });
 
@@ -231,13 +231,19 @@ export default function IndexNowMonitoring() {
   };
 
   const formatResponseTime = (ms?: number) => {
-    if (!ms) return 'N/A';
+    if (ms === undefined) return 'N/A';
     return `${ms}ms`;
   };
 
   return (
     <div className="mx-auto w-full max-w-[1600px] px-4 py-5 sm:px-6 sm:py-6 lg:px-8 space-y-5 sm:space-y-6">
       <div className="max-w-7xl mx-auto">
+        {(diffRunsError || statsError || logsError) && <div role="alert" className="mb-4 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-900">
+          IndexNow monitoring data could not load. Displayed counts may be incomplete or stale.
+          <Button size="sm" variant="outline" className="ml-2" onClick={() => {
+            void queryClient.invalidateQueries({ predicate: query => String(query.queryKey[0]).startsWith('/api/admin/indexnow/') });
+          }}>Retry monitoring data</Button>
+        </div>}
         {/* Header */}
         <div className="mb-8">
           <h1 className="text-3xl font-bold mb-2">IndexNow Monitoring</h1>

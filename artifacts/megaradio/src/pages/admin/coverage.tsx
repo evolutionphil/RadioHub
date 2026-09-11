@@ -58,6 +58,7 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import { ToastAction } from '@/components/ui/toast';
 import { apiRequest, queryClient } from '@/lib/queryClient';
+import { pollAdminOperation } from '@/lib/admin-operations';
 
 interface CountryCoverage {
   countryCode: string;
@@ -346,25 +347,28 @@ export default function AdminCoverage() {
     Record<string, CoverageJobStatus>
   >({});
   const completedJobsRef = useRef<Set<string>>(new Set());
+  const completionTimers = useRef(new Map<string, number>());
+  useEffect(() => () => { completionTimers.current.forEach(clearTimeout); completionTimers.current.clear(); }, []);
 
   const {
     data,
     isLoading,
     refetch,
     isFetching,
+    isError: coverageError,
   } = useQuery<CoverageResponse>({
     queryKey: ['/api/admin/coverage/by-country'],
     staleTime: 60_000,
     refetchOnWindowFocus: false,
   });
 
-  const { data: trendsData } = useQuery<TrendsResponse>({
+  const { data: trendsData, isError: trendsError } = useQuery<TrendsResponse>({
     queryKey: ['/api/admin/coverage/trends?days=30'],
     staleTime: 5 * 60_000,
     refetchOnWindowFocus: false,
   });
 
-  const { data: dropAlertData } = useQuery<CoverageDropAlertResponse>({
+  const { data: dropAlertData, isError: dropAlertsError } = useQuery<CoverageDropAlertResponse>({
     queryKey: ['/api/admin/coverage/drop-alerts'],
     staleTime: 5 * 60_000,
     refetchOnWindowFocus: false,
@@ -840,41 +844,21 @@ export default function AdminCoverage() {
       .map((j) => j.countryCode);
     if (runningCodes.length === 0) return;
 
-    let cancelled = false;
-    const tick = async () => {
-      const snapshot = activeJobs;
-      await Promise.all(
-        runningCodes.map(async (code) => {
-          const job = snapshot[code];
-          if (!job || job.status !== 'running') return;
-          try {
-            const res = await apiRequest(
-              'GET',
-              `/api/admin/coverage/enqueue-job-status/${encodeURIComponent(
-                job.jobId,
-              )}`,
-            );
-            if (!res.ok) return;
-            const payload = (await res.json()) as {
-              success: boolean;
-              job: CoverageJobStatus;
-            };
-            if (cancelled || !payload?.job) return;
-            setActiveJobs((prev) => ({
-              ...prev,
-              [code]: { ...payload.job, countryCode: code },
-            }));
-          } catch {
-            /* network blip — try again on next tick */
-          }
-        }),
-      );
-    };
-    const interval = window.setInterval(tick, 2000);
-    return () => {
-      cancelled = true;
-      window.clearInterval(interval);
-    };
+    const stops = runningCodes.map(code => {
+      const expectedJob = activeJobs[code];
+      return pollAdminOperation<{ success: boolean; job: CoverageJobStatus }>({
+        url: `/api/admin/coverage/enqueue-job-status/${encodeURIComponent(expectedJob.jobId)}`,
+        onData: payload => {
+          if (!payload.success || !payload.job || payload.job.jobId !== expectedJob.jobId) throw new Error('Invalid backfill job status');
+          setActiveJobs(prev => prev[code]?.jobId === expectedJob.jobId ? { ...prev, [code]: { ...payload.job, countryCode: code } } : prev);
+        },
+        isTerminal: payload => payload.job.status !== 'running',
+        onError: error => {
+          setActiveJobs(prev => prev[code]?.jobId === expectedJob.jobId ? { ...prev, [code]: { ...prev[code], status: 'failed', error: `Status unavailable: ${error.message}. Work may continue on the server; inspect before retrying.` } } : prev);
+        },
+      });
+    });
+    return () => stops.forEach(stop => stop());
     // We only want to (re)start the timer when the *set* of running jobs
     // changes, not on every counter tick within them.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -895,7 +879,7 @@ export default function AdminCoverage() {
   // pulled the plug (otherwise the bars vanish 6s later and the cancel
   // feels like a black hole). We also fire a toast summary on the
   // transition. `completed` and `failed` keep their old auto-clear.
-  useEffect((): void | (() => void) => {
+  useEffect(() => {
     for (const job of Object.values(activeJobs)) {
       if (job.status === 'running') continue;
       if (completedJobsRef.current.has(job.jobId)) continue;
@@ -923,13 +907,14 @@ export default function AdminCoverage() {
       }
       const code = job.countryCode;
       const handle = window.setTimeout(() => {
+        completionTimers.current.delete(job.jobId);
         setActiveJobs((prev) => {
           const next = { ...prev };
           if (next[code]?.jobId === job.jobId) delete next[code];
           return next;
         });
       }, 6000);
-      return () => window.clearTimeout(handle);
+      completionTimers.current.set(job.jobId, handle);
     }
   }, [activeJobs]);
 
@@ -1079,6 +1064,7 @@ export default function AdminCoverage() {
 
   return (
     <div className="mx-auto w-full max-w-[1600px] px-4 py-5 sm:px-6 sm:py-6 lg:px-8 space-y-5 sm:space-y-6">
+      {(coverageError || trendsError || dropAlertsError) && <Alert variant="destructive"><AlertDescription>Some coverage data could not be loaded. Missing data does not mean zero coverage or no alerts. <Button variant="outline" onClick={() => { void refetch(); void queryClient.invalidateQueries({ queryKey: ['/api/admin/coverage/trends?days=30'] }); void queryClient.invalidateQueries({ queryKey: ['/api/admin/coverage/drop-alerts'] }); }}>Retry</Button></AlertDescription></Alert>}
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold">Coverage by country</h1>
@@ -3038,12 +3024,13 @@ function ReconstructHistoryButton() {
   const [starting, setStarting] = useState<false | 'run' | 'dryRun'>(false);
   const completedJobIdRef = useRef<string | null>(null);
 
-  const { data: statusData } = useQuery<ReconstructHistoryStatusResponse>({
+  const { data: statusData, isError: statusError, refetch: refreshStatus } = useQuery<ReconstructHistoryStatusResponse>({
     queryKey: ['/api/admin/coverage/reconstruct-history-status', jobId],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const res = await apiRequest(
         'GET',
         `/api/admin/coverage/reconstruct-history-status/${jobId}`,
+        { signal },
       );
       if (!res.ok) {
         const text = await res.text().catch(() => '');
@@ -3055,6 +3042,7 @@ function ReconstructHistoryButton() {
     // Poll every second while the seeder is running; stop polling as
     // soon as the job reaches a terminal state.
     refetchInterval: (query) => {
+      if (query.state.status === 'error') return false;
       const job = query.state.data?.job;
       if (!job) return 1000;
       return job.status === 'running' ? 1000 : false;
@@ -3064,7 +3052,7 @@ function ReconstructHistoryButton() {
 
   const job = statusData?.job ?? null;
   const isRunning = !!job && job.status === 'running';
-  const isPending = !!starting || isRunning;
+  const isPending = !!starting || isRunning || (!!jobId && !statusData);
   // Which mode the in-flight job is using — used to decide which button
   // shows the spinner and to format the completion toast (dry-run vs.
   // real seed).
@@ -3203,6 +3191,7 @@ function ReconstructHistoryButton() {
 
   return (
     <div className="flex flex-col items-end gap-1">
+      {statusError && <p role="alert" className="text-destructive text-sm">Status unavailable; the server job may still be running. <Button variant="outline" size="sm" onClick={() => void refreshStatus()}>Retry status</Button></p>}
       <div className="flex items-center gap-2">
         <Button
           variant="outline"
@@ -3305,7 +3294,7 @@ function CoverageBackfillBootStatusCard() {
     setFocusedRange({ start: m[1], end: m[2] });
   }, []);
 
-  const { data, isLoading } = useQuery<CoverageBackfillBootStatusResponse>({
+  const { data, isLoading, isError: bootStatusError, refetch: refreshBootStatus } = useQuery<CoverageBackfillBootStatusResponse>({
     queryKey: ['/api/admin/coverage/backfill-status'],
     // While a seeder is still running we want the card to flip to "done"
     // promptly without forcing a manual refresh; otherwise an admin who
@@ -3314,20 +3303,12 @@ function CoverageBackfillBootStatusCard() {
     // 'running'; the result of this query feeds the interval below.
     refetchOnWindowFocus: false,
     staleTime: 30_000,
+    refetchInterval: query => query.state.status !== 'error' && query.state.data?.status?.outcome === 'running' ? 5000 : false,
   });
 
   // While the latest known outcome is 'running', keep polling so the
   // card flips to its terminal state without a manual refresh.
   const outcome = data?.status?.outcome ?? null;
-  useEffect(() => {
-    if (outcome !== 'running') return;
-    const interval = window.setInterval(() => {
-      void queryClient.invalidateQueries({
-        queryKey: ['/api/admin/coverage/backfill-status'],
-      });
-    }, 5000);
-    return () => window.clearInterval(interval);
-  }, [outcome]);
 
   const status = data?.status ?? null;
   // Drop any history row that matches the live status's `observedAt`
@@ -3546,6 +3527,7 @@ function CoverageBackfillBootStatusCard() {
     >
       <CardHeader>
         <CardTitle>Sparkline data — first-deploy backfill</CardTitle>
+        {bootStatusError && <p role="alert" className="text-destructive">Backfill status could not be loaded. <Button variant="outline" size="sm" onClick={() => void refreshBootStatus()}>Retry status</Button></p>}
         {focusedRange && matchVerdict === 'matched' ? (
           <div
             className="mt-1 text-xs text-amber-700"

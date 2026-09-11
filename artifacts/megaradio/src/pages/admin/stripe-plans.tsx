@@ -10,6 +10,8 @@ import { Switch } from "@/components/ui/switch";
 import { Loader2, CheckCircle, XCircle, ExternalLink, CreditCard, Search } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useAdminPriceVerification } from "@/hooks/use-admin-price-verification";
+import { formatAdminMoney as formatAmount } from "@/lib/admin-account-utils";
 
 interface StripePlan {
   planId: string;
@@ -43,15 +45,6 @@ const ENV_VAR: Record<string, string> = {
   premium_lifetime: "STRIPE_PRICE_LIFETIME",
 };
 
-function formatAmount(amount: number, currency: string): string {
-  if (!amount) return "—";
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: currency.toUpperCase() || "USD",
-    minimumFractionDigits: 2,
-  }).format(amount / 100);
-}
-
 interface VerifyResult {
   valid: boolean;
   currency?: string;
@@ -72,15 +65,19 @@ function PlanCard({ plan }: { plan: StripePlan }) {
     amount: plan.amount,
     isActive: plan.isActive,
   });
-  const [verifying, setVerifying] = useState(false);
-  const [verifyResult, setVerifyResult] = useState<VerifyResult | null>(null);
+  const { verifying, result: verifyResult, reset: resetVerification, verify } = useAdminPriceVerification<VerifyResult>("/api/admin/stripe-plans/verify-price");
+  const resetDraft = (editing: boolean) => {
+    resetVerification();
+    setForm({ stripePriceId: plan.stripePriceId, label: plan.label, description: plan.description, currency: plan.currency, amount: plan.amount, isActive: plan.isActive });
+    setEditing(editing);
+  };
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
   const saveMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (submitted: typeof form) => {
       const res = await apiRequest("PUT", `/api/admin/stripe-plans/${plan.planId}`, {
-        body: form,
+        body: submitted,
       });
       return res.json();
     },
@@ -95,25 +92,15 @@ function PlanCard({ plan }: { plan: StripePlan }) {
   });
 
   async function handleVerify() {
-    setVerifying(true);
-    setVerifyResult(null);
-    try {
-      const res = await apiRequest("POST", "/api/admin/stripe-plans/verify-price", {
-        body: { priceId: form.stripePriceId },
-      });
-      const data: VerifyResult = await res.json();
-      setVerifyResult(data);
-      if (data.valid && data.unitAmount !== undefined && data.currency) {
+    await verify(form.stripePriceId, (data) => {
+      if (data.valid && typeof data.unitAmount === "number" && data.currency) {
         setForm(f => ({
           ...f,
           amount: data.unitAmount ?? f.amount,
           currency: data.currency ?? f.currency,
         }));
       }
-    } catch {
-      setVerifyResult({ valid: false, error: "Network error" });
-    }
-    setVerifying(false);
+    });
   }
 
   return (
@@ -133,7 +120,7 @@ function PlanCard({ plan }: { plan: StripePlan }) {
             ) : (
               <Badge variant="secondary">Inactive</Badge>
             )}
-            <Button variant="outline" size="sm" onClick={() => { setEditing(!editing); setVerifyResult(null); }}>
+            <Button variant="outline" size="sm" disabled={saveMutation.isPending} onClick={() => resetDraft(!editing)}>
               {editing ? "Cancel" : "Edit"}
             </Button>
           </div>
@@ -178,7 +165,7 @@ function PlanCard({ plan }: { plan: StripePlan }) {
             </div>
           </div>
         ) : (
-          <div className="space-y-4">
+          <fieldset className="space-y-4" disabled={saveMutation.isPending}>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
                 <Label className="text-xs">Label (shown to users)</Label>
@@ -212,8 +199,9 @@ function PlanCard({ plan }: { plan: StripePlan }) {
               <Label className="text-xs">Stripe Price ID</Label>
               <div className="flex gap-2">
                 <Input
+                  aria-label="Stripe Price ID"
                   value={form.stripePriceId}
-                  onChange={e => { setForm(f => ({ ...f, stripePriceId: e.target.value })); setVerifyResult(null); }}
+                  onChange={e => { resetVerification(); setForm(f => ({ ...f, stripePriceId: e.target.value })); }}
                   placeholder="price_xxx"
                   className="font-mono text-sm"
                 />
@@ -251,6 +239,9 @@ function PlanCard({ plan }: { plan: StripePlan }) {
               <Label className="text-xs">Amount (in smallest unit, e.g. cents)</Label>
               <Input
                 type="number"
+                min={0}
+                step={1}
+                aria-label="Amount in smallest currency unit"
                 value={form.amount}
                 onChange={e => setForm(f => ({ ...f, amount: parseInt(e.target.value) || 0 }))}
                 placeholder="499 = $4.99"
@@ -270,17 +261,17 @@ function PlanCard({ plan }: { plan: StripePlan }) {
               <Button
                 className="bg-[#FF6B35] hover:bg-[#e55a24] text-white"
                 size="sm"
-                onClick={() => saveMutation.mutate()}
-                disabled={saveMutation.isPending}
+                onClick={() => saveMutation.mutate({ ...form })}
+                disabled={saveMutation.isPending || verifying || !Number.isSafeInteger(form.amount) || form.amount < 0 || !/^[a-z]{3}$/i.test(form.currency.trim())}
               >
                 {saveMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
                 Save
               </Button>
-              <Button variant="outline" size="sm" onClick={() => { setEditing(false); setVerifyResult(null); }}>
+              <Button variant="outline" size="sm" onClick={() => resetDraft(false)}>
                 Cancel
               </Button>
             </div>
-          </div>
+          </fieldset>
         )}
       </CardContent>
     </Card>
@@ -295,7 +286,7 @@ const DEFAULT_PLANS: StripePlan[] = [
 ];
 
 export default function StripePlansPage() {
-  const { data, isLoading } = useQuery<{ plans: StripePlan[] }>({
+  const { data, isLoading, isError, isFetching, refetch } = useQuery<{ plans: StripePlan[] }>({
     queryKey: ["/api/admin/stripe-plans"],
   });
 
@@ -322,6 +313,8 @@ export default function StripePlansPage() {
         <div className="flex items-center justify-center py-12">
           <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
         </div>
+      ) : isError ? (
+        <div role="alert" className="rounded border border-red-200 p-4 text-sm">Could not load payment plans. Editing is unavailable until the saved settings can be read. <Button variant="outline" size="sm" disabled={isFetching} onClick={() => refetch()}>Retry</Button></div>
       ) : (
         <div className="space-y-4">
           {plans.map(plan => (

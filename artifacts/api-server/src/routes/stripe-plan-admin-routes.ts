@@ -4,6 +4,7 @@ import { Paddle, Environment } from "@paddle/paddle-node-sdk";
 import { listSubscriptionPlans, saveSubscriptionPlan, type StripePlanId } from "../data/postgres-tv-store";
 import { logger } from "../utils/logger";
 import { publicPaddlePlanCatalog } from "../services/paddle-plan-catalog";
+import { validateSubscriptionPlanUpdate } from "../utils/admin-account-validation";
 
 const DEFAULT_PLANS: Array<{ planId: StripePlanId; label: string; description: string }> = [
   { planId: "remove_ads",      label: "Remove Ads", description: "Ad-free listening, no premium extras" },
@@ -85,26 +86,9 @@ export function registerStripePlanAdminRoutes(app: Express, deps: any) {
         return void res.status(400).json({ error: "Invalid planId" });
       }
 
-      const { stripePriceId, paddlePriceId, label, description, currency, amount, isActive } = req.body;
-
-      const update: Partial<{
-        stripePriceId: string;
-        paddlePriceId: string;
-        label: string;
-        description: string;
-        currency: string;
-        amount: number;
-        isActive: boolean;
-        updatedAt: Date;
-      }> = { updatedAt: new Date() };
-
-      if (typeof stripePriceId === "string") update.stripePriceId = stripePriceId.trim();
-      if (typeof paddlePriceId === "string") update.paddlePriceId = paddlePriceId.trim();
-      if (typeof label === "string") update.label = label.trim();
-      if (typeof description === "string") update.description = description.trim();
-      if (typeof currency === "string") update.currency = currency.toLowerCase().trim();
-      if (typeof amount === "number") update.amount = Math.round(amount);
-      if (typeof isActive === "boolean") update.isActive = isActive;
+      const validation = validateSubscriptionPlanUpdate(req.body);
+      if (validation.error) return void res.status(400).json({ error: validation.error });
+      const update = { ...validation.value, updatedAt: new Date() };
 
       const plan = await saveSubscriptionPlan(planId as StripePlanId, update);
 
