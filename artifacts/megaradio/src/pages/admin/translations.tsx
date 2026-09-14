@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
+import { apiFetch, apiRequest } from "@/lib/queryClient";
 import { translationDraftKey, translationDraftPayload, removeAcknowledgedDrafts } from '@/lib/admin-content-state';
 import { 
   Plus, 
@@ -48,7 +48,11 @@ interface Translation {
   language: string;
   value: string;
   isCompleted: boolean;
-  lastModified: string;
+}
+
+interface TranslationCompletion {
+  keyId: string;
+  completedCount: number;
 }
 
 interface TranslationLanguage {
@@ -111,8 +115,8 @@ export default function AdminTranslations() {
   // Check admin auth status first
   const { data: adminAuth, error: authError } = useQuery<{ user: any; authenticated: boolean }>({
     queryKey: ['/api/admin/auth/me'],
-    queryFn: async () => {
-      const response = await fetch('/api/admin/auth/me', { credentials: 'include' });
+    queryFn: async ({ signal }) => {
+      const response = await apiFetch('/api/admin/auth/me', { signal });
       if (!response.ok) throw new Error('Failed to check admin auth');
       return response.json();
     },
@@ -124,10 +128,8 @@ export default function AdminTranslations() {
   // Poll translation metadata for cache invalidation
   const { data: translationMetadata } = useQuery<{ languagesVersion: number }>({
     queryKey: ['/api/admin/translation-metadata'],
-    queryFn: async () => {
-      const response = await fetch('/api/admin/translation-metadata', {
-        credentials: 'include'
-      });
+    queryFn: async ({ signal }) => {
+      const response = await apiFetch('/api/admin/translation-metadata', { signal });
       if (!response.ok) throw new Error('Translation metadata could not load');
       return response.json();
     },
@@ -141,14 +143,13 @@ export default function AdminTranslations() {
   // Fetch translation keys with optimized caching - ONLY when authenticated as admin
   const { data: translationKeys = [], isLoading: keysLoading, error: keysError } = useQuery<TranslationKey[]>({
     queryKey: ['/api/admin/translation-keys', cacheVersion],
-    queryFn: async () => {
-      const response = await fetch('/api/admin/translation-keys', {
-        credentials: 'include'
-      });
+    queryFn: async ({ signal }) => {
+      const response = await apiFetch('/api/admin/translation-keys', { signal });
       if (!response.ok) throw new Error('Failed to fetch translation keys');
       return response.json();
     },
     staleTime: 30000, // Cache for 30 seconds
+    refetchOnMount: true,
     refetchOnWindowFocus: false,
     enabled: isAdmin, // Only fetch when admin is authenticated
   });
@@ -156,60 +157,75 @@ export default function AdminTranslations() {
   // Fetch languages with optimized caching - ONLY when authenticated as admin
   const { data: languages = [], isLoading: languagesLoading, error: languagesError } = useQuery<TranslationLanguage[]>({
     queryKey: ['/api/admin/translation-languages', cacheVersion],
-    queryFn: async () => {
-      const response = await fetch('/api/admin/translation-languages', {
-        credentials: 'include'
-      });
+    queryFn: async ({ signal }) => {
+      const response = await apiFetch('/api/admin/translation-languages', { signal });
       if (!response.ok) throw new Error('Failed to fetch languages');
       return response.json();
     },
     staleTime: 60000, // Cache for 1 minute
+    refetchOnMount: true,
     refetchOnWindowFocus: false,
     enabled: isAdmin, // Only fetch when admin is authenticated
   });
 
-  // Fetch all translations for filtering purposes with caching - ONLY when authenticated as admin
-  const { data: allTranslations = [], error: translationsError } = useQuery<Translation[]>({
-    queryKey: ['/api/admin/all-translations', cacheVersion],
-    queryFn: async () => {
-      const response = await fetch('/api/admin/all-translations', {
-        credentials: 'include'
-      });
-      if (!response.ok) throw new Error('Failed to fetch all translations');
+  // Counts do not need the full text of every translation in every language.
+  const { data: completion = [], isPending: completionLoading, error: completionError } = useQuery<TranslationCompletion[]>({
+    queryKey: ['/api/admin/all-translations', 'summary', cacheVersion],
+    queryFn: async ({ signal }) => {
+      const response = await apiFetch('/api/admin/all-translations?view=summary', { signal });
+      if (!response.ok) throw new Error('Failed to fetch translation completion');
+      const rows = await response.json();
+      if (!Array.isArray(rows) || rows.some(row => typeof row?.keyId !== 'string' || !Number.isInteger(row.completedCount) || row.completedCount < 0)) {
+        throw new Error('The API does not support translation completion counts yet');
+      }
+      return rows;
+    },
+    staleTime: 60000,
+    refetchOnWindowFocus: false,
+    refetchOnMount: true,
+    enabled: isAdmin,
+  });
+
+  const { data: languageTranslations = [], isFetching: languageTranslationsLoading, error: languageTranslationsError } = useQuery<Translation[]>({
+    queryKey: ['/api/admin/all-translations', 'language', selectedLanguage, cacheVersion],
+    queryFn: async ({ signal }) => {
+      const response = await apiFetch(`/api/admin/all-translations?language=${encodeURIComponent(selectedLanguage)}`, { signal });
+      if (!response.ok) throw new Error('Failed to fetch language translations');
       return response.json();
     },
-    staleTime: 60000, // Cache for 1 minute
-    refetchOnWindowFocus: false,
-    enabled: isAdmin, // Only fetch when admin is authenticated
+    staleTime: 60000,
+    enabled: isAdmin && selectedLanguage !== 'all',
+    refetchOnMount: true,
   });
 
   const translationIndex = useMemo(() => {
     const enabled = new Set(languages.filter(language => language.isEnabled).map(language => language.code));
     const values = new Map<string, Translation>();
-    const completed = new Map<string, number>();
-    for (const row of allTranslations) {
+    const completed = new Map(completion.map(row => [row.keyId, row.completedCount]));
+    for (const row of languageTranslations) {
       values.set(translationDraftKey(row.language, row.keyId), row);
-      if (row.language !== 'en' && enabled.has(row.language) && row.isCompleted && row.value.trim()) completed.set(row.keyId, (completed.get(row.keyId) || 0) + 1);
     }
     // English is the source text and is intentionally not AI-translated.
     if (enabled.has('en')) for (const key of translationKeys) {
       if (key.defaultValue.trim()) completed.set(key._id, (completed.get(key._id) || 0) + 1);
     }
     return { values, completed, enabledCount: enabled.size };
-  }, [allTranslations, languages, translationKeys]);
+  }, [completion, languageTranslations, languages, translationKeys]);
 
-  // Fetch translations for selected key
-  const { data: translations = [] } = useQuery<Translation[]>({
-    queryKey: ['/api/admin/translations', selectedKey?._id],
-    queryFn: async () => {
-      if (!selectedKey) return [];
-      const response = await fetch(`/api/admin/translations/${selectedKey._id}`, {
-        credentials: 'include'
-      });
-      if (!response.ok) throw new Error('Failed to fetch translations');
-      return response.json();
+  // Load only this key's values when its dialog is open.
+  const { data: translations = [], isPending: translationsLoading, error: translationsError, refetch: refetchTranslations } = useQuery<Translation[]>({
+    queryKey: ['/api/admin/all-translations', 'key', selectedKey?._id, cacheVersion],
+    queryFn: async ({ signal }) => {
+      const response = await apiFetch(`/api/admin/all-translations?keyId=${encodeURIComponent(selectedKey!._id)}`, { signal });
+      if (!response.ok) throw new Error('Failed to fetch key translations');
+      // Retain key scope during deployment if an older API ignores this filter.
+      const rows = await response.json();
+      if (!Array.isArray(rows)) throw new Error('Invalid key translations response');
+      return rows.filter(row => row.keyId === selectedKey!._id);
     },
-    enabled: isAdmin && !!selectedKey
+    staleTime: 60000,
+    enabled: isAdmin && isTranslateDialogOpen && !!selectedKey,
+    refetchOnMount: true,
   });
 
   // Create translation key mutation
@@ -273,11 +289,12 @@ export default function AdminTranslations() {
   // Save translation mutation
   const saveTranslationMutation = useMutation({
     mutationFn: async (translationData: any) => {
-      return apiRequest("POST", "/api/admin/translations", { body: translationData });
+      return apiRequest("POST", "/api/admin/translations/bulk-upsert", {
+        body: { translations: [translationData] },
+      });
     },
     onSuccess: () => {
       toast({ title: "Success", description: "Translation saved successfully" });
-      queryClient.invalidateQueries({ queryKey: ['/api/admin/translations', selectedKey?._id] });
       queryClient.invalidateQueries({ queryKey: ['/api/admin/all-translations'] });
       queryClient.invalidateQueries({ queryKey: ['/api/admin/translation-languages'] });
       setTranslationForm({ language: "", value: "" });
@@ -357,7 +374,7 @@ export default function AdminTranslations() {
       setTranslateMissingProgress({ current: i + 1, total: incompleteLanguages.length, currentLang: lang.name });
 
       try {
-        const response = await fetch(
+        const response = await apiFetch(
           `/api/admin/translation-languages/${lang.code}/translate?missingOnly=true`,
           {
             method: 'POST',
@@ -411,7 +428,7 @@ export default function AdminTranslations() {
       setTranslateAllProgress({ current: i + 1, total: enabledLanguages.length, currentLang: lang.name });
 
       try {
-        const response = await fetch(`/api/admin/translation-languages/${lang.code}/translate`, {
+        const response = await apiFetch(`/api/admin/translation-languages/${lang.code}/translate`, {
           method: 'POST',
           credentials: 'include',
           headers: { 'Content-Type': 'application/json' }
@@ -421,6 +438,8 @@ export default function AdminTranslations() {
           totalTranslated += data.stats?.translated || 0;
           totalFixed += data.stats?.fixed || 0;
           totalFailed += data.stats?.failed || 0;
+        } else {
+          totalFailed++;
         }
       } catch (error) {
         console.error(`Failed to translate ${lang.code}:`, error);
@@ -498,6 +517,7 @@ export default function AdminTranslations() {
 
   const handleTranslateKey = (key: TranslationKey) => {
     setSelectedKey(key);
+    setTranslationForm({ language: "", value: "" });
     setIsTranslateDialogOpen(true);
   };
 
@@ -627,7 +647,7 @@ export default function AdminTranslations() {
 
   return (
     <div className="mx-auto w-full max-w-[1600px] px-4 py-5 sm:px-6 sm:py-6 lg:px-8 space-y-5 sm:space-y-6">
-      {(authError || keysError || languagesError || translationsError) && <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-900">Translation data could not load. Existing translations have not been deleted. <Button variant="outline" size="sm" onClick={() => queryClient.invalidateQueries({ predicate: query => String(query.queryKey[0]).startsWith('/api/admin/') })}>Retry loading translations</Button></div>}
+      {(authError || keysError || languagesError || completionError || languageTranslationsError) && <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-900">Translation data could not load. Existing translations have not been deleted. <Button variant="outline" size="sm" onClick={() => queryClient.invalidateQueries({ predicate: query => String(query.queryKey[0]).startsWith('/api/admin/') })}>Retry loading translations</Button></div>}
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
@@ -636,7 +656,7 @@ export default function AdminTranslations() {
             Manage translation keys and their translations for different languages
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex max-w-full flex-wrap gap-2">
           <Button 
             onClick={handleScanFrontend}
             disabled={isScanning}
@@ -901,7 +921,7 @@ export default function AdminTranslations() {
                       </TableCell>
                       {selectedLanguage !== "all" && (
                         <TableCell className="max-w-xs">
-                          {editingTranslation === key._id ? (
+                          {languageTranslationsError ? <span className="text-destructive">Unavailable</span> : languageTranslationsLoading ? <span className="text-muted-foreground">Loading translation…</span> : editingTranslation === key._id ? (
                             <div className="flex items-center gap-2">
                               <Input
                                 data-translation-key={key._id}
@@ -951,12 +971,12 @@ export default function AdminTranslations() {
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2">
-                          {completionRate === 100 ? (
+                          {completionLoading || completionError ? null : completionRate === 100 ? (
                             <CheckCircle className="w-4 h-4 text-green-500" />
                           ) : (
                             <AlertCircle className="w-4 h-4 text-orange-500" />
                           )}
-                          <span className="text-sm">{Math.round(completionRate)}%</span>
+                          <span className="text-sm">{completionLoading || completionError ? '—' : `${Math.round(completionRate)}%`}</span>
                         </div>
                       </TableCell>
                       <TableCell>
@@ -965,6 +985,7 @@ export default function AdminTranslations() {
                             size="sm"
                             variant="outline"
                             onClick={() => handleTranslateKey(key)}
+                            aria-label={`Translate ${key.key}`}
                           >
                             <Globe className="w-4 h-4" />
                           </Button>
@@ -972,14 +993,16 @@ export default function AdminTranslations() {
                             size="sm"
                             variant="outline"
                             onClick={() => handleEditKey(key)}
+                            aria-label={`Edit ${key.key}`}
                           >
                             <Edit className="w-4 h-4" />
                           </Button>
                           <Button
                             size="sm"
                             variant="outline"
-                            onClick={() => deleteKeyMutation.mutate(key._id)}
+                            onClick={() => { if (window.confirm(`Delete ${key.key} and all its translations? This cannot be undone.`)) deleteKeyMutation.mutate(key._id); }}
                             disabled={deleteKeyMutation.isPending}
+                            aria-label={`Delete ${key.key}`}
                           >
                             <Trash2 className="w-4 h-4" />
                           </Button>
@@ -1207,7 +1230,7 @@ export default function AdminTranslations() {
       </Dialog>
 
       {/* Translate Dialog */}
-      <Dialog open={isTranslateDialogOpen} onOpenChange={setIsTranslateDialogOpen}>
+      <Dialog open={isTranslateDialogOpen} onOpenChange={(open) => { if (!saveTranslationMutation.isPending) setIsTranslateDialogOpen(open); }}>
         <DialogContent className="max-w-2xl bg-white border border-gray-200 shadow-lg text-gray-900">
           <DialogHeader>
             <DialogTitle className="text-gray-900">Translate Key: {selectedKey?.key}</DialogTitle>
@@ -1215,10 +1238,13 @@ export default function AdminTranslations() {
               {selectedKey?.defaultValue}
             </DialogDescription>
           </DialogHeader>
+          {translationsLoading && <p role="status">Loading existing translations…</p>}
+          {translationsError && <div role="alert">Existing translations could not be loaded. <Button variant="outline" size="sm" onClick={() => void refetchTranslations()}>Retry key translations</Button></div>}
+          <fieldset disabled={saveTranslationMutation.isPending || translationsLoading || Boolean(translationsError)} className="min-w-0">
           <div className="space-y-4">
             <div>
               <Label htmlFor="translate-language">Language</Label>
-              <Select value={translationForm.language} onValueChange={(value) => setTranslationForm({ ...translationForm, language: value })}>
+              <Select value={translationForm.language} disabled={saveTranslationMutation.isPending || translationsLoading || Boolean(translationsError)} onValueChange={(language) => setTranslationForm({ language, value: translations.find(row => row.language === language)?.value ?? '' })}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select language" />
                 </SelectTrigger>
@@ -1265,8 +1291,9 @@ export default function AdminTranslations() {
               </div>
             )}
           </div>
+          </fieldset>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsTranslateDialogOpen(false)}>
+            <Button variant="outline" disabled={saveTranslationMutation.isPending} onClick={() => setIsTranslateDialogOpen(false)}>
               Cancel
             </Button>
             <Button 
@@ -1276,7 +1303,7 @@ export default function AdminTranslations() {
                 value: translationForm.value,
                 isCompleted: true
               })}
-              disabled={saveTranslationMutation.isPending || !translationForm.language || !translationForm.value}
+              disabled={saveTranslationMutation.isPending || translationsLoading || Boolean(translationsError) || !selectedKey || !translationForm.language || !translationForm.value.trim()}
             >
               Save Translation
             </Button>

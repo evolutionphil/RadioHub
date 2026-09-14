@@ -175,7 +175,7 @@ export default function LogoManagement() {
     retry: false,
   });
 
-  const { data: optimizedStations, isLoading: optimizedLoading, isFetching: optimizedFetching } = useQuery<{ stations: OptimizedStation[]; total: number }>({
+  const { data: optimizedStations, isLoading: optimizedLoading, isFetching: optimizedFetching, isError: optimizedError, refetch: refetchOptimized } = useQuery<{ stations: OptimizedStation[]; total: number }>({
     queryKey: ['/api/admin/logos/optimized', { page: optimizedPage }],
     enabled: showOptimizedModal,
     staleTime: 30000,
@@ -192,7 +192,7 @@ export default function LogoManagement() {
     return params.toString();
   })();
 
-  const { data: missingStations, isLoading: missingLoading, isFetching: missingFetching } = useQuery<{
+  const { data: missingStations, isLoading: missingLoading, isFetching: missingFetching, isError: missingError, refetch: refetchMissing } = useQuery<{
     stations: MissingLogoStation[];
     total: number;
     totalPages: number;
@@ -712,6 +712,11 @@ export default function LogoManagement() {
               <div className="flex items-center justify-center h-48">
                 <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
               </div>
+            ) : optimizedError ? (
+              <div role="alert" className="space-y-3 text-sm text-destructive">
+                <p>Unable to load optimized station logos.</p>
+                <Button variant="outline" onClick={() => void refetchOptimized()}>Retry optimized logos</Button>
+              </div>
             ) : optimizedStations?.stations && optimizedStations.stations.length > 0 ? (
               <div className="space-y-2">
                 {optimizedStations.stations.map((station) => (
@@ -759,7 +764,8 @@ export default function LogoManagement() {
                 variant="outline"
                 size="sm"
                 onClick={() => setOptimizedPage(p => Math.max(1, p - 1))}
-                disabled={optimizedPage === 1 || optimizedLoading}
+                disabled={optimizedPage === 1 || optimizedFetching}
+                aria-label="Previous optimized logos page"
                 data-testid="button-prev-page"
               >
                 <ChevronLeft className="w-4 h-4" />
@@ -768,7 +774,8 @@ export default function LogoManagement() {
                 variant="outline"
                 size="sm"
                 onClick={() => setOptimizedPage(p => p + 1)}
-                disabled={!optimizedStations?.stations || optimizedStations.stations.length < 50 || optimizedLoading}
+                disabled={!optimizedStations || optimizedPage >= Math.ceil(optimizedStations.total / 50) || optimizedFetching || optimizedError}
+                aria-label="Next optimized logos page"
                 data-testid="button-next-page"
               >
                 <ChevronRight className="w-4 h-4" />
@@ -836,6 +843,11 @@ export default function LogoManagement() {
             {(missingLoading || missingFetching) ? (
               <div className="flex items-center justify-center h-48">
                 <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+              </div>
+            ) : missingError ? (
+              <div role="alert" className="space-y-3 text-sm text-destructive">
+                <p>Unable to load stations with missing logos.</p>
+                <Button variant="outline" onClick={() => void refetchMissing()}>Retry missing logos</Button>
               </div>
             ) : missingStations?.stations && missingStations.stations.length > 0 ? (
               <div className="space-y-2">
@@ -918,14 +930,15 @@ export default function LogoManagement() {
 
           <div className="flex items-center justify-between pt-4 border-t">
             <div className="text-sm text-muted-foreground">
-              Sayfa {missingPage} / {missingStations?.totalPages ?? 1}
+              Sayfa {missingPage} / {Math.max(1, missingStations?.totalPages ?? 1)}
             </div>
             <div className="flex gap-2">
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => setMissingPage(p => Math.max(1, p - 1))}
-                disabled={missingPage === 1 || missingLoading}
+                disabled={missingPage === 1 || missingFetching}
+                aria-label="Previous missing logos page"
                 data-testid="button-missing-prev"
               >
                 <ChevronLeft className="w-4 h-4" />
@@ -934,7 +947,8 @@ export default function LogoManagement() {
                 variant="outline"
                 size="sm"
                 onClick={() => setMissingPage(p => p + 1)}
-                disabled={!missingStations || missingPage >= (missingStations.totalPages ?? 1) || missingLoading}
+                disabled={!missingStations || missingPage >= (missingStations.totalPages ?? 1) || missingFetching || missingError}
+                aria-label="Next missing logos page"
                 data-testid="button-missing-next"
               >
                 <ChevronRight className="w-4 h-4" />

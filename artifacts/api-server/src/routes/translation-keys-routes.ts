@@ -388,6 +388,25 @@ export async function registerTranslationKeyRoutes(app: Express, deps: any) {
   // Get all translations for admin filtering
   app.get("/api/admin/all-translations", requireAdmin, async (req, res) => {
     try {
+      const { view, language, keyId } = req.query;
+      // IDs/codes are stored as text; migrated IDs and multi-part locale codes
+      // must remain readable. SQL binds these filters as parameters.
+      const validFilter = (value: unknown) => typeof value === 'string' && value.trim().length > 0 &&
+        value.length <= 256 && !/[\u0000-\u001f\u007f]/.test(value);
+      if ((view !== undefined && view !== 'summary') ||
+          (language !== undefined && !validFilter(language)) ||
+          (keyId !== undefined && !validFilter(keyId)) ||
+          (view === 'summary' && (language !== undefined || keyId !== undefined))) {
+        return void res.status(400).json({ error: 'Use view=summary, or a valid language and/or translation key ID' });
+      }
+      if (view === 'summary') return void res.json(await pgLocalization().adminTranslationCompletion());
+      if (language !== undefined || keyId !== undefined) {
+        return void res.json(await pgLocalization().adminTranslationValues({
+          language: typeof language === 'string' ? language : undefined,
+          keyId: typeof keyId === 'string' ? keyId : undefined,
+        }));
+      }
+      // Keep the original unfiltered contract for existing API consumers.
       const allTranslations = (await pgLocalization().listTranslations());
       res.json(allTranslations);
     } catch (error) {

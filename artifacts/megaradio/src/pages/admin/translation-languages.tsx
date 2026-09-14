@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
+import { apiFetch, apiRequest } from "@/lib/queryClient";
 import { Plus, Edit, Trash2, Globe, Star, Languages } from "lucide-react";
 
 interface TranslationLanguage {
@@ -63,10 +63,8 @@ export default function AdminTranslationLanguages() {
   // Fetch languages
   const { data: languages = [], isLoading, error, refetch } = useQuery<TranslationLanguage[]>({
     queryKey: ['/api/admin/translation-languages'],
-    queryFn: async () => {
-      const response = await fetch('/api/admin/translation-languages', {
-        credentials: 'include'
-      });
+    queryFn: async ({ signal }) => {
+      const response = await apiFetch('/api/admin/translation-languages', { signal });
       if (!response.ok) throw new Error('Failed to fetch languages');
       return response.json();
     },
@@ -80,6 +78,7 @@ export default function AdminTranslationLanguages() {
     onSuccess: () => {
       toast({ title: "Success", description: "Language added successfully" });
       queryClient.invalidateQueries({ queryKey: ['/api/admin/translation-languages'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/all-translations'] });
       setIsAddDialogOpen(false);
       resetNewLanguageForm();
     },
@@ -100,6 +99,7 @@ export default function AdminTranslationLanguages() {
     onSuccess: () => {
       toast({ title: "Success", description: "Language updated successfully" });
       queryClient.invalidateQueries({ queryKey: ['/api/admin/translation-languages'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/all-translations'] });
       setIsEditDialogOpen(false);
       setSelectedLanguage(null);
     },
@@ -120,6 +120,7 @@ export default function AdminTranslationLanguages() {
     onSuccess: () => {
       toast({ title: "Success", description: "Language deleted successfully" });
       queryClient.invalidateQueries({ queryKey: ['/api/admin/translation-languages'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/all-translations'] });
     },
     onError: (error: any) => {
       toast({ 
@@ -139,6 +140,7 @@ export default function AdminTranslationLanguages() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/admin/translation-languages'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/all-translations'] });
     },
     onError: (error: any) => {
       toast({ 
@@ -181,6 +183,8 @@ export default function AdminTranslationLanguages() {
         description: `Translated ${data.stats.translated} keys for ${data.message}. Failed: ${data.stats.failed}`
       });
       queryClient.invalidateQueries({ queryKey: ['/api/admin/translation-languages'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/all-translations'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/all-translations'] });
     },
     onError: (error: any) => {
       toast({ 
@@ -348,6 +352,7 @@ export default function AdminTranslationLanguages() {
                     <TableCell>
                       <div className="flex items-center gap-2">
                         <Switch
+                          aria-label={`Enable ${language.name}`}
                           checked={language.isEnabled}
                           onCheckedChange={(checked) => 
                             toggleLanguageMutation.mutate({ 
@@ -391,14 +396,16 @@ export default function AdminTranslationLanguages() {
                           size="sm"
                           variant="outline"
                           onClick={() => handleEditLanguage(language)}
+                          aria-label={`Edit ${language.name}`}
                         >
                           <Edit className="w-4 h-4" />
                         </Button>
                         <Button
                           size="sm"
                           variant="outline"
-                          onClick={() => deleteLanguageMutation.mutate(language._id)}
+                          onClick={() => { if (window.confirm(`Delete ${language.name} and its translations? This cannot be undone.`)) deleteLanguageMutation.mutate(language._id); }}
                           disabled={deleteLanguageMutation.isPending || language.isDefault}
+                          aria-label={`Delete ${language.name}`}
                         >
                           <Trash2 className="w-4 h-4" />
                         </Button>

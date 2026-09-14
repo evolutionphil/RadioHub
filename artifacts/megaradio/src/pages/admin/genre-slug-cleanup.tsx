@@ -1,4 +1,5 @@
 import { Fragment, useState } from "react";
+import { apiFetch } from "@/lib/queryClient";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -71,7 +72,7 @@ export default function AdminGenreSlugCleanupPage() {
     queryFn: async () => {
       const qs = new URLSearchParams({ limit: "20" });
       if (trigger) qs.set("trigger", trigger);
-      const res = await fetch(
+      const res = await apiFetch(
         `/api/admin/maintenance/genre-slug-cleanup/runs?${qs.toString()}`,
         { credentials: "include" },
       );
@@ -89,7 +90,7 @@ export default function AdminGenreSlugCleanupPage() {
   // takes over until the audit row turns green.
   const runNowMutation = useMutation({
     mutationFn: async () => {
-      const res = await fetch(
+      const res = await apiFetch(
         "/api/admin/maintenance/genre-slug-cleanup/run",
         { method: "POST", credentials: "include" },
       );

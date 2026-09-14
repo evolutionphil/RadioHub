@@ -513,6 +513,7 @@ export default function AdminUsers() {
   // Reset every time the user opens a new edit dialog.
   const [subPlanDraft, setSubPlanDraft] = useState<string>("none");
   const [subExpiresDraft, setSubExpiresDraft] = useState<string>("");
+  const [csvExporting, setCsvExporting] = useState(false);
   const { toast } = useToast();
 
   // Build server-side sort params (plan/favorites are sorted client-side within the loaded page)
@@ -536,13 +537,9 @@ export default function AdminUsers() {
   const { data: usersResponse, isLoading: isLoadingUsers, isFetching: isFetchingUsers, error: usersError } = useQuery<{ users: UserProfile[]; total: number; totalPages: number }>({
     queryKey: ["/api/admin/users", queryParams],
     staleTime: 30000,
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const qs = new URLSearchParams(queryParams).toString();
-      const res = await fetch(`/api/admin/users?${qs}`, { credentials: "include" });
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(`${res.status}: ${text}`);
-      }
+      const res = await apiRequest("GET", `/api/admin/users?${qs}`, { signal });
       return res.json();
     },
     retry: 2,
@@ -714,11 +711,10 @@ export default function AdminUsers() {
     URL.revokeObjectURL(url);
   };
 
-  // Hits the server-side streaming endpoint so the export reflects the
-  // full result set (not just the page currently in memory) and stays
-  // memory-safe as the user base grows. Filters are passed through query
-  // string so the server applies the same search/plan/auth-method scope.
-  const handleDownloadCsv = () => {
+  // Export the full filtered result set through authenticated API transport.
+  // Direct navigation cannot attach the bearer fallback or report failures.
+  const handleDownloadCsv = async () => {
+    if (csvExporting) return;
     const params = new URLSearchParams();
     const trimmed = searchQuery.trim();
     if (trimmed) params.set("search", trimmed);
@@ -726,10 +722,20 @@ export default function AdminUsers() {
     if (authMethodFilter !== "all") params.set("authMethod", authMethodFilter);
     if (platformFilter !== "all") params.set("platform", platformFilter);
     const qs = params.toString();
-    // Same-origin navigation through the shared proxy. The browser handles
-    // streaming + the file save dialog without any in-memory build.
-    window.location.href =
-      `/api/admin/users/export.csv${qs ? `?${qs}` : ""}`;
+    setCsvExporting(true);
+    try {
+      const response = await apiRequest("GET", `/api/admin/users/export.csv${qs ? `?${qs}` : ""}`);
+      const url = URL.createObjectURL(await response.blob());
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `megaradio-users-${exportTimestamp()}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch {
+      toast({ title: "CSV export unavailable", description: "The user list could not be downloaded. Please try again.", variant: "destructive" });
+    } finally { setCsvExporting(false); }
   };
 
   const sortableHeaderClass =
@@ -978,27 +984,27 @@ export default function AdminUsers() {
               type="button"
               variant="outline"
               onClick={handleDownloadCsv}
-              disabled={totalUsers === 0}
+              disabled={totalUsers === 0 || csvExporting || isFetchingUsers || !!usersError}
               data-testid="button-download-users-csv"
               aria-label="Download filtered users as CSV"
               title="Download the currently filtered user list as a CSV file"
               className="bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
             >
               <Download size={16} className="mr-2" />
-              Download CSV
+              {csvExporting ? "Preparing CSV…" : "Download CSV"}
             </Button>
             <Button
               type="button"
               variant="outline"
               onClick={handleDownloadXlsx}
-              disabled={totalUsers === 0}
+              disabled={filteredUsers.length === 0 || isFetchingUsers || !!usersError}
               data-testid="button-download-users-xlsx"
-              aria-label="Download filtered users as Excel"
-              title="Download the currently filtered user list as an Excel (.xlsx) file"
+              aria-label="Download current page as Excel"
+              title="Download this page as Excel; use CSV to export all matching users"
               className="bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
             >
               <Download size={16} className="mr-2" />
-              Download Excel
+              Excel (this page)
             </Button>
             <ResetViewButton
               hasNonDefaultPrefs={hasNonDefaultViewPrefs}

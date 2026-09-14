@@ -550,6 +550,16 @@ describe(
       assert.equal(result.body.feedback.length, 1);
       assert.equal(result.body.stats.total, 2);
       assert.equal(result.body.stats.open, 1);
+      assert.equal(result.body.total, 1);
+      assert.equal(result.body.totalPages, 1);
+      const firstPage = await request('/api/admin/feedback?limit=1&page=1', 'GET', undefined, adminHeaders);
+      const secondPage = await request('/api/admin/feedback?limit=1&page=2', 'GET', undefined, adminHeaders);
+      assert.equal(firstPage.body.total, 2);
+      assert.equal(firstPage.body.totalPages, 2);
+      assert.equal(secondPage.body.page, 2);
+      assert.equal(secondPage.body.feedback.length, 1);
+      assert.notEqual(firstPage.body.feedback[0]._id, secondPage.body.feedback[0]._id);
+      assert.deepEqual(firstPage.body.stats, secondPage.body.stats);
       assert.equal(
         (
           await request(

@@ -25,6 +25,7 @@ export interface DashboardStats {
     isRunning: boolean;
     lastFullSync?: string | Date | null;
     lastSync?: string | null;
+    lastSyncStatus?: string;
   };
   recentSyncLogs: any[];
 }

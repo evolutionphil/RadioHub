@@ -81,6 +81,24 @@ it('PostgreSQL table controls use retained operation aliases without a fictional
   vi.spyOn(window,'confirm').mockReturnValue(true);mount(<DbManagement/>);fireEvent.click(await screen.findByRole('button',{name:'Clear'}));
   await waitFor(()=>expect(mocks.request).toHaveBeenCalledWith('POST','/api/admin/db-drop-collection',{body:{collection:'applogs'}}));expect(screen.queryByText(/Quota Usage/)).not.toBeInTheDocument();expect(OPERATIONAL_TABLES.stations).toBeUndefined();expect(OPERATIONAL_TABLES.catalog_sync_runs.clearable).toBe(false);
 });
+it('does not offer a station flush when database status is unavailable', async () => {
+  mocks.query.mockRejectedValue(new Error('Database status unavailable'));
+  mount(<DbManagement/>);
+  expect(screen.getByTestId('button-open-flush-stations')).toBeDisabled();
+  expect(await screen.findByRole('alert')).toHaveTextContent('Unable to load database status');
+  expect(screen.getByTestId('button-open-flush-stations')).toBeDisabled();
+  expect(mocks.request).not.toHaveBeenCalled();
+});
+it('prevents a station flush from overlapping pending database maintenance', async () => {
+  mocks.query.mockResolvedValue({engine:'postgresql',totalSizeMB:10,storageSizeMB:12,indexSizeMB:2,collections:[{name:'app_logs',count:5,sizeMB:1,storageSizeMB:1,indexSizeMB:0}],quotaStatus:{quotaExceeded:false}});
+  mocks.request.mockImplementation(() => new Promise(() => {}));
+  vi.spyOn(window,'confirm').mockReturnValue(true);
+  mount(<DbManagement/>);
+  fireEvent.click(await screen.findByRole('button',{name:'Clean'}));
+  await waitFor(() => expect(screen.getByTestId('button-open-flush-stations')).toBeDisabled());
+  expect(screen.getByRole('button',{name:'Clear'})).toBeDisabled();
+  expect(mocks.request).toHaveBeenCalledTimes(1);
+});
 it('a completed logo job is not reattached from a cached active-job response', async () => {
   const job={jobId:'finished-logo-job',status:'completed',total:1,processed:1,successful:1,failed:0,startedAt:new Date().toISOString()};
   mocks.query.mockImplementation(async(url:string)=>url.endsWith('/active-job')?{hasActiveJob:true,job:{...job,status:'running'}}:url.endsWith('/job-status')?job:url.endsWith('/stats')?{totalStations:1,stationsWithFavicon:1,stationsWithSlug:1,stationsWithLogoAssets:1,stationsFailed:0,stationsNeedingProcessing:0,stationsWithoutLogo:0,stationsNoFavicon:0,processingComplete:true,s3Configured:false}:null);

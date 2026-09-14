@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { analyticsParams, analyticsTimestamp } from '@/lib/admin-analytics';
-import { apiRequest } from '@/lib/queryClient';
+import { apiFetch, apiRequest } from '@/lib/queryClient';
 import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -62,8 +62,8 @@ export default function AnalyticsPage() {
   // Fetch analytics summary data  
   const { data: summaryData, isError: summaryError, isPending: summaryLoading, refetch: refetchSummary } = useQuery({
     queryKey: ['/api/analytics/summary'],
-    queryFn: async () => {
-      const response = await fetch('/api/analytics/summary');
+    queryFn: async ({ signal }) => {
+      const response = await apiFetch('/api/analytics/summary', { signal });
       if (!response.ok) throw new Error('Failed to fetch analytics summary');
       return response.json();
     },

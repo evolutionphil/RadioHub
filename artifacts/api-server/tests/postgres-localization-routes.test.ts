@@ -86,6 +86,52 @@ describe('PostgreSQL localization HTTP contracts', { skip: !connectionString }, 
     assert.equal(mongoQueries, 0);
   });
 
+  it('returns compact completion counts and only requested translation values without changing the legacy contract', async () => {
+    const key = await store.createKey({ key: 'compact_read_key', defaultValue: 'Source value' });
+    const emptyKey = await store.createKey({ key: 'compact_empty_key', defaultValue: 'Another source' });
+    for (const code of ['en', 'de', 'tr', 'fr']) {
+      await store.saveTranslationLanguage({ code, name: code, isEnabled: code !== 'fr', isDefault: false });
+    }
+    await store.bulkUpsertTranslations([
+      { keyId: key._id, language: 'de', value: 'Hallo', isCompleted: true },
+      { keyId: key._id, language: 'en', value: 'Source value', isCompleted: true },
+      { keyId: key._id, language: 'tr', value: 'Unfinished draft', isCompleted: false },
+      { keyId: key._id, language: 'fr', value: 'Disabled language', isCompleted: true },
+      { keyId: emptyKey._id, language: 'de', value: ' \t\n\u00a0\u2003\ufeff ', isCompleted: true },
+    ]);
+    assert.equal((await fetch(baseUrl + '/api/admin/all-translations?view=summary')).status, 401);
+    const summary = await request('/api/admin/all-translations?view=summary');
+    assert.deepEqual(summary, { status: 200, body: [{ keyId: key._id, completedCount: 1 }] });
+    const language = await request('/api/admin/all-translations?language=de');
+    assert.equal(language.status, 200);
+    assert.equal(language.body.length, 2);
+    assert.ok(language.body.every((row: any) => row.language === 'de'));
+    assert.deepEqual(Object.keys(language.body[0]).sort(), ['_id', 'isCompleted', 'keyId', 'language', 'value'].sort());
+    const selectedKey = await request(`/api/admin/all-translations?keyId=${key._id}`);
+    assert.equal(selectedKey.body.length, 4);
+    assert.ok(selectedKey.body.every((row: any) => row.keyId === key._id));
+    const combined = await request(`/api/admin/all-translations?keyId=${key._id}&language=de`);
+    assert.equal(combined.body.length, 1);
+    assert.equal(combined.body[0].value, 'Hallo');
+    const legacy = await request('/api/admin/all-translations');
+    assert.equal(legacy.body.length, 5);
+    assert.ok(Object.hasOwn(legacy.body[0], 'lastModified'));
+    for (const query of ['view=other', 'view=summary&language=de', 'language=de&language=tr', 'language=', 'keyId=', 'language=' + 'x'.repeat(257)]) {
+      assert.equal((await request('/api/admin/all-translations?' + query)).status, 400, query);
+    }
+    const legacyKeyId = 'legacy:compact/key';
+    await pool.query("INSERT INTO translation_keys(id,key,default_value,category) VALUES($1,'legacy_compact_key','Legacy source','general')", [legacyKeyId]);
+    await store.saveTranslationLanguage({ code: 'zh-Hant-TW', name: 'Traditional Chinese', isEnabled: true });
+    await store.upsertTranslation({ keyId: legacyKeyId, language: 'zh-hant-tw', value: 'Legacy translation', isCompleted: true });
+    const legacyFiltered = await request(`/api/admin/all-translations?keyId=${encodeURIComponent(legacyKeyId)}&language=zh-hant-tw`);
+    assert.equal(legacyFiltered.status, 200);
+    assert.equal(legacyFiltered.body[0].keyId, legacyKeyId);
+    assert.equal(legacyFiltered.body[0].value, 'Legacy translation');
+    await store.deleteKey(legacyKeyId);
+    await store.deleteKey(key._id);
+    await store.deleteKey(emptyKey._id);
+  });
+
   it('records country mapping changes, paginates audits and exports the original deletion snapshot', async () => {
     const saved = await request('/api/admin/country-language-mappings', 'POST', { countryCode: 'de', countryName: 'Germany', languageCode: 'tr' });
     assert.equal(saved.status, 200);

@@ -197,6 +197,30 @@ export class PostgresLocalizationStore {
     return result.rows.map((row) => translationRow(row, populated));
   }
 
+  async adminTranslationCompletion(): Promise<Array<{ keyId: string; completedCount: number }>> {
+    const result = await this.pool.query(
+      `SELECT t.key_id, count(*)::integer AS completed_count
+       FROM translations t JOIN translation_languages l ON l.code=t.language
+       WHERE l.is_enabled=true AND t.language<>'en' AND t.is_completed=true
+         AND btrim(t.value, $1)<>''
+       GROUP BY t.key_id`,
+      // Match String.trim() used by the editor, including Unicode whitespace.
+      [' \t\n\r\f\v\u00a0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000\ufeff'],
+    );
+    return result.rows.map(row => ({ keyId: row.key_id, completedCount: Number(row.completed_count) }));
+  }
+
+  async adminTranslationValues(filter: { language?: string; keyId?: string }): Promise<any[]> {
+    const result = await this.pool.query(
+      `SELECT id,key_id,language,value,is_completed FROM translations
+       WHERE ($1::text IS NULL OR language=$1) AND ($2::text IS NULL OR key_id=$2)
+       ORDER BY language,key_id`,
+      [filter.language ?? null, filter.keyId ?? null],
+    );
+    return result.rows.map(row => ({ _id: row.id, keyId: row.key_id, language: row.language,
+      value: row.value, isCompleted: row.is_completed }));
+  }
+
   async findTranslation(keyId: string, language: string): Promise<any | null> {
     const result = await this.pool.query('SELECT * FROM translations WHERE key_id=$1 AND language=$2', [keyId, language]);
     return result.rows[0] ? translationRow(result.rows[0]) : null;

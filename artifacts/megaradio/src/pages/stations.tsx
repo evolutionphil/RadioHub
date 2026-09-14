@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { api, type StationFilters } from "@/lib/api";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { apiFetch, queryClient, apiRequest } from "@/lib/queryClient";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
@@ -235,7 +235,7 @@ export default function Stations() {
   // Merge stations mutation
   const mergeMutation = useMutation({
     mutationFn: async ({ primaryStationId, duplicateStationIds, mergeData }: { primaryStationId: string, duplicateStationIds: string[], mergeData: any }) => {
-      const response = await fetch('/api/admin/stations/merge', {
+      const response = await apiFetch('/api/admin/stations/merge', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -272,7 +272,7 @@ export default function Stations() {
   });
   const addBlacklistMutation = useMutation({
     mutationFn: async (payload: { name: string; url: string; stationUuid?: string; reason?: string }) => {
-      const response = await fetch('/api/admin/blacklisted-stations', {
+      const response = await apiFetch('/api/admin/blacklisted-stations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -303,7 +303,7 @@ export default function Stations() {
   // Restore blacklisted station mutation
   const restoreMutation = useMutation({
     mutationFn: async (blacklistId: string) => {
-      const response = await fetch(`/api/admin/blacklisted-stations/${blacklistId}/restore`, {
+      const response = await apiFetch(`/api/admin/blacklisted-stations/${blacklistId}/restore`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' }
       });
@@ -341,7 +341,7 @@ export default function Stations() {
       // Bulk AI 404'd → the SPA fallback returned index.html and the client threw
       // "Unexpected token '<' … is not valid JSON". Request body/response contract
       // is identical; only the path segment order was wrong.
-      const response = await fetch('/api/admin/stations/generate-bulk-descriptions', {
+      const response = await apiFetch('/api/admin/stations/generate-bulk-descriptions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ filterByCountry, skipExisting, limit, selectedStationIds, languages: languages || Array.from(selectedLanguages) })
@@ -390,7 +390,7 @@ export default function Stations() {
   }>({
     queryKey: ['/api/admin/stations/description-coverage'],
     queryFn: async () => {
-      const response = await fetch('/api/admin/stations/description-coverage');
+      const response = await apiFetch('/api/admin/stations/description-coverage');
       if (!response.ok) throw new Error('Failed to load coverage');
       return response.json();
     },
@@ -554,7 +554,7 @@ export default function Stations() {
   // Handle refresh of skipped stations
   const handleRefreshSkipped = async () => {
     try {
-      const response = await fetch('/api/admin/stations/clear-skipped-flags', {
+      const response = await apiFetch('/api/admin/stations/clear-skipped-flags', {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' }
@@ -590,7 +590,7 @@ export default function Stations() {
       // If stations are selected, only fix those; otherwise fix all
       const stationIds = selectedStations.size > 0 ? Array.from(selectedStations) : undefined;
       
-      const response = await fetch('/api/admin/stations/fix-missing-english', {
+      const response = await apiFetch('/api/admin/stations/fix-missing-english', {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
@@ -635,7 +635,7 @@ export default function Stations() {
   const handleDetectTranslatedNames = async () => {
     setIsDetectingTranslated(true);
     try {
-      const response = await fetch('/api/admin/stations/detect-translated-names?limit=1000', {
+      const response = await apiFetch('/api/admin/stations/detect-translated-names?limit=1000', {
         credentials: 'include'
       });
       
@@ -675,7 +675,7 @@ export default function Stations() {
     setShowTranslatedNamesDialog(false);
     
     try {
-      const response = await fetch('/api/admin/stations/fix-translated-names', {
+      const response = await apiFetch('/api/admin/stations/fix-translated-names', {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
@@ -745,7 +745,7 @@ export default function Stations() {
     // Edit button clicked for station
     try {
       // Fetch fresh station data to ensure we have latest descriptions
-      const response = await fetch(`/api/admin/stations/${station._id}`, {
+      const response = await apiFetch(`/api/admin/stations/${station._id}`, {
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' }
       });
@@ -802,7 +802,7 @@ export default function Stations() {
     if (!stationId) return;
     setRecheckingTagsStationId(stationId);
     try {
-      const response = await fetch(
+      const response = await apiFetch(
         `/api/admin/stations/${stationId}/recheck-tags`,
         {
           method: 'POST',
@@ -859,7 +859,7 @@ export default function Stations() {
     if (!confirm(`Re-check tags from Radio-Browser for ${scope}?`)) return;
     setIsBulkRecheckingTags(true);
     try {
-      const response = await fetch('/api/admin/stations/recheck-tags-bulk', {
+      const response = await apiFetch('/api/admin/stations/recheck-tags-bulk', {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
@@ -917,7 +917,7 @@ export default function Stations() {
       return;
     setIsBulkRecheckingTags(true);
     try {
-      const response = await fetch('/api/admin/stations/recheck-tags-bulk', {
+      const response = await apiFetch('/api/admin/stations/recheck-tags-bulk', {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
@@ -1103,7 +1103,7 @@ export default function Stations() {
         if (sourceFaviconUrl) {
           // Copy favicon to highest-voted station before deletion
           try {
-            const updateResponse = await fetch(`/api/admin/stations/${highestVotedRemaining._id}`, {
+            const updateResponse = await apiFetch(`/api/admin/stations/${highestVotedRemaining._id}`, {
               method: 'PUT',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ favicon: sourceFaviconUrl })
@@ -1126,7 +1126,7 @@ export default function Stations() {
       }
 
       // Proceed with deletion
-      const response = await fetch('/api/admin/delete-stations', {
+      const response = await apiFetch('/api/admin/delete-stations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ stationIds: selectedIds })
@@ -1388,7 +1388,7 @@ export default function Stations() {
                           if (!recheckTagsJobId) return;
                           setIsCancellingRecheck(true);
                           try {
-                            const resp = await fetch(
+                            const resp = await apiFetch(
                               `/api/admin/stations/recheck-tags-job-cancel/${recheckTagsJobId}`,
                               {
                                 method: 'POST',

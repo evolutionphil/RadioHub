@@ -1,4 +1,5 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { apiFetch } from "@/lib/queryClient";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatCard } from "./StatCard";
 import { Button } from "@/components/ui/button";
@@ -20,7 +21,9 @@ import {
   AlertCircle,
   Image,
   ShieldAlert,
-  CalendarClock
+  CalendarClock,
+  RefreshCw,
+  MessageSquare
 } from "lucide-react";
 import { Link } from "wouter";
 import { RetryTrendSparkline, type RetryTrendRun } from "@/components/admin/RetryTrendSparkline";
@@ -58,37 +61,41 @@ interface DashboardStats {
   health?: {
     database: 'online' | 'offline';
     radioBrowser: 'online' | 'stale' | 'offline';
-    translations: 'active' | 'empty';
+    translations: 'active' | 'empty' | 'unavailable';
     lastSyncHoursAgo: number | null;
   };
   recentSyncDate?: string | null;
 }
 
 type HealthLevel = 'good' | 'degraded' | 'issue' | 'unknown';
-function deriveOverallHealth(h: DashboardStats['health']): HealthLevel {
+function deriveOverallHealth(h: DashboardStats['health'], syncFailed: boolean): HealthLevel {
   if (!h) return 'unknown';
   if (h.database === 'offline' || h.translations === 'empty') return 'issue';
   if (h.radioBrowser === 'offline') return 'issue';
-  if (h.radioBrowser === 'stale') return 'degraded';
+  if (h.translations === 'unavailable') return 'unknown';
+  if (h.radioBrowser === 'stale' || syncFailed) return 'degraded';
   return 'good';
 }
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316'];
 
 export default function AdminDashboard() {
-  const { data: stats, isLoading, isError, refetch } = useQuery<DashboardStats>({
+  const queryClient = useQueryClient();
+  const statsQuery = useQuery<DashboardStats>({
     queryKey: ["/api/dashboard/stats"],
     staleTime: 30000, // Cache for 30 seconds
     refetchOnWindowFocus: false,
   });
+  const { data: stats, isLoading, isError, refetch, dataUpdatedAt } = statsQuery;
 
-  const { data: languages } = useQuery({
+  const languagesQuery = useQuery({
     queryKey: ["/api/admin/translation-languages"],
     staleTime: 60000, // Cache for 1 minute
     refetchOnWindowFocus: false,
   });
+  const { data: languages } = languagesQuery;
 
-  const { data: autoFlaggedReport, isLoading: isLoadingAutoFlagged } = useQuery<{
+  const autoFlaggedQuery = useQuery<{
     last: { syncType: string; status: string; startedAt: string; completedAt: string | null; autoFlagged: number } | null;
     lastCompleted: { startedAt: string; completedAt: string | null; autoFlagged: number } | null;
   }>({
@@ -96,8 +103,9 @@ export default function AdminDashboard() {
     staleTime: 30000,
     refetchOnWindowFocus: false,
   });
+  const { data: autoFlaggedReport, isLoading: isLoadingAutoFlagged } = autoFlaggedQuery;
 
-  const { data: backfillStatus, isLoading: isLoadingBackfill } = useQuery<{
+  const backfillQuery = useQuery<{
     status: { isRunning: boolean; lastRunAt: string | null; lastRunId: string | null };
     lastRun: {
       _id: string;
@@ -115,25 +123,42 @@ export default function AdminDashboard() {
   }>({
     queryKey: ["/api/admin/maintenance/scheduled-backfill/status"],
     staleTime: 30000,
-    refetchInterval: (q) => (q.state.data?.status?.isRunning ? 5000 : false),
+    refetchInterval: (q) => (!q.state.error && q.state.data?.status?.isRunning ? 5000 : false),
     refetchOnWindowFocus: false,
   });
+  const { data: backfillStatus, isLoading: isLoadingBackfill } = backfillQuery;
 
-  const { data: backfillRunsData } = useQuery<{ runs: RetryTrendRun[] }>({
+  const historyQuery = useQuery<{ runs: RetryTrendRun[] }>({
     queryKey: ["/api/admin/maintenance/scheduled-backfill/runs", "trend"],
-    queryFn: async () => {
-      const res = await fetch(
+    queryFn: async ({ signal }) => {
+      const res = await apiFetch(
         "/api/admin/maintenance/scheduled-backfill/runs?limit=10",
-        { credentials: "include" },
+        { signal },
       );
       if (!res.ok) throw new Error("failed");
       return res.json();
     },
     staleTime: 30000,
-    refetchInterval: () =>
-      backfillStatus?.status?.isRunning ? 5000 : false,
+    refetchInterval: (q) =>
+      !q.state.error && !backfillQuery.isError && backfillStatus?.status?.isRunning ? 5000 : false,
     refetchOnWindowFocus: false,
   });
+  const { data: backfillRunsData } = historyQuery;
+  const dashboardQueries = [statsQuery, languagesQuery, autoFlaggedQuery, backfillQuery, historyQuery];
+  const refreshing = dashboardQueries.some(query => query.isFetching);
+  const unavailablePanels = [
+    languagesQuery.isError && 'language configuration',
+    autoFlaggedQuery.isError && 'sync report',
+    backfillQuery.isError && 'backfill status',
+    historyQuery.isError && 'activity history',
+  ].filter(Boolean);
+  const refreshDashboard = () => Promise.all([
+    ['/api/dashboard/stats'], ['/api/admin/translation-languages'],
+    ['/api/admin/sync/auto-flagged-report'], ['/api/admin/maintenance/scheduled-backfill/status'],
+    ['/api/admin/maintenance/scheduled-backfill/runs', 'trend'],
+  ].map(queryKey => queryClient.invalidateQueries({ queryKey })));
+  const syncFailed = stats?.syncStatus?.lastSyncStatus === 'failed' ||
+    (!autoFlaggedQuery.isError && autoFlaggedReport?.last?.status === 'failed');
 
   const quickActions = [
     {
@@ -179,10 +204,10 @@ export default function AdminDashboard() {
       color: "bg-purple-500"
     },
     {
-      title: "Database Languages", 
-      description: "View real languages from station data",
-      icon: Database,
-      href: "/admin/translation-languages",
+      title: "GSC URL Inspection",
+      description: "Check Google access and URL indexing results",
+      icon: Globe,
+      href: "/admin/gsc-inspection",
       color: "bg-indigo-500"
     },
     {
@@ -222,7 +247,7 @@ export default function AdminDashboard() {
     },
     {
       title: "Database",
-      description: "Monitor storage & cleanup collections",
+      description: "Monitor PostgreSQL storage and maintenance",
       icon: Database,
       href: "/admin/db-management",
       color: "bg-red-600"
@@ -269,7 +294,7 @@ export default function AdminDashboard() {
 
   if (isLoading) {
     return (
-      <div className="container mx-auto p-6">
+      <div role="status" aria-label="Loading dashboard" className="container mx-auto p-6">
         <div className="animate-pulse space-y-6">
           <div className="h-8 bg-gray-300 rounded w-1/4"></div>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
@@ -297,9 +322,17 @@ export default function AdminDashboard() {
           <p className="text-muted-foreground">
             Manage your radio station platform
           </p>
+          {dataUpdatedAt > 0 && <p className="mt-1 text-xs text-muted-foreground">
+            Last checked {new Date(dataUpdatedAt).toLocaleTimeString()} · statistics may be cached for up to five minutes
+          </p>}
         </div>
+        <div className="flex flex-wrap items-center gap-3">
+        <Button variant="outline" onClick={() => void refreshDashboard()} disabled={refreshing}>
+          <RefreshCw className={`mr-2 h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+          {refreshing ? 'Refreshing…' : 'Refresh dashboard'}
+        </Button>
         {(() => {
-          const level = deriveOverallHealth(stats?.health);
+          const level = deriveOverallHealth(stats?.health, syncFailed);
           if (level === 'unknown') return <div role="status" className="rounded-md border px-3 py-1 text-sm">System status unknown</div>;
           if (level === 'good') {
             return (
@@ -324,7 +357,33 @@ export default function AdminDashboard() {
             </div>
           );
         })()}
+        </div>
       </div>
+
+      {unavailablePanels.length > 0 && <div role="alert" className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+        Could not refresh {unavailablePanels.join(', ')}. Previously loaded values may be out of date.
+        <Button variant="outline" size="sm" className="ml-3" onClick={() => void refreshDashboard()} disabled={refreshing}>Retry panels</Button>
+      </div>}
+
+      {/* These links use existing queues; loading this panel starts no jobs. */}
+      <section aria-labelledby="dashboard-attention-heading" className="rounded-xl border bg-card p-4 sm:p-5">
+        <h2 id="dashboard-attention-heading" className="text-base font-semibold">Needs attention</h2>
+        <p className="mt-1 text-xs text-muted-foreground">Open the relevant queue to review an issue before taking action.</p>
+        <div className="mt-4 grid gap-3 sm:grid-cols-3">
+          <Link href="/admin/feedback" className="flex items-center gap-3 rounded-lg border p-3 hover:bg-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary">
+            <MessageSquare className="h-5 w-5 text-blue-600" />
+            <span><strong className="block tabular-nums">{stats?.openFeedback?.toLocaleString() ?? '—'} open feedback</strong><span className="text-xs text-muted-foreground">Review the support queue</span></span>
+          </Link>
+          <Link href="/admin/error-logs" className="flex items-center gap-3 rounded-lg border p-3 hover:bg-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary">
+            <ShieldAlert className="h-5 w-5 text-amber-600" />
+            <span><strong className="block tabular-nums">{stats?.unresolvedErrors?.toLocaleString() ?? '—'} unresolved errors</strong><span className="text-xs text-muted-foreground">Review recorded station errors</span></span>
+          </Link>
+          <Link href="/admin/sync" className="flex items-center gap-3 rounded-lg border p-3 hover:bg-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary">
+            <Activity className="h-5 w-5 text-orange-600" />
+            <span><strong className="block">{syncFailed ? 'Sync needs review' : stats?.syncStatus?.isRunning ? 'Sync in progress' : 'Sync status'}</strong><span className="text-xs text-muted-foreground">Check completed and failed runs</span></span>
+          </Link>
+        </div>
+      </section>
 
       {/* Statistics Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
@@ -338,7 +397,7 @@ export default function AdminDashboard() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         <StatCard label="Total Stations" value={stats?.totalStations?.toLocaleString() || 0} icon={Radio} accent="blue" />
         <StatCard label="Countries" value={stats?.totalCountries || 0} icon={Globe} accent="green" />
-        <StatCard label="Languages" value={Array.isArray(languages) ? languages.length : 0} icon={Languages} accent="purple" />
+        <StatCard label="Languages" value={Array.isArray(languages) && !languagesQuery.isError ? languages.length : '—'} icon={Languages} accent="purple" />
         <StatCard label="Genres" value={stats?.totalGenres || 0} icon={Music} accent="orange" />
       </div>
 
@@ -357,7 +416,7 @@ export default function AdminDashboard() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            {isLoadingAutoFlagged ? (
+            {autoFlaggedQuery.isError ? <p role="status" className="text-sm text-amber-700">Sync report unavailable. Use Retry panels to try again.</p> : isLoadingAutoFlagged ? (
               <div className="space-y-2 animate-pulse">
                 <div className="h-8 bg-gray-200 rounded w-1/2" />
                 <div className="h-3 bg-gray-200 rounded w-3/4" />
@@ -444,15 +503,13 @@ export default function AdminDashboard() {
                 prior 3.
               </div>
             </div>
-            <Link href="/admin/seo-maintenance">
-              <Button
+              <Button asChild
                 variant="outline"
                 size="sm"
                 data-testid="button-retry-trend-warning-view"
               >
-                View history
+                <Link href="/admin/seo-maintenance">View history</Link>
               </Button>
-            </Link>
           </div>
         );
       })()}
@@ -481,27 +538,21 @@ export default function AdminDashboard() {
               </div>
             )}
             {backfillStatus?.lastRun?._id && (
-              <Link
-                href={`/admin/seo-maintenance?runId=${encodeURIComponent(backfillStatus.lastRun._id)}#backfill-run-${backfillStatus.lastRun._id}`}
-              >
-                <Button
+                <Button asChild
                   variant="outline"
                   size="sm"
                   data-testid="button-view-backfill-run-details"
                 >
-                  View details
+                  <Link href={`/admin/seo-maintenance?runId=${encodeURIComponent(backfillStatus.lastRun._id)}#backfill-run-${backfillStatus.lastRun._id}`}>View details</Link>
                 </Button>
-              </Link>
             )}
-            <Link href="/admin/seo-maintenance">
-              <Button variant="outline" size="sm" data-testid="button-open-seo-maintenance">
-                Manage
+              <Button asChild variant="outline" size="sm" data-testid="button-open-seo-maintenance">
+                <Link href="/admin/seo-maintenance">Manage</Link>
               </Button>
-            </Link>
           </div>
         </CardHeader>
         <CardContent>
-          {isLoadingBackfill ? (
+          {backfillQuery.isError ? <p role="status" className="text-sm text-amber-700">Backfill status unavailable. Use Retry panels to try again.</p> : isLoadingBackfill ? (
             <div className="space-y-2 animate-pulse">
               <div className="h-5 bg-gray-200 rounded w-1/3" />
               <div className="h-3 bg-gray-200 rounded w-2/3" />
@@ -628,17 +679,13 @@ export default function AdminDashboard() {
                 )}
                 {isFailed && (
                   <div>
-                    <Link
-                      href={`/admin/seo-maintenance?runId=${encodeURIComponent(run._id)}#backfill-run-${run._id}`}
-                    >
-                      <Button
+                      <Button asChild
                         size="sm"
                         variant="destructive"
                         data-testid="button-view-failed-backfill-run"
                       >
-                        View failed run details →
+                        <Link href={`/admin/seo-maintenance?runId=${encodeURIComponent(run._id)}#backfill-run-${run._id}`}>View failed run details →</Link>
                       </Button>
-                    </Link>
                   </div>
                 )}
                 {isFailed && (run.logos.length > 0 || run.tags.length > 0) && (
@@ -689,10 +736,9 @@ export default function AdminDashboard() {
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {quickActions.map((action, index) => (
-              <Link key={index} href={action.href}>
-                <Button
-                  variant="outline"
-                  className="h-auto p-4 flex flex-col items-start gap-3 hover:bg-gray-50 transition-colors"
+              <Link key={index} href={action.href} className="rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary">
+                <span
+                  className="h-full rounded-lg border p-4 flex flex-col items-start gap-3 hover:bg-gray-50 transition-colors"
                 >
                   <div className="flex items-center gap-3 w-full">
                     <div className={`p-2 rounded-lg ${action.color}`}>
@@ -705,7 +751,7 @@ export default function AdminDashboard() {
                       </div>
                     </div>
                   </div>
-                </Button>
+                </span>
               </Link>
             ))}
           </div>
@@ -723,7 +769,8 @@ export default function AdminDashboard() {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {recentActivity.length === 0 && (
+              {historyQuery.isError && <p className="text-sm text-amber-700">Activity history unavailable. Use Retry panels to refresh.</p>}
+              {recentActivity.length === 0 && !historyQuery.isError && (
                 <p className="text-sm text-muted-foreground">No recent activity yet.</p>
               )}
               {recentActivity.map((activity, index) => (
@@ -765,16 +812,17 @@ export default function AdminDashboard() {
                 const redChip = (text: string) => (
                   <div className="px-2 py-1 border rounded text-xs text-red-700 border-red-500 bg-red-50">{text}</div>
                 );
+                const unknownChip = <span className="rounded border px-2 py-1 text-xs text-muted-foreground">Unknown</span>;
                 const h = stats?.health;
                 return (
                   <>
                     <div className="flex items-center justify-between">
                       <span className="text-sm">Database Connection</span>
-                      {h?.database === 'online' ? greenChip('Online') : redChip('Offline')}
+                      {!h ? unknownChip : h.database === 'online' ? greenChip('Online') : redChip('Offline')}
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="text-sm">Radio-Browser API</span>
-                      {h?.radioBrowser === 'online'
+                      {!h ? unknownChip : syncFailed ? yellowChip('Last run needs review') : h.radioBrowser === 'online'
                         ? greenChip('Online')
                         : h?.radioBrowser === 'stale'
                         ? yellowChip(`Stale (${h.lastSyncHoursAgo}h ago)`)
@@ -782,7 +830,7 @@ export default function AdminDashboard() {
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="text-sm">Translation System</span>
-                      {h?.translations === 'active' ? greenChip('Active') : redChip('Empty')}
+                      {!h || h.translations === 'unavailable' ? unknownChip : h.translations === 'active' ? greenChip('Active') : redChip('Empty')}
                     </div>
                   </>
                 );

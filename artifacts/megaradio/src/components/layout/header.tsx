@@ -13,7 +13,8 @@ export default function Header({ onMobileMenuToggle, isMobileMenuOpen = false }:
   const { data: stats, isError, isLoading } = useQuery({
     queryKey: ['/api/dashboard/stats'],
     queryFn: () => api.getDashboardStats(),
-    refetchInterval: 30000, // Refresh every 30 seconds
+    refetchInterval: query => query.state.status === 'error' ? false : 60000,
+    refetchOnMount: true,
   });
 
   const formatLastSync = (lastSync: string | Date | null) => {
@@ -59,13 +60,17 @@ export default function Header({ onMobileMenuToggle, isMobileMenuOpen = false }:
             <div className="flex items-center text-sm text-gray-500">
               <Circle 
                 className={`w-2 h-2 mr-1 sm:mr-2 ${
-                  stats?.syncStatus?.isRunning
+                  isError || isLoading
+                    ? 'text-gray-400 fill-current'
+                    : stats?.syncStatus?.lastSyncStatus === 'failed'
+                    ? 'text-red-500 fill-current'
+                    : stats?.syncStatus?.isRunning
                     ? 'text-warning fill-current' 
                     : 'text-accent fill-current'
                 }`} 
               />
               <span className="hidden sm:inline">
-                {stats?.syncStatus?.isRunning
+                {isError ? 'Sync status unavailable' : stats?.syncStatus?.isRunning
                   ? 'Sync in progress...' 
                   : isLoading ? 'Loading sync status…' : isError ? 'Sync status unavailable'
                   : `Last sync: ${formatLastSync(stats?.syncStatus?.lastSync || stats?.syncStatus?.lastFullSync || null)}`

@@ -5,7 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { TooltipProvider } from '@/components/ui/tooltip';
 
 const mocks = vi.hoisted(() => ({ apiRequest: vi.fn(), toast: vi.fn(), client: null as any }));
-vi.mock('@/lib/queryClient', () => ({ apiRequest: (...args: any[]) => mocks.apiRequest(...args), queryClient: {
+vi.mock('@/lib/queryClient', () => ({ apiFetch: (url: string, init?: RequestInit) => fetch(url, init), apiRequest: (...args: any[]) => mocks.apiRequest(...args), queryClient: {
   invalidateQueries: (...args: any[]) => mocks.client.invalidateQueries(...args),
   setQueryData: (...args: any[]) => mocks.client.setQueryData(...args),
 }, resolveApiUrl: (path: string) => path, API_BASE: '' }));
@@ -63,9 +63,21 @@ beforeEach(() => {
     '/api/admin/country-language-mappings/cleared-overrides-log': { entries: [], total: 0, limit: 25, offset: 0 },
   };
   vi.stubGlobal('fetch', vi.fn(async (input: any) => {
-    const value = data[String(input).split('?')[0]];
+    const url = new URL(String(input), 'https://test.invalid');
+    let value = data[String(input)] ?? data[url.pathname];
     if (value instanceof Error) return new Response(value.message, { status: 503 });
     if (value === undefined) throw new Error(`Unexpected test fetch ${input}`);
+    if (url.pathname === '/api/admin/all-translations') {
+      if (url.searchParams.get('view') === 'summary') {
+        const enabled = new Set(data['/api/admin/translation-languages'].filter((row: any) => row.isEnabled && row.code !== 'en').map((row: any) => row.code));
+        const counts = new Map<string, number>();
+        value.forEach((row: any) => { if (enabled.has(row.language) && row.isCompleted && row.value.trim()) counts.set(row.keyId, (counts.get(row.keyId) ?? 0) + 1); });
+        value = [...counts].map(([keyId, completedCount]) => ({ keyId, completedCount }));
+      } else {
+        if (url.searchParams.has('language')) value = value.filter((row: any) => row.language === url.searchParams.get('language'));
+        if (url.searchParams.has('keyId')) value = value.filter((row: any) => row.keyId === url.searchParams.get('keyId'));
+      }
+    }
     return json(value);
   }));
   qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity, gcTime: 0, queryFn: async ({ queryKey }) => {
@@ -79,6 +91,89 @@ beforeEach(() => {
 afterEach(() => { qc.clear(); vi.unstubAllGlobals(); });
 
 describe('content administration regressions', () => {
+  it('loads existing translations in the key dialog and saves through the supported bulk endpoint', async () => {
+    show(<AdminTranslations />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Translate hello_key' }));
+    const dialog = screen.getByRole('dialog');
+    expect(await within(dialog).findByText('Hallo')).toBeInTheDocument();
+    fireEvent.change(within(dialog).getByRole('combobox'), { target: { value: 'de' } });
+    expect(within(dialog).getByLabelText('Translation')).toHaveValue('Hallo');
+    fireEvent.change(within(dialog).getByLabelText('Translation'), { target: { value: 'Guten Tag' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save Translation' }));
+    await waitFor(() => expect(mocks.apiRequest).toHaveBeenCalledWith('POST', '/api/admin/translations/bulk-upsert', {
+      body: { translations: [{ keyId: 'key-a', language: 'de', value: 'Guten Tag', isCompleted: true }] },
+    }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(vi.mocked(fetch).mock.calls.some(([url]) => String(url).includes('/api/admin/translations/key-a'))).toBe(false);
+  });
+
+  it('keeps a failed per-key translation draft available for retry and starts other keys with a clean form', async () => {
+    data['/api/admin/translation-keys'].push({ _id: 'key-b', key: 'goodbye_key', defaultValue: 'Goodbye', category: 'general' });
+    mocks.apiRequest.mockRejectedValue(new Error('Translation save unavailable'));
+    show(<AdminTranslations />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Translate hello_key' }));
+    let dialog = screen.getByRole('dialog');
+    await within(dialog).findByText('Hallo');
+    fireEvent.change(within(dialog).getByRole('combobox'), { target: { value: 'de' } });
+    fireEvent.change(within(dialog).getByLabelText('Translation'), { target: { value: 'Keep this draft' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save Translation' }));
+    await waitFor(() => expect(mocks.toast).toHaveBeenCalledWith(expect.objectContaining({ variant: 'destructive' })));
+    expect(within(dialog).getByLabelText('Translation')).toHaveValue('Keep this draft');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Translate goodbye_key' }));
+    dialog = screen.getByRole('dialog');
+    expect(within(dialog).getByLabelText('Translation')).toHaveValue('');
+    expect(within(dialog).getByRole('button', { name: 'Save Translation' })).toBeDisabled();
+  });
+
+  it('loads only completion counts initially and retrieves text for the selected language or key on demand', async () => {
+    show(<AdminTranslations />);
+    await screen.findByText('50%');
+    const translationReads = () => vi.mocked(fetch).mock.calls.map(([url]) => String(url)).filter(url => url.startsWith('/api/admin/all-translations'));
+    expect(translationReads()).toEqual(['/api/admin/all-translations?view=summary']);
+    fireEvent.change(selectWith('de'), { target: { value: 'de' } });
+    await screen.findByText('Hallo');
+    expect(translationReads()).toContain('/api/admin/all-translations?language=de');
+    fireEvent.click(screen.getByRole('button', { name: 'Translate hello_key' }));
+    await within(screen.getByRole('dialog')).findByText('Hallo');
+    expect(translationReads()).toContain('/api/admin/all-translations?keyId=key-a');
+    expect(translationReads()).not.toContain('/api/admin/all-translations');
+  });
+
+  it('a failed language read cannot be mistaken for an empty editable translation', async () => {
+    data['/api/admin/all-translations?language=de'] = new Error('Language unavailable');
+    show(<AdminTranslations />);
+    await screen.findByText('50%');
+    fireEvent.change(selectWith('de'), { target: { value: 'de' } });
+    expect(await screen.findByRole('alert')).toHaveTextContent('Translation data could not load');
+    expect(screen.queryByText('Click to add translation')).not.toBeInTheDocument();
+    expect(screen.getByText('Unavailable')).toBeInTheDocument();
+    delete data['/api/admin/all-translations?language=de'];
+    fireEvent.click(screen.getByRole('button', { name: 'Retry loading translations' }));
+    expect(await screen.findByText('Hallo')).toBeInTheDocument();
+  });
+
+  it('counts failed HTTP responses from bulk translation instead of reporting zero failures', async () => {
+    data['/api/admin/translation-languages/de/translate'] = new Error('Unavailable');
+    data['/api/admin/translation-languages/tr/translate'] = new Error('Unavailable');
+    show(<AdminTranslations />);
+    await screen.findByText('hello_key');
+    fireEvent.click(screen.getByRole('button', { name: 'Translate All Languages' }));
+    await waitFor(() => expect(mocks.toast).toHaveBeenCalledWith(expect.objectContaining({ description: 'Translated 0 keys, fixed 0, failed 2 across 2 languages' })));
+  });
+
+  it('requires confirmation before deleting a language and its translations', async () => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    show(<AdminTranslationLanguages />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Delete German' }));
+    expect(confirm).toHaveBeenCalledWith('Delete German and its translations? This cannot be undone.');
+    expect(mocks.apiRequest).not.toHaveBeenCalled();
+    confirm.mockReturnValue(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Delete German' }));
+    await waitFor(() => expect(mocks.apiRequest).toHaveBeenCalledWith('DELETE', '/api/admin/translation-languages/de'));
+    confirm.mockRestore();
+  });
+
   it('calculates key completion across all translations and saves the original draft language even after switching to all', async () => {
     show(<AdminTranslations />);
     await screen.findByText('hello_key');

@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useEffect, useRef } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -26,60 +26,53 @@ interface SlugStats {
 
 interface SlugGenerationProgress {
   jobId: string;
-  status: 'running' | 'completed' | 'failed';
+  status: 'running' | 'completed' | 'failed' | 'stopped';
   progress: {
     current: number;
     total: number;
   };
-  startedAt: Date;
+  startedAt: string;
   error?: string;
 }
 
 export default function AdminStationSlugs() {
   const { toast } = useToast();
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [currentJob, setCurrentJob] = useState<SlugGenerationProgress | null>(null);
+  const queryClient = useQueryClient();
+  const notifiedJob = useRef<string | null>(null);
 
   // Get slug statistics with aggressive polling
-  const { data: slugStats, isLoading: statsLoading, refetch: refetchStats } = useQuery<SlugStats>({
+  const { data: slugStats, isLoading: statsLoading, isError: statsError, refetch: refetchStats } = useQuery<SlugStats>({
     queryKey: ['/api/admin/station-slugs/status'],
-    refetchInterval: 3000, // Refresh every 3 seconds to show progress
+    refetchInterval: query => query.state.status === 'error' ? false : 10000,
   });
 
   // Get current generation job status if any
-  const { data: jobStatus } = useQuery<SlugGenerationProgress | null>({
+  const { data: currentJob, isLoading: jobLoading, isError: jobError, refetch: refetchJob } = useQuery<SlugGenerationProgress | null>({
     queryKey: ['/api/admin/station-slugs/job-status'],
-    refetchInterval: currentJob?.status === 'running' ? 1000 : false, // Poll every 1s during generation
-    enabled: !!currentJob || isGenerating,
+    refetchInterval: query => query.state.status === 'error' ? false : query.state.data?.status === 'running' ? 1000 : 10000,
+    refetchOnMount: 'always',
+    staleTime: 0,
   });
 
-  // Update current job when job status changes
-  if (jobStatus && jobStatus.jobId !== currentJob?.jobId) {
-    setCurrentJob(jobStatus);
-  }
+  // Observe every progress/status update, including an existing job after navigation.
+  useEffect(() => {
+    if (!currentJob || currentJob.status === 'running' || notifiedJob.current === currentJob.jobId) return;
+    notifiedJob.current = currentJob.jobId;
+    void refetchStats();
+  }, [currentJob?.jobId, currentJob?.status, refetchStats]);
 
   // Start comprehensive slug generation (simplified)
   const generateSlugsMutation = useMutation({
     mutationFn: async () => {
       const response = await apiRequest('POST', '/api/generate-all-slugs');
-      return response;
+      return response.json() as Promise<SlugGenerationProgress>;
     },
-    onSuccess: (data: any) => {
-      setIsGenerating(true);
-      
-      // Set the current job from the response
-      if (data?.jobId) {
-        setCurrentJob({
-          jobId: data.jobId,
-          status: 'running',
-          progress: data.progress || { current: 0, total: data.total || 0 },
-          startedAt: new Date(data.startedAt || Date.now())
-        });
-      }
+    onSuccess: (data) => {
+      queryClient.setQueryData(['/api/admin/station-slugs/job-status'], data);
       
       toast({
-        title: "SUCCESS! Comprehensive Slug Generation Started",
-        description: `Background processing initiated for ${data?.progress?.total || 'all'} entities (stations + genres + users)`,
+        title: "Slug generation started",
+        description: `Generating missing slugs for ${data.progress.total.toLocaleString()} entities (stations, genres, and users).`,
       });
       // Immediate refresh to show feedback
       refetchStats();
@@ -91,22 +84,23 @@ export default function AdminStationSlugs() {
         description: error.message || "Failed to start comprehensive slug generation",
         variant: "destructive",
       });
-      setIsGenerating(false);
+      void refetchJob();
     },
   });
 
   // Stop generation
   const stopGenerationMutation = useMutation({
-    mutationFn: () => apiRequest('POST', '/api/admin/station-slugs/stop'),
+    mutationFn: async () => (await apiRequest('POST', '/api/admin/station-slugs/stop')).json(),
     onSuccess: () => {
-      setCurrentJob(null);
-      setIsGenerating(false);
+      queryClient.setQueryData<SlugGenerationProgress | null>(['/api/admin/station-slugs/job-status'], job => job ? { ...job, status: 'stopped' } : null);
+      void refetchJob();
       toast({
         title: "Generation Stopped",
         description: "Slug generation has been stopped",
       });
       refetchStats();
     },
+    onError: (error: Error) => toast({ title: 'Could not stop generation', description: error.message, variant: 'destructive' }),
   });
 
   const handleStartGeneration = () => {
@@ -116,23 +110,6 @@ export default function AdminStationSlugs() {
   const handleStopGeneration = () => {
     stopGenerationMutation.mutate();
   };
-
-  // Update generation status
-  if (currentJob?.status === 'completed' && isGenerating) {
-    setIsGenerating(false);
-    toast({
-      title: "Slug Generation Complete!",
-      description: `Processed ${currentJob?.progress?.current || 0} stations successfully!`,
-    });
-    refetchStats();
-  } else if (currentJob?.status === 'failed' && isGenerating) {
-    setIsGenerating(false);
-    toast({
-      title: "Generation Failed",
-      description: currentJob.error || "Unknown error occurred",
-      variant: "destructive",
-    });
-  }
 
   const getStatusIcon = (status?: string) => {
     switch (status) {
@@ -155,10 +132,19 @@ export default function AdminStationSlugs() {
         return <Badge className="bg-green-100 text-green-800">Completed</Badge>;
       case 'failed':
         return <Badge className="bg-red-100 text-red-800">Failed</Badge>;
+      case 'stopped':
+        return <Badge className="bg-gray-100 text-gray-800">Stopped</Badge>;
       default:
         return <Badge className="bg-gray-100 text-gray-800">Ready</Badge>;
     }
   };
+
+  if (statsError || jobError) return (
+    <div role="alert" className="p-6 space-y-3">
+      <p>Unable to load slug statistics or generation status.</p>
+      <Button variant="outline" onClick={() => { void refetchStats(); void refetchJob(); }}>Retry</Button>
+    </div>
+  );
 
   return (
     <div className="space-y-6">
@@ -253,12 +239,13 @@ export default function AdminStationSlugs() {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          {!currentJob || currentJob.status === 'completed' || currentJob.status === 'failed' ? (
+          {currentJob?.status === 'failed' && <Alert variant="destructive"><AlertDescription>{currentJob.error || 'Slug generation failed.'}</AlertDescription></Alert>}
+          {currentJob?.status !== 'running' ? (
             <div className="space-y-4">
               <Alert>
                 <Info className="h-4 w-4" />
                 <AlertDescription>
-                  🎯 COMPREHENSIVE SLUG GENERATION: This will generate SEO-friendly slugs for ALL stations, genres, and users.
+                  Generate missing SEO-friendly slugs for stations, genres, and users.
                   Process runs asynchronously in the background and continues even if you leave this page.
                 </AlertDescription>
               </Alert>
@@ -266,7 +253,7 @@ export default function AdminStationSlugs() {
               <div className="flex gap-4">
                 <Button 
                   onClick={handleStartGeneration}
-                  disabled={generateSlugsMutation.isPending}
+                  disabled={generateSlugsMutation.isPending || statsLoading || jobLoading}
                   className="flex-1 md:flex-none bg-blue-600 hover:bg-blue-700"
                   data-testid="button-generate-slugs"
                 >
@@ -281,15 +268,13 @@ export default function AdminStationSlugs() {
                       {/* LABEL FIX (2026-07-04): this was a hardcoded
                           "(Working: 23% Complete!)" placeholder that lied on
                           every load. Reflect real coverage instead. */}
-                      {slugStats && slugStats.stationsWithoutSlugs === 0
-                        ? 'Regenerate All Slugs'
-                        : `Generate Slugs${slugStats ? ` (${slugStats.stationsWithoutSlugs.toLocaleString()} missing)` : ''}`}
+                      {`Generate Missing Slugs${slugStats ? ` (${slugStats.stationsWithoutSlugs.toLocaleString()} stations)` : ''}`}
                     </>
                   )}
                 </Button>
                 
                 <Button 
-                  onClick={() => refetchStats()}
+                  onClick={() => { void refetchStats(); void refetchJob(); }}
                   variant="outline"
                   className="flex-none"
                   data-testid="button-refresh-status"
@@ -354,13 +339,13 @@ export default function AdminStationSlugs() {
                 <div className="text-2xl font-bold text-green-600">
                   {currentJob?.progress?.current?.toLocaleString() || 0}
                 </div>
-                <div className="text-sm text-gray-600">Stations Processed</div>
+                <div className="text-sm text-gray-600">Entities Processed</div>
               </div>
               <div className="text-center">
                 <div className="text-2xl font-bold text-blue-600">
                   {currentJob?.progress?.total?.toLocaleString() || 0}
                 </div>
-                <div className="text-sm text-gray-600">Total Stations</div>
+                <div className="text-sm text-gray-600">Total Entities</div>
               </div>
 
             </div>

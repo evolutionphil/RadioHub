@@ -1,7 +1,8 @@
 import { AdminPage } from "./AdminPage";
 import { adminDateRange } from "@/lib/admin-account-utils";
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
+import { apiRequest } from "@/lib/queryClient";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -101,6 +102,7 @@ function buildQs(params: Record<string, string | number | undefined>) {
 }
 
 export default function AdminIapEvents() {
+  const queryClient = useQueryClient();
   const [filterEmail, setFilterEmail] = useState("");
   const [filterUserId, setFilterUserId] = useState("");
   const [filterResult, setFilterResult] = useState("");
@@ -137,11 +139,10 @@ export default function AdminIapEvents() {
     to: range.to,
   });
 
-  const { data, isLoading, isFetching, error, refetch } = useQuery<IapEventsResponse>({
+  const { data, isLoading, isFetching, error } = useQuery<IapEventsResponse>({
     queryKey: ["/api/admin/iap-events", qs],
-    queryFn: async () => {
-      const res = await fetch(`/api/admin/iap-events?${qs}`, { credentials: "include" });
-      if (!res.ok) throw new Error(`${res.status}: ${await res.text()}`);
+    queryFn: async ({ signal }) => {
+      const res = await apiRequest("GET", `/api/admin/iap-events?${qs}`, { signal });
       return res.json();
     },
     staleTime: 15000,
@@ -149,9 +150,8 @@ export default function AdminIapEvents() {
 
   const { data: stats, isError: statsError, refetch: refetchStats } = useQuery<IapStatsResponse>({
     queryKey: ["/api/admin/iap-events/stats"],
-    queryFn: async () => {
-      const res = await fetch(`/api/admin/iap-events/stats?days=7`, { credentials: "include" });
-      if (!res.ok) throw new Error(`${res.status}: ${await res.text()}`);
+    queryFn: async ({ signal }) => {
+      const res = await apiRequest("GET", `/api/admin/iap-events/stats?days=7`, { signal });
       return res.json();
     },
     staleTime: 60000,
@@ -184,6 +184,7 @@ export default function AdminIapEvents() {
   };
 
   const totalPages = data ? Math.max(1, Math.ceil(data.total / limit)) : 1;
+  useEffect(() => { if (data && page > totalPages) setPage(totalPages); }, [data, page, totalPages]);
 
   return (
     <AdminPage
@@ -297,7 +298,7 @@ export default function AdminIapEvents() {
             <Button variant="outline" onClick={resetFilters}>
               Reset
             </Button>
-            <Button variant="outline" onClick={() => { refetch(); refetchStats(); }} disabled={isFetching}>
+            <Button variant="outline" onClick={() => { void queryClient.invalidateQueries({ queryKey: ["/api/admin/iap-events"] }); refetchStats(); }} disabled={isFetching}>
               <RefreshCw size={16} className={`mr-1 ${isFetching ? "animate-spin" : ""}`} />
               Refresh
             </Button>
@@ -389,7 +390,7 @@ export default function AdminIapEvents() {
                 <Button
                   variant="outline"
                   size="sm"
-                  disabled={page <= 1}
+                  disabled={page <= 1 || isFetching}
                   onClick={() => setPage((p) => Math.max(1, p - 1))}
                 >
                   Previous
@@ -397,7 +398,7 @@ export default function AdminIapEvents() {
                 <Button
                   variant="outline"
                   size="sm"
-                  disabled={page >= totalPages}
+                  disabled={page >= totalPages || isFetching}
                   onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                 >
                   Next

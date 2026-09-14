@@ -20,13 +20,29 @@ export function resolveApiUrl(path: string): string {
 }
 
 // Never forward the OAuth session token to an arbitrary absolute URL.
-export function apiAuthHeaders(path: string): Record<string, string> {
+function isTrustedApiPath(path: string): boolean {
   try {
     const target = new URL(resolveApiUrl(path), window.location.origin);
     const apiOrigin = new URL(API_BASE || window.location.origin).origin;
-    return target.origin === apiOrigin && /^\/api(?:\/|$)/.test(target.pathname)
-      ? oauthBearerHeader() : {};
-  } catch { return {}; }
+    return target.origin === apiOrigin && /^\/api(?:\/|$)/.test(target.pathname);
+  } catch { return false; }
+}
+
+export function apiAuthHeaders(path: string): Record<string, string> {
+  return isTrustedApiPath(path) ? oauthBearerHeader() : {};
+}
+
+/** Authenticated transport for uploads, exports and custom status handling.
+ * Unlike apiRequest this preserves the body and Response (including non-2xx).
+ * Never set a JSON content type on FormData: the browser owns its boundary. */
+export function apiFetch(path: string, options: RequestInit = {}): Promise<Response> {
+  const headers = new Headers(apiAuthHeaders(path));
+  new Headers(options.headers).forEach((value, name) => headers.set(name, value));
+  return fetch(resolveApiUrl(path), {
+    ...options,
+    credentials: options.credentials ?? (isTrustedApiPath(path) ? 'include' : 'same-origin'),
+    headers,
+  });
 }
 
 async function throwIfResNotOk(res: Response) {

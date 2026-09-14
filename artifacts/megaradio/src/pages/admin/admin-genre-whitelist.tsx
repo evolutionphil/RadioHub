@@ -320,7 +320,7 @@ export default function AdminGenreWhitelist() {
   const [pushHistorySlugFilter, setPushHistorySlugFilter] = useState("");
   const [pushHistoryTriggerFilter, setPushHistoryTriggerFilter] = useState<string>("all");
 
-  const { data, isLoading, error } = useQuery<WhitelistResponse>({
+  const { data, isLoading, error, refetch } = useQuery<WhitelistResponse>({
     queryKey: ['/api/admin/genre-whitelist'],
     // Task #185: while a recompute is in flight (e.g. kicked off by a bulk
     // import or country backfill in another tab), poll every few seconds so
@@ -626,6 +626,7 @@ export default function AdminGenreWhitelist() {
           <AlertCircle className="w-4 h-4" />
           <AlertDescription>Failed to load whitelist: {(error as Error).message}</AlertDescription>
         </Alert>
+        <Button variant="outline" className="mt-3" onClick={() => void refetch()}>Retry whitelist</Button>
       </div>
     );
   }

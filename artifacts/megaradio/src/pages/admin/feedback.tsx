@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -44,21 +44,20 @@ export default function AdminFeedback() {
   const [response, setResponse] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [typeFilter, setTypeFilter] = useState<string>('all');
+  const [page, setPage] = useState(1);
+  const limit = 50;
   const { toast } = useToast();
 
   const { data: feedbackData, isLoading, isError, isFetching, refetch } = useQuery({
-    queryKey: ['/api/admin/feedback', statusFilter, typeFilter],
-    queryFn: async ({ signal }) => (await apiRequest("GET", `/api/admin/feedback?status=${statusFilter}&type=${typeFilter}`, { signal })).json(),
+    queryKey: ['/api/admin/feedback', statusFilter, typeFilter, page],
+    queryFn: async ({ signal }) => (await apiRequest("GET", `/api/admin/feedback?status=${statusFilter}&type=${typeFilter}&page=${page}&limit=${limit}`, { signal })).json(),
   });
+  const totalPages = Math.max(1, feedbackData?.totalPages ?? 1);
+  useEffect(() => { if (feedbackData && page > totalPages) setPage(totalPages); }, [feedbackData, page, totalPages]);
 
   const updateStatusMutation = useMutation({
     mutationFn: async ({ id, status, response }: { id: string; status: string; response?: string }) => {
-      const res = await fetch(`/api/admin/feedback/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status, response }),
-      });
-      if (!res.ok) throw new Error('Failed to update feedback');
+      const res = await apiRequest('PATCH', `/api/admin/feedback/${id}`, { body: { status, response } });
       return res.json();
     },
     onSuccess: () => {
@@ -74,8 +73,7 @@ export default function AdminFeedback() {
 
   const deleteFeedbackMutation = useMutation({
     mutationFn: async (id: string) => {
-      const res = await fetch(`/api/admin/feedback/${id}`, { method: 'DELETE' });
-      if (!res.ok) throw new Error('Failed to delete feedback');
+      const res = await apiRequest('DELETE', `/api/admin/feedback/${id}`);
       return res.json();
     },
     onSuccess: () => {
@@ -193,9 +191,9 @@ export default function AdminFeedback() {
           <CardTitle>Filters</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="flex space-x-4">
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-48">
+          <div className="flex flex-wrap gap-4">
+            <Select value={statusFilter} onValueChange={value => { setPage(1); setStatusFilter(value); }}>
+              <SelectTrigger className="w-48" aria-label="Filter by status">
                 <SelectValue placeholder="Filter by status" />
               </SelectTrigger>
               <SelectContent>
@@ -206,8 +204,8 @@ export default function AdminFeedback() {
                 <SelectItem value="closed">Closed</SelectItem>
               </SelectContent>
             </Select>
-            <Select value={typeFilter} onValueChange={setTypeFilter}>
-              <SelectTrigger className="w-48">
+            <Select value={typeFilter} onValueChange={value => { setPage(1); setTypeFilter(value); }}>
+              <SelectTrigger className="w-48" aria-label="Filter by type">
                 <SelectValue placeholder="Filter by type" />
               </SelectTrigger>
               <SelectContent>
@@ -224,7 +222,7 @@ export default function AdminFeedback() {
       {/* Feedback Table */}
       <Card>
         <CardHeader>
-          <CardTitle>Feedback List ({feedbackList.length})</CardTitle>
+          <CardTitle>Feedback List ({feedbackData?.total ?? feedbackList.length})</CardTitle>
         </CardHeader>
         <CardContent>
           {feedbackList.length === 0 ? (
@@ -357,7 +355,20 @@ export default function AdminFeedback() {
                                   />
                                 </div>
                                 
-                                <div className="flex space-x-2">
+                                <div className="flex flex-wrap gap-2">
+                                  <Button
+                                    onClick={() => handleStatusUpdate(selectedFeedback.status)}
+                                    disabled={updateStatusMutation.isPending || !response.trim()}
+                                  >
+                                    Save Response
+                                  </Button>
+                                  {selectedFeedback.status !== 'open' && <Button
+                                    onClick={() => handleStatusUpdate('open')}
+                                    disabled={updateStatusMutation.isPending}
+                                    variant="outline"
+                                  >
+                                    Reopen
+                                  </Button>}
                                   <Button
                                     onClick={() => handleStatusUpdate('in-progress')}
                                     disabled={updateStatusMutation.isPending}
@@ -400,6 +411,13 @@ export default function AdminFeedback() {
               </TableBody>
             </Table>
           )}
+          {totalPages > 1 && <nav aria-label="Feedback pages" className="mt-4 flex items-center justify-between gap-4">
+            <span className="text-sm text-gray-500">Page {page} of {totalPages}</span>
+            <div className="flex gap-2">
+              <Button variant="outline" disabled={page <= 1 || isFetching} onClick={() => setPage(current => current - 1)}>Previous</Button>
+              <Button variant="outline" disabled={page >= totalPages || isFetching} onClick={() => setPage(current => current + 1)}>Next</Button>
+            </div>
+          </nav>}
         </CardContent>
       </Card>
     </div>

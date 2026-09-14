@@ -132,6 +132,7 @@ export default function DbManagement() {
     onError: (error: Error) => toast({ title: 'Clear failed', description: error.message, variant: 'destructive' }),
   });
   const mutationPending = flushMutation.isPending || cleanupMutation.isPending || dropMutation.isPending;
+  const operationsDisabled = mutationPending || isLoading || isError || !dbStatus;
 
   return (
     <AdminPage
@@ -145,7 +146,7 @@ export default function DbManagement() {
             }}
             variant="destructive"
             size="sm"
-            disabled={flushMutation.isPending}
+            disabled={operationsDisabled}
             data-testid="button-open-flush-stations"
           >
             {flushMutation.isPending ? "Flushing..." : "Flush all stations"}
@@ -206,7 +207,7 @@ export default function DbManagement() {
               <CardTitle className="text-lg text-gray-900">Tables {dbStatus.countsAreEstimates ? '(estimated row counts)' : ''}</CardTitle>
               <Button
                 onClick={() => { if (confirm('Delete operational records under the retention policy? Analytics events are cleared entirely; old logs and listening history are removed.')) cleanupMutation.mutate(undefined); }}
-                disabled={mutationPending}
+                disabled={operationsDisabled}
                 variant="destructive"
                 size="sm"
               >
@@ -244,7 +245,7 @@ export default function DbManagement() {
                                 variant="outline"
                                 size="sm"
                                 className="text-red-600 border-red-300 hover:bg-red-50"
-                                disabled={mutationPending}
+                                disabled={operationsDisabled}
                                 onClick={() => { if (confirm(`Apply retention cleanup to ${col.name}? Deleted rows cannot be restored here.`)) cleanupMutation.mutate([operation.target]); }}
                               >
                                 Clean
@@ -254,7 +255,7 @@ export default function DbManagement() {
                               <Button
                                 variant="destructive"
                                 size="sm"
-                                disabled={mutationPending}
+                                disabled={operationsDisabled}
                                 onClick={() => {
                                   if (confirm(`Clear records in "${col.name}"? The PostgreSQL table and indexes will be preserved.`)) {
                                     dropMutation.mutate(operation.target);
@@ -368,10 +369,10 @@ export default function DbManagement() {
             </AlertDialogCancel>
             <AlertDialogAction
               data-testid="button-confirm-flush-stations"
-              disabled={!flushConfirmed || flushMutation.isPending}
+              disabled={!flushConfirmed || operationsDisabled}
               onClick={(e) => {
                 e.preventDefault();
-                if (!flushConfirmed || flushMutation.isPending) return;
+                if (!flushConfirmed || operationsDisabled) return;
                 flushMutation.mutate();
               }}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90 disabled:opacity-50 disabled:pointer-events-none"

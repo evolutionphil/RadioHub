@@ -20,7 +20,7 @@ vi.mock('@/hooks/useAdminAuth', () => ({ useAdminAuth: () => ({ isAuthenticated:
 vi.mock('@/lib/api', () => ({ api: { getAdminStationFilterOptions: mocks.options, getAdminStations: mocks.stations, getStationsTagsStatusSummary: async () => ({ neverChecked: 0, emptyCooldown: 0 }) } }));
 vi.mock('@/lib/queryClient', async () => {
   const { QueryClient } = await import('@tanstack/react-query');
-  return { queryClient: new QueryClient(), apiRequest: mocks.request };
+  return { queryClient: new QueryClient(), apiRequest: mocks.request, apiFetch: (url: string, init?: RequestInit) => fetch(url, init) };
 });
 vi.mock('@/components/stations/station-form', () => ({ default: ({ open }: { open: boolean }) => open ? <div role="dialog">Station editor</div> : null }));
 import Stations from '../src/pages/stations';

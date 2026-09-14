@@ -23,6 +23,7 @@ vi.mock("@/hooks/use-toast", () => ({
 }));
 
 vi.mock("@/lib/queryClient", () => ({
+  apiFetch: (url: string, options?: RequestInit) => fetch(url, options),
   apiRequest: vi.fn(),
   queryClient: { invalidateQueries: vi.fn() },
   resolveApiUrl: (p: string) => p,

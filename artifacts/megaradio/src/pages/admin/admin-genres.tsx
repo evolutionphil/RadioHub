@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
+import { apiFetch, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -47,6 +47,8 @@ export default function AdminGenres() {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [selectedGenre, setSelectedGenre] = useState<Genre | null>(null);
   const [discoverableImagePreview, setDiscoverableImagePreview] = useState<string>("");
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const imageUploadVersion = useRef(0);
   
   // Form state
   const [formData, setFormData] = useState({
@@ -97,7 +99,7 @@ export default function AdminGenres() {
   }, [searchInput]);
 
   // Fetch all genres from database (paginated) - using admin endpoint
-  const { data: genresResponse, isLoading, error } = useQuery({
+  const { data: genresResponse, isLoading, error, refetch } = useQuery({
     queryKey: ['/api/admin/genres', pagination.page, pagination.limit, filters.sortBy, filters.searchQuery, filters.showDiscoverableOnly, filters.showDemotedOnly],
     queryFn: async () => {
       // Build query parameters
@@ -121,7 +123,7 @@ export default function AdminGenres() {
       if (filters.showDiscoverableOnly) params.set('discoverable', 'true');
       
       // Fetch genres from admin endpoint with server-side filtering
-      const response = await fetch(`/api/admin/genres?${params}`);
+      const response = await apiFetch(`/api/admin/genres?${params}`);
       if (!response.ok) throw new Error(`Failed to fetch genres: ${response.status}`);
       const data = await response.json();
       
@@ -146,6 +148,8 @@ export default function AdminGenres() {
   // Reset form when dialogs close
   useEffect(() => {
     if (!isEditDialogOpen && !isCreateDialogOpen) {
+      imageUploadVersion.current += 1;
+      setIsUploadingImage(false);
       setFormData({
         name: "",
         description: "",
@@ -166,7 +170,7 @@ export default function AdminGenres() {
         name: selectedGenre.name || "",
         description: selectedGenre.description || "",
         discoverable: selectedGenre.isDiscoverable ?? selectedGenre.discoverable ?? false,
-        posterImage: "",
+        posterImage: selectedGenre.posterImage || "",
         discoverableImage: selectedGenre.discoverableImage || "",
         displayOrder: selectedGenre.displayOrder || 0
       });
@@ -176,11 +180,13 @@ export default function AdminGenres() {
 
   // Handle discoverable image upload with standard file input
   const handleDiscoverableImageUpload = async (file: File) => {
+    const uploadVersion = ++imageUploadVersion.current;
+    setIsUploadingImage(true);
     try {
       const formData = new FormData();
       formData.append('file', file);
 
-      const response = await fetch('/api/genres/upload/discoverable', {
+      const response = await apiFetch('/api/genres/upload/discoverable', {
         method: 'POST',
         body: formData,
       });
@@ -190,6 +196,7 @@ export default function AdminGenres() {
       }
 
       const { url } = await response.json();
+      if (uploadVersion !== imageUploadVersion.current) return;
       
       // Update form data and preview
       setFormData(prev => ({ ...prev, discoverableImage: url }));
@@ -200,18 +207,21 @@ export default function AdminGenres() {
         description: "Genre image uploaded successfully.",
       });
     } catch (error: any) {
+      if (uploadVersion !== imageUploadVersion.current) return;
       toast({
         title: "Upload Error",
         description: error.message || "Failed to upload image.",
         variant: "destructive",
       });
+    } finally {
+      if (uploadVersion === imageUploadVersion.current) setIsUploadingImage(false);
     }
   };
 
   // Create genre mutation
   const createMutation = useMutation({
     mutationFn: async (genreData: any) => {
-      const response = await fetch('/api/genres', {
+      const response = await apiFetch('/api/genres', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -244,7 +254,7 @@ export default function AdminGenres() {
   const updateMutation = useMutation({
     mutationFn: async ({ id, genreData }: { id: string; genreData: any }) => {
       // Always use PUT endpoint - backend handles both real genres and dynamic genre conversion
-      const response = await fetch(`/api/genres/${id}`, {
+      const response = await apiFetch(`/api/genres/${id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -287,7 +297,7 @@ export default function AdminGenres() {
       id: string;
       targetGenreId?: string;
     }) => {
-      const response = await fetch(`/api/admin/genres/${id}/merge-into-winner`, {
+      const response = await apiFetch(`/api/admin/genres/${id}/merge-into-winner`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(targetGenreId ? { targetGenreId } : {}),
@@ -366,7 +376,7 @@ export default function AdminGenres() {
       if (mergePickerDebouncedSearch) {
         params.append('search', mergePickerDebouncedSearch);
       }
-      const response = await fetch(`/api/admin/genres?${params}`);
+      const response = await apiFetch(`/api/admin/genres?${params}`);
       if (!response.ok) {
         throw new Error(`Failed to search genres: ${response.status}`);
       }
@@ -429,7 +439,7 @@ export default function AdminGenres() {
     queryFn: async () => {
       const targetId =
         (mergePickerGenre ?? mergeWinnerGenre)!._id;
-      const response = await fetch(
+      const response = await apiFetch(
         `/api/admin/genres/${targetId}/merge-preview?limit=25`,
       );
       if (!response.ok) {
@@ -445,7 +455,7 @@ export default function AdminGenres() {
   // Delete genre mutation
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      const response = await fetch(`/api/genres/${id}`, {
+      const response = await apiFetch(`/api/genres/${id}`, {
         method: 'DELETE',
       });
       
@@ -454,6 +464,7 @@ export default function AdminGenres() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/admin/genres'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/genres/discoverable'] });
       toast({
         title: "Genre Deleted",
         description: "The genre has been deleted successfully.",
@@ -470,6 +481,7 @@ export default function AdminGenres() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (isUploadingImage) return;
     
     if (selectedGenre) {
       updateMutation.mutate({ id: selectedGenre._id, genreData: formData });
@@ -507,7 +519,7 @@ export default function AdminGenres() {
     if (!confirm('Reset ALL genres to non-discoverable? This cannot be undone.')) return;
     
     try {
-      const response = await fetch('/api/admin/reset-genres-discoverable', {
+      const response = await apiFetch('/api/admin/reset-genres-discoverable', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' }
       });
@@ -522,6 +534,7 @@ export default function AdminGenres() {
       
       // Refetch genres
       queryClient.invalidateQueries({ queryKey: ['/api/admin/genres'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/genres/discoverable'] });
     } catch (error: any) {
       toast({
         title: "Error",
@@ -530,6 +543,13 @@ export default function AdminGenres() {
       });
     }
   };
+
+  if (error) return (
+    <div role="alert" className="p-6 space-y-3">
+      <p>Unable to load genres. {error instanceof Error ? error.message : ''}</p>
+      <Button variant="outline" onClick={() => void refetch()}>Retry genres</Button>
+    </div>
+  );
 
   if (isLoading) {
     return (
@@ -603,6 +623,7 @@ export default function AdminGenres() {
                     <Input
                       id="genre-image"
                       type="file"
+                      disabled={isUploadingImage}
                       accept="image/*"
                       onChange={(e) => {
                         const file = e.target.files?.[0];
@@ -621,8 +642,8 @@ export default function AdminGenres() {
                 )}
               </div>
               <DialogFooter className="mt-6">
-                <Button type="submit" disabled={createMutation.isPending}>
-                  {createMutation.isPending ? 'Creating...' : 'Create Genre'}
+                <Button type="submit" disabled={createMutation.isPending || isUploadingImage}>
+                  {isUploadingImage ? 'Uploading image...' : createMutation.isPending ? 'Creating...' : 'Create Genre'}
                 </Button>
               </DialogFooter>
             </form>
@@ -1001,6 +1022,7 @@ export default function AdminGenres() {
                     <Input
                       id="edit-genre-image"
                       type="file"
+                      disabled={isUploadingImage}
                       accept="image/*"
                       onChange={(e) => {
                         const file = e.target.files?.[0];
@@ -1038,8 +1060,8 @@ export default function AdminGenres() {
               )}
             </div>
             <DialogFooter className="mt-6">
-              <Button type="submit" disabled={updateMutation.isPending}>
-                {updateMutation.isPending ? 'Updating...' : 'Update Genre'}
+              <Button type="submit" disabled={updateMutation.isPending || isUploadingImage}>
+                {isUploadingImage ? 'Uploading image...' : updateMutation.isPending ? 'Updating...' : 'Update Genre'}
               </Button>
             </DialogFooter>
           </form>

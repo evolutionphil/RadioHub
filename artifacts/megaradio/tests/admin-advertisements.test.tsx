@@ -17,6 +17,7 @@ const deferred = <T,>() => {
 };
 let fetchMock: ReturnType<typeof vi.fn>;
 beforeEach(() => {
+  vi.spyOn(window, 'confirm').mockReturnValue(true);
   toast.mockReset(); queryClient.clear();
   queryClient.setDefaultOptions({ queries: { retry: false, gcTime: Infinity, staleTime: Infinity, queryFn: async ({ queryKey }) => {
     const response = await fetch(String(queryKey[0])); if (!response.ok) throw new Error('Request failed'); return response.json();
@@ -125,4 +126,33 @@ it('labels middle placements and every editable control without changing update 
   expect(update[0]).toBe('/api/admin/advertisements/middle'); expect(JSON.parse(update[1].body).position).toBe('middle_section');
   fireEvent.click(screen.getByRole('button', { name: 'Delete Ad middle' }));
   await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/admin/advertisements/middle', expect.objectContaining({ method: 'DELETE' })));
+});
+
+it('preserves authenticated multipart upload and JSON save requests', async () => {
+  sessionStorage.setItem('_mrt_oat', 'fixture-session');
+  try {
+    fetchMock.mockImplementation((url: string) => Promise.resolve(Response.json(url.endsWith('/upload') ? { imageUrl: 'https://images.example/new.png' } : [])));
+    mount(); fireEvent.click(screen.getByTestId('button-add-desktop-ad')); fill(); chooseFile();
+    await waitFor(() => expect(screen.getByTestId('button-submit-ad')).not.toBeDisabled());
+    const upload = fetchMock.mock.calls[0][1];
+    expect(upload.body).toBeInstanceOf(FormData);
+    expect(upload.credentials).toBe('include');
+    expect(new Headers(upload.headers).get('authorization')).toBe('Bearer fixture-session');
+    expect(new Headers(upload.headers).has('content-type')).toBe(false);
+    fireEvent.click(screen.getByTestId('button-submit-ad'));
+    await waitFor(() => expect(screen.queryByTestId('button-submit-ad')).toBeNull());
+    const save = fetchMock.mock.calls.find(call => call[1]?.method === 'POST' && !String(call[0]).endsWith('/upload'))!;
+    expect(new Headers(save[1].headers).get('authorization')).toBe('Bearer fixture-session');
+  } finally { sessionStorage.removeItem('_mrt_oat'); }
+});
+
+it('keeps a cancelled deletion intact and closes the matching editor after confirmed deletion', async () => {
+  fetchMock.mockImplementation((_url: string, init?: RequestInit) => Promise.resolve(Response.json(init?.method === 'DELETE' ? { success: true } : [])));
+  mount([ad('old')]); fireEvent.click(screen.getByRole('button', { name: 'Edit Ad old' }));
+  vi.mocked(window.confirm).mockReturnValueOnce(false);
+  fireEvent.click(screen.getByRole('button', { name: 'Delete Ad old' }));
+  expect(fetchMock).not.toHaveBeenCalled(); expect(screen.getByTestId('button-submit-ad')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Delete Ad old' }));
+  await waitFor(() => expect(screen.queryByTestId('button-submit-ad')).toBeNull());
+  expect(fetchMock.mock.calls.filter(call => call[1]?.method === 'DELETE')).toHaveLength(1);
 });

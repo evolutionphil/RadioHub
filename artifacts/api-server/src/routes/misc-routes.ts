@@ -1242,7 +1242,7 @@ export function registerMiscRoutes(
   // Backs artifacts/megaradio/src/pages/admin/feedback.tsx. Accepts
   // `status` and `type` query params; the special value 'all' (or
   // missing) disables that filter. Response shape matches what the
-  // page consumes: `{ feedback, stats }`.
+  // page consumes: `{ feedback, stats, total, page, limit, totalPages }`.
   app.get("/api/admin/feedback", requireAdmin, async (req, res) => {
     try {
       const status = String(req.query.status || ""),
@@ -1260,6 +1260,7 @@ export function registerMiscRoutes(
               : undefined,
           },
           Number(req.query.limit) || 200,
+          Number(req.query.page) || 1,
         ),
       );
     } catch {

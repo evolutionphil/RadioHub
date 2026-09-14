@@ -398,11 +398,14 @@ export async function pgDeleteOldAppLogs(
 export async function pgListFeedback(
   filter: { status?: string; type?: string } = {},
   limit = 200,
+  page = 1,
 ): Promise<any> {
+  const pageSize = limitOf(limit, 200);
+  const currentPage = pageOf(page);
   const rows = (
     await getPostgresPool().query(
-      "SELECT * FROM feedback WHERE ($1::text IS NULL OR status=$1) AND ($2::text IS NULL OR type=$2) ORDER BY created_at DESC,id LIMIT $3",
-      [filter.status || null, filter.type || null, limitOf(limit, 200)],
+      "SELECT * FROM feedback WHERE ($1::text IS NULL OR status=$1) AND ($2::text IS NULL OR type=$2) ORDER BY created_at DESC,id LIMIT $3 OFFSET $4",
+      [filter.status || null, filter.type || null, pageSize, (currentPage - 1) * pageSize],
     )
   ).rows;
   const groups = (
@@ -412,14 +415,19 @@ export async function pgListFeedback(
   ).rows;
   const statusCounts: Record<string, number> = {},
     byType: Record<string, number> = { bug: 0, feature: 0, general: 0 };
-  let total = 0;
+  let total = 0, filteredTotal = 0;
   for (const row of groups) {
     total += row.count;
+    if ((!filter.status || row.status === filter.status) && (!filter.type || row.type === filter.type)) filteredTotal += row.count;
     statusCounts[row.status] = (statusCounts[row.status] || 0) + row.count;
     byType[row.type] = (byType[row.type] || 0) + row.count;
   }
   return {
     feedback: rows.map((row) => shape("feedback", row)),
+    total: filteredTotal,
+    page: currentPage,
+    limit: pageSize,
+    totalPages: Math.max(1, Math.ceil(filteredTotal / pageSize)),
     stats: {
       total,
       open: statusCounts.open || 0,

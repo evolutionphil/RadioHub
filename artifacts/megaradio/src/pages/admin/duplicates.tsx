@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { apiFetch } from "@/lib/queryClient";
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -94,7 +95,7 @@ export default function AdminDuplicates() {
     setMergeResults([]);
     setSelectedStations(new Set()); // Clear selections when detecting new duplicates
     try {
-      const response = await fetch('/api/admin/stations/duplicates');
+      const response = await apiFetch('/api/admin/stations/duplicates');
       const data = await response.json();
       
       // Check for API errors
@@ -199,7 +200,7 @@ export default function AdminDuplicates() {
     
     setProcessingMerge(primaryStation._id);
     try {
-      const response = await fetch('/api/admin/stations/merge', {
+      const response = await apiFetch('/api/admin/stations/merge', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -344,7 +345,7 @@ export default function AdminDuplicates() {
 
             if (sourceFaviconUrl) {
               try {
-                const updateResponse = await fetch(`/api/admin/stations/${bestRemaining._id}`, {
+                const updateResponse = await apiFetch(`/api/admin/stations/${bestRemaining._id}`, {
                   method: 'PUT',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({ favicon: sourceFaviconUrl }),
@@ -369,7 +370,7 @@ export default function AdminDuplicates() {
       }
 
       // Now delete the selected stations
-      const response = await fetch('/api/admin/delete-stations', {
+      const response = await apiFetch('/api/admin/delete-stations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ stationIds: Array.from(selectedStations) })
@@ -442,7 +443,7 @@ export default function AdminDuplicates() {
 
         if (sourceFaviconUrl) {
           try {
-            const updateResponse = await fetch(`/api/admin/stations/${bestRemaining._id}`, {
+            const updateResponse = await apiFetch(`/api/admin/stations/${bestRemaining._id}`, {
               method: 'PUT',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ favicon: sourceFaviconUrl }),
@@ -462,7 +463,7 @@ export default function AdminDuplicates() {
       }
 
       // Proceed with deletion
-      const response = await fetch('/api/admin/delete-stations', {
+      const response = await apiFetch('/api/admin/delete-stations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ stationIds: selectedInGroup })
@@ -506,7 +507,7 @@ export default function AdminDuplicates() {
     
     setProcessingMerge(primaryStation._id);
     try {
-      const response = await fetch('/api/admin/stations/merge', {
+      const response = await apiFetch('/api/admin/stations/merge', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -590,7 +591,7 @@ export default function AdminDuplicates() {
   const runFreqDedup = async (confirm: boolean) => {
     setFreqLoading(true);
     try {
-      const response = await fetch(
+      const response = await apiFetch(
         `/api/admin/stations/dedup-frequency${confirm ? '?confirm=true' : ''}`,
         { method: 'POST', headers: { 'Content-Type': 'application/json' } },
       );

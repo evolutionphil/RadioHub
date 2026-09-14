@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
+import { apiRequest } from "@/lib/queryClient";
 import {
   Table,
   TableBody,
@@ -138,11 +139,10 @@ export default function AdminApiKeys() {
   const [keyStatus, setKeyStatus] = useState("");
   const [keyPage, setKeyPage] = useState(1);
 
-  const { data: stats, isError: statsError, refetch: refetchStats } = useQuery<StatsResponse>({
+  const { data: stats, isError: statsError } = useQuery<StatsResponse>({
     queryKey: ["/api/admin/api-keys/stats"],
-    queryFn: async () => {
-      const res = await fetch("/api/admin/api-keys/stats", { credentials: "include" });
-      if (!res.ok) throw new Error(`${res.status}`);
+    queryFn: async ({ signal }) => {
+      const res = await apiRequest("GET", "/api/admin/api-keys/stats", { signal });
       return res.json();
     },
   });
@@ -154,9 +154,8 @@ export default function AdminApiKeys() {
     pages: number;
   }>({
     queryKey: ["/api/admin/api-keys/users", devQs],
-    queryFn: async () => {
-      const res = await fetch(`/api/admin/api-keys/users?${devQs}`, { credentials: "include" });
-      if (!res.ok) throw new Error(`${res.status}`);
+    queryFn: async ({ signal }) => {
+      const res = await apiRequest("GET", `/api/admin/api-keys/users?${devQs}`, { signal });
       return res.json();
     },
     enabled: tab === "developers",
@@ -175,23 +174,25 @@ export default function AdminApiKeys() {
     pages: number;
   }>({
     queryKey: ["/api/admin/api-keys/keys", keyQs],
-    queryFn: async () => {
-      const res = await fetch(`/api/admin/api-keys/keys?${keyQs}`, { credentials: "include" });
-      if (!res.ok) throw new Error(`${res.status}`);
+    queryFn: async ({ signal }) => {
+      const res = await apiRequest("GET", `/api/admin/api-keys/keys?${keyQs}`, { signal });
       return res.json();
     },
     enabled: tab === "keys",
   });
 
+  useEffect(() => {
+    if (devData && devPage > Math.max(1, devData.pages)) setDevPage(Math.max(1, devData.pages));
+  }, [devData, devPage]);
+  useEffect(() => {
+    if (keyData && keyPage > Math.max(1, keyData.pages)) setKeyPage(Math.max(1, keyData.pages));
+  }, [keyData, keyPage]);
+
   const statusMutation = useMutation({
     mutationFn: async ({ id, status }: { id: string; status: string }) => {
-      const res = await fetch(`/api/admin/api-keys/keys/${id}/status`, {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status }),
+      const res = await apiRequest("POST", `/api/admin/api-keys/keys/${id}/status`, {
+        body: { status },
       });
-      if (!res.ok) throw new Error(await res.text());
       return res.json();
     },
     onSuccess: () => {
@@ -203,13 +204,9 @@ export default function AdminApiKeys() {
 
   const planMutation = useMutation({
     mutationFn: async ({ id, plan }: { id: string; plan: string }) => {
-      const res = await fetch(`/api/admin/api-keys/keys/${id}/plan`, {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ plan }),
+      const res = await apiRequest("POST", `/api/admin/api-keys/keys/${id}/plan`, {
+        body: { plan },
       });
-      if (!res.ok) throw new Error(await res.text());
       return res.json();
     },
     onSuccess: () => {
@@ -230,7 +227,7 @@ export default function AdminApiKeys() {
           variant="outline"
           size="sm"
           disabled={devFetching || keyFetching}
-          onClick={() => { refetchStats(); tab === "developers" ? refetchDevs() : refetchKeys(); }}
+          onClick={invalidateKeys}
         >
           <RefreshCw className="w-4 h-4 mr-2" />
           Refresh

@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { apiFetch } from "@/lib/queryClient";
 import { Badge } from "@/components/ui/badge";
 
 // Task #264: drill-down for a single GenreSlugCleanupRun. Lists the
@@ -40,7 +41,7 @@ export function GenreCleanupRunDemotions({ runId }: { runId: string }) {
       "demotions",
     ],
     queryFn: async () => {
-      const res = await fetch(
+      const res = await apiFetch(
         `/api/admin/maintenance/genre-slug-cleanup/runs/${runId}/demotions`,
         { credentials: "include" },
       );

@@ -7,7 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useEffect, useRef, useState } from "react";
 import { Trash2, Edit2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient } from "@/lib/queryClient";
+import { apiFetch, apiRequest, queryClient } from "@/lib/queryClient";
 
 interface Advertisement {
   _id: string;
@@ -66,12 +66,7 @@ export default function AdvertisementsAdmin() {
 
   const createMutation = useMutation({
     mutationFn: async (data: FormData) => {
-      const response = await fetch('/api/admin/advertisements', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data)
-      });
-      if (!response.ok) throw new Error('Failed to create ad');
+      const response = await apiRequest('POST', '/api/admin/advertisements', { body: data });
       return response.json();
     },
     onSuccess: () => {
@@ -90,12 +85,7 @@ export default function AdvertisementsAdmin() {
 
   const updateMutation = useMutation({
     mutationFn: async (data: FormData) => {
-      const response = await fetch(`/api/admin/advertisements/${editingId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data)
-      });
-      if (!response.ok) throw new Error('Failed to update ad');
+      const response = await apiRequest('PATCH', `/api/admin/advertisements/${editingId}`, { body: data });
       return response.json();
     },
     onSuccess: () => {
@@ -115,15 +105,19 @@ export default function AdvertisementsAdmin() {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      const response = await fetch(`/api/admin/advertisements/${id}`, {
-        method: 'DELETE',
-      });
-      if (!response.ok) throw new Error('Failed to delete ad');
+      const response = await apiRequest('DELETE', `/api/admin/advertisements/${id}`);
       return response.json();
     },
-    onSuccess: () => {
+    onSuccess: (_, id) => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/advertisements"] });
       queryClient.invalidateQueries({ queryKey: ["/api/advertisements"] });
+      if (editingId === id) {
+        cancelImageUpload();
+        setEditingId(null);
+        setFormData(emptyForm());
+        setPreviewImage(null);
+        setShowForm(false);
+      }
       toast({ description: 'Advertisement deleted successfully!' });
     },
     onError: () => {
@@ -145,7 +139,7 @@ export default function AdvertisementsAdmin() {
       formDataObj.append('image', file);
       formDataObj.append('position', selectedPosition);
 
-      const response = await fetch('/api/admin/advertisements/upload', {
+      const response = await apiFetch('/api/admin/advertisements/upload', {
         method: 'POST',
         body: formDataObj,
         signal: controller.signal,
@@ -172,7 +166,7 @@ export default function AdvertisementsAdmin() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (uploadingImage || createMutation.isPending || updateMutation.isPending) return;
+    if (uploadingImage || createMutation.isPending || updateMutation.isPending || deleteMutation.isPending || isError) return;
     if (!formData.imageUrl.trim() || !formData.url.trim()) {
       toast({ description: 'Upload an image and enter a destination URL before saving', variant: 'destructive' });
       return;
@@ -210,7 +204,7 @@ export default function AdvertisementsAdmin() {
     setPreviewImage(null);
     setShowForm(true);
   };
-  const saving = createMutation.isPending || updateMutation.isPending;
+  const saving = createMutation.isPending || updateMutation.isPending || deleteMutation.isPending;
 
   if (isLoading) {
     return (
@@ -228,8 +222,8 @@ export default function AdvertisementsAdmin() {
     <AdminPage title="Advertisement Management" description="Choose an ad spot and upload your image">
 
       {/* Quick Add Buttons - Choose which ad spot to add */}
-      {!showForm && (
-        <div className="grid grid-cols-3 gap-4">
+      {!showForm && !isError && (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <button
             onClick={() => handleCreate('desktop_sidebar')}
             className="p-6 border-2 border-dashed border-blue-400 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors text-center"
@@ -449,7 +443,7 @@ export default function AdvertisementsAdmin() {
                           <Edit2 className="w-4 h-4" />
                         </button>
                         <button
-                          onClick={() => deleteMutation.mutate(ad._id)}
+                          onClick={() => { if (window.confirm(`Delete advertisement “${ad.title}”? This cannot be undone.`)) deleteMutation.mutate(ad._id); }}
                           disabled={deleteMutation.isPending || saving}
                           aria-label={`Delete ${ad.title}`}
                           className="p-2 hover:bg-red-100 dark:hover:bg-red-900 rounded"
