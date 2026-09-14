@@ -2836,7 +2836,9 @@ ${keysText}`;
         inFlightRegenerateJob = new Promise<void>((r) => { resolve = r; });
         try {
             const OpenAI = (await import('openai')).default;
-            const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+            // Keep one admin regeneration request below the edge timeout;
+            // the UI submits one language at a time and can retry remaining gaps.
+            const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY, timeout: 25_000, maxRetries: 0 });
             const keyDocs = (await pgLocalization().getKeys(SEO_KEYS_ALL));
             const keyIdByName: Record<string, any> = {};
             (keyDocs as any[]).forEach((k: any) => { keyIdByName[k.key] = k._id; });

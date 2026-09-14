@@ -202,6 +202,7 @@ after(async () => {
 
 beforeEach(async () => {
   if(!fixture)return;
+  (await import('../src/seo/gsc-indexability-report')).invalidateGscIndexabilityReport();
   await fixture.clear('gsc_url_inspections','gsc_inspection_quota','gsc_oauth_tokens','stations','genres','sitemap_manifests');
   process.env.GSC_SERVICE_ACCOUNT_JSON = JSON.stringify({ client_email: 'test@example.com', private_key: 'fake-key' });
   delete process.env.GOOGLE_OAUTH_CLIENT_ID;
@@ -723,4 +724,86 @@ test('noindex summary includes affected URLs after the former 50,000 URL cutoff'
   assert.equal(result.breakdown.stationNoIndex, 50001);
   assert.equal(result.breakdown.indexable, 0);
   assert.equal(result.checkedStationUrls, 50001);
+});
+
+test('server indexability filters apply before pagination and count every matching URL', async () => {
+  await seed([
+    { url: 'https://themegaradio.com/en/aaa', group: 'static', state: 'pending' },
+    { url: 'https://themegaradio.com/en/station/123', state: 'unknown' },
+    { url: 'https://themegaradio.com/en/station/456', state: 'pending' },
+    { url: 'https://themegaradio.com/fr/station/missing', language: 'fr', state: 'pending' },
+    { url: 'https://themegaradio.com/xx/about', language: 'xx', group: 'static', state: 'pending' },
+  ]);
+  const get = async (query: string) => (await fetch(`${baseUrl}/urls?${query}`)).json();
+  const first = await get('noindex=noindex&limit=1');
+  assert.equal(first.pagination.total, 2);
+  assert.equal(first.pagination.pages, 2);
+  assert.equal(first.rows.length, 1);
+  assert.equal(first.rows[0].serverNoindex.noindex, true);
+  const second = await get('noindex=noindex&limit=1&page=2');
+  assert.equal(second.rows.length, 1);
+  assert.notEqual(first.rows[0].url, second.rows[0].url);
+  const indexed = await get('noindex=indexable&limit=1');
+  assert.equal(indexed.pagination.total, 1);
+  assert.equal(indexed.rows[0].url, 'https://themegaradio.com/en/aaa');
+  const unknown = await get('state=unknown&noindex=noindex');
+  assert.equal(unknown.pagination.total, 1);
+  const stats = await (await fetch(`${baseUrl}/stats`)).json();
+  assert.equal(stats.byGroup.find((row: any) => row.group === 'station').unknown, 1);
+  assert.equal((await fetch(`${baseUrl}/urls?noindex=invalid`)).status, 400);
+});
+
+test('cold report returns pending quickly, completes once, and reuses the complete cache', async () => {
+  await seed([{ url: 'https://themegaradio.com/en/about', group: 'static', state: 'pending' }]);
+  const lock = await fixture.pool.connect();
+  try {
+    await lock.query('BEGIN');
+    await lock.query('LOCK gsc_url_inspections IN ACCESS EXCLUSIVE MODE');
+    const started = Date.now();
+    const pending = await fetch(`${baseUrl}/noindex-breakdown`);
+    assert.equal(pending.status, 202);
+    assert.equal(pending.headers.get('Retry-After'), '2');
+    assert.deepEqual(await pending.json(), { pending: true });
+    assert.ok(Date.now() - started < 5_000, 'HTTP response must not wait for the catalog scan');
+    const filteredPending = await fetch(`${baseUrl}/urls?noindex=indexable`);
+    assert.equal(filteredPending.status, 202);
+    assert.deepEqual(await filteredPending.json(), { pending: true });
+  } finally { await lock.query('ROLLBACK'); lock.release(); }
+  const first = await (await fetch(`${baseUrl}/noindex-breakdown`)).json();
+  assert.equal(first.total, 1);
+  assert.equal(first.breakdown.indexable, 1);
+  await seed([{ url: 'https://themegaradio.com/en/contact', group: 'static', state: 'pending' }]);
+  const cached = await (await fetch(`${baseUrl}/noindex-breakdown`)).json();
+  assert.deepEqual(cached, first, 'Repeated reads share the complete report instead of rescanning');
+  (await import('../src/seo/gsc-indexability-report')).invalidateGscIndexabilityReport();
+  const refreshed = await (await fetch(`${baseUrl}/noindex-breakdown`)).json();
+  assert.equal(refreshed.total, 2);
+});
+
+test('multi-batch report retains only exceptions, not every allowed station URL', async () => {
+  await fixture.pool.query(`INSERT INTO stations(id,station_uuid,name,slug,url,country_code,descriptions)
+    SELECT 'report-station-' || i,'report-uuid-' || i,'Report Radio ' || i,'report-radio-' || i || '-fm',
+      'https://radio.example/stream','DE','{"fr":{"full":"French description","meta":"French metadata"}}'::jsonb
+    FROM generate_series(1,5001) i`);
+  await fixture.pool.query(`INSERT INTO gsc_url_inspections(id,url,language,url_group)
+    SELECT 'report-url-' || lang || '-' || i,'https://themegaradio.com/' || lang || '/station/report-radio-' || i || '-fm',lang,'station'
+    FROM generate_series(1,5001) i CROSS JOIN unnest(ARRAY['en','de','fr']) lang`);
+  const started = Date.now();
+  const result = await (await import('../src/seo/gsc-indexability-report')).getGscIndexabilityReport();
+  assert.equal(result.report.total, 15003);
+  assert.equal(result.report.breakdown.indexable, 15003);
+  assert.deepEqual(result.noindexKeys, []);
+  assert.deepEqual(result.nonIndexableKeys, []);
+  console.log(`GSC multi-batch report: 5,001 stations / 15,003 URLs in ${Date.now() - started}ms; retained exception keys=0`);
+});
+
+test('a second manual inspection request reports an already-running batch', async () => {
+  const status = service.gscInspectionService.getStatus();
+  const spy = mock.method(service.gscInspectionService, 'getStatus', () => ({ ...status, inspectionRunning: true }));
+  try {
+    const response = await fetch(`${baseUrl}/refresh`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    assert.equal(response.status, 409);
+    assert.match((await response.json()).error, /already running/);
+    assert.equal(axiosCalls.length, 0);
+  } finally { spy.mock.restore(); }
 });

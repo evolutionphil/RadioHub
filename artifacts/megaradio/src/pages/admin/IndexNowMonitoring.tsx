@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Activity, CheckCircle, XCircle, Clock, TrendingUp, ChevronDown, ChevronRight, Calendar, Download, List, RotateCw } from 'lucide-react';
 import { format } from 'date-fns';
-import { apiRequest, queryClient } from '@/lib/queryClient';
+import { apiAuthHeaders, apiRequest, queryClient, resolveApiUrl } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
 
 interface SitemapDiffSubmission {
@@ -100,7 +100,11 @@ export default function IndexNowMonitoring() {
   const fetchFullUrls = async (submissionId: string) => {
     setFullUrls((prev) => ({ ...prev, [submissionId]: { status: 'loading' } }));
     try {
-      const resp = await fetch(`/api/admin/indexnow/submissions/${submissionId}/urls`);
+      const path = `/api/admin/indexnow/submissions/${encodeURIComponent(submissionId)}/urls`;
+      const resp = await fetch(resolveApiUrl(path), {
+        credentials: 'include',
+        headers: apiAuthHeaders(path),
+      });
       if (resp.status === 404) {
         const body = (await resp.json()) as SubmissionFullUrlsError;
         setFullUrls((prev) => ({ ...prev, [submissionId]: { status: 'unavailable', data: body } }));
@@ -132,12 +136,7 @@ export default function IndexNowMonitoring() {
   };
 
   const { data: diffRunsResp, isLoading: diffRunsLoading, error: diffRunsError } = useQuery<SitemapDiffRunsResponse>({
-    queryKey: ['/api/admin/indexnow/sitemap-diff-runs'],
-    queryFn: async () => {
-      const response = await fetch('/api/admin/indexnow/sitemap-diff-runs?days=14');
-      if (!response.ok) throw new Error('Failed to fetch sitemap diff runs');
-      return response.json();
-    },
+    queryKey: ['/api/admin/indexnow/sitemap-diff-runs', { days: 14 }],
     staleTime: 60000,
     refetchInterval: query => query.state.status === 'error' ? false : 60000,
     refetchOnWindowFocus: false,
@@ -211,16 +210,10 @@ export default function IndexNowMonitoring() {
 
   // Fetch logs with filters and auto-refresh every 30 seconds
   const { data: logs, isLoading: logsLoading, error: logsError } = useQuery<IndexNowLog[]>({
-    queryKey: ['/api/admin/indexnow/logs', { host: hostFilter, status: statusFilter }],
-    queryFn: async () => {
-      const params = new URLSearchParams();
-      if (hostFilter !== 'all') params.append('host', hostFilter);
-      if (statusFilter !== 'all') params.append('status', statusFilter);
-      
-      const response = await fetch(`/api/admin/indexnow/logs?${params.toString()}`);
-      if (!response.ok) throw new Error('Failed to fetch logs');
-      return response.json();
-    },
+    queryKey: ['/api/admin/indexnow/logs', {
+      ...(hostFilter !== 'all' ? { host: hostFilter } : {}),
+      ...(statusFilter !== 'all' ? { status: statusFilter } : {}),
+    }],
     staleTime: 30000,
     refetchInterval: query => query.state.status === 'error' ? false : 30000,
     refetchOnWindowFocus: false,
@@ -259,7 +252,7 @@ export default function IndexNowMonitoring() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-gray-900">
-                {statsLoading ? '...' : stats?.totalSubmissions.toLocaleString() || 0}
+                {statsLoading ? '...' : stats ? stats.totalSubmissions.toLocaleString() : 'Unavailable'}
               </div>
               <p className="text-xs text-gray-500 mt-1">All-time submissions</p>
             </CardContent>
@@ -272,10 +265,10 @@ export default function IndexNowMonitoring() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-gray-900">
-                {statsLoading ? '...' : `${stats?.successRate || 0}%`}
+                {statsLoading ? '...' : stats ? `${stats.successRate}%` : 'Unavailable'}
               </div>
               <p className="text-xs text-gray-500 mt-1">
-                {stats?.successfulSubmissions || 0} successful
+                {stats ? `${stats.successfulSubmissions} successful` : 'Waiting for statistics'}
               </p>
             </CardContent>
           </Card>
@@ -287,7 +280,7 @@ export default function IndexNowMonitoring() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-gray-900">
-                {statsLoading ? '...' : stats?.submissionsToday.toLocaleString() || 0}
+                {statsLoading ? '...' : stats ? stats.submissionsToday.toLocaleString() : 'Unavailable'}
               </div>
               <p className="text-xs text-gray-500 mt-1">Last 24 hours</p>
             </CardContent>
@@ -300,10 +293,10 @@ export default function IndexNowMonitoring() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-gray-900">
-                {statsLoading ? '...' : stats?.failedSubmissions.toLocaleString() || 0}
+                {statsLoading ? '...' : stats ? stats.failedSubmissions.toLocaleString() : 'Unavailable'}
               </div>
               <p className="text-xs text-gray-500 mt-1">
-                Avg response: {stats?.averageResponseTime || 0}ms
+                Avg response: {stats ? `${stats.averageResponseTime}ms` : 'Unavailable'}
               </p>
             </CardContent>
           </Card>
@@ -323,7 +316,9 @@ export default function IndexNowMonitoring() {
             </div>
           </CardHeader>
           <CardContent>
-            {diffRunsLoading ? (
+            {diffRunsError ? (
+              <div className="text-center py-8 text-red-700">Sitemap diff runs unavailable. Retry monitoring data above.</div>
+            ) : diffRunsLoading ? (
               <div className="text-center py-8 text-gray-500">Loading runs...</div>
             ) : diffRuns.length === 0 ? (
               <div className="text-center py-8 text-gray-500">
@@ -399,7 +394,7 @@ export default function IndexNowMonitoring() {
                             variant="outline"
                             disabled={rerunMutation.isPending}
                             onClick={() => handleRerun(false)}
-                            className="border-gray-200 text-gray-200 hover:bg-gray-50 hover:text-gray-900"
+                            className="border-gray-200 text-gray-700 hover:bg-gray-50 hover:text-gray-900"
                             data-testid={`button-rerun-run-${run.date}`}
                             title="Re-run the diff/submit pass now. Computes additions vs. the current snapshot, so any URLs that previously failed will be retried."
                           >
@@ -544,7 +539,7 @@ export default function IndexNowMonitoring() {
                                                 <Button
                                                   size="sm"
                                                   variant="outline"
-                                                  className="h-7 px-2 text-xs border-gray-200 text-gray-200 hover:bg-gray-50"
+                                                  className="h-7 px-2 text-xs border-gray-200 text-gray-700 hover:bg-gray-50"
                                                   onClick={() => fetchFullUrls(sub._id)}
                                                   data-testid={`button-show-all-urls-${sub._id}`}
                                                 >
@@ -559,7 +554,7 @@ export default function IndexNowMonitoring() {
                                                 <Button
                                                   size="sm"
                                                   variant="outline"
-                                                  className="h-7 px-2 text-xs border-gray-200 text-gray-200 hover:bg-gray-50"
+                                                  className="h-7 px-2 text-xs border-gray-200 text-gray-700 hover:bg-gray-50"
                                                   onClick={() => downloadFullUrls(sub._id, fullState.data.urls)}
                                                   data-testid={`button-download-urls-${sub._id}`}
                                                 >
@@ -573,8 +568,11 @@ export default function IndexNowMonitoring() {
                                                 </div>
                                               )}
                                               {fullState?.status === 'error' && (
-                                                <div className="text-xs text-red-400">
+                                                <div role="alert" className="text-xs text-red-700">
                                                   Failed to load: {fullState.message}
+                                                  <Button size="sm" variant="outline" className="ml-2" onClick={() => fetchFullUrls(sub._id)}>
+                                                    Retry URLs
+                                                  </Button>
                                                 </div>
                                               )}
                                             </div>
@@ -633,7 +631,9 @@ export default function IndexNowMonitoring() {
             </div>
           </CardHeader>
           <CardContent>
-            {logsLoading ? (
+            {logsError ? (
+              <div className="text-center py-8 text-red-700">Submission logs unavailable. Retry monitoring data above.</div>
+            ) : logsLoading ? (
               <div className="text-center py-8 text-gray-500">Loading logs...</div>
             ) : !logs || logs.length === 0 ? (
               <div className="text-center py-8 text-gray-500">No logs found</div>

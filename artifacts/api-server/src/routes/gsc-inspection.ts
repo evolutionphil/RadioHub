@@ -13,7 +13,7 @@
 
 import { Router, Request, Response } from 'express';
 import { pgGscStationChecks } from '../data/postgres-gsc-store';
-import { pgGscCounts, pgGscStats, pgGscList, pgGscSnapshots, pgGscIndexabilityGroups, pgGscOAuthToken, pgGscReplaceOAuthToken, pgGscCreateOAuthState, pgGscConsumeOAuthState } from '../data/postgres-gsc-store';
+import { pgGscCounts, pgGscStats, pgGscList, pgGscSnapshots, pgGscOAuthToken, pgGscReplaceOAuthToken, pgGscCreateOAuthState, pgGscConsumeOAuthState } from '../data/postgres-gsc-store';
 import { pgSeoGenres } from '../data/postgres-seo-indexing-store';
 import {
   gscInspectionService,
@@ -24,6 +24,7 @@ import {
 } from '../services/gsc-inspection';
 import { getCachedQualifiedLanguages } from '../seo/qualified-languages';
 import { computeGscServerIndexability, extractGscSlug } from '../seo/gsc-indexability';
+import { getGscIndexabilityReport } from '../seo/gsc-indexability-report';
 import { logger } from '../utils/logger';
 
 const router = Router();
@@ -33,6 +34,15 @@ async function loadStationChecks(rows: Array<{ url: string; group: string }>): P
     .map(row => extractGscSlug(row.url)).filter((slug): slug is string => Boolean(slug)))];
   const stations = await pgGscStationChecks(slugs);
   return new Map(stations.map(station => [station.slug, station]));
+}
+
+async function readyIndexabilityReport() {
+  const promise = getGscIndexabilityReport(gscInspectionService.getStatus().lastDiscoveryAt?.toISOString() ?? '');
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  return Promise.race([
+    promise,
+    new Promise<null>(resolve => { timer = setTimeout(() => resolve(null), 1_000); }),
+  ]).finally(() => { if (timer) clearTimeout(timer); });
 }
 
 router.get('/status', async (_req: Request, res: Response) => {
@@ -71,6 +81,7 @@ router.get('/stats', async (_req: Request, res: Response) => {
         excluded: r.excluded,
         error: r.error,
         pending: r.pending,
+        unknown: r.unknown,
       })),
       byLanguage: byLanguage.map((r: any) => ({
         language: r._id,
@@ -96,23 +107,21 @@ router.get('/urls', async (req: Request, res: Response) => {
       Math.min(200, parseInt(String(req.query.limit ?? '50'), 10) || 50),
     );
 
-    const filter: Record<string, unknown> = {};
-    if (language && language !== 'all') filter.language = language;
-    if (group && group !== 'all') filter.group = group;
-    if (state && state !== 'all') filter.state = state;
-    if (search) {
-      // Anchored prefix search on url so Mongo can use the unique `url`
-      // index instead of a collection scan. We deliberately drop the `i`
-      // flag here because case-insensitive regex defeats the index;
-      // sitemap URLs are lowercase by construction so this is safe.
-      const escaped = search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      filter.url = { $regex: `^${escaped}` };
+    const noindexFilter = String(req.query.noindex ?? 'any');
+    if (!['any', 'noindex', 'indexable'].includes(noindexFilter)) {
+      return void res.status(400).json({ error: 'Invalid server indexability filter' });
+    }
+    const report = noindexFilter === 'any' ? null : await readyIndexabilityReport();
+    if (noindexFilter !== 'any' && !report) {
+      res.setHeader('Retry-After', '2');
+      return void res.status(202).json({ pending: true });
     }
 
-    const noindexFilter = String(req.query.noindex ?? 'any');
-
     const [listed, qualifiedLangsArr] = await Promise.all([
-      pgGscList({ language, group, state, search }, limit, (page-1)*limit),
+      pgGscList({ language, group, state, search,
+        indexabilityKeys: report ? noindexFilter === 'noindex' ? report.noindexKeys : report.nonIndexableKeys : undefined,
+        excludeIndexabilityKeys: noindexFilter === 'indexable',
+      }, limit, (page-1)*limit),
       getCachedQualifiedLanguages(),
     ]);
     const { rows: rawRows, total } = listed;
@@ -120,19 +129,10 @@ router.get('/urls', async (req: Request, res: Response) => {
     const [stationBySlug, genres] = await Promise.all([loadStationChecks(rawRows), pgSeoGenres()]);
     const genreBySlug = new Map(genres.map((genre: any) => [genre.slug, genre]));
 
-    let rows = rawRows.map((r: any) => ({
+    const rows = rawRows.map((r: any) => ({
       ...r,
       serverNoindex: computeGscServerIndexability(r, qualifiedLangsArr, stationBySlug, genreBySlug),
     }));
-
-    // Optional noindex filter — applied AFTER computation. Note: filtering
-    // here means `pagination.total` reflects pre-filter count (the DB-side
-    // total). Documented in the response so the UI can warn.
-    if (noindexFilter === 'noindex') {
-      rows = rows.filter(r => r.serverNoindex.noindex);
-    } else if (noindexFilter === 'indexable') {
-      rows = rows.filter(r => !r.serverNoindex.noindex && !r.serverNoindex.redirected && !r.serverNoindex.unknown);
-    }
 
     res.json({
       rows,
@@ -144,6 +144,7 @@ router.get('/urls', async (req: Request, res: Response) => {
       },
       qualifiedLanguages: qualifiedLangsArr,
       noindexFilterApplied: noindexFilter !== 'any',
+      indexabilityGeneratedAt: report?.report.generatedAt ?? null,
     });
   } catch (err: any) {
     logger.error('GSC inspection /urls failed:', err?.message ?? err);
@@ -158,6 +159,9 @@ router.post('/refresh', async (req: Request, res: Response) => {
       ok: false,
       error: readiness.error,
     });
+  }
+  if (gscInspectionService.getStatus().inspectionRunning) {
+    return res.status(409).json({ ok: false, error: 'An inspection batch is already running. Wait for its results.' });
   }
   const requested = parseInt(String(req.body?.batchSize ?? ''), 10);
   const batchSize =
@@ -431,48 +435,15 @@ router.post('/discover', async (_req: Request, res: Response) => {
  */
 router.get('/noindex-breakdown', async (_req: Request, res: Response) => {
   try {
-    const qualifiedLangsArr = await getCachedQualifiedLanguages();
-    const genres = await pgSeoGenres();
-    const genreBySlug = new Map(genres.map((genre: any) => [genre.slug, genre]));
-    const breakdown = { langRedirected: 0, numericSlug: 0, stationNoIndex: 0,
-      junk: 0, genreNotWhitelisted: 0, genreThin: 0, unknown: 0, indexable: 0 };
-    let totalUrls = 0;
-    let checkedStationUrls = 0;
-    const byLanguage: Record<string, { total: number; qualified: boolean; redirected: number }> = {};
-    const groups = await pgGscIndexabilityGroups();
-    for (let offset = 0; offset < groups.length; offset += 500) {
-      const rows = groups.slice(offset, offset + 500);
-      const stations = await loadStationChecks(rows);
-      for (const row of rows) {
-        for (const { language: lang, count } of row.languages) {
-          totalUrls += count;
-          if (row.group === 'station') checkedStationUrls += count;
-          const language = byLanguage[lang] ??= { total: 0, qualified: qualifiedLangsArr.includes(lang), redirected: 0 };
-          language.total += count;
-          const decision = computeGscServerIndexability({ ...row, language: lang }, qualifiedLangsArr, stations, genreBySlug);
-          if (decision.redirected) { breakdown.langRedirected += count; language.redirected += count; }
-          else if (decision.unknown) breakdown.unknown += count;
-          else if (decision.noindex && decision.reason) breakdown[decision.reason] += count;
-          else breakdown.indexable += count;
-        }
-      }
+    // The first complete catalog scan can outlive an upstream HTTP timeout.
+    // Keep that single flight running and let the admin poll, never return
+    // partial counts as though they were the complete report.
+    const result = await readyIndexabilityReport();
+    if (!result) {
+      res.setHeader('Retry-After', '2');
+      return void res.status(202).json({ pending: true });
     }
-    const serverNoindexTotal = breakdown.numericSlug + breakdown.stationNoIndex + breakdown.junk
-      + breakdown.genreNotWhitelisted + breakdown.genreThin;
-
-    res.json({
-      total: totalUrls,
-      breakdown,
-      serverNoindexTotal,
-      qualifiedLanguageCount: qualifiedLangsArr.length,
-      totalLanguagesInCache: Object.keys(byLanguage).length,
-      qualifiedLanguages: qualifiedLangsArr.sort(),
-      byLanguage: Object.entries(byLanguage)
-        .map(([language, info]) => ({ language, ...info }))
-        .sort((a, b) => b.redirected - a.redirected || b.total - a.total),
-      sampledStationUrls: checkedStationUrls,
-      checkedStationUrls,
-    });
+    res.json(result.report);
   } catch (err: any) {
     logger.error(
       'GSC inspection /noindex-breakdown failed:',

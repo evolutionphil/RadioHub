@@ -2319,7 +2319,7 @@ interface CoverageDropAckHistoryResponse {
 // is backed by the shared `AdminSettingHistory` collection.
 function CoverageDropAckHistoryPanel() {
   const [open, setOpen] = useState(false);
-  const { data, isLoading, refetch, isFetching } =
+  const { data, isLoading, refetch, isFetching, isError } =
     useQuery<CoverageDropAckHistoryResponse>({
       queryKey: ['/api/admin/coverage/drop-alerts/acknowledge/history'],
       enabled: open,
@@ -2354,7 +2354,12 @@ function CoverageDropAckHistoryPanel() {
 
       {open ? (
         <div className="mt-3" data-testid="panel-coverage-drop-ack-history">
-          {isLoading ? (
+          {isError ? (
+            <p role="alert" className="py-3 text-xs text-destructive">
+              Acknowledgement history could not load.
+              <Button size="sm" variant="outline" className="ml-2" onClick={() => void refetch()}>Retry history</Button>
+            </p>
+          ) : isLoading ? (
             <div className="flex items-center gap-2 py-3 text-xs text-muted-foreground">
               <Loader2 className="w-3.5 h-3.5 animate-spin" />
               Loading history…
@@ -2407,7 +2412,7 @@ function CoverageDropAckHistoryPanel() {
 
 function CoverageDropAlertSettingsCard() {
   const { toast } = useToast();
-  const { data, isLoading, refetch } = useQuery<CoverageDropAlertSettingsResponse>({
+  const { data, isLoading, isError, refetch } = useQuery<CoverageDropAlertSettingsResponse>({
     queryKey: ['/api/admin/settings/coverage-drop-alert'],
     staleTime: 60_000,
     refetchOnWindowFocus: false,
@@ -2416,6 +2421,7 @@ function CoverageDropAlertSettingsCard() {
   const {
     data: historyData,
     isLoading: historyLoading,
+    isError: historyError,
     refetch: refetchHistory,
   } = useQuery<CoverageDropAlertHistoryResponse>({
     queryKey: ['/api/admin/settings/coverage-drop-alert/history'],
@@ -2660,7 +2666,12 @@ function CoverageDropAlertSettingsCard() {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        {isLoading || !data ? (
+        {isError ? (
+          <div role="alert" className="py-6 text-sm text-destructive">
+            Coverage drop alert settings could not load.
+            <Button size="sm" variant="outline" className="ml-2" onClick={() => void refetch()}>Retry settings</Button>
+          </div>
+        ) : isLoading || !data ? (
           <div className="flex items-center gap-2 py-6 text-muted-foreground">
             <Loader2 className="w-4 h-4 animate-spin" /> Loading settings…
           </div>
@@ -2909,7 +2920,12 @@ function CoverageDropAlertSettingsCard() {
                   className="mt-3"
                   data-testid="panel-coverage-drop-history"
                 >
-                  {historyLoading ? (
+                  {historyError ? (
+                    <p role="alert" className="py-3 text-xs text-destructive">
+                      Settings history could not load.
+                      <Button size="sm" variant="outline" className="ml-2" onClick={() => void refetchHistory()}>Retry history</Button>
+                    </p>
+                  ) : historyLoading ? (
                     <div className="flex items-center gap-2 py-3 text-xs text-muted-foreground">
                       <Loader2 className="w-3.5 h-3.5 animate-spin" />{' '}
                       Loading history…

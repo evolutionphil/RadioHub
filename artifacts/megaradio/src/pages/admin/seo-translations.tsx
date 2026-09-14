@@ -1,6 +1,6 @@
-import { useState } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { Fragment, useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -60,7 +60,9 @@ interface WarmAllResult {
 
 export default function SeoTranslationsHub() {
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [expandedLang, setExpandedLang] = useState<string | null>(null);
+  const [regenerationProgress, setRegenerationProgress] = useState({ completed: 0, total: 0 });
 
   const coverageQuery = useQuery<CoverageResponse>({
     queryKey: ["/api/admin/seo-translations/coverage"],
@@ -84,10 +86,26 @@ export default function SeoTranslationsHub() {
   });
 
   const regenerateMutation = useMutation<RegenerateResult, Error>({
-    mutationFn: () => apiRequest("POST", "/api/admin/seo-translations/regenerate").then((r) => r.json()),
+    mutationFn: async () => {
+      // Bound each request to one incomplete language instead of holding a
+      // proxy connection open for all configured languages. Completed writes
+      // survive a reload, and the next run only requests the remaining gaps.
+      const targets = (coverageQuery.data?.languages ?? []).filter(lang => lang.missingKeys.length > 0);
+      setRegenerationProgress({ completed: 0, total: targets.length });
+      const result: RegenerateResult = { message: '', generated: 0, skipped: 0, failed: 0, durationMs: 0 };
+      for (const [index, lang] of targets.entries()) {
+        const response = await apiRequest("POST", "/api/admin/seo-translations/regenerate", { body: { languages: [lang.code] } });
+        const part: RegenerateResult = await response.json();
+        result.generated += part.generated;
+        result.skipped += part.skipped;
+        result.failed += part.failed;
+        result.durationMs += part.durationMs;
+        setRegenerationProgress({ completed: index + 1, total: targets.length });
+      }
+      return result;
+    },
     onSuccess: (data) => {
-      toast({ title: "Regeneration complete", description: `${data.generated} keys generated, ${data.failed} failed` });
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/seo-translations/coverage"] });
+      toast({ title: data.failed ? "Regeneration finished with errors" : "Regeneration complete", description: `${data.generated} keys generated, ${data.failed} failed`, ...(data.failed ? { variant: "destructive" as const } : {}) });
     },
     onError: (e) => {
       const msg = e?.message ?? "";
@@ -97,6 +115,7 @@ export default function SeoTranslationsHub() {
         toast({ title: "Regeneration failed", description: msg, variant: "destructive" });
       }
     },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ["/api/admin/seo-translations/coverage"] }),
   });
 
   const invalidateMutation = useMutation<InvalidateResult, Error>({
@@ -121,6 +140,8 @@ export default function SeoTranslationsHub() {
     regenerateMutation.isPending ||
     invalidateMutation.isPending ||
     warmAllMutation.isPending;
+  const operationsDisabled = anyPending || coverageQuery.isLoading || coverageQuery.isError || !coverageQuery.data;
+  const hasMissingKeys = coverageQuery.data?.languages.some(lang => lang.missingKeys.length > 0) ?? false;
 
   const state = coverageQuery.data?.qualifiedLangsState;
   const langs = coverageQuery.data?.languages ?? [];
@@ -153,7 +174,7 @@ export default function SeoTranslationsHub() {
           <CardContent className="pt-4 pb-3 flex flex-wrap gap-4 items-center">
             <div>
               <span className="text-3xl font-bold text-green-600">{totalQualified}</span>
-              <span className="text-muted-foreground ml-1 text-sm">/ {total} languages qualified for indexing</span>
+              <span className="text-muted-foreground ml-1 text-sm">/ {total} languages meet publishing checks</span>
             </div>
             <Badge variant="outline">source: {state.source}</Badge>
             <span className="text-xs text-muted-foreground">
@@ -172,7 +193,7 @@ export default function SeoTranslationsHub() {
           description="Adds missing entries from the pre-generated SEO translation bundle to PostgreSQL. Existing values are preserved."
           buttonLabel="Apply Now"
           isPending={applyMutation.isPending}
-          isDisabled={anyPending}
+          isDisabled={operationsDisabled}
           onClick={() => applyMutation.mutate()}
           result={applyMutation.data ? `${applyMutation.data.inserted} inserted, ${applyMutation.data.skipped} skipped` : null}
           error={applyMutation.error?.message ?? null}
@@ -180,21 +201,22 @@ export default function SeoTranslationsHub() {
         <OperationCard
           icon={<Bot className="h-5 w-5" />}
           title="Regenerate via AI"
-          description="Calls OpenAI gpt-4o-mini for any language missing one or more of the 15 keys. Fills gaps only; does not overwrite existing values."
-          buttonLabel="Regenerate Missing"
+          description="Uses the configured AI service to fill missing SEO keys, one language per request. API usage may incur charges. Existing values are preserved."
+          buttonLabel={regenerateMutation.isPending ? `Regenerating ${regenerationProgress.completed}/${regenerationProgress.total}` : "Regenerate Missing"}
           isPending={regenerateMutation.isPending}
-          isDisabled={anyPending}
+          isDisabled={operationsDisabled || !hasMissingKeys}
           onClick={() => regenerateMutation.mutate()}
           result={regenerateMutation.data ? `${regenerateMutation.data.generated} generated, ${regenerateMutation.data.failed} failed` : null}
           error={regenerateMutation.error?.message ?? null}
+          hasFailures={Boolean(regenerateMutation.data?.failed)}
         />
         <OperationCard
           icon={<Zap className="h-5 w-5" />}
           title="Invalidate QualifiedLangs Cache"
-          description="Forces re-computation of which languages meet the translation quality bar. Run after applying translations so pages become indexable immediately."
+          description="Refreshes language publishing eligibility after translation changes. This does not submit URLs to Google or guarantee indexing."
           buttonLabel="Invalidate Cache"
           isPending={invalidateMutation.isPending}
-          isDisabled={anyPending}
+          isDisabled={operationsDisabled}
           onClick={() => invalidateMutation.mutate()}
           result={invalidateMutation.data ? `${invalidateMutation.data.newQualifiedCount} languages now qualified` : null}
           error={invalidateMutation.error?.message ?? null}
@@ -205,7 +227,7 @@ export default function SeoTranslationsHub() {
           description="Pre-loads configured translation bundles into server memory in batches to reduce cold-cache latency."
           buttonLabel="Warm All"
           isPending={warmAllMutation.isPending}
-          isDisabled={anyPending}
+          isDisabled={operationsDisabled}
           onClick={() => warmAllMutation.mutate()}
           result={warmAllMutation.data ? warmAllMutation.data.message : null}
           error={warmAllMutation.error?.message ?? null}
@@ -224,7 +246,7 @@ export default function SeoTranslationsHub() {
               <Loader2 className="animate-spin h-6 w-6 mr-2" /> Loading…
             </div>
           ) : coverageQuery.error ? (
-            <div className="p-4 text-red-500 text-sm">Failed to load coverage data</div>
+            <div role="alert" className="p-4 text-red-500 text-sm">Failed to load coverage data. No translation changes have been started. <Button variant="outline" size="sm" onClick={() => void coverageQuery.refetch()}>Retry</Button></div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -241,15 +263,17 @@ export default function SeoTranslationsHub() {
                   {langs.map((lang) => {
                     const isExpanded = expandedLang === lang.code;
                     return (
-                      <>
+                      <Fragment key={lang.code}>
                         <tr
                           key={lang.code}
                           className="border-b hover:bg-muted/20 cursor-pointer"
                           onClick={() => setExpandedLang(isExpanded ? null : lang.code)}
                         >
                           <td className="px-4 py-2 font-mono">
-                            <span className="font-semibold">{lang.code}</span>
-                            <span className="ml-2 text-muted-foreground">{lang.name}</span>
+                            <button type="button" aria-expanded={isExpanded} aria-label={`Missing SEO keys for ${lang.name}`} onClick={event => { event.stopPropagation(); setExpandedLang(isExpanded ? null : lang.code); }}>
+                              <span className="font-semibold">{lang.code}</span>
+                              <span className="ml-2 text-muted-foreground">{lang.name}</span>
+                            </button>
                           </td>
                           <td className="px-4 py-2">
                             {lang.qualified ? (
@@ -291,7 +315,7 @@ export default function SeoTranslationsHub() {
                             </td>
                           </tr>
                         )}
-                      </>
+                      </Fragment>
                     );
                   })}
                 </tbody>
@@ -316,6 +340,7 @@ function OperationCard({
   onClick,
   result,
   error,
+  hasFailures = false,
 }: {
   icon: React.ReactNode;
   title: string;
@@ -326,6 +351,7 @@ function OperationCard({
   onClick: () => void;
   result: string | null;
   error: string | null;
+  hasFailures?: boolean;
 }) {
   return (
     <Card className="flex flex-col">
@@ -347,8 +373,8 @@ function OperationCard({
           {isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
           {buttonLabel}
         </Button>
-        {result && (
-          <p className="text-xs text-green-600 font-medium">{result}</p>
+        {result && !isPending && !error && (
+          <p role={hasFailures ? "alert" : "status"} className={`text-xs font-medium ${hasFailures ? 'text-amber-700' : 'text-green-600'}`}>{result}</p>
         )}
         {error && (
           <p className="text-xs text-red-500 truncate" title={error}>{error}</p>

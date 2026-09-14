@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
-import { queryClient, apiRequest, resolveApiUrl } from '@/lib/queryClient';
+import { queryClient, apiRequest } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
 import { ToastAction } from '@/components/ui/toast';
 import { useAdminViewPrefs } from '@/hooks/useAdminViewPrefs';
@@ -523,13 +523,9 @@ export default function AdminCountryLanguageMappings() {
       if (auditFilter !== 'all') params.set('action', auditFilter);
 
       const qs = params.toString();
-      const url = resolveApiUrl(
+      const res = await apiRequest('GET',
         `/api/admin/country-language-mappings/cleared-overrides-log/all/csv${qs ? `?${qs}` : ''}`,
       );
-      const res = await fetch(url, { credentials: 'include' });
-      if (!res.ok) {
-        throw new Error(`${res.status}: ${(await res.text()) || res.statusText}`);
-      }
       const blob = await res.blob();
       const objectUrl = URL.createObjectURL(blob);
       const now = new Date();
@@ -580,13 +576,9 @@ export default function AdminCountryLanguageMappings() {
     if (downloadingAuditId) return;
     setDownloadingAuditId(entry.id);
     try {
-      const url = resolveApiUrl(
+      const res = await apiRequest('GET',
         `/api/admin/country-language-mappings/cleared-overrides-log/${entry.id}/csv`,
       );
-      const res = await fetch(url, { credentials: 'include' });
-      if (!res.ok) {
-        throw new Error(`${res.status}: ${(await res.text()) || res.statusText}`);
-      }
       const blob = await res.blob();
       const objectUrl = URL.createObjectURL(blob);
       const when = new Date(entry.createdAt);

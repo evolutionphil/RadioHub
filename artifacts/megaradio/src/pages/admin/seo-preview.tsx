@@ -18,7 +18,7 @@ interface SeoData {
     ogDescription: string;
     ogType: string;
     ogUrl: string;
-    twitterCard: string;
+    twitterCard?: string;
     twitterTitle: string;
     twitterDescription: string;
     hreflangs?: Array<{ lang: string; url: string; hreflang: string }>;
@@ -46,7 +46,8 @@ export default function SeoPreview() {
     queryClient.invalidateQueries({ queryKey: ['/api/seo/page-data', { url }] });
   };
 
-  const hreflangCount = seoData?.seoTags?.hreflangs?.length || 0;
+  const hreflangCount = seoData?.seoTags?.hreflangs?.filter(tag => tag.hreflang !== 'x-default').length || 0;
+  const hasDefaultHreflang = seoData?.seoTags?.hreflangs?.some(tag => tag.hreflang === 'x-default');
 
   return (
     <div className="mx-auto w-full max-w-[1600px] px-4 py-5 sm:px-6 sm:py-6 lg:px-8 space-y-5 sm:space-y-6" data-testid="admin-seo-preview">
@@ -199,7 +200,8 @@ export default function SeoPreview() {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="text-xs font-semibold text-muted-foreground">Card Type</label>
-                    <p className="mt-1 text-sm p-2 bg-muted rounded border">{seoData.seoTags.twitterCard}</p>
+                    {/* The HTML renderer uses summary_large_image when the metadata has no card field. */}
+                    <p className="mt-1 text-sm p-2 bg-muted rounded border">{seoData.seoTags.twitterCard || 'summary_large_image'}</p>
                   </div>
                   <div>
                     <label className="text-xs font-semibold text-muted-foreground">Twitter Title</label>
@@ -225,6 +227,7 @@ export default function SeoPreview() {
                   <Badge variant="secondary" className="text-lg">
                     {hreflangCount} Language Versions
                   </Badge>
+                  {hasDefaultHreflang && <span className="ml-2 text-sm text-muted-foreground">+ x-default fallback</span>}
                 </div>
                 <div className="max-h-96 overflow-y-auto space-y-1">
                   {seoData.seoTags.hreflangs?.map((tag, index: number) => (

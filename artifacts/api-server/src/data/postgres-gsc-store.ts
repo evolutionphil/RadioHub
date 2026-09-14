@@ -46,11 +46,13 @@ export async function pgGscDigestGroupCounts(args:{windowStart:Date;windowEnd:Da
     FROM gsc_url_inspections GROUP BY url_group ORDER BY url_group`,
     [nonIndexed,args.stuckCutoff,args.windowStart,args.windowEnd,args.recoveryStart,args.newlyStuckLowerBound])).rows;
 }
-export async function pgGscList(filter:{language?:string;group?:string;state?:string;search?:string}={},limit=50,offset=0):Promise<{rows:any[];total:number}>{
-  const values=[filter.language&&filter.language!=='all'?filter.language:null,filter.group&&filter.group!=='all'?filter.group:null,filter.state&&filter.state!=='all'?filter.state:null,filter.search||null];
-  const clause="($1::text IS NULL OR language=$1) AND ($2::text IS NULL OR url_group=$2) AND ($3::text IS NULL OR state=$3) AND ($4::text IS NULL OR starts_with(url,$4))";
+export async function pgGscList(filter:{language?:string;group?:string;state?:string;search?:string;indexabilityKeys?:string[];excludeIndexabilityKeys?:boolean}={},limit=50,offset=0):Promise<{rows:any[];total:number}>{
+  const values=[filter.language&&filter.language!=='all'?filter.language:null,filter.group&&filter.group!=='all'?filter.group:null,filter.state&&filter.state!=='all'?filter.state:null,filter.search||null,filter.indexabilityKeys??null,filter.excludeIndexabilityKeys??false];
+  // These keys are produced by the shared catalog report, not arbitrary SQL.
+  // Apply the decision before LIMIT and COUNT so every page has truthful totals.
+  const clause="($1::text IS NULL OR language=$1) AND ($2::text IS NULL OR url_group=$2) AND ($3::text IS NULL OR state=$3) AND ($4::text IS NULL OR starts_with(url,$4)) AND ($5::text[] IS NULL OR ((url_group || E'\\n' || language || E'\\n' || regexp_replace(url,'^.*/','')) = ANY($5)) <> $6::boolean)";
   const [rows,total]=await Promise.all([
-    getPostgresPool().query(`SELECT * FROM gsc_url_inspections WHERE ${clause} ORDER BY state,language,url LIMIT $5 OFFSET $6`,[...values,Math.max(1,Math.min(limit,50000)),Math.max(0,offset)]),
+    getPostgresPool().query(`SELECT * FROM gsc_url_inspections WHERE ${clause} ORDER BY state,language,url LIMIT $7 OFFSET $8`,[...values,Math.max(1,Math.min(limit,50000)),Math.max(0,offset)]),
     getPostgresPool().query(`SELECT count(*)::int count FROM gsc_url_inspections WHERE ${clause}`,values),
   ]);return {rows:rows.rows.map(seoShape),total:total.rows[0].count};
 }

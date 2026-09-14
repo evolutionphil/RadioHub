@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Card,
@@ -39,6 +39,7 @@ import {
   XCircle,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { apiAuthHeaders, resolveApiUrl } from '@/lib/queryClient';
 import { format } from 'date-fns';
 import {
   CartesianGrid,
@@ -133,6 +134,7 @@ interface ByGroupRow {
   excluded: number;
   error: number;
   pending: number;
+  unknown: number;
 }
 
 interface StatsResponse {
@@ -185,6 +187,7 @@ interface UrlsResponse {
 }
 
 interface NoindexBreakdownResponse {
+  generatedAt?: string;
   total: number;
   breakdown: {
     langRedirected: number;
@@ -325,6 +328,13 @@ function readInitialFiltersFromUrl(): {
   };
 }
 
+function fetchGsc(path: string, options: RequestInit = {}) {
+  return fetch(resolveApiUrl(path), {
+    ...options, credentials: 'include',
+    headers: { ...apiAuthHeaders(path), ...(options.headers as Record<string, string> | undefined) },
+  });
+}
+
 export default function GscInspectionPage() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -346,7 +356,7 @@ export default function GscInspectionPage() {
     const oauthError = params.get('oauth_error');
     if (success) {
       toast({ title: 'Google account connected', description: 'GSC OAuth2 is now active.' });
-      queryClient.invalidateQueries({ queryKey: ['/api/admin/gsc-inspection/oauth/status'] });
+      queryClient.invalidateQueries({ predicate: query => String(query.queryKey[0]).startsWith('/api/admin/gsc-inspection/') });
       window.history.replaceState({}, '', window.location.pathname);
     } else if (oauthError) {
       // URLSearchParams has already decoded the value (including literal %).
@@ -362,7 +372,7 @@ export default function GscInspectionPage() {
 
   const connectOAuth = useMutation({
     mutationFn: async () => {
-      const r = await fetch('/api/admin/gsc-inspection/oauth/init');
+      const r = await fetchGsc('/api/admin/gsc-inspection/oauth/init');
       if (!r.ok) {
         const j = await r.json().catch(() => ({}));
         throw new Error(j.error ?? `HTTP ${r.status}`);
@@ -370,35 +380,51 @@ export default function GscInspectionPage() {
       return r.json() as Promise<{ url: string }>;
     },
     onSuccess: (data) => {
-      window.open(data.url, '_blank', 'noopener,noreferrer');
+      // An async window.open can be blocked as a popup after the fetch finishes.
+      window.location.assign(data.url);
     },
     onError: (e: Error) => toast({ title: 'OAuth init failed', description: e.message, variant: 'destructive' }),
   });
 
   const disconnectOAuth = useMutation({
     mutationFn: async () => {
-      const r = await fetch('/api/admin/gsc-inspection/oauth/disconnect', { method: 'DELETE' });
+      const r = await fetchGsc('/api/admin/gsc-inspection/oauth/disconnect', { method: 'DELETE' });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       return r.json();
     },
     onSuccess: () => {
       toast({ title: 'Disconnected', description: 'Google OAuth token removed.' });
       queryClient.invalidateQueries({ queryKey: ['/api/admin/gsc-inspection/oauth/status'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/gsc-inspection/status'] });
     },
     onError: (e: Error) => toast({ title: 'Disconnect failed', description: e.message, variant: 'destructive' }),
   });
 
   const { data: status, isLoading: statusLoading, error: statusError } = useQuery<StatusResponse>({
     queryKey: ['/api/admin/gsc-inspection/status'],
-    refetchInterval: query => query.state.status === 'error' ? false : 30_000,
+    refetchInterval: query => query.state.status === 'error' ? false : query.state.data?.inspectionRunning || query.state.data?.discoveryRunning || query.state.data?.resubmitRunning ? 2_000 : 30_000,
   });
+
+  // The POST only acknowledges a background batch; its final timestamp is the
+  // signal to replace cached URL rows and aggregates with the finished result.
+  const previousRun = useRef<string | undefined>(undefined);
+  const runVersion = status ? JSON.stringify([status.lastInspectionAt, status.lastDiscoveryAt, status.lastResubmitAt]) : undefined;
+  useEffect(() => {
+    if (!runVersion) return;
+    if (previousRun.current !== undefined && previousRun.current !== runVersion) {
+      for (const suffix of ['stats', 'urls', 'noindex-breakdown']) {
+        void queryClient.invalidateQueries({ queryKey: [`/api/admin/gsc-inspection/${suffix}`] });
+      }
+    }
+    previousRun.current = runVersion;
+  }, [runVersion, queryClient]);
 
   const { data: stats, error: statsError } = useQuery<StatsResponse>({
     queryKey: ['/api/admin/gsc-inspection/stats'],
     refetchInterval: query => query.state.status === 'error' ? false : 30_000,
   });
 
-  const { data: urls, isLoading: urlsLoading, error: urlsError } = useQuery<UrlsResponse>({
+  const { data: urls, isLoading: urlsLoading, error: urlsError } = useQuery<UrlsResponse | null>({
     queryKey: [
       '/api/admin/gsc-inspection/urls',
       { language, group, state, search, noindexFilter, page },
@@ -412,27 +438,35 @@ export default function GscInspectionPage() {
       if (noindexFilter !== 'any') params.set('noindex', noindexFilter);
       params.set('page', String(page));
       params.set('limit', '50');
-      const r = await fetch(
+      const r = await fetchGsc(
         `/api/admin/gsc-inspection/urls?${params.toString()}`,
       );
+      if (r.status === 202) return null;
       if (!r.ok) throw new Error('Failed to load URLs');
       return r.json();
     },
+    refetchInterval: query => query.state.status === 'error' ? false : query.state.data === null ? 2_000 : false,
   });
 
-  const { data: noindexBreakdown, error: noindexError } = useQuery<NoindexBreakdownResponse>({
+  const { data: noindexBreakdown, error: noindexError } = useQuery<NoindexBreakdownResponse | null>({
     queryKey: ['/api/admin/gsc-inspection/noindex-breakdown'],
     queryFn: async () => {
-      const r = await fetch('/api/admin/gsc-inspection/noindex-breakdown');
+      const r = await fetchGsc('/api/admin/gsc-inspection/noindex-breakdown');
+      if (r.status === 202) return null;
       if (!r.ok) throw new Error('Failed to load noindex breakdown');
       return r.json();
     },
-    refetchInterval: query => query.state.status === 'error' ? false : 300_000,
+    refetchInterval: query => query.state.status === 'error' ? false : query.state.data === null ? 2_000 : 300_000,
   });
+
+  // Discovery/pruning can shrink the last page while it is open.
+  useEffect(() => {
+    if (urls && page > urls.pagination.pages) setPage(Math.max(1, urls.pagination.pages));
+  }, [urls, page]);
 
   const refreshBatch = useMutation({
     mutationFn: async () => {
-      const r = await fetch('/api/admin/gsc-inspection/refresh', {
+      const r = await fetchGsc('/api/admin/gsc-inspection/refresh', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({}),
@@ -461,7 +495,7 @@ export default function GscInspectionPage() {
 
   const resubmitStuck = useMutation({
     mutationFn: async () => {
-      const r = await fetch('/api/admin/gsc-inspection/resubmit-stuck', {
+      const r = await fetchGsc('/api/admin/gsc-inspection/resubmit-stuck', {
         method: 'POST',
       });
       if (!r.ok) {
@@ -493,7 +527,7 @@ export default function GscInspectionPage() {
       params.set('days', trendDays);
       params.set('language', trendLanguage);
       params.set('group', trendGroup);
-      const r = await fetch(
+      const r = await fetchGsc(
         `/api/admin/gsc-inspection/trends?${params.toString()}`,
       );
       if (!r.ok) throw new Error('Failed to load trends');
@@ -502,9 +536,26 @@ export default function GscInspectionPage() {
     refetchInterval: query => query.state.status === 'error' ? false : 60_000,
   });
 
+  const exportHistory = useMutation({
+    mutationFn: async () => {
+      const params = new URLSearchParams({ days: trendDays, language: trendLanguage, group: trendGroup });
+      const response = await fetchGsc(`/api/admin/gsc-inspection/history.csv?${params}`);
+      if (!response.ok) throw new Error(`CSV export failed (HTTP ${response.status})`);
+      const objectUrl = URL.createObjectURL(await response.blob());
+      const link = document.createElement('a');
+      link.href = objectUrl;
+      link.download = `gsc-indexing-history-${trendDays}d.csv`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 1_000);
+    },
+    onError: (error: Error) => toast({ title: 'Export failed', description: error.message, variant: 'destructive' }),
+  });
+
   const recordSnapshot = useMutation({
     mutationFn: async () => {
-      const r = await fetch('/api/admin/gsc-inspection/snapshot', {
+      const r = await fetchGsc('/api/admin/gsc-inspection/snapshot', {
         method: 'POST',
       });
       if (!r.ok) {
@@ -525,7 +576,7 @@ export default function GscInspectionPage() {
 
   const rediscover = useMutation({
     mutationFn: async () => {
-      const r = await fetch('/api/admin/gsc-inspection/discover', {
+      const r = await fetchGsc('/api/admin/gsc-inspection/discover', {
         method: 'POST',
       });
       if (!r.ok) {
@@ -720,7 +771,7 @@ export default function GscInspectionPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
-                {(status?.totalUrls ?? stats?.total ?? 0).toLocaleString()}
+                {(status?.totalUrls ?? stats?.total)?.toLocaleString() ?? '—'}
               </div>
               <p className="text-xs text-gray-500 mt-1">
                 {status?.stationDiscoveryCapPerLanguage
@@ -737,11 +788,11 @@ export default function GscInspectionPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-green-400">
-                {indexedPct}%
+                {stats ? `${indexedPct}%` : '—'}
               </div>
               <p className="text-xs text-gray-500 mt-1">
-                {stats?.byState.find((s) => s.state === 'indexed')?.count ?? 0}{' '}
-                indexed of {stats?.total ?? 0}
+                {stats ? stats.byState.find((s) => s.state === 'indexed')?.count ?? 0 : '—'}{' '}
+                indexed of {stats?.total ?? '—'}
               </p>
             </CardContent>
           </Card>
@@ -753,19 +804,19 @@ export default function GscInspectionPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-orange-400">
-                {(
-                  stats?.byState.find(
+                {stats ? (
+                  stats.byState.find(
                     (s) => s.state === 'discovered-not-indexed',
                   )?.count ?? 0
-                ).toLocaleString()}
+                ).toLocaleString() : '—'}
               </div>
               <p className="text-xs text-gray-500 mt-1">
                 Crawled — not indexed:{' '}
-                {(
-                  stats?.byState.find(
+                {stats ? (
+                  stats.byState.find(
                     (s) => s.state === 'crawled-not-indexed',
                   )?.count ?? 0
-                ).toLocaleString()}
+                ).toLocaleString() : '—'}
               </p>
             </CardContent>
           </Card>
@@ -780,7 +831,7 @@ export default function GscInspectionPage() {
               <p className="text-xs text-gray-500 mt-1">
                 {status?.lastInspectionStats
                   ? `${status.lastInspectionStats.succeeded}/${status.lastInspectionStats.attempted} succeeded`
-                  : 'No batches yet'}
+                  : status ? 'No batches yet' : 'Status unavailable'}
               </p>
             </CardContent>
           </Card>
@@ -792,7 +843,7 @@ export default function GscInspectionPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-red-400">
-                {(status?.stuckUrls ?? 0).toLocaleString()}
+                {status?.stuckUrls.toLocaleString() ?? '—'}
               </div>
               <p className="text-xs text-gray-500 mt-1">
                 {status?.lastResubmitAt
@@ -801,7 +852,7 @@ export default function GscInspectionPage() {
                         ? ` — ${status.lastResubmitStats.succeeded}/${status.lastResubmitStats.attempted}`
                         : ''
                     }`
-                  : 'No auto-resubmit yet'}
+                  : status ? 'No auto-resubmit yet' : 'Status unavailable'}
               </p>
             </CardContent>
           </Card>
@@ -829,8 +880,6 @@ export default function GscInspectionPage() {
                   <strong className="text-gray-900">
                     {noindexBreakdown?.qualifiedLanguageCount ?? '—'}
                   </strong>
-                  {' / '}
-                  <span>57</span>
                 </div>
                 <div className="text-xs text-gray-500 mt-1">
                   {noindexBreakdown?.qualifiedLanguages?.join(', ') || '—'}
@@ -839,6 +888,9 @@ export default function GscInspectionPage() {
             </div>
           </CardHeader>
           <CardContent>
+            {!noindexBreakdown ? <p className="text-sm text-gray-500" role="status">
+              {noindexError ? 'Server indexability report unavailable. Retry data to try again.' : 'Calculating the complete server indexability report…'}
+            </p> : <>
             <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
               <div className="rounded-md border border-blue-700/60 bg-blue-950/30 p-3">
                 <div className="text-xs text-blue-300">
@@ -957,6 +1009,8 @@ export default function GscInspectionPage() {
                 </p>
               </details>
             )}
+            <p className="text-xs text-gray-500 mt-3">Catalog report: {fmt(noindexBreakdown.generatedAt)}. Cached for up to five minutes.</p>
+            </>}
           </CardContent>
         </Card>
 
@@ -1026,24 +1080,17 @@ export default function GscInspectionPage() {
                   <RefreshCcw className="w-4 h-4 mr-2" />
                   {recordSnapshot.isPending ? 'Snapshotting…' : 'Snapshot now'}
                 </Button>
-                <a
-                  href={(() => {
-                    const p = new URLSearchParams();
-                    p.set('days', trendDays);
-                    // 'all' is the aggregate bucket (overall row); 'any'
-                    // is the wildcard returning every (lang, group) combo.
-                    // From the dashboard filter, 'all' means the user
-                    // selected the aggregate row, so we honor it as-is.
-                    p.set('language', trendLanguage);
-                    p.set('group', trendGroup);
-                    return `/api/admin/gsc-inspection/history.csv?${p.toString()}`;
-                  })()}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => exportHistory.mutate()}
+                  disabled={exportHistory.isPending}
                   className="inline-flex items-center text-sm border border-gray-200 rounded-md px-3 py-1.5 hover:bg-gray-50"
                   title="Download the snapshot history as CSV (matches the current filters)"
                 >
                   <Download className="w-4 h-4 mr-2" />
                   Export CSV
-                </a>
+                </Button>
               </div>
             </div>
             {recordSnapshot.error && (
@@ -1216,11 +1263,11 @@ export default function GscInspectionPage() {
                   variant="outline"
                   size="sm"
                   className="border-gray-200"
-                  disabled={rediscover.isPending}
+                  disabled={rediscover.isPending || status?.discoveryRunning}
                   onClick={() => rediscover.mutate()}
                 >
                   <RefreshCcw className="w-4 h-4 mr-2" />
-                  {rediscover.isPending ? 'Re-discovering…' : 'Re-discover URLs'}
+                  {rediscover.isPending || status?.discoveryRunning ? 'Re-discovering…' : 'Re-discover URLs'}
                 </Button>
                 <Button
                   variant="outline"
@@ -1228,6 +1275,7 @@ export default function GscInspectionPage() {
                   className="border-red-700 text-red-200 hover:bg-red-950/40"
                   disabled={
                     resubmitStuck.isPending ||
+                    status?.resubmitRunning ||
                     !status?.configured ||
                     (status?.stuckUrls ?? 0) === 0
                   }
@@ -1257,6 +1305,8 @@ export default function GscInspectionPage() {
                 {(refreshBatch.error as Error).message}
               </p>
             )}
+            {rediscover.error && <p role="alert" className="text-sm text-red-400 mt-2">{(rediscover.error as Error).message}</p>}
+            {rediscover.data?.stats && <p className="text-sm text-gray-500 mt-2">Discovery finished: {rediscover.data.stats.discovered} URLs, {rediscover.data.stats.inserted} added, {rediscover.data.stats.pruned} pruned.</p>}
             {status?.lastInspectionError && (
               <p className="text-sm text-red-400 mt-2">{status.lastInspectionError}</p>
             )}
@@ -1293,6 +1343,8 @@ export default function GscInspectionPage() {
                   </TableHead>
                   <TableHead className="text-gray-500 text-right">Excluded</TableHead>
                   <TableHead className="text-gray-500 text-right">Pending</TableHead>
+                  <TableHead className="text-gray-500 text-right">Error</TableHead>
+                  <TableHead className="text-gray-500 text-right">Unknown</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -1317,12 +1369,14 @@ export default function GscInspectionPage() {
                     <TableCell className="text-right text-blue-300">
                       {row.pending.toLocaleString()}
                     </TableCell>
+                    <TableCell className="text-right">{row.error.toLocaleString()}</TableCell>
+                    <TableCell className="text-right">{(row.unknown ?? 0).toLocaleString()}</TableCell>
                   </TableRow>
                 ))}
                 {(!stats?.byGroup || stats.byGroup.length === 0) && (
                   <TableRow className="border-gray-200">
-                    <TableCell colSpan={7} className="text-center text-gray-500 py-6">
-                      No data yet — click "Re-discover URLs" to populate.
+                    <TableCell colSpan={9} className="text-center text-gray-500 py-6">
+                      {stats ? 'No data yet — click "Re-discover URLs" to populate.' : 'URL group statistics unavailable.'}
                     </TableCell>
                   </TableRow>
                 )}
@@ -1412,6 +1466,7 @@ export default function GscInspectionPage() {
                     <SelectItem value="excluded">Excluded</SelectItem>
                     <SelectItem value="error">Error</SelectItem>
                     <SelectItem value="pending">Not yet inspected</SelectItem>
+                    <SelectItem value="unknown">Unknown</SelectItem>
                   </SelectContent>
                 </Select>
                 <Select
@@ -1438,7 +1493,7 @@ export default function GscInspectionPage() {
               <div className="text-center text-gray-500 py-6">Loading…</div>
             ) : !urls || urls.rows.length === 0 ? (
               <div className="text-center text-gray-500 py-6">
-                No URLs match these filters.
+                {urlsError ? 'URL data unavailable. Retry data to try again.' : urls === null ? 'Calculating the server-filtered URL list…' : 'No URLs match these filters.'}
               </div>
             ) : (
               <>
@@ -1576,6 +1631,7 @@ export default function GscInspectionPage() {
                       className="border-gray-200"
                       disabled={page <= 1}
                       onClick={() => setPage((p) => Math.max(1, p - 1))}
+                      aria-label="Previous URL page"
                     >
                       Previous
                     </Button>
@@ -1584,6 +1640,7 @@ export default function GscInspectionPage() {
                       size="sm"
                       className="border-gray-200"
                       disabled={page >= urls.pagination.pages}
+                      aria-label="Next URL page"
                       onClick={() =>
                         setPage((p) =>
                           Math.min(urls.pagination.pages, p + 1),

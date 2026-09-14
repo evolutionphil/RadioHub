@@ -264,9 +264,8 @@ export default function SeoMaintenancePage() {
 
   const statsQuery = useQuery<HealthStats>({
     queryKey: ["/api/admin/seo-health-stats", country],
-    queryFn: async () => {
-      const res = await fetch(`/api/admin/seo-health-stats?country=${encodeURIComponent(country)}`, { credentials: "include" });
-      if (!res.ok) throw new Error("failed");
+    queryFn: async ({ signal }) => {
+      const res = await apiRequest("GET", `/api/admin/seo-health-stats?country=${encodeURIComponent(country)}`, { signal });
       return res.json();
     },
   });
@@ -347,23 +346,24 @@ export default function SeoMaintenancePage() {
       runsTrigger,
       runsCountry.length === 2 ? runsCountry : "",
     ],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const qs = new URLSearchParams({ limit: "10" });
       if (runsTrigger) qs.set("trigger", runsTrigger);
       // Only send `country` once the admin has typed both letters —
       // the API requires exactly 2 chars, so sending a single letter
       // would produce transient 400s + "history fetch failed" noise.
       if (runsCountry.length === 2) qs.set("country", runsCountry);
-      const res = await fetch(
+      const res = await apiRequest("GET",
         `/api/admin/maintenance/scheduled-backfill/runs?${qs.toString()}`,
-        { credentials: "include" },
+        { signal },
       );
-      if (!res.ok) throw new Error("failed");
       return res.json();
     },
     // Auto-refresh while a sweep is in flight so a freshly-finished run
     // appears in the table without a manual reload.
-    refetchInterval: (q) => adminRunningPoll(q.state, !scheduledStatusQuery.isError && scheduledStatusQuery.data?.status?.isRunning, 5000),
+    refetchInterval: (q) => adminRunningPoll(q.state,
+      (!scheduledStatusQuery.isError && scheduledStatusQuery.data?.status?.isRunning) ||
+      (!tagsJobQuery.isError && tagsJobQuery.data?.job?.isRunning), 5000),
   });
 
   // Task #222: a deep link like ?runId=<id> can point to a run older
@@ -388,16 +388,17 @@ export default function SeoMaintenancePage() {
     ],
     enabled: deepLinkLookupEnabled,
     retry: false,
-    queryFn: async () => {
-      const res = await fetch(
+    queryFn: async ({ signal }) => {
+      const res = await apiRequest("GET",
         `/api/admin/maintenance/scheduled-backfill/runs/${encodeURIComponent(
           initialDeepLinkRunId!,
         )}`,
-        { credentials: "include" },
-      );
-      if (res.status === 404) throw new Error("not_found");
-      if (res.status === 400) throw new Error("invalid_id");
-      if (!res.ok) throw new Error("failed");
+        { signal },
+      ).catch((error: Error) => {
+        if (error.message.startsWith("404:")) throw new Error("not_found");
+        if (error.message.startsWith("400:")) throw new Error("invalid_id");
+        throw error;
+      });
       return res.json();
     },
   });
@@ -414,11 +415,8 @@ export default function SeoMaintenancePage() {
   const [retentionMaxRows, setRetentionMaxRows] = useState<string>("");
   const retentionQuery = useQuery<BackfillRetentionResponse>({
     queryKey: ["/api/admin/settings/backfill-retention"],
-    queryFn: async () => {
-      const res = await fetch("/api/admin/settings/backfill-retention", {
-        credentials: "include",
-      });
-      if (!res.ok) throw new Error("failed");
+    queryFn: async ({ signal }) => {
+      const res = await apiRequest("GET", "/api/admin/settings/backfill-retention", { signal });
       return res.json();
     },
   });
@@ -428,12 +426,11 @@ export default function SeoMaintenancePage() {
   // dense rendering below.
   const retentionHistoryQuery = useQuery<BackfillRetentionHistoryResponse>({
     queryKey: ["/api/admin/settings/backfill-retention/history"],
-    queryFn: async () => {
-      const res = await fetch(
+    queryFn: async ({ signal }) => {
+      const res = await apiRequest("GET",
         "/api/admin/settings/backfill-retention/history?limit=10",
-        { credentials: "include" },
+        { signal },
       );
-      if (!res.ok) throw new Error("failed");
       return res.json();
     },
   });
@@ -584,22 +581,17 @@ export default function SeoMaintenancePage() {
   // Google Search Console.
   const sitemapStatsQuery = useQuery<SitemapStatsResponse>({
     queryKey: ["/api/admin/sitemap/manifest-stats"],
-    queryFn: async () => {
-      const res = await fetch("/api/admin/sitemap/manifest-stats", { credentials: "include" });
-      if (!res.ok) throw new Error("failed");
+    queryFn: async ({ signal }) => {
+      const res = await apiRequest("GET", "/api/admin/sitemap/manifest-stats", { signal });
       return res.json();
     },
     refetchInterval: query => query.state.status === 'error' ? false : 60000,
   });
 
-  // ONE-SHOT BACKFILL (2026-05-09): bumps every Station.updatedAt to NOW so
-  // Google sees fresh <lastmod> on every URL in /sitemap-stations-*.xml.
-  // Use case: catalog imported before Mongoose timestamps:true was enabled
-  // (Feb 2025), so most rows carry a 2025 updatedAt that never moves. After
-  // running this, vote/click/rating $inc operations bump updatedAt
-  // automatically (timestamps:true is on), so this should only be needed
-  // ONCE. Calls POST /api/admin/sitemap/touch-stations which also force-
-  // rebuilds the manifests + purges caches + fires IndexNow ping.
+  // Bulk timestamp maintenance: updates dated metadata for stations with
+  // a slug, rebuilds manifests, and requests cache invalidation + IndexNow.
+  // Only appropriate when today's date reflects an actual significant
+  // content update across the affected pages; it cannot force indexing.
   const touchStations = useMutation({
     mutationFn: async () => (await apiRequest("POST", "/api/admin/sitemap/touch-stations", {})).json(),
     onSuccess: (data: any) => {
@@ -615,8 +607,8 @@ export default function SeoMaintenancePage() {
         });
       } else {
         toast({
-          title: "İstasyon lastmod'u taze",
-          description: `${modified.toLocaleString()}/${matched.toLocaleString()} istasyonun updatedAt'i bugüne taşındı. Sitemap ${langs} dil için yeniden derlendi, IndexNow ping fırlatıldı.`,
+          title: "İstasyon tarihleri güncellendi",
+          description: `${modified.toLocaleString()}/${matched.toLocaleString()} istasyonun updatedAt'i bugüne taşındı. Sitemap ${langs} dil için yeniden derlendi; IndexNow bildirimi arka planda tetiklendi. Bu işlem tarama veya indeksleme garantisi vermez.`,
         });
       }
       queryClient.invalidateQueries({ queryKey: ["/api/admin/sitemap/manifest-stats"] });
@@ -635,33 +627,45 @@ export default function SeoMaintenancePage() {
   // so the SEO admin doesn't have to switch pages just to kick the cron
   // ahead of its hourly tick.
   const runGscBatch = useMutation({
-    mutationFn: async () => apiRequest("POST", "/api/admin/gsc-inspection/refresh", {}),
+    mutationFn: async (): Promise<{ ok: boolean; running?: boolean; message?: string }> =>
+      (await apiRequest("POST", "/api/admin/gsc-inspection/refresh", {})).json(),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ["/api/admin/gsc-inspection/status"] }),
   });
 
   const runGscDiscover = useMutation({
-    mutationFn: async () => apiRequest("POST", "/api/admin/gsc-inspection/discover", {}),
+    mutationFn: async (): Promise<{ ok: boolean; stats: { inserted: number; refreshed: number; pruned: number } | null }> =>
+      (await apiRequest("POST", "/api/admin/gsc-inspection/discover", {})).json(),
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/gsc-inspection/status"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/gsc-inspection/urls"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/gsc-inspection/stats"] });
+    },
   });
 
   const gscStatusQuery = useQuery<{
     configured: boolean;
+    authError?: string | null;
     cronEnabled: boolean;
     inspectionRunning: boolean;
     discoveryRunning: boolean;
     lastInspectionAt: string | null;
+    lastInspectionError?: string | null;
     lastDiscoveryAt: string | null;
     lastInspectionStats: { attempted: number; succeeded: number; failed: number } | null;
     totalUrls: number;
     defaultBatchSize: number;
   }>({
     queryKey: ["/api/admin/gsc-inspection/status"],
-    refetchInterval: query => query.state.status === 'error' ? false : 30_000,
+    refetchInterval: query => query.state.status === 'error' ? false :
+      query.state.data?.inspectionRunning || query.state.data?.discoveryRunning ? 3000 : 30_000,
   });
 
   // 2026-05-15: Station sync manual trigger. Same code path as the
   // 03:00 Berlin nightly cron — pulls Radio-Browser dump and updates
   // votes / clickCount / bitrate / urlResolved. Fire-and-forget.
   const runStationSync = useMutation({
-    mutationFn: async () => apiRequest("POST", "/api/admin/sync/run-now", {}),
+    mutationFn: async () => (await apiRequest("POST", "/api/admin/sync/run-now", {})).json(),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ["/api/admin/sync/status"] }),
   });
 
   const stationSyncStatusQuery = useQuery<{
@@ -729,6 +733,28 @@ export default function SeoMaintenancePage() {
   const scheduledRunning = scheduled?.status?.isRunning ?? false;
   const lastRun = scheduled?.lastRun ?? null;
 
+  const jobProgress = [
+    tagsJobQuery.isSuccess ? job?.isRunning === true : null,
+    scheduledStatusQuery.isSuccess ? scheduledRunning : null,
+    stripSuffixJobQuery.isSuccess ? stripSuffixJobQuery.data?.job?.isRunning === true : null,
+    fillTemplatesJobQuery.isSuccess ? fillTemplatesJobQuery.data?.job?.isRunning === true : null,
+    stationSyncStatusQuery.isSuccess ? stationSyncStatusQuery.data?.status?.isRunning === true : null,
+  ].map(value => value === null ? "unknown" : value ? "running" : "idle").join(",");
+  const previousJobProgress = useRef(jobProgress);
+  useEffect(() => {
+    const previous = previousJobProgress.current.split(",");
+    const current = jobProgress.split(",");
+    if (current.some((state, index) => state === "idle" && previous[index] === "running")) {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/seo-health-stats"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/maintenance/scheduled-backfill/runs"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/maintenance/scheduled-backfill/status"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/sitemap/manifest-stats"] });
+    }
+    // Preserve the last known progress through a failed status request so a
+    // successful retry still refreshes the summaries when the job has ended.
+    previousJobProgress.current = current.map((state, index) => state === "unknown" ? previous[index] : state).join(",");
+  }, [jobProgress]);
+
   useEffect(() => {
     if (!initialDeepLinkRunId || deepLinkScrolledRef.current) return;
     const runs = runsQuery.data?.runs;
@@ -785,14 +811,15 @@ export default function SeoMaintenancePage() {
         <CardContent className="space-y-3">
           <p className="text-sm text-slate-600">
             Tüm sitemap manifestlerini (stations + genres + main, her dil için)
-            zorla yeniden derler ve Google/Bing'e IndexNow ping fırlatır.
-            <code>&lt;lastmod&gt;</code> tarihleri anında güncellenir, ETag'ler
-            (URL listesi değişmediyse) korunur — Cloudflare cache stampede yok.
+            güncel katalog verileriyle yeniden derler, önbellek temizliğini ve IndexNow bildirimini tetikler.
+            IndexNow yalnızca katılımcı arama motorlarını bilgilendirir; Google'a bildirim göndermez.
+            Sitemap yenileme, sayfaların taranacağını veya indeksleneceğini garanti etmez.
           </p>
           <div className="text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded p-3 space-y-1">
             <div><strong>Otomatik:</strong> sunucu açılışında bir kez çalışır + her 6 saatte bir tekrar.</div>
-            <div><strong>Ne zaman manuel basmalısın:</strong> bulk station import/silme sonrası, ya da Google Search Console'da sitemap "stale" görünüyorsa.</div>
-            <div><strong>Süre:</strong> ~10-30 saniye (10 dil × 43K istasyon).</div>
+            <div><strong>Ne zaman kullanılır:</strong> İstasyon ekleme/silme veya içerik güncellemesi sonrasında yayımlanan sitemap katalogla eşleşmiyorsa.</div>
+            <div><strong>Tarihler:</strong> <code>&lt;lastmod&gt;</code> gerçek içerik değişikliğinin tarihini yansıtmalıdır; sitemap derleme zamanı içerik değişikliği değildir.</div>
+            <div><strong>Süre:</strong> Katalog büyüklüğüne ve dil sayısına göre değişir.</div>
           </div>
           <Button
             onClick={() => rebuildSitemap.mutate()}
@@ -838,12 +865,14 @@ export default function SeoMaintenancePage() {
             <div className="text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded p-2">
               <div>
                 <strong>Durum:</strong>{" "}
-                {gscStatusQuery.data
+                {gscStatusQuery.isError
+                  ? "❌ GSC durumu alınamadı; tekrar deneyin."
+                  : gscStatusQuery.data
                   ? gscStatusQuery.data.configured
                     ? gscStatusQuery.data.cronEnabled
                       ? "✅ aktif (cron + API yapılandırılmış)"
                       : "⚠️ API yapılandırılmış, cron kapalı"
-                    : "❌ GSC_SERVICE_ACCOUNT_JSON / GSC_SITE_URL eksik"
+                    : `⚠️ ${gscStatusQuery.data.authError || "GSC bağlantısını tam panelden tamamlayın."}`
                   : "yükleniyor..."}
               </div>
               {gscStatusQuery.data?.lastInspectionAt && (
@@ -860,12 +889,16 @@ export default function SeoMaintenancePage() {
                   <strong>Batch boyutu:</strong> {gscStatusQuery.data.defaultBatchSize}
                 </div>
               )}
+              {gscStatusQuery.data?.lastInspectionError && (
+                <div className="text-rose-700"><strong>Son inspection hatası:</strong> {gscStatusQuery.data.lastInspectionError}</div>
+              )}
             </div>
             <div className="flex flex-wrap gap-2">
               <Button
                 onClick={() => runGscBatch.mutate()}
                 disabled={
                   runGscBatch.isPending ||
+                  gscStatusQuery.isError ||
                   gscStatusQuery.data?.inspectionRunning ||
                   !gscStatusQuery.data?.configured
                 }
@@ -878,7 +911,7 @@ export default function SeoMaintenancePage() {
               <Button
                 variant="outline"
                 onClick={() => runGscDiscover.mutate()}
-                disabled={runGscDiscover.isPending || gscStatusQuery.data?.discoveryRunning}
+                disabled={runGscDiscover.isPending || !gscStatusQuery.isSuccess || gscStatusQuery.data?.discoveryRunning}
                 className="border-blue-300 text-blue-700 hover:bg-blue-50"
               >
                 {runGscDiscover.isPending || gscStatusQuery.data?.discoveryRunning
@@ -888,11 +921,7 @@ export default function SeoMaintenancePage() {
             </div>
             {runGscBatch.data && (
               <div className="text-xs bg-emerald-50 border border-emerald-200 rounded p-2 text-emerald-800">
-                ✅ Inspection batch tamamlandı: {(runGscBatch.data as any)?.stats?.succeeded ?? 0}/
-                {(runGscBatch.data as any)?.stats?.attempted ?? 0} URL başarılı
-                {((runGscBatch.data as any)?.stats?.failed ?? 0) > 0 && (
-                  <> — {(runGscBatch.data as any).stats.failed} başarısız</>
-                )}
+                Inspection isteği alındı. Çalışma durumu ve son batch sonucu yukarıda otomatik güncellenir.
               </div>
             )}
             {(runGscBatch.error || runGscDiscover.error) && (
@@ -902,9 +931,11 @@ export default function SeoMaintenancePage() {
             )}
             {runGscDiscover.data && (
               <div className="text-xs bg-emerald-50 border border-emerald-200 rounded p-2 text-emerald-800">
-                ✅ URL keşfi tamamlandı: +{(runGscDiscover.data as any)?.stats?.inserted ?? 0} yeni,
-                ↻{(runGscDiscover.data as any)?.stats?.refreshed ?? 0} yenilendi,
-                🗑️{(runGscDiscover.data as any)?.stats?.pruned ?? 0} silindi
+                {runGscDiscover.data.stats ? <>
+                  ✅ URL keşfi tamamlandı: +{runGscDiscover.data.stats.inserted} yeni,
+                  ↻{runGscDiscover.data.stats.refreshed} yenilendi,
+                  🗑️{runGscDiscover.data.stats.pruned} silindi
+                </> : "URL keşfi zaten çalışıyor. Durum yukarıda otomatik güncellenir."}
               </div>
             )}
           </div>
@@ -921,7 +952,10 @@ export default function SeoMaintenancePage() {
             <div className="text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded p-2">
               <div>
                 <strong>Durum:</strong>{" "}
-                {stationSyncStatusQuery.data?.status?.isRunning
+                {stationSyncStatusQuery.isError
+                  ? "❌ Sync durumu alınamadı; tekrar deneyin."
+                  : !stationSyncStatusQuery.data ? "Yükleniyor..."
+                  : stationSyncStatusQuery.data.status.isRunning
                   ? "🔄 ŞU ANDA ÇALIŞIYOR"
                   : "✅ boşta"}
               </div>
@@ -952,7 +986,7 @@ export default function SeoMaintenancePage() {
                   runStationSync.mutate();
                 }
               }}
-              disabled={runStationSync.isPending || stationSyncStatusQuery.data?.status?.isRunning}
+              disabled={runStationSync.isPending || !stationSyncStatusQuery.isSuccess || stationSyncStatusQuery.data?.status?.isRunning}
               className="bg-blue-600 hover:bg-blue-700 text-white"
             >
               {runStationSync.isPending || stationSyncStatusQuery.data?.status?.isRunning
@@ -973,34 +1007,34 @@ export default function SeoMaintenancePage() {
         </CardContent>
       </Card>
 
-      {/* Tek seferlik: tüm istasyonların lastmod'unu bugüne taşı */}
+      {/* Gerçek toplu içerik değişiklikleri için tarih bakımı */}
       <Card className="bg-white border-rose-200">
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
-            🕐 İstasyon lastmod'unu bugüne taşı (tek seferlik)
+            🕐 İstasyon tarihlerini toplu güncelle
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           <p className="text-sm text-slate-600">
-            Tüm istasyonların <code>updatedAt</code> alanını <strong>bugünün tarihine</strong> set eder
-            ve sitemap'i yeniden derler. Sonuç: <code>/sitemap-stations-*.xml</code> içindeki her URL
-            için <code>&lt;lastmod&gt;</code> bugün olur — Google bir sonraki taramada tüm sayfaları taze görür.
+            URL kimliği (slug) bulunan tüm istasyonların <code>updatedAt</code> alanını <strong>bugünün tarihine</strong> ayarlar
+            ve sitemap'i yeniden derler. Bu işlem sayfa içeriğini değiştirmez; sitemap'teki
+            <code> &lt;lastmod&gt;</code> değerlerini etkiler.
           </p>
           <div className="text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded p-3 space-y-1">
-            <div><strong>Neden gerekli:</strong> Şubat 2025'ten önceki bulk import'lar Mongoose timestamps açılmadan yapıldı, bu yüzden eski radyoların updatedAt'i 2025'te donuk. Google bu URL'leri "ancient" sayıp atlıyor.</div>
-            <div><strong>Sonrası otomatik:</strong> Vote/click/rating güncellemeleri artık updatedAt'i otomatik bump ediyor (timestamps:true aktif), dolayısıyla bu butonu <strong>sadece bir kez</strong> basman yeterli.</div>
-            <div><strong>Etki:</strong> ~60.000 istasyon × 14+ dil chunk'ı = 1-2 dakika sürebilir. Site açık kalır, kullanıcı etkilenmez.</div>
+            <div><strong>Kullanım koşulu:</strong> Yalnızca etkilenen tüm istasyon sayfalarında bugün önemli bir içerik değişikliği yapıldıysa ve kayıtlı tarihler bu değişikliği yansıtmıyorsa kullanın.</div>
+            <div><strong>Dikkat:</strong> Eski tarih tek başına hata değildir. İçeriği değişmeyen sayfaları yeni göstermek için tarihleri değiştirmeyin; doğru olmayan lastmod değerleri arama motorlarının bu sinyale güvenini azaltabilir.</div>
+            <div><strong>Kapsam:</strong> Ülke filtresinden bağımsız olarak tüm uygun istasyonları etkiler. Tarama, indeksleme veya sıralama artışı garantisi vermez.</div>
           </div>
           <Button
             onClick={() => {
-              if (window.confirm("Tüm istasyonların updatedAt değerini bugüne taşımak istediğinden emin misin? Bu sadece bir kez gereken işlemdir.")) {
+              if (window.confirm("Bu işlem ülke filtresinden bağımsız olarak URL kimliği bulunan tüm istasyonların updatedAt değerini bugüne taşır. Yalnızca bu sayfaların tamamında bugün önemli bir içerik değişikliği yapıldıysa ve tarihler hatalıysa devam edin. Tarama veya indeksleme garantisi yoktur. Devam edilsin mi?")) {
                 touchStations.mutate();
               }
             }}
             disabled={touchStations.isPending}
             className="bg-rose-600 hover:bg-rose-700 text-white"
           >
-            {touchStations.isPending ? "Taşınıyor (1-2 dk)..." : "🕐 Tüm İstasyonları Bugüne Taşı"}
+            {touchStations.isPending ? "Tarihler güncelleniyor..." : "🕐 İstasyon Tarihlerini Bugüne Ayarla"}
           </Button>
           {touchStations.data && (
             <div className="text-xs text-slate-700 bg-emerald-50 border border-emerald-200 rounded p-2">
@@ -1218,7 +1252,7 @@ export default function SeoMaintenancePage() {
             </div>
             <Button
               onClick={() => startScheduled.mutate(scheduledCountry.trim())}
-              disabled={startScheduled.isPending || scheduledRunning}
+              disabled={startScheduled.isPending || !scheduledStatusQuery.isSuccess || scheduledRunning || tagsJobQuery.data?.job?.isRunning}
               data-testid="button-run-scheduled-backfill"
             >
               {scheduledRunning
@@ -1404,7 +1438,7 @@ export default function SeoMaintenancePage() {
                 </div>
                 <Button
                   onClick={() => saveRetention.mutate()}
-                  disabled={saveRetention.isPending}
+                  disabled={saveRetention.isPending || resetRetention.isPending || retentionQuery.isError}
                   data-testid="button-save-backfill-retention"
                 >
                   {saveRetention.isPending ? "Kaydediliyor..." : "Kaydet"}
@@ -1414,6 +1448,7 @@ export default function SeoMaintenancePage() {
                   onClick={() => resetRetention.mutate()}
                   disabled={
                     resetRetention.isPending ||
+                    saveRetention.isPending || retentionQuery.isError ||
                     (retentionQuery.data.stored.days == null &&
                       retentionQuery.data.stored.maxRows == null)
                   }
@@ -1926,7 +1961,7 @@ export default function SeoMaintenancePage() {
             </div>
             <Button
               onClick={() => startTags.mutate()}
-              disabled={startTags.isPending || job?.isRunning}
+              disabled={startTags.isPending || !tagsJobQuery.isSuccess || job?.isRunning || scheduledRunning}
               data-testid="button-run-tags-backfill"
             >
               {job?.isRunning ? "Çalışıyor..." : startTags.isPending ? "Başlatılıyor..." : "Tags backfill başlat"}
@@ -1942,8 +1977,8 @@ export default function SeoMaintenancePage() {
           {job && (
             <div className="border border-slate-200 rounded p-3 bg-slate-50 text-sm space-y-1 mt-3">
               <div className="flex items-center gap-2">
-                <Badge variant={job.isRunning ? "default" : "secondary"}>
-                  {job.isRunning ? "ÇALIŞIYOR" : "TAMAMLANDI"}
+                <Badge variant={job.isRunning ? "default" : job.lastError || job.failed > 0 ? "destructive" : "secondary"}>
+                  {job.isRunning ? "ÇALIŞIYOR" : job.lastError || job.failed > 0 ? "HATA İLE BİTTİ" : "TAMAMLANDI"}
                 </Badge>
                 <span className="text-xs text-slate-500">
                   Job: {job.jobId} {job.countryCode ? `· ${job.countryCode}` : ""}
@@ -1976,15 +2011,15 @@ export default function SeoMaintenancePage() {
               </p>
               <Button
                 onClick={() => startStripSuffix.mutate()}
-                disabled={startStripSuffix.isPending || suffixJob?.isRunning}
+                disabled={startStripSuffix.isPending || !stripSuffixJobQuery.isSuccess || suffixJob?.isRunning || fillTemplatesJobQuery.data?.job?.isRunning}
               >
                 {suffixJob?.isRunning ? "Çalışıyor..." : startStripSuffix.isPending ? "Başlatılıyor..." : "Suffix temizle"}
               </Button>
               {suffixJob && (
                 <div className="border border-slate-200 rounded p-3 bg-slate-50 text-sm space-y-1 mt-3">
                   <div className="flex items-center gap-2">
-                    <Badge variant={suffixJob.isRunning ? "default" : "secondary"}>
-                      {suffixJob.isRunning ? "ÇALIŞIYOR" : "TAMAMLANDI"}
+                    <Badge variant={suffixJob.isRunning ? "default" : suffixJob.lastError ? "destructive" : "secondary"}>
+                      {suffixJob.isRunning ? "ÇALIŞIYOR" : suffixJob.lastError ? "HATA İLE BİTTİ" : "TAMAMLANDI"}
                     </Badge>
                     <span className="text-xs text-slate-500">Job: {suffixJob.jobId}</span>
                   </div>
@@ -2018,15 +2053,15 @@ export default function SeoMaintenancePage() {
               </p>
               <Button
                 onClick={() => startFillTemplates.mutate()}
-                disabled={startFillTemplates.isPending || tmplJob?.isRunning}
+                disabled={startFillTemplates.isPending || !fillTemplatesJobQuery.isSuccess || tmplJob?.isRunning || stripSuffixJobQuery.data?.job?.isRunning}
               >
                 {tmplJob?.isRunning ? "Çalışıyor..." : startFillTemplates.isPending ? "Başlatılıyor..." : "Template açıklama doldur"}
               </Button>
               {tmplJob && (
                 <div className="border border-slate-200 rounded p-3 bg-slate-50 text-sm space-y-1 mt-3">
                   <div className="flex items-center gap-2">
-                    <Badge variant={tmplJob.isRunning ? "default" : "secondary"}>
-                      {tmplJob.isRunning ? "ÇALIŞIYOR" : "TAMAMLANDI"}
+                    <Badge variant={tmplJob.isRunning ? "default" : tmplJob.lastError ? "destructive" : "secondary"}>
+                      {tmplJob.isRunning ? "ÇALIŞIYOR" : tmplJob.lastError ? "HATA İLE BİTTİ" : "TAMAMLANDI"}
                     </Badge>
                     <span className="text-xs text-slate-500">Job: {tmplJob.jobId}</span>
                   </div>

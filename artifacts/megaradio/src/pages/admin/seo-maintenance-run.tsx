@@ -76,7 +76,7 @@ function stationHref(s: RunSampleStation): string {
   // Public station detail page accepts both slugs and ObjectIds; prefer
   // the slug when present so the URL is human-readable in the address
   // bar after admins click through.
-  return `/station/${s.slug || s._id}`;
+  return `/station/${encodeURIComponent(s.slug || s._id)}`;
 }
 
 const LOGO_STATUS_LABEL: Record<LogoStatus, string> = {
@@ -211,7 +211,7 @@ export default function AdminSeoMaintenanceRunPage() {
   const id = params?.id || "";
 
   const runQuery = useQuery<RunDetailResponse>({
-    queryKey: [`/api/admin/maintenance/scheduled-backfill/runs/${id}`],
+    queryKey: [`/api/admin/maintenance/scheduled-backfill/runs/${encodeURIComponent(id)}`],
     enabled: !!id,
     staleTime: 30_000,
     refetchOnWindowFocus: false,
@@ -243,11 +243,14 @@ export default function AdminSeoMaintenanceRunPage() {
     enabled: logoSampleIds.length > 0,
     staleTime: 15_000,
     refetchOnWindowFocus: false,
-    queryFn: async () => {
+    refetchInterval: query => query.state.status !== "error" && (
+      run?.status === "running" || Object.values(query.state.data?.statuses ?? {}).some(status => status === "pending" || status === "processing")
+    ) ? 5000 : false,
+    queryFn: async ({ signal }) => {
       const res = await apiRequest(
         "POST",
         "/api/admin/maintenance/stations/logo-status",
-        { body: { ids: logoSampleIds } },
+        { body: { ids: logoSampleIds }, signal },
       );
       return (await res.json()) as LogoStatusResponse;
     },
@@ -289,6 +292,12 @@ export default function AdminSeoMaintenanceRunPage() {
           </h1>
           <p className="text-sm text-slate-600 mt-1 font-mono">{id}</p>
         </div>
+        <Button variant="outline" disabled={runQuery.isFetching || logoStatusQuery.isFetching} onClick={() => {
+          void runQuery.refetch();
+          if (logoSampleIds.length > 0) void logoStatusQuery.refetch();
+        }}>
+          {runQuery.isFetching || logoStatusQuery.isFetching ? "Yükleniyor..." : "Yenile"}
+        </Button>
       </div>
 
       {runQuery.isLoading && (
@@ -300,11 +309,18 @@ export default function AdminSeoMaintenanceRunPage() {
       )}
       {runQuery.error && (
         <Card className="bg-white">
-          <CardContent className="py-8 text-sm text-rose-600">
-            Bu çalışma kaydı bulunamadı veya yüklenemedi. Eski çalışmalar
-            saklama süresi dolduğunda silinmiş olabilir.
+          <CardContent className="py-8 text-sm text-rose-600" role="alert">
+            {runQuery.error.message.startsWith("404:")
+              ? "Bu çalışma kaydı bulunamadı. Saklama süresi dolduğunda silinmiş olabilir."
+              : "Çalışma kaydı yüklenemedi. Yenile düğmesiyle tekrar deneyin."}
+            {run && <p className="mt-1">Aşağıdaki önbellek verileri güncel olmayabilir.</p>}
           </CardContent>
         </Card>
+      )}
+      {logoStatusQuery.isError && (
+        <div role="alert" className="rounded border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
+          Logo durumları güncellenemedi. Yenile düğmesiyle tekrar deneyin.
+        </div>
       )}
 
       {run && totals && (

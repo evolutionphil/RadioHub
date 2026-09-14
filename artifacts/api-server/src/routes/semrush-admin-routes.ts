@@ -1,7 +1,7 @@
 /**
  * SEMrush Site Audit import routes.
  *
- * POST /api/admin/semrush/import   — accepts CSV body (text/csv or multipart field "csv")
+ * POST /api/admin/semrush/import   — accepts CSV body (text/csv or JSON field "csv")
  * GET  /api/admin/semrush/issues   — paginated list of imported issues
  * GET  /api/admin/semrush/summary  — issue counts by priority + type
  * DELETE /api/admin/semrush/issues — clear all imported issues
@@ -26,34 +26,70 @@ function parsePriority(raw: string): 'High' | 'Medium' | 'Low' | 'Info' {
   return 'Info';
 }
 
+class SemrushCsvError extends Error {}
+
 function parseCsv(text: string): Array<Record<string, string>> {
-  const lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n').filter(Boolean);
-  if (lines.length < 2) return [];
-
-  // Parse header, handling quoted fields.
-  const splitLine = (line: string): string[] => {
-    const result: string[] = [];
-    let cur = '';
-    let inQuote = false;
-    for (let i = 0; i < line.length; i++) {
-      const ch = line[i];
-      if (ch === '"') { inQuote = !inQuote; continue; }
-      if (ch === ',' && !inQuote) { result.push(cur.trim()); cur = ''; continue; }
-      cur += ch;
+  const input = text.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n').replace(/^(?:[ \t]*\n)+/, '');
+  // Regional exports can use semicolons or tabs. Only count separators outside
+  // quoted header cells so commas inside a column label do not select a format.
+  const separators = new Map([[',', 0], [';', 0], ['\t', 0]]);
+  let quotedHeader = false;
+  for (let i = 0; i < input.length; i++) {
+    const ch = input[i];
+    if (ch === '"') {
+      if (quotedHeader && input[i + 1] === '"') { i++; continue; }
+      quotedHeader = !quotedHeader;
+    } else if (!quotedHeader) {
+      if (ch === '\n') break;
+      if (separators.has(ch)) separators.set(ch, separators.get(ch)! + 1);
     }
-    result.push(cur.trim());
-    return result;
-  };
-
-  const headers = splitLine(lines[0]).map((h) => h.toLowerCase().replace(/[^a-z0-9]/g, '_'));
-  const rows: Array<Record<string, string>> = [];
-  for (let i = 1; i < lines.length && rows.length < MAX_ROWS_PER_IMPORT; i++) {
-    const vals = splitLine(lines[i]);
-    if (vals.every((v) => v === '')) continue;
-    const row: Record<string, string> = {};
-    headers.forEach((h, idx) => { row[h] = vals[idx] ?? ''; });
-    rows.push(row);
   }
+  const delimiter = [...separators].sort((a, b) => b[1] - a[1])[0][0];
+  let headers: string[] | undefined;
+  const rows: Array<Record<string, string>> = [];
+  let cells: string[] = [];
+  let cell = '';
+  let quoted = false;
+  let closedQuote = false;
+  const finishCell = () => {
+    cells.push(cell.trim());
+    cell = '';
+    closedQuote = false;
+  };
+  const finishRow = () => {
+    finishCell();
+    if (cells.some(value => value !== '')) {
+      if (!headers) {
+        headers = cells.map(value => value.toLowerCase().replace(/[^a-z0-9]/g, '_'));
+        if (headers.some(value => !value) || new Set(headers).size !== headers.length) {
+          throw new SemrushCsvError('CSV column names must be non-empty and unique');
+        }
+      } else {
+        if (cells.length !== headers.length) throw new SemrushCsvError(`CSV row ${rows.length + 2} has ${cells.length} columns; expected ${headers.length}`);
+        if (rows.length >= MAX_ROWS_PER_IMPORT) throw new SemrushCsvError(`CSV exceeds the ${MAX_ROWS_PER_IMPORT.toLocaleString('en-US')}-row import limit`);
+        rows.push(Object.fromEntries(headers.map((header, index) => [header, cells[index]])));
+      }
+    }
+    cells = [];
+  };
+  for (let i = 0; i < input.length; i++) {
+    const ch = input[i];
+    if (quoted) {
+      if (ch !== '"') cell += ch;
+      else if (input[i + 1] === '"') { cell += '"'; i++; }
+      else { quoted = false; closedQuote = true; }
+    } else if (ch === delimiter) finishCell();
+    else if (ch === '\n') finishRow();
+    else if (closedQuote) {
+      if (!/\s/.test(ch)) throw new SemrushCsvError('Unexpected text after a closing CSV quote');
+    } else if (ch === '"') {
+      if (cell.trim()) throw new SemrushCsvError('Unexpected quote in an unquoted CSV field');
+      cell = '';
+      quoted = true;
+    } else cell += ch;
+  }
+  if (quoted) throw new SemrushCsvError('CSV contains an unterminated quoted field');
+  finishRow();
   return rows;
 }
 
@@ -81,7 +117,7 @@ export function registerSemrushAdminRoutes(app: Express, deps: any) {
         return void res.status(400).json({ error: 'Provide CSV as text/csv body or JSON { csv: "..." }' });
       }
 
-      if (!csvText || csvText.length < 10) {
+      if (typeof csvText !== 'string' || csvText.length < 10) {
         return void res.status(400).json({ error: 'CSV body is empty or too short' });
       }
 
@@ -120,6 +156,9 @@ export function registerSemrushAdminRoutes(app: Express, deps: any) {
         detectedHeaders,
       });
     } catch (err: any) {
+      if (err instanceof SemrushCsvError) {
+        return void res.status(400).json({ error: err.message });
+      }
       logger.error('semrush/import failed:', err?.message);
       res.status(500).json({ error: 'Import failed: ' + (err?.message ?? 'unknown') });
     }

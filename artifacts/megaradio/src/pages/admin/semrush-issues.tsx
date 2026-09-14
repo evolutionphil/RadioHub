@@ -1,6 +1,6 @@
 import { useState, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiAuthHeaders, apiRequest, queryClient, resolveApiUrl } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -69,9 +69,10 @@ export default function SemrushIssues() {
   const importMutation = useMutation<{ count: number; message: string }, Error, string>({
     mutationFn: async (csv: string) => {
       // Send as raw text/csv to bypass the 2 MB JSON body limit (CSVs can be 3-10 MB).
-      const r = await fetch("/api/admin/semrush/import", {
+      const path = "/api/admin/semrush/import";
+      const r = await fetch(resolveApiUrl(path), {
         method: "POST",
-        headers: { "Content-Type": "text/csv" },
+        headers: { ...apiAuthHeaders(path), "Content-Type": "text/csv" },
         body: csv,
         credentials: "include",
       });

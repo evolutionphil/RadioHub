@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import React from "react";
 
@@ -38,6 +38,7 @@ vi.mock("@/lib/queryClient", () => ({
 }));
 
 import AdminSeoMaintenanceRunPage from "../src/pages/admin/seo-maintenance-run";
+import { apiRequest } from "../src/lib/queryClient";
 
 function makeQueryClient() {
   return new QueryClient({
@@ -125,5 +126,35 @@ describe("Admin /admin/seo-maintenance/runs/:id deep link", () => {
     // Failed attempts section is rendered when attempts are present.
     expect(screen.getByText(/Başarısız denemeler \(1\)/)).toBeInTheDocument();
     expect(screen.getByText("upstream timeout")).toBeInTheDocument();
+  });
+
+  it("recovers a failed run request through the refresh control", async () => {
+    const fetchRun = vi.fn()
+      .mockRejectedValueOnce(new Error("503: temporarily unavailable"))
+      .mockResolvedValue({ run: { _id: RUN_ID, trigger: "admin:manual", status: "completed", topN: 5,
+        startedAt: "2026-09-15T00:00:00.000Z", logos: [], tags: [] } });
+    const qc = new QueryClient({ defaultOptions: { queries: { queryFn: fetchRun, retry: false, gcTime: 0 } } });
+    render(<QueryClientProvider client={qc}><AdminSeoMaintenanceRunPage /></QueryClientProvider>);
+    expect(await screen.findByRole("alert")).toHaveTextContent("Çalışma kaydı yüklenemedi");
+    fireEvent.click(screen.getByRole("button", { name: "Yenile" }));
+    expect(await screen.findByText("COMPLETED")).toBeInTheDocument();
+    expect(fetchRun).toHaveBeenCalledTimes(2);
+    qc.clear();
+  });
+
+  it("surfaces a failed logo-status request and lets the admin retry it", async () => {
+    const data = { run: { _id: RUN_ID, trigger: "admin:manual", status: "completed", topN: 5,
+      startedAt: "2026-09-15T00:00:00.000Z", tags: [],
+      logos: [{ countryCode: "TR", candidates: 1, enqueued: 1, sampleStations: [{ _id: "station-1", slug: "sample", name: "Sample station" }] }] } };
+    const qc = new QueryClient({ defaultOptions: { queries: { queryFn: async () => data, retry: false, gcTime: 0 } } });
+    qc.setQueryData([`/api/admin/maintenance/scheduled-backfill/runs/${RUN_ID}`], data);
+    vi.mocked(apiRequest).mockRejectedValueOnce(new Error("503: temporary"))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ statuses: { "station-1": "completed" } })));
+    render(<QueryClientProvider client={qc}><AdminSeoMaintenanceRunPage /></QueryClientProvider>);
+    expect(await screen.findByRole("alert")).toHaveTextContent("Logo durumları güncellenemedi");
+    fireEvent.click(screen.getByRole("button", { name: "Yenile" }));
+    fireEvent.click(screen.getByTestId("button-toggle-logos-TR"));
+    expect(await screen.findByText("İndirildi")).toBeInTheDocument();
+    qc.clear();
   });
 });
