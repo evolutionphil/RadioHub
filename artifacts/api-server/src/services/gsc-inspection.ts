@@ -3,8 +3,8 @@
  *
  * Background service that:
  *   1. Discovers every URL we publish in the active sitemap manifests
- *      (static main pages + top-30 country pages + genres + a sampled set
- *      of stations) and upserts a row per URL in `gscurlinspections`.
+ *      (main pages + top-30 country pages + genres + stations) and
+ *      upserts a row per URL in `gsc_url_inspections`.
  *   2. Periodically rotates through those rows (oldest `lastInspectedAt`
  *      first) and calls the GSC URL Inspection API to refresh the cached
  *      indexing state.
@@ -33,8 +33,7 @@
 import cron from 'node-cron';
 import { JWT, OAuth2Client } from 'google-auth-library';
 import axios from 'axios';
-import { pgCatalog } from '../data/postgres-catalog-store';
-import { pgActiveManifests, pgSeoGenres, type IGscUrlInspection } from '../data/postgres-seo-indexing-store';
+import { pgActiveManifests, pgSeoGenres, SITEMAP_STATION_READ_BATCH_SIZE, type IGscUrlInspection } from '../data/postgres-seo-indexing-store';
 import { pgGscSyncDiscovery, pgGscOAuthToken, pgGscBackfill, pgGscPruneSnapshots, pgGscGroupCounts, pgGscSaveSnapshots, pgGscClaimInspection, pgGscBeginInspection, pgGscSaveInspection, pgGscClaimResubmit, pgGscSaveResubmit } from '../data/postgres-gsc-store';
 import { logger } from '../utils/logger';
 import {
@@ -46,6 +45,10 @@ import { IndexNowService } from './indexnow';
 import { performanceCache } from '../performance-cache';
 import { URL_TRANSLATIONS } from '@workspace/seo-shared/url-translations';
 import { buildLocalizedUrl } from '../seo/url-helpers';
+import { AZ_INDEX_KEYS } from '../seo/az-station-index';
+import { getCachedQualifiedLanguages } from '../seo/qualified-languages';
+import { getGscStationIndexableLanguages } from '../seo/gsc-indexability';
+import { pgGscStationChecks } from '../data/postgres-gsc-store';
 
 const GSC_SCOPE = 'https://www.googleapis.com/auth/webmasters.readonly';
 const GSC_ENDPOINT =
@@ -144,15 +147,14 @@ const MAIN_STATIC_PAGES = [
   '/privacy-policy',
   '/terms-and-conditions',
   '/applications',
+  ...AZ_INDEX_KEYS.map((key) => `/stations/${key}`),
 ];
 
 /**
- * Walk every active sitemap manifest and produce a unique list of
- * (url, language, group) tuples. For station URLs we sample per
- * language to stay within GSC's daily quota — the admin UI clearly
- * labels station results as "sampled".
+ * Walk active sitemap manifests and recheck current URL eligibility.
+ * Discovery does not consume Google's inspection quota.
  */
-async function discoverSitemapUrls(): Promise<UrlSpec[]> {
+export async function discoverSitemapUrls(): Promise<UrlSpec[]> {
   const baseUrl = getBaseUrl();
   const urlTranslations = await loadUrlTranslations();
   const out: UrlSpec[] = [];
@@ -166,8 +168,9 @@ async function discoverSitemapUrls(): Promise<UrlSpec[]> {
 
   // Pull the union of languages that have an active main manifest.
   const manifests = await pgActiveManifests('main');
+  const qualifiedLanguages = await getCachedQualifiedLanguages();
   const languages = Array.from(
-    new Set(manifests.map((m) => m.language).filter(Boolean)),
+    new Set(manifests.map((m) => m.language).filter((lang) => qualifiedLanguages.includes(lang))),
   );
 
   for (const lang of languages) {
@@ -230,11 +233,11 @@ async function discoverSitemapUrls(): Promise<UrlSpec[]> {
         STATION_DISCOVERY_CAP_PER_LANG > 0
           ? allIds.slice(0, STATION_DISCOVERY_CAP_PER_LANG)
           : allIds;
-      if (slice.length > 0) {
-        const stationDocs = await pgCatalog().find({ _id: { $in: slice.map(String) } }, { fields: ['slug'] });
+      for (let offset = 0; offset < slice.length; offset += SITEMAP_STATION_READ_BATCH_SIZE) {
+        const stationDocs = await pgGscStationChecks(slice.slice(offset, offset + SITEMAP_STATION_READ_BATCH_SIZE).map(String), 'id');
         for (const s of stationDocs) {
           const slug = (s as any).slug;
-          if (!slug) continue;
+          if (!slug || !getGscStationIndexableLanguages(s, qualifiedLanguages).includes(lang)) continue;
           const enginePath = `/station/${slug}`;
           const path = buildLocalizedUrl(
             enginePath,
@@ -335,11 +338,8 @@ function getJwt(): JWT | null {
       scopes: [GSC_SCOPE],
     });
     return cachedJwt;
-  } catch (err: any) {
-    logger.error(
-      '❌ GSC inspection: GSC_SERVICE_ACCOUNT_JSON is not valid JSON:',
-      err?.message ?? err,
-    );
+  } catch {
+    logger.error('❌ GSC inspection: GSC_SERVICE_ACCOUNT_JSON is not valid JSON.');
     return null;
   }
 }
@@ -354,7 +354,7 @@ export async function getOAuthClient(): Promise<OAuth2Client | null> {
   try {
     const token = await pgGscOAuthToken();
     if (!token?.refreshToken) { invalidateOAuthCache(); return null; }
-    const version = `${token.id}:${token.updatedAt?.getTime()}`;
+    const version = `${token._id ?? token.id}:${token.updatedAt?.getTime()}`;
     if (cachedOAuthClient && cachedOAuthVersion === version) return cachedOAuthClient;
     const client = new OAuth2Client({ clientId, clientSecret });
     client.setCredentials({ refresh_token: token.refreshToken });
@@ -386,6 +386,51 @@ export function isGscConfigured(): boolean {
         process.env.GOOGLE_OAUTH_CLIENT_SECRET)) &&
       process.env.GSC_SITE_URL,
   );
+}
+
+/** Credential presence is not a connected account. Does not request a token
+ * or call Google; the inspection itself reports credential/property failures. */
+export async function getGscInspectionReadiness(): Promise<{ ready: boolean; error: string | null }> {
+  if (!isGscConfigured()) return { ready: false, error: 'Search Console credentials and GSC_SITE_URL are required.' };
+  if (await getOAuthClient() || getJwt()) return { ready: true, error: null };
+  return { ready: false, error: 'Connect a Google account before starting an inspection batch.' };
+}
+
+/** Verify only credentials already configured by the administrator. A
+ * connected OAuth account is preferred; no scopes or site permissions change. */
+export async function getAuthorizedInspectionClient(siteUrl: string): Promise<{ client: JWT | OAuth2Client; source: 'oauth' | 'service-account' }> {
+  const candidates: Array<{ client: JWT | OAuth2Client; source: 'oauth' | 'service-account' }> = [];
+  const oauth = await getOAuthClient();
+  if (oauth) candidates.push({ client: oauth, source: 'oauth' });
+  const jwt = getJwt();
+  if (jwt) candidates.push({ client: jwt, source: 'service-account' });
+  if (!candidates.length) throw new Error('Connect a Google account before starting an inspection batch.');
+  const failures: string[] = [];
+  for (const candidate of candidates) {
+    try {
+      const { token } = await candidate.client.getAccessToken();
+      if (!token) throw new Error('No access token returned.');
+      const response = await axios.get(`https://www.googleapis.com/webmasters/v3/sites/${encodeURIComponent(siteUrl)}`, {
+        headers: { Authorization: `Bearer ${token}` }, timeout: 20_000, validateStatus: () => true,
+      });
+      if (response.status === 200 && response.data?.siteUrl === siteUrl
+          && ['siteOwner', 'siteFullUser', 'siteRestrictedUser'].includes(response.data?.permissionLevel)) return candidate;
+      if (response.status === 200) {
+        failures.push(`${candidate.source}: property response did not confirm verified access to ${siteUrl}`);
+        continue;
+      }
+      if ([401, 403, 404].includes(response.status) || response.data?.permissionLevel === 'siteUnverifiedUser') {
+        failures.push(`${candidate.source}: no verified access to ${siteUrl} (HTTP ${response.status})`);
+        continue;
+      }
+      throw new Error(`Property access check returned HTTP ${response.status}.`);
+    } catch (error: any) {
+      // Do not include auth-library/axios request objects or token responses.
+      if (error?.message?.startsWith('Property access check')) throw error;
+      failures.push(`${candidate.source}: property access check failed; reconnect or check credentials`);
+    }
+  }
+  throw new Error(`Search Console inspection not started. ${failures.join('; ')}. Verify access with the connected Google account.`);
 }
 
 async function inspectUrl(
@@ -434,6 +479,8 @@ class GscInspectionService {
   private isInitialized = false;
   private lastDiscoveryAt: Date | null = null;
   private lastInspectionAt: Date | null = null;
+  private lastInspectionError: string | null = null;
+  private inspectionCredentialSource: 'oauth' | 'service-account' | null = null;
   private lastResubmitAt: Date | null = null;
   private lastDiscoveryStats: {
     inserted: number;
@@ -602,6 +649,8 @@ class GscInspectionService {
       resubmitRunning: this.resubmitRunning,
       lastDiscoveryAt: this.lastDiscoveryAt,
       lastInspectionAt: this.lastInspectionAt,
+      lastInspectionError: this.lastInspectionError,
+      inspectionCredentialSource: this.inspectionCredentialSource,
       lastResubmitAt: this.lastResubmitAt,
       lastDiscoveryStats: this.lastDiscoveryStats,
       lastInspectionStats: this.lastInspectionStats,
@@ -859,11 +908,6 @@ class GscInspectionService {
       );
       return null;
     }
-    let authClient: JWT | OAuth2Client | null = getJwt();
-    if (!authClient) {
-      authClient = await getOAuthClient();
-    }
-    if (!authClient) return null;
     const siteUrl = process.env.GSC_SITE_URL!;
 
     this.inspectionRunning = true;
@@ -873,6 +917,11 @@ class GscInspectionService {
     let failed = 0;
 
     try {
+      this.lastInspectionError = null;
+      this.inspectionCredentialSource = null;
+      const authorization = await getAuthorizedInspectionClient(siteUrl);
+      const authClient = authorization.client;
+      this.inspectionCredentialSource = authorization.source;
       // Pick the rows that have NEVER been inspected first, then the
       // rows whose last inspection is oldest. Uses the
       // (lastInspectedAt, discoveredAt) compound index so the sort is
@@ -890,7 +939,9 @@ class GscInspectionService {
         if (!result.ok) {
           failed += 1;
           await pgGscSaveInspection(row._id, row.inspectionLeaseToken, {
-            state: 'error', lastError: result.error.slice(0,1000), lastInspectedAt: now, updatedAt: now,
+            // A transport/auth/quota failure is not a new Google verdict.
+            // Keep the last known state and continuous notIndexedSince window.
+            lastError: result.error.slice(0,1000), lastInspectedAt: now, updatedAt: now,
           }, true);
           // Back off briefly on errors so a misconfigured property doesn't
           // burn through quota in a tight loop.
@@ -960,6 +1011,11 @@ class GscInspectionService {
         `🔍 GSC inspection DONE: ${succeeded}/${attempted} succeeded (${failed} failed) in ${Math.round((Date.now() - start) / 1000)}s`,
       );
       return stats;
+    } catch (error: any) {
+      this.lastInspectionError = error?.message ?? 'Inspection batch failed';
+      this.lastInspectionAt = new Date();
+      this.lastInspectionStats = { attempted, succeeded, failed };
+      throw error;
     } finally {
       this.inspectionRunning = false;
     }

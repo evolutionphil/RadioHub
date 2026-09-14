@@ -54,6 +54,27 @@ export async function pgGscList(filter:{language?:string;group?:string;state?:st
     getPostgresPool().query(`SELECT count(*)::int count FROM gsc_url_inspections WHERE ${clause}`,values),
   ]);return {rows:rows.rows.map(seoShape),total:total.rows[0].count};
 }
+/** Aggregate locale multiplicities before catalog reads. A station shared by
+ * many language URLs is fetched once but contributes each of its URL counts. */
+export async function pgGscIndexabilityGroups(): Promise<any[]> {
+  return (await getPostgresPool().query(`SELECT url_group AS "group",slug,min(url) AS url,
+    jsonb_agg(jsonb_build_object('language',language,'count',count)) AS languages
+    FROM (SELECT url_group,regexp_replace(url,'^.*/','') AS slug,language,min(url) AS url,count(*)::int AS count
+      FROM gsc_url_inspections GROUP BY url_group,regexp_replace(url,'^.*/',''),language) counts
+    GROUP BY url_group,slug ORDER BY url_group,slug`)).rows;
+}
+/** Return content eligibility, never the large translated text itself. */
+export async function pgGscStationChecks(values: readonly string[], key: 'id' | 'slug' = 'slug'): Promise<any[]> {
+  if (values.length > 500) throw new Error('GSC station check batch exceeds 500');
+  if (!values.length) return [];
+  const column = key === 'id' ? 'id' : 'slug';
+  return (await getPostgresPool().query(`SELECT id AS _id,slug,name,url,homepage,tags_raw AS tags,bitrate,
+    no_index AS "noIndex",country,country_code AS "countryCode",language,language_codes AS "languageCodes",
+    ARRAY(SELECT lower(entry.key) FROM jsonb_each(CASE WHEN jsonb_typeof(descriptions)='object' THEN descriptions ELSE '{}'::jsonb END) entry
+      WHERE jsonb_typeof(entry.value->'full')='string' AND jsonb_typeof(entry.value->'meta')='string'
+        AND entry.value->>'full' ~ '[^[:space:]]' AND entry.value->>'meta' ~ '[^[:space:]]') AS "descriptionLanguages"
+    FROM stations WHERE ${column}=ANY($1::text[])`, [values])).rows;
+}
 export async function pgGscClaimInspection(siteUrl:string,limit:number,dailyLimit=2000):Promise<any[]>{
   return seoTransaction(async client=>{
     const day=new Date().toISOString().slice(0,10);

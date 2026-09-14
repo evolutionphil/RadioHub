@@ -12,91 +12,38 @@
  */
 
 import { Router, Request, Response } from 'express';
-import { pgCatalog } from '../data/postgres-catalog-store';
-import { pgGscCounts, pgGscStats, pgGscList, pgGscSnapshots, pgGscGroupCounts, pgGscOAuthToken, pgGscReplaceOAuthToken, pgGscCreateOAuthState, pgGscConsumeOAuthState } from '../data/postgres-gsc-store';
+import { pgGscStationChecks } from '../data/postgres-gsc-store';
+import { pgGscCounts, pgGscStats, pgGscList, pgGscSnapshots, pgGscIndexabilityGroups, pgGscOAuthToken, pgGscReplaceOAuthToken, pgGscCreateOAuthState, pgGscConsumeOAuthState } from '../data/postgres-gsc-store';
+import { pgSeoGenres } from '../data/postgres-seo-indexing-store';
 import {
   gscInspectionService,
   isGscConfigured,
   createOAuthClientFromEnv,
   invalidateOAuthCache,
+  getGscInspectionReadiness,
 } from '../services/gsc-inspection';
 import { getCachedQualifiedLanguages } from '../seo/qualified-languages';
-import { isNumericOnlySlug, isJunkStation } from '../seo/junk-station-rules';
+import { computeGscServerIndexability, extractGscSlug } from '../seo/gsc-indexability';
 import { logger } from '../utils/logger';
 
 const router = Router();
 
-/**
- * Compute the server-side noindex reason for a single URL.
- *
- * This mirrors the gate logic in seo-renderer.ts so the dashboard can show
- * WHY the server is sending noindex for any given URL — distinct from
- * Google's own verdict in `state`/`coverageState`.
- *
- * Returns the first matching reason in priority order. `null` means the
- * server is currently serving the URL as indexable.
- */
-type ServerNoindexReason =
-  | 'stationNoIndex'
-  | 'numericSlug'
-  | 'junk'
-  | null;
-
-function extractStationSlugFromUrl(url: string): string | null {
-  // URL shape: /<lang>/<translated-segment>/<station-slug>
-  // We can't decode the translated segment without the URL_TRANSLATIONS map,
-  // but the slug is always the final path component.
-  try {
-    const u = new URL(url);
-    const parts = u.pathname.split('/').filter(Boolean);
-    return parts[parts.length - 1] || null;
-  } catch {
-    return null;
-  }
-}
-
-function computeServerNoindex(
-  url: string,
-  language: string,
-  group: string,
-  qualifiedLangs: Set<string>,
-  stationBySlug: Map<string, { noIndex?: boolean; slug?: string; name?: string; url?: string; lastCheckOk?: boolean }>,
-): { noindex: boolean; reason: ServerNoindexReason } {
-  // Gate 1 (legacy): previously language-ineligible pages were served as
-  // noindex. They now receive a 301 redirect to /en, so they are no longer
-  // a server-noindex signal — skip them here.
-  if (!qualifiedLangs.has(language)) {
-    return { noindex: false, reason: null };
-  }
-
-  // Gate 2: station-specific checks (genres / countries / static are
-  // currently always indexable when the language is qualified, so we only
-  // check stations explicitly).
-  if (group === 'station') {
-    const slug = extractStationSlugFromUrl(url);
-    if (slug && isNumericOnlySlug(slug)) {
-      return { noindex: true, reason: 'numericSlug' };
-    }
-    const station = slug ? stationBySlug.get(slug) : undefined;
-    if (station?.noIndex === true) {
-      return { noindex: true, reason: 'stationNoIndex' };
-    }
-    if (station && isJunkStation(station)) {
-      return { noindex: true, reason: 'junk' };
-    }
-  }
-
-  return { noindex: false, reason: null };
+async function loadStationChecks(rows: Array<{ url: string; group: string }>): Promise<Map<string, any>> {
+  const slugs = [...new Set(rows.filter(row => row.group === 'station')
+    .map(row => extractGscSlug(row.url)).filter((slug): slug is string => Boolean(slug)))];
+  const stations = await pgGscStationChecks(slugs);
+  return new Map(stations.map(station => [station.slug, station]));
 }
 
 router.get('/status', async (_req: Request, res: Response) => {
   try {
     const status = gscInspectionService.getStatus();
+    const readiness = await getGscInspectionReadiness();
     const stuckCutoff = new Date(
       Date.now() - status.resubmitStuckDays * 24 * 60 * 60 * 1000,
     );
     const { total, stuck } = await pgGscCounts(stuckCutoff);
-    res.json({ ...status, totalUrls: total, stuckUrls: stuck });
+    res.json({ ...status, configured: readiness.ready, authError: readiness.error, totalUrls: total, stuckUrls: stuck });
   } catch (err: any) {
     logger.error('GSC inspection /status failed:', err?.message ?? err);
     res.status(500).json({ error: 'failed to fetch status' });
@@ -170,34 +117,12 @@ router.get('/urls', async (req: Request, res: Response) => {
     ]);
     const { rows: rawRows, total } = listed;
 
-    const qualifiedLangs = new Set(qualifiedLangsArr);
-
-    // Batch-fetch stations for the URLs in this page so the per-URL noindex
-    // computation doesn't fan out into N Mongo queries.
-    const stationSlugs = Array.from(
-      new Set(
-        rawRows
-          .filter((r: any) => r.group === 'station')
-          .map((r: any) => extractStationSlugFromUrl(r.url))
-          .filter((s): s is string => Boolean(s)),
-      ),
-    );
-    const stations = stationSlugs.length
-      ? await pgCatalog().find({ slug: { $in: stationSlugs } })
-      : [];
-    const stationBySlug = new Map<string, any>(
-      stations.map((s: any) => [s.slug, s]),
-    );
+    const [stationBySlug, genres] = await Promise.all([loadStationChecks(rawRows), pgSeoGenres()]);
+    const genreBySlug = new Map(genres.map((genre: any) => [genre.slug, genre]));
 
     let rows = rawRows.map((r: any) => ({
       ...r,
-      serverNoindex: computeServerNoindex(
-        r.url,
-        r.language,
-        r.group,
-        qualifiedLangs,
-        stationBySlug,
-      ),
+      serverNoindex: computeGscServerIndexability(r, qualifiedLangsArr, stationBySlug, genreBySlug),
     }));
 
     // Optional noindex filter — applied AFTER computation. Note: filtering
@@ -206,7 +131,7 @@ router.get('/urls', async (req: Request, res: Response) => {
     if (noindexFilter === 'noindex') {
       rows = rows.filter(r => r.serverNoindex.noindex);
     } else if (noindexFilter === 'indexable') {
-      rows = rows.filter(r => !r.serverNoindex.noindex);
+      rows = rows.filter(r => !r.serverNoindex.noindex && !r.serverNoindex.redirected && !r.serverNoindex.unknown);
     }
 
     res.json({
@@ -227,11 +152,11 @@ router.get('/urls', async (req: Request, res: Response) => {
 });
 
 router.post('/refresh', async (req: Request, res: Response) => {
-  if (!isGscConfigured()) {
+  const readiness = await getGscInspectionReadiness();
+  if (!readiness.ready) {
     return res.status(400).json({
       ok: false,
-      error:
-        'GSC is not configured. Set GSC_SERVICE_ACCOUNT_JSON and GSC_SITE_URL env vars.',
+      error: readiness.error,
     });
   }
   const requested = parseInt(String(req.body?.batchSize ?? ''), 10);
@@ -499,104 +424,45 @@ router.post('/discover', async (_req: Request, res: Response) => {
 /**
  * Server-side noindex breakdown — distinct from Google's verdict.
  *
- * For every URL in gscurlinspections we compute the server's current
- * indexability decision (via the same gates seo-renderer.ts uses) and
- * return aggregate counts by reason. This is the dashboard's primary
- * surface for tracking the 368-noindex incident: it tells you which URLs
- * the server is actively telling Google to skip vs. which Google is
- * choosing to skip on its own.
- *
- * Returned counts:
- *  - langIneligible: URL language not in qualifiedLanguages (the LKG gate)
- *  - stationNoIndex: station.noIndex === true
- *  - numericSlug: slug matches /^-?\d+$/ (frontend slug bug victims)
- *  - junk: station fails isJunkStation() (empty name, dead stream, …)
- *  - indexable: none of the above
- *
- * Heavy aggregation — uses Mongo aggregation for language counts, then
- * a single station lookup keyed by every station slug. Safe to call
- * read-only; takes ~1-2s on a 10k-URL collection.
+ * Aggregate every cached URL's current catalog decision, including genre
+ * exclusions and locale redirects. SQL preserves locale multiplicities;
+ * bounded station reads return only scalar fields and description-language
+ * eligibility. Missing catalog evidence is reported separately as unknown.
  */
 router.get('/noindex-breakdown', async (_req: Request, res: Response) => {
   try {
     const qualifiedLangsArr = await getCachedQualifiedLanguages();
-    const qualifiedLangs = new Set(qualifiedLangsArr);
-
-    // Per-language totals from gscurlinspections
-    const byLangAgg = await pgGscGroupCounts();
-
-    // langRedirected: URLs whose language is not qualified — previously served
-    // as noindex, now served as 301 redirect to /en. Not counted as
-    // server-noindex anymore; tracked separately for visibility.
-    let langRedirected = 0;
+    const genres = await pgSeoGenres();
+    const genreBySlug = new Map(genres.map((genre: any) => [genre.slug, genre]));
+    const breakdown = { langRedirected: 0, numericSlug: 0, stationNoIndex: 0,
+      junk: 0, genreNotWhitelisted: 0, genreThin: 0, unknown: 0, indexable: 0 };
     let totalUrls = 0;
+    let checkedStationUrls = 0;
     const byLanguage: Record<string, { total: number; qualified: boolean; redirected: number }> = {};
-
-    for (const row of byLangAgg as Array<{ _id: { language: string; group: string }; count: number }>) {
-      const lang = row._id.language;
-      totalUrls += row.count;
-      if (!byLanguage[lang]) {
-        byLanguage[lang] = { total: 0, qualified: qualifiedLangs.has(lang), redirected: 0 };
-      }
-      byLanguage[lang].total += row.count;
-      if (!qualifiedLangs.has(lang)) {
-        langRedirected += row.count;
-        byLanguage[lang].redirected += row.count;
-      }
-    }
-
-    // For station-specific reasons (junk, numericSlug, stationNoIndex) we
-    // need to look at every station URL. We aggregate the slugs from the
-    // gscurlinspections then join against Station.
-    const stationUrlSample = (await pgGscList({ group: 'station' }, 50000)).rows;
-
-    let numericSlugCount = 0;
-    let stationNoIndexCount = 0;
-    let junkCount = 0;
-    const slugSet = new Set<string>();
-    const slugToUrlInfo = new Map<string, { language: string; url: string }>();
-
-    for (const row of stationUrlSample as any[]) {
-      const slug = extractStationSlugFromUrl(row.url);
-      if (!slug) continue;
-      // Only count URLs whose language IS qualified — otherwise it's
-      // already counted in langRedirected and we don't want double-counting.
-      if (!qualifiedLangs.has(row.language)) continue;
-      if (isNumericOnlySlug(slug)) {
-        numericSlugCount++;
-        continue;
-      }
-      slugSet.add(slug);
-      if (!slugToUrlInfo.has(slug)) slugToUrlInfo.set(slug, row);
-    }
-
-    if (slugSet.size > 0) {
-      const stations = await pgCatalog().find({ slug: { $in: Array.from(slugSet) } });
-      const stationBySlug = new Map<string, any>(
-        stations.map((s: any) => [s.slug, s]),
-      );
-
-      for (const slug of slugSet) {
-        const st = stationBySlug.get(slug);
-        if (!st) continue; // station missing — covered by sitemap drift, skip
-        if (st.noIndex === true) stationNoIndexCount++;
-        else if (isJunkStation(st)) junkCount++;
+    const groups = await pgGscIndexabilityGroups();
+    for (let offset = 0; offset < groups.length; offset += 500) {
+      const rows = groups.slice(offset, offset + 500);
+      const stations = await loadStationChecks(rows);
+      for (const row of rows) {
+        for (const { language: lang, count } of row.languages) {
+          totalUrls += count;
+          if (row.group === 'station') checkedStationUrls += count;
+          const language = byLanguage[lang] ??= { total: 0, qualified: qualifiedLangsArr.includes(lang), redirected: 0 };
+          language.total += count;
+          const decision = computeGscServerIndexability({ ...row, language: lang }, qualifiedLangsArr, stations, genreBySlug);
+          if (decision.redirected) { breakdown.langRedirected += count; language.redirected += count; }
+          else if (decision.unknown) breakdown.unknown += count;
+          else if (decision.noindex && decision.reason) breakdown[decision.reason] += count;
+          else breakdown.indexable += count;
+        }
       }
     }
-
-    // langRedirected URLs are no longer noindex — they get 301 → /en.
-    const serverNoindexTotal = numericSlugCount + stationNoIndexCount + junkCount;
-    const indexable = Math.max(0, totalUrls - serverNoindexTotal - langRedirected);
+    const serverNoindexTotal = breakdown.numericSlug + breakdown.stationNoIndex + breakdown.junk
+      + breakdown.genreNotWhitelisted + breakdown.genreThin;
 
     res.json({
       total: totalUrls,
-      breakdown: {
-        langRedirected,
-        numericSlug: numericSlugCount,
-        stationNoIndex: stationNoIndexCount,
-        junk: junkCount,
-        indexable,
-      },
+      breakdown,
       serverNoindexTotal,
       qualifiedLanguageCount: qualifiedLangsArr.length,
       totalLanguagesInCache: Object.keys(byLanguage).length,
@@ -604,7 +470,8 @@ router.get('/noindex-breakdown', async (_req: Request, res: Response) => {
       byLanguage: Object.entries(byLanguage)
         .map(([language, info]) => ({ language, ...info }))
         .sort((a, b) => b.redirected - a.redirected || b.total - a.total),
-      sampledStationUrls: stationUrlSample.length,
+      sampledStationUrls: checkedStationUrls,
+      checkedStationUrls,
     });
   } catch (err: any) {
     logger.error(

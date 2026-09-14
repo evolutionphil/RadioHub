@@ -16,6 +16,7 @@ let phase: 'empty' | 'partial';
 let translate: (languages: string[]) => Promise<Map<string, Description>>;
 let manualEdit = false;
 let translationCalls = 0;
+let strip: (value: unknown) => unknown = value => value;
 
 const catalog = {
   count: async () => 1,
@@ -45,7 +46,7 @@ mock.module(new URL('../src/postgres-runtime.ts', import.meta.url).href, { named
     query: async () => ({ rows: [{ acquired: true }] }),
   }) }),
 } });
-mock.module(new URL('../src/routes/shared-utils.ts', import.meta.url).href, { namedExports: { stripPlaceholders: (value: unknown) => value, TV_STATION_PROJECTION: {} } });
+mock.module(new URL('../src/routes/shared-utils.ts', import.meta.url).href, { namedExports: { stripPlaceholders: (value: unknown) => strip(value), TV_STATION_PROJECTION: {} } });
 mock.module(new URL('../src/performance-cache.ts', import.meta.url).href, { namedExports: { performanceCache: {} } });
 mock.module(new URL('../src/utils/logger.ts', import.meta.url).href, { namedExports: { logger: {
   log: (...args: unknown[]) => messages.push(args.join(' ')), warn: (...args: unknown[]) => messages.push(args.join(' ')), error: (...args: unknown[]) => messages.push(args.join(' ')),
@@ -67,6 +68,7 @@ after(() => mock.restoreAll());
 beforeEach(() => {
   fixture = { _id: 'fixture-station', name: 'Fixture Radio', slug: 'fixture-radio', descriptions: {}, manualEditFields: {} };
   persisted = {}; writes = []; snapshots = []; messages = []; backgrounds = []; sourceLanguage = 'en'; phase = 'partial'; manualEdit = false; translationCalls = 0;
+  strip = value => value;
   translate = async languages => new Map(languages.map(language => [language, description(language)]));
 });
 
@@ -187,4 +189,81 @@ test('scheduled manual-edit guard skips native persistence and does not request 
   assert.equal(result.skipped, 1);
   assert.equal(translationCalls, 0);
   assert.deepEqual(persisted, {});
+});
+
+test('scheduled metadata-only repairs preserve every localized full text and require no translation service', async () => {
+  fixture.descriptions = Object.fromEntries(SITEMAP_PRIORITY_LANGUAGES.universal14.map(language => [language, description(language)]));
+  fixture.descriptions.en.meta = '';
+  fixture.descriptions.es.meta = ' \n\t ';
+  delete fixture.descriptions.fr.meta;
+  fixture.descriptions.he.meta = null;
+  fixture.descriptions.hi.meta = 17;
+  fixture.descriptions.fr.reviewer = 'keep existing per-language metadata';
+  persisted = structuredClone(fixture.descriptions);
+  const before = structuredClone(persisted);
+  translate = async () => { throw new Error('Metadata-only repairs must not call the external translator'); };
+
+  const result = await scheduledDescriptionFill.runOnce('unit-test-metadata-only');
+  assert.equal(result.partialCount, 1);
+  assert.equal(result.translated, 5);
+  assert.equal(result.failed, 0);
+  assert.equal(translationCalls, 0);
+  for (const language of SITEMAP_PRIORITY_LANGUAGES.universal14) {
+    assert.equal(persisted[language].full, before[language].full);
+    assert.ok(persisted[language].meta.trim().length > 0);
+    if (!['en', 'es', 'fr', 'he', 'hi'].includes(language)) assert.deepEqual(persisted[language], before[language]);
+  }
+  assert.equal((persisted.fr as any).reviewer, 'keep existing per-language metadata');
+  for (const write of writes) {
+    const field = Object.keys(write.update.$set)[0];
+    assert.deepEqual(write.filter[field], before[field.slice('descriptions.'.length)]);
+    assert.deepEqual(write.filter['manualEditFields.descriptions'], { $ne: true });
+  }
+});
+
+test('scheduled metadata repair survives a separate missing-language translation failure', async () => {
+  fixture.descriptions = Object.fromEntries(SITEMAP_PRIORITY_LANGUAGES.universal14.filter(language => language !== 'fr').map(language => [language, description(language)]));
+  fixture.descriptions.en.meta = '';
+  persisted = structuredClone(fixture.descriptions);
+  translate = async languages => {
+    assert.deepEqual(languages, ['fr']);
+    throw new Error('Translation service unavailable');
+  };
+  const result = await scheduledDescriptionFill.runOnce('unit-test-metadata-plus-translation');
+  assert.equal(result.translated, 1);
+  assert.equal(result.failed, 1);
+  assert.equal(persisted.en.full, fixture.descriptions.en.full);
+  assert.ok(persisted.en.meta.trim());
+  assert.equal(persisted.fr, undefined);
+});
+
+test('scheduled metadata repairs respect manual and concurrent edits', async () => {
+  fixture.descriptions = Object.fromEntries(SITEMAP_PRIORITY_LANGUAGES.universal14.map(language => [language, description(language)]));
+  fixture.descriptions.fr.meta = '';
+  persisted = structuredClone(fixture.descriptions);
+  const manual = { full: 'Manual French prose that must remain unchanged.', meta: 'A manually supplied French summary.' };
+  persisted.fr = manual;
+  const concurrent = await scheduledDescriptionFill.runOnce('unit-test-metadata-concurrent-edit');
+  assert.equal(concurrent.translated, 0);
+  assert.deepEqual(persisted.fr, manual);
+  persisted = structuredClone(fixture.descriptions);
+  manualEdit = true;
+  const protectedResult = await scheduledDescriptionFill.runOnce('unit-test-metadata-manual-guard');
+  assert.equal(protectedResult.translated, 0);
+  assert.deepEqual(persisted, fixture.descriptions);
+  assert.equal(translationCalls, 0);
+});
+
+test('scheduled metadata repair never saves an ellipsis when cleanup removes all prose', async () => {
+  fixture.descriptions = Object.fromEntries(SITEMAP_PRIORITY_LANGUAGES.universal14.map(language => [language, description(language)]));
+  const placeholder = '[TRANSLATED FULL DESCRIPTION PLACEHOLDER]';
+  fixture.descriptions.fr = { full: placeholder, meta: '' };
+  persisted = structuredClone(fixture.descriptions);
+  strip = value => value === placeholder ? '' : value;
+  translate = async languages => { assert.deepEqual(languages, ['fr']); return new Map(); };
+  const result = await scheduledDescriptionFill.runOnce('unit-test-empty-cleaned-excerpt');
+  assert.equal(result.translated, 0);
+  assert.equal(result.failed, 1);
+  assert.deepEqual(persisted.fr, fixture.descriptions.fr);
+  assert.equal(writes.length, 0);
 });

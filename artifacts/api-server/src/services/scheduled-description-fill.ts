@@ -33,6 +33,26 @@ type Lang = typeof UNIVERSAL_14[number];
 const RATE_LIMIT_MS = 1_500;
 const HARD_TIMEOUT_MS = 5 * 60 * 60 * 1_000; // 5 hours
 
+function hasFullDescription(description: any): description is { full: string; meta?: string } {
+  return typeof description?.full === 'string' && description.full.trim().length > 20;
+}
+
+function hasMetaDescription(description: any): boolean {
+  return typeof description?.meta === 'string' && description.meta.trim().length > 0;
+}
+
+// Reuse the existing translation service's excerpt policy for metadata-only
+// gaps. The already-localized full text stays byte-for-byte unchanged.
+function metadataFromFull(full: string): string {
+  const excerpt = stripPlaceholders(full).replace(/\s+/g, ' ').trim().substring(0, 155).trim();
+  if (!excerpt) return '';
+  const lastSpace = excerpt.lastIndexOf(' ');
+  const lastPeriod = excerpt.lastIndexOf('.');
+  const cutPoint = lastPeriod > 100 ? lastPeriod + 1 : (lastSpace > 100 ? lastSpace : 155);
+  const meta = excerpt.substring(0, cutPoint).trim();
+  return /[.!?]$/.test(meta) ? meta : `${meta}...`;
+}
+
 export interface DescriptionFillStatus {
   isRunning: boolean;
   lastRunAt: Date | null;
@@ -48,7 +68,7 @@ export interface DescriptionFillResult {
   noDescCount: number;
   partialCount: number;
   generated: number; // station native descriptions saved
-  translated: number; // language records actually saved (not station count)
+  translated: number; // language records saved, including metadata repairs (not station count)
   failed: number; // failed processing attempts; a partial station may be retried in phase 2
   skipped: number;
   stoppedEarly: boolean;
@@ -251,22 +271,28 @@ class ScheduledDescriptionFill {
             ? (station.descriptions as Record<string, any>)
             : {};
 
-          // Find which of the 14 langs are missing (empty or absent)
+          // A language is complete only when both full and meta are present.
+          // Repair metadata from existing localized prose; translate only when
+          // the full text itself is missing.
           const missingLangs: string[] = [];
+          const metadataRepairs = new Map<string, { full: string; meta: string }>();
           let sourceLang: string | null = null;
           let sourceDesc: { full: string; meta: string } | null = null;
 
           for (const lang of UNIVERSAL_14) {
             const d = descObj[lang];
-            const hasFull = d && typeof d === 'object' && typeof d.full === 'string' && d.full.trim().length > 20;
-            if (hasFull) {
-              if (!sourceLang) { sourceLang = lang; sourceDesc = d; }
+            if (hasFullDescription(d)) {
+              const complete = hasMetaDescription(d) ? d as { full: string; meta: string }
+                : { full: d.full, meta: metadataFromFull(d.full) };
+              if (!complete.meta) { missingLangs.push(lang); continue; }
+              if (!hasMetaDescription(d)) metadataRepairs.set(lang, complete);
+              if (!sourceLang) { sourceLang = lang; sourceDesc = complete; }
             } else {
               missingLangs.push(lang);
             }
           }
 
-          if (missingLangs.length === 0) {
+          if (missingLangs.length === 0 && metadataRepairs.size === 0) {
             skipped++;
             continue;
           }
@@ -280,13 +306,20 @@ class ScheduledDescriptionFill {
           }
 
           try {
-            const translations = await translateDescription(
-              sourceDesc.full,
-              sourceDesc.meta,
-              sourceLang,
-              missingLangs,
-              station.name,
-            );
+            // Persist independent metadata repairs before a potentially failing
+            // translation call. Preserve concurrent/manual edits with the same
+            // compare-and-set guard used for translated language records.
+            for (const [lang, desc] of metadataRepairs) {
+              assertLeadership();
+              const field = `descriptions.${lang}`;
+              translated += (await pgCatalog().update(
+                { _id: station._id, [field]: descObj[lang], 'manualEditFields.descriptions': { $ne: true } },
+                { $set: { [field]: { ...descObj[lang], ...desc } } },
+              )).modifiedCount;
+            }
+            const translations = missingLangs.length ? await translateDescription(
+              sourceDesc.full, sourceDesc.meta, sourceLang, missingLangs, station.name,
+            ) : new Map<string, { full: string; meta: string }>();
 
             const bulkOps: any[] = [];
             for (const [lang, desc] of translations) {

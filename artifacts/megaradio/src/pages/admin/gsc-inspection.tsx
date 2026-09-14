@@ -53,6 +53,9 @@ import {
 
 interface StatusResponse {
   configured: boolean;
+  authError?: string | null;
+  lastInspectionError?: string | null;
+  inspectionCredentialSource?: 'oauth' | 'service-account' | null;
   cronEnabled: boolean;
   siteUrl: string | null;
   discoveryRunning: boolean;
@@ -143,11 +146,15 @@ type ServerNoindexReason =
   | 'stationNoIndex'
   | 'numericSlug'
   | 'junk'
+  | 'genreNotWhitelisted'
+  | 'genreThin'
   | null;
 
 interface ServerNoindex {
   noindex: boolean;
   reason: ServerNoindexReason;
+  redirected?: boolean;
+  unknown?: boolean;
 }
 
 interface UrlRow {
@@ -184,6 +191,9 @@ interface NoindexBreakdownResponse {
     numericSlug: number;
     stationNoIndex: number;
     junk: number;
+    genreNotWhitelisted?: number;
+    genreThin?: number;
+    unknown?: number;
     indexable: number;
   };
   serverNoindexTotal: number;
@@ -211,16 +221,22 @@ const NOINDEX_REASON_LABEL: Record<Exclude<ServerNoindexReason, null>, string> =
   stationNoIndex: 'Station noIndex=true',
   numericSlug: 'Numeric-only slug',
   junk: 'Junk station',
+  genreNotWhitelisted: 'Genre not whitelisted',
+  genreThin: 'Thin genre',
 };
 
 const NOINDEX_REASON_CLS: Record<Exclude<ServerNoindexReason, null>, string> = {
   stationNoIndex: 'bg-rose-700 hover:bg-rose-800',
   numericSlug: 'bg-yellow-700 hover:bg-yellow-800',
   junk: 'bg-slate-700 hover:bg-slate-800',
+  genreNotWhitelisted: 'bg-rose-700 hover:bg-rose-800',
+  genreThin: 'bg-amber-700 hover:bg-amber-800',
 };
 
 function ServerNoindexBadge({ value }: { value?: ServerNoindex }) {
   if (!value) return <span className="text-gray-500 text-xs">—</span>;
+  if (value.redirected) return <Badge className="bg-blue-700">Redirected</Badge>;
+  if (value.unknown) return <Badge className="bg-slate-700">Unknown</Badge>;
   if (!value.noindex) {
     return (
       <Badge className="bg-green-700 hover:bg-green-800 text-gray-900">
@@ -411,7 +427,7 @@ export default function GscInspectionPage() {
       if (!r.ok) throw new Error('Failed to load noindex breakdown');
       return r.json();
     },
-    refetchInterval: query => query.state.status === 'error' ? false : 60_000,
+    refetchInterval: query => query.state.status === 'error' ? false : 300_000,
   });
 
   const refreshBatch = useMutation({
@@ -611,8 +627,8 @@ export default function GscInspectionPage() {
         <div>
           <h1 className="text-3xl font-bold mb-2">GSC URL Inspection</h1>
           <p className="text-gray-500">
-            Cached Google Search Console results for every URL we publish in
-            the sitemap. Refreshed automatically on a schedule.
+            Cached Google URL inspections for discovered sitemap URLs. Inspections
+            rotate through the cache; uninspected URLs have no known Google verdict.
           </p>
         </div>
 
@@ -636,10 +652,14 @@ export default function GscInspectionPage() {
                     'Connected'
                   )}
                   {oauthStatus.connectedAt ? ` · ${fmt(oauthStatus.connectedAt)}` : ''}
-                  {'. GSC API calls use your personal Google account.'}
+                  {status?.inspectionCredentialSource === 'oauth'
+                    ? '. Latest inspection used the connected Google account.'
+                    : status?.inspectionCredentialSource === 'service-account'
+                      ? '. Latest inspection used the configured service account.'
+                      : '. Property access is checked before each inspection batch.'}
                 </span>
               ) : oauthStatus?.hasEnvVars
-                ? 'Connect your Google account to enable live URL Inspection (bypasses the service account "email not found" bug).'
+                ? 'Connect a Google account with access to the configured Search Console property.'
                 : 'Set GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET in Railway env vars, then connect.'}
             </CardDescription>
           </CardHeader>
@@ -682,13 +702,10 @@ export default function GscInspectionPage() {
             <CardHeader>
               <CardTitle className="text-amber-200 flex items-center gap-2">
                 <AlertCircle className="w-5 h-5" />
-                GSC API not configured
+                Google inspection connection required
               </CardTitle>
               <CardDescription className="text-amber-100/80">
-                Set the <code>GSC_SERVICE_ACCOUNT_JSON</code> and{' '}
-                <code>GSC_SITE_URL</code> environment variables to enable
-                live URL Inspection. Until then, URLs are still discovered
-                from the sitemap and listed below as "Not yet inspected".
+                {status.authError || 'Connect a Google account with access to the configured Search Console property.'}
               </CardDescription>
             </CardHeader>
           </Card>
@@ -715,7 +732,7 @@ export default function GscInspectionPage() {
           <Card className="bg-white border-gray-200">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm text-gray-500">
-                Indexed by Google
+                Known indexed in cache
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -864,7 +881,7 @@ export default function GscInspectionPage() {
                   {(noindexBreakdown?.breakdown.junk ?? 0).toLocaleString()}
                 </div>
                 <p className="text-[10px] text-slate-300/80 mt-1">
-                  empty / dead stream / test feed
+                   empty station / test feed / codec variant
                 </p>
               </div>
               <div className="rounded-md border border-green-700/60 bg-green-950/30 p-3">
@@ -880,6 +897,10 @@ export default function GscInspectionPage() {
               </div>
             </div>
 
+            <p className="text-xs text-gray-500 mt-3">
+              Genre exclusions: {((noindexBreakdown?.breakdown.genreNotWhitelisted ?? 0) + (noindexBreakdown?.breakdown.genreThin ?? 0)).toLocaleString()}
+              {' · '}Unknown catalog status: {(noindexBreakdown?.breakdown.unknown ?? 0).toLocaleString()}
+            </p>
             {noindexBreakdown && noindexBreakdown.byLanguage.length > 0 && (
               <details className="mt-4">
                 <summary className="cursor-pointer text-sm text-gray-500 hover:text-gray-900">
@@ -930,10 +951,9 @@ export default function GscInspectionPage() {
                   </TableBody>
                 </Table>
                 <p className="text-xs text-gray-500 mt-2">
-                  Sampled {noindexBreakdown.sampledStationUrls.toLocaleString()}{' '}
-                  station URLs for per-station noindex checks. Languages in
-                  qualifiedLanguages render all 15 required SEO translation
-                  keys; others get noindex at the URL gate.
+                  Checked {noindexBreakdown.sampledStationUrls.toLocaleString()}{' '}
+                  station URLs, counting each language variant. Language-ineligible
+                  variants are reported as redirects. Catalog checks refresh every five minutes.
                 </p>
               </details>
             )}
@@ -1236,6 +1256,9 @@ export default function GscInspectionPage() {
               <p className="text-sm text-red-400 mt-2">
                 {(refreshBatch.error as Error).message}
               </p>
+            )}
+            {status?.lastInspectionError && (
+              <p className="text-sm text-red-400 mt-2">{status.lastInspectionError}</p>
             )}
             {resubmitStuck.error && (
               <p className="text-sm text-red-400 mt-2">

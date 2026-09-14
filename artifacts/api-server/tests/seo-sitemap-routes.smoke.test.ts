@@ -72,7 +72,7 @@ interface FakeManifest {
 }
 
 const TEST_HASH = 'testhash00000000';
-const QUALIFIED_LANGS = ['en', 'de', 'fr', 'es', 'it', 'tr'] as const;
+const QUALIFIED_LANGS = ['en', 'es', 'fr', 'de', 'pt', 'it', 'ru', 'ar', 'zh', 'tr', 'ja', 'ko', 'hi', 'he'] as const;
 const NOW = new Date('2026-01-01T00:00:00Z');
 
 const FAKE_QUALIFIED_STATE = {
@@ -190,7 +190,7 @@ const FAKE_INDEX_MANIFESTS: FakeManifest[] = QUALIFIED_LANGS.flatMap((lang) => [
 
 // Two fake stations:
 //   s1 — verified themegaradio.com host → MUST emit <image:image>
-//   s2 — unverified random host          → MUST NOT emit <image:image>
+//   s2 — external favicon               → emits the owned SSR image proxy
 // Both pass the junk-station gate (lastCheckOk + recent lastCheckOkTime,
 // non-empty url/name) and yield 'en' in getEligibleLanguages because of the
 // universal-language fallback, so they appear in /sitemap-stations-en-1.xml.
@@ -207,6 +207,7 @@ interface FakeStationDoc {
   logoAssets?: { webp256?: string; webp96?: string };
   favicon?: string;
   noIndex?: boolean;
+  descriptions?: Record<string, { full: string; meta: string }>;
 }
 
 const FAKE_STATION_DOCS: FakeStationDoc[] = [
@@ -221,6 +222,7 @@ const FAKE_STATION_DOCS: FakeStationDoc[] = [
     lastCheckOkTime: NOW,
     updatedAt: NOW,
     logoAssets: { webp256: 'https://cdn.themegaradio.com/s1.webp' },
+    descriptions: Object.fromEntries(QUALIFIED_LANGS.map(lang => [lang, { full: `Station content in ${lang}`, meta: `Listen in ${lang}` }])),
   },
   {
     _id: 's2',
@@ -514,6 +516,176 @@ test('sitemap manifest database errors cannot be cached as successful empty inde
     }
   } finally { manifestReadFails = false; }
   assert.equal((await fetch(`${baseUrl}/sitemap-index.xml`)).status, 200);
+});
+
+test('index validators follow lastmod changes even when manifest membership and version stay fixed', async () => {
+  const paths = ['/sitemap-index.xml', '/sitemap.xml', '/sitemap-en.xml'];
+  const original = await Promise.all(paths.map(async pathname => {
+    const response = await fetch(baseUrl + pathname);
+    assert.equal(response.status, 200);
+    return { pathname, etag: response.headers.get('etag')!, body: await response.text() };
+  }));
+  const manifest = FAKE_INDEX_MANIFESTS.find(row => row.type === 'main' && row.language === 'en')!;
+  const previous = manifest.chunks[0].maxUpdatedAt;
+  const advanced = new Date('2026-02-01T00:00:00Z');
+  manifest.chunks[0].maxUpdatedAt = advanced;
+  try {
+    for (const snapshot of original) {
+      const response = await fetch(baseUrl + snapshot.pathname, { headers: { 'If-None-Match': snapshot.etag } });
+      assert.equal(response.status, 200, `${snapshot.pathname} must expose changed child lastmod`);
+      assert.notEqual(response.headers.get('etag'), snapshot.etag);
+      const body = await response.text();
+      assert.notEqual(body, snapshot.body);
+      assert.ok(body.includes(advanced.toISOString()));
+      const freshEtag = response.headers.get('etag')!;
+      const unchanged = await fetch(baseUrl + snapshot.pathname, { headers: { 'If-None-Match': `"different", W/${freshEtag}` } });
+      assert.equal(unchanged.status, 304);
+      assert.equal(await unchanged.text(), '');
+    }
+  } finally { manifest.chunks[0].maxUpdatedAt = previous; }
+});
+
+test('rolling manifest hashes retain every locale and incomplete builds are retryable', async () => {
+  const saved = FAKE_INDEX_MANIFESTS.map(row => ({ ...row }));
+  try {
+    FAKE_INDEX_MANIFESTS.forEach((manifest, index) => {
+      manifest.qualifiedLanguagesHash = index === 0 ? TEST_HASH : 'previous-cohort';
+    });
+    const rolling = await fetch(`${baseUrl}/sitemap-index.xml`);
+    assert.equal(rolling.status, 200);
+    const body = await rolling.text();
+    const parsed = assertValidXml(body, 'rolling cohort index') as any;
+    assert.equal(parsed.sitemapindex.sitemap.length, QUALIFIED_LANGS.length * 3);
+    for (const lang of QUALIFIED_LANGS) {
+      assert.ok(body.includes(`/sitemap-stations-${lang}-1.xml`), `${lang} remains discoverable during the swap`);
+    }
+
+    const missing = FAKE_INDEX_MANIFESTS.findIndex(row => row.type === 'genres' && row.language === 'en');
+    FAKE_INDEX_MANIFESTS.splice(missing, 1);
+    for (const pathname of ['/sitemap-index.xml', '/sitemap.xml', '/sitemap-en.xml']) {
+      const response = await fetch(baseUrl + pathname, { headers: { 'If-None-Match': rolling.headers.get('etag')! } });
+      assert.equal(response.status, 503, `${pathname} must not publish a missing manifest slot`);
+      assert.equal(response.headers.get('cache-control'), 'no-store');
+      assert.equal(response.headers.get('retry-after'), '120');
+    }
+    assert.equal((await fetch(`${baseUrl}/sitemap-de.xml`)).status, 200, 'a complete locale remains independently available');
+  } finally { FAKE_INDEX_MANIFESTS.splice(0, FAKE_INDEX_MANIFESTS.length, ...saved); }
+});
+
+test('date-only validators cannot hide removed URLs in an index or a station leaf', async () => {
+  const index = await fetch(`${baseUrl}/sitemap-index.xml`);
+  const station = await fetch(`${baseUrl}/sitemap-stations-en-1.xml`);
+  const manifest = FAKE_INDEX_MANIFESTS.find(row => row.type === 'stations' && row.language === 'en')!;
+  const chunks = manifest.chunks;
+  manifest.chunks = [];
+  sitemapReadRows = [FAKE_STATION_DOCS[0]];
+  fakeCacheStore.clear();
+  try {
+    const newIndex = await fetch(`${baseUrl}/sitemap-index.xml`, { headers: { 'If-Modified-Since': index.headers.get('last-modified')! } });
+    assert.equal(newIndex.status, 200);
+    assert.doesNotMatch(await newIndex.text(), /sitemap-stations-en-1\.xml/);
+    const newStation = await fetch(`${baseUrl}/sitemap-stations-en-1.xml`, { headers: { 'If-Modified-Since': station.headers.get('last-modified')! } });
+    assert.equal(newStation.status, 200);
+    assert.equal(countLocs(await newStation.text()), 1);
+    assert.notEqual(newStation.headers.get('etag'), station.headers.get('etag'));
+  } finally {
+    manifest.chunks = chunks;
+    sitemapReadRows = FAKE_STATION_DOCS;
+    fakeCacheStore.clear();
+  }
+});
+
+test('station ETags represent current XML after cache expiry even without a manifest revision', async () => {
+  fakeCacheStore.clear();
+  const original = await fetch(`${baseUrl}/sitemap-stations-en-1.xml`);
+  const oldEtag = original.headers.get('etag')!;
+  sitemapReadRows = FAKE_STATION_DOCS.map(row => ({ ...row, name: `${row.name} updated logo title` }));
+  fakeCacheStore.clear();
+  try {
+    const changed = await fetch(`${baseUrl}/sitemap-stations-en-1.xml`, { headers: { 'If-None-Match': oldEtag } });
+    assert.equal(changed.status, 200);
+    assert.notEqual(changed.headers.get('etag'), oldEtag);
+    assert.match(await changed.text(), /updated logo title/);
+    const unchanged = await fetch(`${baseUrl}/sitemap-stations-en-1.xml`, { headers: { 'If-None-Match': changed.headers.get('etag')! } });
+    assert.equal(unchanged.status, 304);
+  } finally { sitemapReadRows = FAKE_STATION_DOCS; fakeCacheStore.clear(); }
+});
+
+test('conditional leaf cache hits use small validators without rereading station rows or the XML body', async () => {
+  fakeCacheStore.clear();
+  sitemapReadBatches.length = 0;
+  const original = await fetch(`${baseUrl}/sitemap-stations-en-1.xml`);
+  assert.equal(original.status, 200);
+  const etag = original.headers.get('etag')!;
+  const reads = sitemapReadBatches.length;
+  // Simulate a body larger than the memory tier while retaining its compact,
+  // same-TTL validator. A crawler with that exact body can still get a 304.
+  for (const key of fakeCacheStore.keys()) if (!key.endsWith(':validator')) fakeCacheStore.delete(key);
+  try {
+    const cached = await fetch(`${baseUrl}/sitemap-stations-en-1.xml`, { headers: { 'If-None-Match': etag } });
+    assert.equal(cached.status, 304);
+    assert.equal(sitemapReadBatches.length, reads);
+    const unconditional = await fetch(`${baseUrl}/sitemap-stations-en-1.xml`);
+    assert.equal(unconditional.status, 200);
+    assert.equal(unconditional.headers.get('etag'), etag);
+    assert.ok(sitemapReadBatches.length > reads, 'a caller without the representation receives regenerated XML');
+  } finally { fakeCacheStore.clear(); }
+});
+
+test('advertised leaves with no surviving rows return uncached 503 and recover on the next read', async () => {
+  const station = await fetch(`${baseUrl}/sitemap-stations-en-1.xml`);
+  const genre = await fetch(`${baseUrl}/sitemap-genres-en.xml`);
+  const genreRows = [...FAKE_GENRE_DOCS];
+  sitemapReadRows = [];
+  FAKE_GENRE_DOCS.splice(0);
+  fakeCacheStore.clear();
+  try {
+    for (const [pathname, etag] of [
+      ['/sitemap-stations-en-1.xml', station.headers.get('etag')!],
+      ['/sitemap-genres-en.xml', genre.headers.get('etag')!],
+    ]) {
+      const response = await fetch(baseUrl + pathname, { headers: { 'If-None-Match': etag } });
+      assert.equal(response.status, 503);
+      assert.equal(response.headers.get('cache-control'), 'no-store');
+      assert.equal(response.headers.get('retry-after'), '120');
+      assert.doesNotMatch(await response.text(), /<urlset/);
+    }
+    assert.equal(fakeCacheStore.size, 0, 'failed leaf responses cannot poison the XML cache');
+  } finally {
+    sitemapReadRows = FAKE_STATION_DOCS;
+    FAKE_GENRE_DOCS.push(...genreRows);
+  }
+  assert.equal((await fetch(`${baseUrl}/sitemap-stations-en-1.xml`)).status, 200);
+  assert.equal((await fetch(`${baseUrl}/sitemap-genres-en.xml`)).status, 200);
+});
+
+test('image entries serialize owned logos and external proxy URLs without placeholders or invalid schemes', async () => {
+  const favicon = ' https://radio.example.com/logos/rádio logo.png?size=large&theme=dark ';
+  const values = [
+    'https://cdn.themegaradio.com/logo.png?size=large&theme=dark', favicon,
+    'https://cdn.themegaradio.com/images/no-image.webp?v=2',
+    'https://cdn.themegaradio.com/default-station.png#logo',
+    'javascript:alert(1)', 'https://', 'https://user:password@example.com/logo.png', '',
+  ];
+  const ids = values.map((_, n) => `image-${n}`);
+  sitemapReadRows = values.map((value, n) => ({ ...FAKE_STATION_DOCS[0], _id: ids[n], slug: ids[n], logoAssets: undefined, favicon: value }));
+  builderOverrides.getActiveStationChunk = async () => ({ stationIds: ids, maxUpdatedAt: NOW, qualifiedLanguagesHash: TEST_HASH, version: 'image-validation' });
+  fakeCacheStore.clear();
+  try {
+    const response = await fetch(`${baseUrl}/sitemap-stations-en-1.xml`);
+    assert.equal(response.status, 200);
+    const body = await response.text();
+    const urls = (assertValidXml(body, 'image sitemap') as any).urlset.url;
+    assert.equal(urls[0]['image:image']['image:loc'], values[0]);
+    assert.ok(body.includes('?size=large&amp;theme=dark'));
+    const proxy = new URL(urls[1]['image:image']['image:loc']);
+    assert.equal(proxy.origin, 'https://themegaradio.com');
+    assert.equal(proxy.search, '?w=256');
+    const encoded = proxy.pathname.slice('/api/image/'.length);
+    assert.match(encoded, /^[A-Za-z0-9_-]+$/);
+    assert.equal(Buffer.from(encoded, 'base64url').toString('utf8'), new URL(favicon.trim()).href);
+    for (const url of urls.slice(2)) assert.equal(url['image:image'], undefined);
+  } finally { sitemapReadRows = FAKE_STATION_DOCS; builderOverrides.getActiveStationChunk = null; fakeCacheStore.clear(); }
 });
 
 function countLocs(xml: string): number {
@@ -839,7 +1011,7 @@ test('/sitemap-stations-en-1.xml returns parser-valid XML with stations in manif
     `expected station-two second, got ${locs[1]}`,
   );
 
-  // Verified-host station MUST emit <image:image>, unverified host MUST NOT.
+  // Owned logos stay direct; external favicons match the visible SSR proxy.
   const s1 = urls[0];
   assert.ok(
     s1['image:image']?.['image:loc']?.includes('cdn.themegaradio.com'),
@@ -847,9 +1019,9 @@ test('/sitemap-stations-en-1.xml returns parser-valid XML with stations in manif
   );
   const s2 = urls[1];
   assert.equal(
-    s2['image:image'],
-    undefined,
-    'station with unverified favicon host must NOT emit <image:image>',
+    s2['image:image']?.['image:loc'],
+    `https://themegaradio.com/api/image/${Buffer.from(FAKE_STATION_DOCS[1].favicon!).toString('base64url')}?w=256`,
+    'external favicon is discovered through the owned image proxy',
   );
 });
 
@@ -861,18 +1033,17 @@ test('/sitemap-stations-en-1.xml drops noIndex / junk stations defensively at se
   FAKE_STATION_DOCS[0].noIndex = true;
   FAKE_STATION_DOCS[1].slug = 'station-two-mp3';
   try {
-    const res = await fetch(`${baseUrl}/sitemap-stations-en-1.xml?cachebust=junk`);
     // Bypass the cache hit from the previous test by invalidating the store.
     fakeCacheStore.clear();
     const res2 = await fetch(`${baseUrl}/sitemap-stations-en-1.xml`);
-    assert.equal(res2.status, 200);
+    assert.equal(res2.status, 503, 'an advertised chunk with no surviving URLs is retryable');
+    assert.equal(res2.headers.get('cache-control'), 'no-store');
     const body = await res2.text();
-    assertValidXml(body, '/sitemap-stations-en-1.xml junk-leak');
+    assert.doesNotMatch(body, /<urlset/);
     assert.ok(
       !body.includes('station-one') && !body.includes('station-two'),
       'noIndex + codec-suffix stations must be filtered at serve time',
     );
-    void res;
   } finally {
     // Restore + clear cache so subsequent tests see clean state.
     FAKE_STATION_DOCS.splice(0, FAKE_STATION_DOCS.length, ...original);

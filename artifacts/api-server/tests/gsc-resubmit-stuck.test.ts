@@ -34,6 +34,10 @@
 
 import { test, mock, before, after, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
+import express from 'express';
+import { randomUUID } from 'node:crypto';
+import type { Server } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { createNativePostgresFixture,type NativePostgresFixture } from './helpers/native-postgres-fixture';
 import { seoShape } from '../src/data/postgres-seo-indexing-store';
 
@@ -60,6 +64,10 @@ mock.module(
 
 let sitemapRebuildCalls = 0;
 let sitemapRebuildShouldThrow = false;
+const discoveryManifests = new Map<string, any>();
+mock.module(new URL('../src/seo/qualified-languages.ts', import.meta.url).href, {
+  namedExports: { getCachedQualifiedLanguages: async () => ['en', 'de', 'fr'] },
+});
 
 mock.module(
   new URL('../src/seo/sitemap-manifest-builder.ts', import.meta.url).href,
@@ -74,7 +82,7 @@ mock.module(
       },
       // The resubmit path doesn't use these, but they're imported at the
       // top of gsc-inspection.ts so the mock must satisfy the namespace.
-      getActiveManifest: async () => null,
+      getActiveManifest: async (type: string, lang: string) => discoveryManifests.get(`${type}:${lang}`) ?? null,
       extractTopCountriesFromChunk: () => [],
     },
   },
@@ -106,9 +114,15 @@ let axiosResponder: (url: string) => AxiosResponse = () => ({
   data: {},
 });
 const axiosCalls: Array<{ url: string; payload: unknown }> = [];
+const propertyCalls: string[] = [];
+let propertyResponder: (token: string, siteUrl: string) => AxiosResponse = (_token, siteUrl) => ({ status: 200, data: { siteUrl, permissionLevel: 'siteOwner' } });
 
 mock.module('axios', {
   defaultExport: {
+    get: async (_url: string, options: { headers: { Authorization: string } }) => {
+      propertyCalls.push(options.headers.Authorization);
+      return propertyResponder(options.headers.Authorization, decodeURIComponent(_url.split('/sites/')[1]));
+    },
     post: async (
       _endpoint: string,
       payload: { inspectionUrl: string },
@@ -121,7 +135,10 @@ mock.module('axios', {
 
 mock.module('google-auth-library', {
   namedExports: {
-    OAuth2Client: class FakeOAuth2Client {},
+    OAuth2Client: class FakeOAuth2Client {
+      setCredentials(_credentials: unknown) {}
+      async getAccessToken() { return { token: 'oauth-test-token' }; }
+    },
     JWT: class FakeJWT {
       constructor(_opts: unknown) {}
       async getAccessToken() {
@@ -136,6 +153,9 @@ mock.module('google-auth-library', {
 // ---------------------------------------------------------------------------
 
 let fixture:NativePostgresFixture;
+let server: Server;
+let baseUrl: string;
+let service: typeof import('../src/services/gsc-inspection.ts');
 
 // Imported lazily AFTER the mocks above are installed.
 let runResubmitStuckOnce: (trigger?: string) => Promise<unknown>;
@@ -160,22 +180,36 @@ before(async () => {
   });
   process.env.GSC_SITE_URL = 'https://themegaradio.com/';
 
-  const svc = await import('../src/services/gsc-inspection.ts');
+  const svc = service = await import('../src/services/gsc-inspection.ts');
   runResubmitStuckOnce =
     svc.gscInspectionService.runResubmitStuckOnce.bind(svc.gscInspectionService);
   runInspectionBatchOnce =
     svc.gscInspectionService.runInspectionBatchOnce.bind(svc.gscInspectionService);
   RESUBMIT_STUCK_DAYS = svc.RESUBMIT_STUCK_DAYS;
   RESUBMIT_COOLDOWN_DAYS = svc.RESUBMIT_COOLDOWN_DAYS;
+  const app = express();
+  app.use(express.json());
+  app.use('/gsc', (await import('../src/routes/gsc-inspection.ts')).default);
+  server = await new Promise(resolve => { const instance = app.listen(0, '127.0.0.1', () => resolve(instance)); });
+  baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}/gsc`;
 });
 
 after(async () => {
+  server?.closeAllConnections();
+  if (server) await new Promise<void>(resolve => server.close(() => resolve()));
   await fixture?.close();
 });
 
 beforeEach(async () => {
   if(!fixture)return;
-  await fixture.clear('gsc_url_inspections','gsc_inspection_quota');
+  await fixture.clear('gsc_url_inspections','gsc_inspection_quota','gsc_oauth_tokens','stations','genres','sitemap_manifests');
+  process.env.GSC_SERVICE_ACCOUNT_JSON = JSON.stringify({ client_email: 'test@example.com', private_key: 'fake-key' });
+  delete process.env.GOOGLE_OAUTH_CLIENT_ID;
+  delete process.env.GOOGLE_OAUTH_CLIENT_SECRET;
+  service.invalidateOAuthCache();
+  propertyCalls.length = 0;
+  propertyResponder = (_token, siteUrl) => ({ status: 200, data: { siteUrl, permissionLevel: 'siteOwner' } });
+  discoveryManifests.clear();
   indexNowCalls.length = 0;
   axiosCalls.length = 0;
   indexNowResult = { success: true };
@@ -545,4 +579,148 @@ test('inspection update ANCHORS notIndexedSince for legacy rows already non-inde
     previousInspection.getTime(),
     'legacy non-indexed row must anchor notIndexedSince to its previous inspection time',
   );
+});
+
+test('failed API requests preserve indexed verdicts and the continuous non-indexed window', async () => {
+  const anchored = new Date(Date.now() - 30 * DAY_MS);
+  await seed([
+    { url: 'https://t.example/indexed-before-error', state: 'indexed' },
+    { url: 'https://t.example/stuck-before-error', state: 'crawled-not-indexed', notIndexedSince: anchored },
+  ]);
+  axiosResponder = () => ({ status: 503, data: { error: 'Temporarily unavailable' } });
+  const stats = await runInspectionBatchOnce(10, 'test');
+  assert.deepEqual(stats, { attempted: 2, succeeded: 0, failed: 2 });
+  assert.equal((await inspection('https://t.example/indexed-before-error')).state, 'indexed');
+  const failed = await inspection('https://t.example/stuck-before-error');
+  assert.equal(failed.state, 'crawled-not-indexed');
+  assert.equal(failed.notIndexedSince.getTime(), anchored.getTime());
+  assert.match(failed.lastError, /HTTP 503/);
+  assert.equal(failed.errorCount, 1);
+  axiosResponder = () => gscPayload('Crawled - currently not indexed');
+  await runInspectionBatchOnce(10, 'test');
+  const recovered = await inspection('https://t.example/stuck-before-error');
+  assert.equal(recovered.notIndexedSince.getTime(), anchored.getTime());
+  assert.equal(recovered.lastError, null);
+});
+
+test('connected OAuth is preferred to an unauthorized service account', async () => {
+  process.env.GOOGLE_OAUTH_CLIENT_ID = 'test-client';
+  process.env.GOOGLE_OAUTH_CLIENT_SECRET = 'test-secret';
+  await fixture.insert('gsc_oauth_tokens', { refreshToken: 'fake-refresh-token' });
+  propertyResponder = (token, siteUrl) => token.includes('oauth-test-token')
+    ? { status: 200, data: { siteUrl, permissionLevel: 'siteFullUser' } }
+    : { status: 404, data: {} };
+  const authorization = await service.getAuthorizedInspectionClient('sc-domain:themegaradio.com');
+  assert.equal(authorization.source, 'oauth');
+  assert.deepEqual(propertyCalls, ['Bearer oauth-test-token']);
+});
+
+test('property permission failures stop before consuming inspection quota or rewriting URLs', async () => {
+  await seed([{ url: 'https://t.example/permission-denied', state: 'indexed' }]);
+  for (const status of [403, 404]) {
+    propertyResponder = () => ({ status, data: {} });
+    await assert.rejects(runInspectionBatchOnce(50, 'test'), /no verified access/);
+  }
+  assert.equal(axiosCalls.length, 0);
+  assert.equal((await fixture.pool.query('SELECT count(*)::int count FROM gsc_inspection_quota')).rows[0].count, 0);
+  assert.equal((await inspection('https://t.example/permission-denied')).state, 'indexed');
+  assert.match(service.gscInspectionService.getStatus().lastInspectionError!, /HTTP 404/);
+});
+
+test('property access checks reject malformed success responses and verify a configured fallback account', async () => {
+  for (const data of [{}, { siteUrl: 'https://other.example/', permissionLevel: 'siteOwner' },
+    { siteUrl: 'https://themegaradio.com/', permissionLevel: 'siteUnverifiedUser' }]) {
+    propertyResponder = () => ({ status: 200, data });
+    await assert.rejects(service.getAuthorizedInspectionClient('https://themegaradio.com/'), /did not confirm verified access/);
+  }
+  process.env.GOOGLE_OAUTH_CLIENT_ID = 'test-client';
+  process.env.GOOGLE_OAUTH_CLIENT_SECRET = 'test-secret';
+  await fixture.insert('gsc_oauth_tokens', { refreshToken: 'fake-refresh-token' });
+  propertyCalls.length = 0;
+  propertyResponder = (token, siteUrl) => token.includes('oauth-test-token')
+    ? { status: 403, data: {} } : { status: 200, data: { siteUrl, permissionLevel: 'siteOwner' } };
+  assert.equal((await service.getAuthorizedInspectionClient('https://themegaradio.com/')).source, 'service-account');
+  assert.deepEqual(propertyCalls, ['Bearer oauth-test-token', 'Bearer test-access-token']);
+});
+
+test('configured OAuth client without a connected account returns a refresh error', async () => {
+  delete process.env.GSC_SERVICE_ACCOUNT_JSON;
+  process.env.GOOGLE_OAUTH_CLIENT_ID = 'test-client';
+  process.env.GOOGLE_OAUTH_CLIENT_SECRET = 'test-secret';
+  const response = await fetch(`${baseUrl}/refresh`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+  assert.equal(response.status, 400);
+  assert.match((await response.json()).error, /Connect a Google account/);
+  assert.equal((await (await fetch(`${baseUrl}/status`)).json()).configured, false);
+  assert.equal(axiosCalls.length, 0);
+});
+
+test('discovery includes A-Z pages and excludes stale station locales using the live sitemap gate', async () => {
+  const stationId = 'a'.repeat(24);
+  await fixture.insert('stations', { _id: stationId, stationuuid: randomUUID(), name: 'Berlin Radio', slug: 'berlin-radio', url: 'https://radio.example/stream', country: 'Germany', countryCode: 'DE', language: 'German', languageCodes: 'de' });
+  for (const lang of ['en', 'de', 'fr', 'xx']) {
+    await fixture.insert('sitemap_manifests', { type: 'main', language: lang, version: 'test', status: 'active', qualifiedLanguagesHash: 'test', expiresAt: new Date(Date.now() + DAY_MS) });
+    discoveryManifests.set(`stations:${lang}`, { chunks: [{ stationIds: [stationId] }] });
+  }
+  const urls = await service.discoverSitemapUrls();
+  assert.equal(urls.filter(row => row.group === 'static').length, 43 * 3);
+  assert.ok(urls.some(row => row.url === 'https://themegaradio.com/en/stations/a'));
+  assert.ok(urls.some(row => row.url === 'https://themegaradio.com/en/stations/0-9'));
+  assert.deepEqual(urls.filter(row => row.group === 'station').map(row => row.language).sort(), ['de', 'en']);
+  assert.ok(urls.every(row => row.language !== 'xx'));
+  await fixture.pool.query('UPDATE stations SET descriptions=$1 WHERE id=$2', [JSON.stringify({ fr: { full: 'French station information', meta: 'French summary' } }), stationId]);
+  const enriched = await service.discoverSitemapUrls();
+  assert.deepEqual(enriched.filter(row => row.group === 'station').map(row => row.language).sort(), ['de', 'en', 'fr']);
+});
+
+test('lean description eligibility matches native language gates without returning translated text', async () => {
+  const { pgGscStationChecks } = await import('../src/data/postgres-gsc-store');
+  const { getGscStationIndexableLanguages } = await import('../src/seo/gsc-indexability');
+  const descriptions = { fr: { full: 'A real French description', meta: 'French metadata' },
+    es: { full: 'Spanish content', meta: ' \t\n ' }, de: { full: ' \t ', meta: 'German metadata' } };
+  await fixture.insert('stations', { stationuuid: randomUUID(), name: 'Local radio', slug: 'local-radio', countryCode: 'DE', url: 'https://radio.example/stream', descriptions });
+  const [station] = await pgGscStationChecks(['local-radio']);
+  assert.deepEqual(station.descriptionLanguages, ['fr']);
+  assert.equal(station.descriptions, undefined);
+  assert.equal(station.source, undefined);
+  assert.deepEqual(getGscStationIndexableLanguages(station, ['en', 'de', 'fr', 'es']).sort(), ['de', 'en', 'fr']);
+});
+
+test('noindex summary counts locale URLs separately and reports genre, redirect and unknown states', async () => {
+  for (const [slug, noIndex] of [['shared-blocked', true], ['german-radio', false]] as const) {
+    await fixture.insert('stations', { stationuuid: randomUUID(), name: slug, slug, noIndex, url: 'https://radio.example/stream', countryCode: 'DE', languageCodes: 'de' });
+  }
+  await fixture.insert('genres', { name: 'Rock', slug: 'rock', stationCount: 2 });
+  await seed([
+    { url: 'https://themegaradio.com/en/station/shared-blocked', state: 'pending', language: 'en' },
+    { url: 'https://themegaradio.com/de/radiosender/shared-blocked', state: 'pending', language: 'de' },
+    { url: 'https://themegaradio.com/fr/station/german-radio', state: 'pending', language: 'fr' },
+    { url: 'https://themegaradio.com/en/genres/rock', state: 'pending', group: 'genre' },
+    { url: 'https://themegaradio.com/de/genres/rock', state: 'pending', language: 'de', group: 'genre' },
+    { url: 'https://themegaradio.com/en/genres/not-a-real-genre', state: 'pending', group: 'genre' },
+    { url: 'https://themegaradio.com/en/station/missing', state: 'pending' },
+  ]);
+  const response = await fetch(`${baseUrl}/noindex-breakdown`);
+  assert.equal(response.status, 200);
+  const result = await response.json();
+  assert.equal(result.total, 7);
+  assert.equal(result.breakdown.stationNoIndex, 2);
+  assert.equal(result.breakdown.genreThin, 2);
+  assert.equal(result.breakdown.genreNotWhitelisted, 1);
+  assert.equal(result.breakdown.langRedirected, 1);
+  assert.equal(result.breakdown.unknown, 1);
+  assert.equal(result.breakdown.indexable, 0);
+  assert.equal(result.serverNoindexTotal, 5);
+  const urlRows = await (await fetch(`${baseUrl}/urls?group=genre`)).json();
+  assert.ok(urlRows.rows.every((row: any) => row.serverNoindex.noindex));
+});
+
+test('noindex summary includes affected URLs after the former 50,000 URL cutoff', async () => {
+  await fixture.insert('stations', { stationuuid: randomUUID(), name: 'Blocked', slug: 'blocked', noIndex: true, url: 'https://radio.example/stream' });
+  await fixture.pool.query(`INSERT INTO gsc_url_inspections(id,url,language,url_group)
+    SELECT 'bulk-' || i,'https://themegaradio.com/en/archive-' || i || '/station/blocked','en','station' FROM generate_series(1,50001) i`);
+  const result = await (await fetch(`${baseUrl}/noindex-breakdown`)).json();
+  assert.equal(result.total, 50001);
+  assert.equal(result.breakdown.stationNoIndex, 50001);
+  assert.equal(result.breakdown.indexable, 0);
+  assert.equal(result.checkedStationUrls, 50001);
 });

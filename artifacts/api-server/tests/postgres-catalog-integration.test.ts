@@ -16,6 +16,27 @@ describe("Catalog SQL predicates", () => {
     assert.throws(() => compileCatalogFilter({ "__proto__.x": "y" }), /Unsupported/);
     assert.throws(() => compileCatalogFilter({ name: { $options: "i" } }), /require/);
   });
+
+  for (const phase of ['empty', 'partial'] as const) {
+    it(`continues ${phase} candidate scans past a full page with no matches`, async () => {
+      const cursors: string[] = [];
+      const pool = { query: async (_sql: string, values: unknown[]) => {
+        cursors.push(values[0] as string);
+        if (values[0] === '') return { rows: Array.from({ length: 200 }, (_, i) => ({ scan_id: `station-${String(i).padStart(3, '0')}`, candidate: null })) };
+        if (values[0] === 'station-199') return { rows: [
+          { scan_id: 'station-200', candidate: { id: 'station-200', name: 'Late partial station', descriptions: { en: { full: 'English description for this real fixture.', meta: 'English summary.' } }, source: {} } },
+          { scan_id: 'station-201', candidate: null },
+        ] };
+        return { rows: [] };
+      } };
+      const catalog = new PostgresCatalogStore(pool as any);
+      const candidates = [];
+      for await (const station of catalog.descriptionFillCandidates(phase, ['en', 'fr'])) candidates.push(station);
+      assert.deepEqual(cursors, ['', 'station-199', 'station-201']);
+      assert.deepEqual(candidates.map(station => station._id), ['station-200']);
+      assert.equal(candidates[0].descriptions.en.meta, 'English summary.');
+    });
+  }
 });
 
 const connectionString = process.env.PG_TEST_DATABASE_URL;
@@ -183,11 +204,23 @@ describe("PostgreSQL native catalog writes", { skip: !connectionString }, () => 
   });
 
   it("pages missing descriptions in SQL and treats empty translated strings as incomplete", async () => {
-    await catalog.update({ _id:'one' },{ $set:{ descriptions:{ en:{full:'x'.repeat(25)},tr:{full:''} } } });
-    await catalog.update({ _id:'two' },{ $set:{ descriptions:{ en:{full:'x'.repeat(25)},tr:{full:'y'.repeat(25)} } } });
+    await catalog.update({ _id:'one' },{ $set:{ descriptions:{ en:{full:'x'.repeat(25),meta:'English summary'},tr:{full:''} } } });
+    const complete = { en:{full:'x'.repeat(25),meta:'English summary'},tr:{full:'y'.repeat(25),meta:'Turkish summary'} };
+    await catalog.update({ _id:'two' },{ $set:{ descriptions:complete } });
     const partial: string[] = [];
     for await (const row of catalog.descriptionFillCandidates('partial',['en','tr'])) partial.push(row._id);
     assert.deepEqual(partial,['one']);
+    for (const incomplete of [
+      { full:'y'.repeat(25) }, { full:'y'.repeat(25),meta:' \n\t ' },
+      { full:'y'.repeat(25),meta:null }, { full:'y'.repeat(25),meta:42 },
+      { full:'\n'.repeat(30),meta:'Turkish summary' },
+    ]) {
+      await catalog.update({ _id:'two' },{ $set:{ 'descriptions.tr':incomplete } });
+      const ids = [];
+      for await (const row of catalog.descriptionFillCandidates('partial',['en','tr'])) ids.push(row._id);
+      assert.deepEqual(ids,['one','two']);
+    }
+    await catalog.update({ _id:'two' },{ $set:{ descriptions:complete } });
     const empty: string[] = [];
     for await (const row of catalog.descriptionFillCandidates('empty',['en','tr'])) empty.push(row._id);
     assert.deepEqual(empty,['three']);
@@ -195,6 +228,34 @@ describe("PostgreSQL native catalog writes", { skip: !connectionString }, () => 
     const excluded = [];
     for await (const row of catalog.descriptionFillCandidates('partial',['en','tr'])) excluded.push(row);
     assert.deepEqual(excluded,[]);
+  });
+
+  it('bounds real SQL candidate pages and reaches a rare partial after 200 complete stations', async () => {
+    const ids = Array.from({ length: 208 }, (_, i) => `description-page-${String(i).padStart(3, '0')}`);
+    const complete = { en:{ full:'English prose about the fixture station and its programming.',meta:'English summary.' },tr:{ full:'Turkish prose about the fixture station and its programming.',meta:'Turkish summary.' } };
+    try {
+      await pool.query(`INSERT INTO stations(id,station_uuid,name,url,descriptions)
+        SELECT id,'uuid-'||id,id,'https://example.invalid/'||id,$2::jsonb FROM unnest($1::text[]) AS id`, [ids,JSON.stringify(complete)]);
+      for (const id of ids.slice(204)) await catalog.update({ _id:id },{ $set:{ 'descriptions.tr.meta':'' } });
+      await catalog.update({ _id:ids[205] },{ $set:{ 'manualEditFields.descriptions':true } });
+      await catalog.update({ _id:ids[206] },{ $set:{ aiDescriptionSkipped:true } });
+      await catalog.update({ _id:ids[207] },{ $set:{ noIndex:true } });
+      const pages: any[][] = [];
+      const recording = new PostgresCatalogStore({ query: async (sql: string, values: any[]) => {
+        const result = await pool.query(sql, values);
+        pages.push(result.rows);
+        return result;
+      } } as any);
+      const candidates = [];
+      for await (const row of recording.descriptionFillCandidates('partial',['en','tr'])) candidates.push(row._id);
+      assert.deepEqual(candidates,[ids[204]]);
+      assert.equal(pages[0].length,200);
+      assert.ok(pages[0].every(row => row.candidate === null), 'first scan page is entirely complete');
+      assert.ok(pages.every(page => page.length <= 200), 'SQL result and expensive checks remain bounded');
+      assert.ok(pages.length >= 3, 'continue after a complete page, then exhaust the cursor');
+    } finally {
+      await pool.query('DELETE FROM stations WHERE id=ANY($1::text[])',[ids]);
+    }
   });
   it('supports literal alias membership, whole-array equality and null-safe NOR',async()=>{
     await catalog.patchById('one',{ $set:{ slugAliases:['old-slug','literal.*'] } });

@@ -1,6 +1,5 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useMemo } from "react";
 import { useGlobalPlayer } from "@/hooks/useGlobalPlayer";
-import { useLocation } from "wouter";
 import { ChevronDown, ChevronUp, Play, Pause, SkipBack, SkipForward } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { cn } from "@/lib/utils";
@@ -14,15 +13,14 @@ import { Link } from "wouter";
 import { useTranslation } from "@/hooks/useTranslation";
 import { useSeoRouting } from "@/hooks/useSeoRouting";
 import AskToSignupModal from "@/components/modals/AskToSignupModal";
-import { logger } from '@/lib/logger';
+import { useIsMobile } from '@/hooks/use-mobile';
+import { useSignupPrompt, SIGNUP_BANNER_DELAY_MS, SIGNUP_MODAL_DELAY_MS } from '@/hooks/useSignupPrompt';
 
 export default function GlobalPlayer() {
-  const [location] = useLocation();
   const { currentStation, isPlaying, pauseStation, stopStation, resumeStation, stationMeta, playStation, previousStation, nextStation } = useGlobalPlayer();
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, isLoading: authLoading, error: authError } = useAuth();
   const [collapsed, setCollapsed] = useState(false);
-  const [showSignupBanner, setShowSignupBanner] = useState(false);
-  const [showSignupModal, setShowSignupModal] = useState(false);
+  const isMobile = useIsMobile();
   const { t, language, localeTranslations } = useTranslation();
   const controlLabels = useMemo(() => getStationControlLabels(language, localeTranslations), [language, localeTranslations]);
   const { getLocalizedUrl, englishPath } = useSeoRouting();
@@ -34,6 +32,16 @@ export default function GlobalPlayer() {
 
   // Hide mini-player on station detail page (it has its own player)
   const isStationDetailPage = englishPath.startsWith('/station/') || englishPath.startsWith('/stations/');
+  const isAccountPage = /^\/(?:auth|login|signup|forgot-password|reset-password|verify-email|profile|admin)(?:\/|$)/.test(englishPath);
+  // One invitation surface only: don't stack a modal on top of the desktop banner.
+  const useSignupModal = isMobile || isStationDetailPage;
+  const { isOpen: showSignupPrompt, dismiss: dismissSignupPrompt } = useSignupPrompt({
+    eligible: !isAuthenticated && !authLoading && !authError && Boolean(currentStation) && isPlaying
+      && !isAccountPage && (useSignupModal || !collapsed),
+    delayMs: useSignupModal ? SIGNUP_MODAL_DELAY_MS : SIGNUP_BANNER_DELAY_MS,
+  });
+  const showSignupBanner = showSignupPrompt && !useSignupModal;
+  const showSignupModal = showSignupPrompt && useSignupModal;
   
   const getCurrentLanguage = () => {
     const path = window.location.pathname;
@@ -50,33 +58,6 @@ export default function GlobalPlayer() {
   };
   
   const metadata = stationMeta;
-
-  useEffect(() => {
-    if (!isAuthenticated && currentStation && isPlaying) {
-      const timer = setTimeout(() => {
-        setShowSignupBanner(true);
-      }, 5000);
-      
-      return () => clearTimeout(timer);
-    }
-    setShowSignupBanner(false);
-    return undefined;
-  }, [isAuthenticated, currentStation, isPlaying]);
-
-  useEffect(() => {
-    if (!isAuthenticated && currentStation && isPlaying) {
-      const timer = setTimeout(() => {
-        logger.log('⏰ SIGNUP MODAL: About to show modal - audio should continue playing');
-        setShowSignupModal(true);
-        logger.log('📱 SIGNUP MODAL: Modal state set to true');
-      }, 30000);
-      
-      return () => clearTimeout(timer);
-    }
-    setShowSignupModal(false);
-    return undefined;
-  }, [isAuthenticated, currentStation]);
-
 
   const togglePlayerView = () => {
     setCollapsed(!collapsed);
@@ -97,7 +78,7 @@ export default function GlobalPlayer() {
     return (
       <AskToSignupModal 
         isOpen={showSignupModal && !isAuthenticated}
-        onClose={() => setShowSignupModal(false)}
+        onClose={dismissSignupPrompt}
       />
     );
   }
@@ -148,7 +129,8 @@ export default function GlobalPlayer() {
             </div>
             <div className="flex items-center gap-3 flex-shrink-0">
               <button 
-                onClick={() => setShowSignupBanner(false)}
+                onClick={dismissSignupPrompt}
+                data-testid="player-signup-later-button"
                 className="text-white text-sm hover:opacity-80 transition-opacity"
                 style={{ fontFamily: 'Ubuntu, sans-serif' }}
               >
@@ -167,7 +149,7 @@ export default function GlobalPlayer() {
                   fontSize: '14px',
                   color: '#BD52FF'
                 }}
-                onClick={() => setShowSignupBanner(false)}
+                onClick={dismissSignupPrompt}
                 data-testid="player-signup-button"
               >
                 {t('signup', 'Signup')}
@@ -596,7 +578,7 @@ export default function GlobalPlayer() {
       {/* Ask To Signup Modal */}
       <AskToSignupModal 
         isOpen={showSignupModal && !isAuthenticated}
-        onClose={() => setShowSignupModal(false)}
+        onClose={dismissSignupPrompt}
       />
     </div>
   );

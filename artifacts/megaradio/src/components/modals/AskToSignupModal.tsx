@@ -14,7 +14,7 @@ export default function AskToSignupModal({ isOpen, onClose }: AskToSignupModalPr
   const { getLocalizedUrl } = useSeoRouting();
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
+    <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
       <DialogContent 
         className="p-0 border-0 bg-transparent shadow-none max-w-[327px] md:max-w-[400px] rounded-[20px] overflow-hidden"
         style={{

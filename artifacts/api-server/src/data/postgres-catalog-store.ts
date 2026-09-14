@@ -270,13 +270,28 @@ export class PostgresCatalogStore {
     const predicate = phase === 'empty' ? `${descriptions}='{}'::jsonb` :
       `${descriptions}<>'{}'::jsonb AND EXISTS(SELECT 1 FROM unnest($2::text[]) AS lang
         WHERE jsonb_typeof(${descriptions} #> ARRAY[lang,'full']) IS DISTINCT FROM 'string'
-          OR char_length(COALESCE(${descriptions} #>> ARRAY[lang,'full'],'')) <= 20)`;
+          OR char_length(regexp_replace(COALESCE(${descriptions} #>> ARRAY[lang,'full'],''), '^[[:space:]]+|[[:space:]]+$', '', 'g')) <= 20
+          OR jsonb_typeof(${descriptions} #> ARRAY[lang,'meta']) IS DISTINCT FROM 'string'
+          OR COALESCE(${descriptions} #>> ARRAY[lang,'meta'],'') !~ '[^[:space:]]')`;
     while (true) {
-      const result = await this.pool.query(`SELECT s.* FROM stations s WHERE s.id>$1 AND no_index=false
-        AND source->>'aiDescriptionSkipped' IS DISTINCT FROM 'true' AND ${predicate} ORDER BY s.id LIMIT 200`,
+      // Bound scanned rows before evaluating the JSON-language predicate.
+      // LIMIT after that predicate can scan the entire mostly-complete catalog
+      // looking for 200 rare partials and hit the statement timeout.
+      const result = await this.pool.query(`WITH page AS MATERIALIZED (
+        SELECT s.* FROM stations s WHERE s.id>$1 AND no_index=false
+          AND source->>'aiDescriptionSkipped' IS DISTINCT FROM 'true'
+          AND manual_edit_fields->>'descriptions' IS DISTINCT FROM 'true'
+        ORDER BY s.id LIMIT 200
+      ) SELECT s.id AS scan_id, CASE WHEN ${predicate} THEN to_jsonb(s) ELSE NULL END AS candidate
+        FROM page s ORDER BY s.id`,
         phase === 'empty' ? [lastId] : [lastId,languages]);
       if (!result.rows.length) return;
-      for (const row of result.rows) { lastId = row.id; yield catalogShape(row); }
+      for (const row of result.rows) {
+        // Advance across complete pages too; only matching station payloads
+        // cross the wire, rather than every station's 14 full descriptions.
+        lastId = row.scan_id;
+        if (row.candidate) yield catalogShape(row.candidate);
+      }
     }
   }
   async claimLogo(id: string, operationId: string, folder: string, expectedFavicon?: string | null): Promise<{ favicon: string | null } | null> {

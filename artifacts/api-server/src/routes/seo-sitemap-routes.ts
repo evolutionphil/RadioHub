@@ -1,4 +1,4 @@
-import type { Express, Request } from "express";
+import type { Express, Request, Response } from "express";
 import crypto from 'crypto';
 import { pgReportStationDebugLog, pgListStationDebugLogs } from '../data/postgres-station-debug-store';
 import { pgActiveManifests, pgSeoGenres, pgTouchSitemapStations, pgSitemapStationDiagnostics, pgSitemapStationBatch, SITEMAP_STATION_READ_BATCH_SIZE } from '../data/postgres-seo-indexing-store';
@@ -77,12 +77,16 @@ import { escapeXml } from '../utils/escape-xml';
  *   - AWS S3 buckets (anything under amazonaws.com)
  *   - themegaradio.com / *.themegaradio.com
  * Rejects placeholder default-station.* and non-http(s) schemes. */
-function isVerifiedImageHost(url: string): boolean {
-  if (!url || typeof url !== 'string') return false;
-  if (!/^https?:\/\//i.test(url)) return false;
-  if (/default-station\.(png|webp|jpg|jpeg|svg)$/i.test(url)) return false;
+function parseStationImageUrl(value: unknown): URL | null {
+  if (typeof value !== 'string' || !/^https?:\/\//i.test(value.trim())) return null;
   let parsed: URL;
-  try { parsed = new URL(url); } catch { return false; }
+  try { parsed = new URL(value.trim()); } catch { return null; }
+  if (parsed.username || parsed.password) return null;
+  if (/(?:^|\/)(?:default-station|no-image)\.(png|webp|jpg|jpeg|svg)$/i.test(parsed.pathname)) return null;
+  return parsed;
+}
+
+function isVerifiedImageHost(parsed: URL): boolean {
   const host = parsed.hostname.toLowerCase();
   return (
     host.endsWith('.amazonaws.com') ||
@@ -92,27 +96,22 @@ function isVerifiedImageHost(url: string): boolean {
   );
 }
 
-/** Pick best image URL for a station — only verified hosts allowed.
- * When `fallbackBaseUrl` is provided AND no verified S3/themegaradio image
- * exists, returns the static fallback `${fallbackBaseUrl}/images/no-image.webp`.
- * This guarantees every station <url> entry can carry an <image:image> child
- * so Google Image Search has *something* to attach (the page itself is still
- * indexed regardless — `image:image` is purely a discovery hint). Without
- * a fallback, stations that haven't run through the S3 backfill yet would
- * have no image entry at all. */
-function pickStationImage(station: any, fallbackBaseUrl?: string): string | null {
+/** Prefer owned logos; external favicons use the same owned image proxy as
+ * SSR. Missing or placeholder logos never become sitemap image entries. */
+function pickStationImage(station: any, baseUrl: string): string | null {
   const candidates = [
     station?.logoAssets?.webp256,
     station?.logoAssets?.webp96,
     station?.favicon,
   ];
   for (const candidate of candidates) {
-    if (typeof candidate === 'string' && isVerifiedImageHost(candidate.trim())) {
-      return candidate.trim();
-    }
+    const parsed = parseStationImageUrl(candidate);
+    if (parsed && isVerifiedImageHost(parsed)) return parsed.href;
   }
-  if (fallbackBaseUrl) {
-    return `${fallbackBaseUrl}/images/no-image.webp`;
+  const favicon = parseStationImageUrl(station?.favicon);
+  if (favicon) {
+    const encoded = Buffer.from(favicon.href, 'utf8').toString('base64url');
+    return `${baseUrl}/api/image/${encoded}?w=256`;
   }
   return null;
 }
@@ -139,11 +138,72 @@ function hasPublishableSitemapChildren(manifests: Iterable<any>): boolean {
   return false;
 }
 
+/** Empty manifests are valid for a type with no eligible pages. Missing
+ * manifests mean a build is incomplete, so do not publish a partial index. */
+function hasCompleteManifestCoverage(manifests: any[], languages: readonly string[]): boolean {
+  const slots = new Set(manifests.map(manifest => `${manifest.type}:${manifest.language}`));
+  return languages.every(language => ['main', 'genres', 'stations'].every(type => slots.has(`${type}:${language}`)));
+}
+
 function send503EmptySitemapIndex(res: any): void {
   res.setHeader('Content-Type', 'text/plain');
   res.setHeader('Retry-After', '120');
   res.setHeader('Cache-Control', 'no-store');
   res.status(503).send('Sitemap manifest building — retry shortly');
+}
+
+/** Validators describe the XML representation, including lastmod and image
+ * changes. A station's max updatedAt is not a safe HTTP date validator: URL
+ * removal or locale changes can alter XML without advancing that timestamp. */
+interface CachedSitemapXml { xml: string; etag: string; byteLength: number }
+
+function cacheSitemapXml(xml: string): CachedSitemapXml {
+  return { xml, etag: `"${crypto.createHash('sha256').update(xml).digest('hex')}"`, byteLength: Buffer.byteLength(xml) };
+}
+
+function matchesSitemapEtag(req: Request, etag: string): boolean {
+  const validators = req.headers['if-none-match'];
+  return typeof validators === 'string' && validators.split(',').some(value => {
+    const tag = value.trim();
+    return tag === '*' || tag === etag || tag === `W/${etag}`;
+  });
+}
+
+function setSitemapHeaders(res: Response, etag: string, cacheControl: string, lastModified?: Date | null): void {
+  res.setHeader('Content-Type', 'application/xml; charset=utf-8');
+  res.setHeader('ETag', etag);
+  res.setHeader('Cache-Control', cacheControl);
+  setLastModifiedHeader(res, lastModified);
+}
+
+/** A small metadata entry shares the XML TTL. Conditional hits need neither
+ * a full Redis XML read nor regeneration when a leaf exceeds the memory cap. */
+async function sendCachedSitemap304(req: Request, res: Response, cacheKey: string, cacheControl: string, lastModified?: Date | null): Promise<boolean> {
+  if (!req.headers['if-none-match']) return false;
+  const metadata = await CacheManager.get<{ etag: string }>(`${cacheKey}:validator`);
+  if (!metadata || !matchesSitemapEtag(req, metadata.etag)) return false;
+  setSitemapHeaders(res, metadata.etag, cacheControl, lastModified);
+  res.status(304).end();
+  return true;
+}
+
+async function storeSitemapXml(cacheKey: string, sitemap: CachedSitemapXml): Promise<void> {
+  const options = { ttl: SITEMAP_CONFIG.childCacheTtlSeconds };
+  await CacheManager.set(cacheKey, sitemap, options);
+  await CacheManager.set(`${cacheKey}:validator`, { etag: sitemap.etag }, options);
+}
+
+function sendSitemapXml(req: Request, res: Response, sitemap: CachedSitemapXml, cacheControl: string, lastModified?: Date | null): void {
+  const { xml, etag, byteLength } = sitemap;
+  setSitemapHeaders(res, etag, cacheControl, lastModified);
+  if (matchesSitemapEtag(req, etag)) {
+    res.status(304).end();
+    return;
+  }
+  // res.send() would run Express's date-only freshness check again and could
+  // turn a changed XML body into an incorrect 304. ETag is our sole validator.
+  res.setHeader('Content-Length', byteLength);
+  res.status(200).end(xml);
 }
 
 /** Format a Date as ISO 8601 (YYYY-MM-DD) for sitemap <lastmod>. Returns empty
@@ -157,48 +217,13 @@ function formatLastmod(date?: Date | null): string {
   return date.toISOString();
 }
 
-/**
- * Architect P1 fix (2026-04-30): emit RFC 7231 `Last-Modified` HTTP header so
- * Yandex/Bing/Google can short-circuit re-fetches via `If-Modified-Since`.
- * No-op when the underlying Date is missing or invalid (we never want a fake
- * "today" lastmod — that's a Google scaled-content spam signal). Caller MUST
- * still emit ETag for non-date-based 304 short-circuits (we keep both).
- */
+/** Expose the known content date without inventing a current timestamp.
+ * Conditional responses use the XML ETag, not this aggregate content date. */
 function setLastModifiedHeader(res: any, date?: Date | null): void {
   if (!(date instanceof Date) || isNaN(date.getTime())) return;
   try {
     res.setHeader('Last-Modified', date.toUTCString());
   } catch { /* best-effort */ }
-}
-
-/** 304 Not Modified shortcut for `If-Modified-Since` only. Returns true when
- * response was sent. Use AFTER setLastModifiedHeader has computed the date so
- * the header round-trip is idempotent.
- *
- * RFC 7232 §6 PRECEDENCE GUARD: when client also sent `If-None-Match`, defer
- * to the ETag comparator (`send304IfMatch`) — IMS must NOT short-circuit when
- * INM is present. This is critical because manifest `version` (and ETag)
- * intentionally excludes `maxUpdatedAt` to ignore Mongoose timestamp churn from
- * uptime probes; relying on IMS alone could serve a stale 304 after a station
- * is removed from a chunk (its `maxUpdatedAt` may not bump even though the
- * URL set changed). See replit.md "CRITICAL SITEMAP MANIFEST RULE". */
-function send304IfNotModifiedSince(req: any, res: any, date: Date | null | undefined, etag: string, cacheControl: string): boolean {
-  if (!(date instanceof Date) || isNaN(date.getTime())) return false;
-  // RFC 7232 §6: If-None-Match takes precedence over If-Modified-Since.
-  if (req.headers['if-none-match']) return false;
-  const ims = req.headers['if-modified-since'];
-  if (typeof ims !== 'string') return false;
-  const since = Date.parse(ims);
-  if (isNaN(since)) return false;
-  // Round to second precision (HTTP-Date is second-resolution).
-  if (Math.floor(date.getTime() / 1000) <= Math.floor(since / 1000)) {
-    res.setHeader('ETag', etag);
-    res.setHeader('Last-Modified', date.toUTCString());
-    res.setHeader('Cache-Control', cacheControl);
-    res.status(304).end();
-    return true;
-  }
-  return false;
 }
 
 // Top-countries for sitemap-main-{lang}.xml are computed during the
@@ -209,28 +234,6 @@ function send304IfNotModifiedSince(req: any, res: any, date: Date | null | undef
 //     when the country leaderboard shifts → ETag flips automatically),
 //   - <lastmod>/Last-Modified bump on station updates within those countries,
 //   - admins can force-refresh via POST /api/admin/sitemap/rebuild.
-
-/** Stable ETag = sha256(prefix|hash|version|lastmod). 16-char hex. */
-function makeManifestEtag(parts: (string | number | undefined | null)[]): string {
-  const joined = parts.map((p) => (p ?? '')).join('|');
-  return `"${crypto.createHash('sha256').update(joined).digest('hex').slice(0, 16)}"`;
-}
-
-/** 304 Not Modified shortcut. Returns true if response was sent. */
-function send304IfMatch(req: any, res: any, etag: string, cacheControl: string): boolean {
-  const clientEtag = req.headers['if-none-match'];
-  // ETAG FIX (2026-05-08): only accept exact / weak match. The previous
-  // `clientEtag.includes(etag)` allowed any header that contained the
-  // 16-char hex as a substring to short-circuit, which could trigger
-  // false 304s when a longer composite ETag happened to embed the slug.
-  if (clientEtag && (clientEtag === etag || clientEtag === `W/${etag}`)) {
-    res.setHeader('ETag', etag);
-    res.setHeader('Cache-Control', cacheControl);
-    res.status(304).end();
-    return true;
-  }
-  return false;
-}
 
 export async function registerSeoSitemapRoutes(app: Express, deps: any, options?: { apiOnly?: boolean }) {
   const { requireAdmin } = deps;
@@ -1274,11 +1277,6 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
         ? extractTopCountriesFromChunk(manifest.chunks[0].stationIds)
         : [];
 
-      const lastmod = formatLastmod(manifest.maxUpdatedAt);
-      const etag = makeManifestEtag(['main', lang, state.hash, manifest.version, lastmod]);
-      if (send304IfNotModifiedSince(req, res, manifest.maxUpdatedAt as any, etag, childCacheControl)) return;
-      if (send304IfMatch(req, res, etag, childCacheControl)) return;
-
       // FRESHNESS BUG FIX (2026-05-09): include manifest.maxUpdatedAt in
       // the cache key. Otherwise URL set stays identical → version is stable
       // → cache key is stable → stale XML body (with stale per-URL <lastmod>
@@ -1286,14 +1284,11 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
       // Including maxUpdatedAt means: when manifest-builder bumps the
       // chunk's maxUpdatedAt (every 6h tick), the cache key rotates and
       // the next request regenerates XML from fresh Mongo data.
-      const cacheKey = `sitemap:main:${lang}:${state.hash}:${manifest.version}:${manifest.maxUpdatedAt instanceof Date ? manifest.maxUpdatedAt.getTime() : 0}`;
-      const cached = await CacheManager.get<string>(cacheKey);
+      const cacheKey = `sitemap:main:xml-v2:${lang}:${state.hash}:${manifest.version}:${manifest.maxUpdatedAt instanceof Date ? manifest.maxUpdatedAt.getTime() : 0}`;
+      if (await sendCachedSitemap304(req, res, cacheKey, childCacheControl, manifest.maxUpdatedAt)) return;
+      const cached = await CacheManager.get<CachedSitemapXml>(cacheKey);
       if (cached) {
-        res.setHeader('Content-Type', 'application/xml');
-        res.setHeader('ETag', etag);
-        setLastModifiedHeader(res, manifest.maxUpdatedAt as any);
-        res.setHeader('Cache-Control', childCacheControl);
-        return void res.send(cached);
+        return sendSitemapXml(req, res, cached, childCacheControl, manifest.maxUpdatedAt);
       }
 
       const baseUrl = getBaseUrl(req);
@@ -1376,12 +1371,9 @@ ${buildHreflangLinks(altLang, baseUrl + altPath).slice(1)}`);
 </urlset>`);
       const xml = parts.join('');
 
-      await CacheManager.set(cacheKey, xml, { ttl: SITEMAP_CONFIG.childCacheTtlSeconds });
-      res.setHeader('Content-Type', 'application/xml');
-      res.setHeader('ETag', etag);
-      setLastModifiedHeader(res, manifest.maxUpdatedAt as any);
-      res.setHeader('Cache-Control', childCacheControl);
-      res.send(xml);
+      const sitemap = cacheSitemapXml(xml);
+      await storeSitemapXml(cacheKey, sitemap);
+      sendSitemapXml(req, res, sitemap, childCacheControl, manifest.maxUpdatedAt);
 
       logger.log(`✅ sitemap-main-${lang}.xml (${mainPages.length + topCountries.length} URLs) ${Date.now() - startTime}ms`);
     } catch (error) {
@@ -1442,24 +1434,16 @@ ${buildHreflangLinks(altLang, baseUrl + altPath).slice(1)}`);
         return void res.status(503).send('Manifest building — retry shortly');
       }
 
-      const lastmod = formatLastmod(chunkInfo.maxUpdatedAt);
-      const etag = makeManifestEtag(['stations', lang, chunk, state.hash, chunkInfo.version, lastmod]);
-      if (send304IfNotModifiedSince(req, res, chunkInfo.maxUpdatedAt as any, etag, childCacheControl)) return;
-      if (send304IfMatch(req, res, etag, childCacheControl)) return;
-
       // FRESHNESS BUG FIX (2026-05-09): see /sitemap-main route for the full
       // explanation. tl;dr — including chunkInfo.maxUpdatedAt invalidates the
       // cached XML body whenever manifest-builder bumps the chunk's freshness
       // timestamp, so per-URL <lastmod> values reflect current Station.updatedAt
       // values from Mongo instead of being frozen at first-cache time.
-      const cacheKey = `sitemap:stations:${lang}:${chunk}:${state.hash}:${chunkInfo.version}:${chunkInfo.maxUpdatedAt instanceof Date ? chunkInfo.maxUpdatedAt.getTime() : 0}`;
-      const cached = await CacheManager.get<string>(cacheKey);
+      const cacheKey = `sitemap:stations:xml-v2:${lang}:${chunk}:${state.hash}:${chunkInfo.version}:${chunkInfo.maxUpdatedAt instanceof Date ? chunkInfo.maxUpdatedAt.getTime() : 0}`;
+      if (await sendCachedSitemap304(req, res, cacheKey, childCacheControl, chunkInfo.maxUpdatedAt)) return;
+      const cached = await CacheManager.get<CachedSitemapXml>(cacheKey);
       if (cached) {
-        res.setHeader('Content-Type', 'application/xml');
-        res.setHeader('ETag', etag);
-        setLastModifiedHeader(res, chunkInfo.maxUpdatedAt as any);
-        res.setHeader('Cache-Control', childCacheControl);
-        return void res.send(cached);
+        return sendSitemapXml(req, res, cached, childCacheControl, chunkInfo.maxUpdatedAt);
       }
 
       const baseUrl = getBaseUrl(req);
@@ -1501,16 +1485,9 @@ ${buildHreflangLinks(altLang, baseUrl + altPath).slice(1)}`);
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>`);
 
-        // A4: image:image — verified hosts (S3 / themegaradio.com) only.
-        // SEO audit 2026-06, Finding C2: previously logo-less stations fell
-        // back to a shared `/images/no-image.webp`, so ~53.5% of station <url>
-        // entries pointed at ONE identical placeholder. Google can flag tens
-        // of thousands of duplicate image references as low-value; per its
-        // image-sitemap guidance, OMITTING the <image:image> is better than a
-        // mass-duplicated placeholder. The page still indexes — image:image is
-        // only a discovery hint. Drop the fallback so the entry is emitted
-        // exclusively for stations with a real, verified logo.
-        const stationImg = pickStationImage(station);
+        // Real owned logos or the same favicon proxy used by the visible SSR
+        // image. Never substitute a shared no-image placeholder.
+        const stationImg = pickStationImage(station, baseUrl);
         if (stationImg) {
           const logoWord = LOCALIZED_LOGO_WORD[lang] || 'logo';
           const radioStationWord = LOCALIZED_RADIO_STATION_WORD[lang] || 'radio station';
@@ -1537,16 +1514,17 @@ ${buildHreflangLinks(altLang, baseUrl + altPath).slice(1)}`);
   </url>`);
       }
       }
+      if (stationCount === 0) {
+        send503EmptySitemapIndex(res);
+        return;
+      }
       parts.push(`
 </urlset>`);
       const xml = parts.join('');
 
-      await CacheManager.set(cacheKey, xml, { ttl: SITEMAP_CONFIG.childCacheTtlSeconds });
-      res.setHeader('Content-Type', 'application/xml');
-      res.setHeader('ETag', etag);
-      setLastModifiedHeader(res, chunkInfo.maxUpdatedAt as any);
-      res.setHeader('Cache-Control', childCacheControl);
-      res.send(xml);
+      const sitemap = cacheSitemapXml(xml);
+      await storeSitemapXml(cacheKey, sitemap);
+      sendSitemapXml(req, res, sitemap, childCacheControl, chunkInfo.maxUpdatedAt);
 
       logger.log(`✅ sitemap-stations-${lang}-${chunk}.xml (${stationCount}/${chunkInfo.stationIds.length}) ${Date.now() - startTime}ms`);
     } catch (error) {
@@ -1589,20 +1567,12 @@ ${buildHreflangLinks(altLang, baseUrl + altPath).slice(1)}`);
         return void res.status(503).send('Manifest building — retry shortly');
       }
 
-      const lastmod = formatLastmod(manifest.maxUpdatedAt);
-      const etag = makeManifestEtag(['genres', lang, state.hash, manifest.version, lastmod]);
-      if (send304IfNotModifiedSince(req, res, manifest.maxUpdatedAt as any, etag, childCacheControl)) return;
-      if (send304IfMatch(req, res, etag, childCacheControl)) return;
-
       // FRESHNESS BUG FIX (2026-05-09): see /sitemap-main route comment.
-      const cacheKey = `sitemap:genres:${lang}:${state.hash}:${manifest.version}:${manifest.maxUpdatedAt instanceof Date ? manifest.maxUpdatedAt.getTime() : 0}`;
-      const cached = await CacheManager.get<string>(cacheKey);
+      const cacheKey = `sitemap:genres:xml-v2:${lang}:${state.hash}:${manifest.version}:${manifest.maxUpdatedAt instanceof Date ? manifest.maxUpdatedAt.getTime() : 0}`;
+      if (await sendCachedSitemap304(req, res, cacheKey, childCacheControl, manifest.maxUpdatedAt)) return;
+      const cached = await CacheManager.get<CachedSitemapXml>(cacheKey);
       if (cached) {
-        res.setHeader('Content-Type', 'application/xml');
-        res.setHeader('ETag', etag);
-        setLastModifiedHeader(res, manifest.maxUpdatedAt as any);
-        res.setHeader('Cache-Control', childCacheControl);
-        return void res.send(cached);
+        return sendSitemapXml(req, res, cached, childCacheControl, manifest.maxUpdatedAt);
       }
 
       const baseUrl = getBaseUrl(req);
@@ -1657,16 +1627,17 @@ ${buildHreflangLinks(altLang, baseUrl + altPath).slice(1)}`);
     <xhtml:link rel="alternate" hreflang="x-default" href="${escapeXml(baseUrl + enPath)}"/>
   </url>`);
       }
+      if (genreCount === 0) {
+        send503EmptySitemapIndex(res);
+        return;
+      }
       parts.push(`
 </urlset>`);
       const xml = parts.join('');
 
-      await CacheManager.set(cacheKey, xml, { ttl: SITEMAP_CONFIG.childCacheTtlSeconds });
-      res.setHeader('Content-Type', 'application/xml');
-      res.setHeader('ETag', etag);
-      setLastModifiedHeader(res, manifest.maxUpdatedAt as any);
-      res.setHeader('Cache-Control', childCacheControl);
-      res.send(xml);
+      const sitemap = cacheSitemapXml(xml);
+      await storeSitemapXml(cacheKey, sitemap);
+      sendSitemapXml(req, res, sitemap, childCacheControl, manifest.maxUpdatedAt);
 
       logger.log(`✅ sitemap-genres-${lang}.xml (${genreCount}) ${Date.now() - startTime}ms`);
     } catch (error) {
@@ -1751,62 +1722,14 @@ ${buildHreflangLinks(altLang, baseUrl + altPath).slice(1)}`);
         return void res.status(503).send('Sitemap manifest building — retry shortly');
       }
 
-      // ARCHITECT P0 FIX (2026-04-30): atomic swap consistency. The qualified
-      // -languages set can change between manifest builds (e.g. a new lang
-      // gains 100% translation coverage, hash changes from H1 → H2). During
-      // the rolling swap, mixed-hash rows can co-exist. To guarantee the
-      // sitemap-index never advertises a stale entry whose child sitemap
-      // also drifted on the very same request, pick ONLY rows whose
-      // qualifiedLanguagesHash matches the most-recent hash we observe in
-      // the manifest set. Prefer the current state.hash if any row carries
-      // it, else fall back to the most-common hash (so we don't go empty
-      // if state.hash hasn't propagated to any builder yet).
-      // Webmaster review (2026-04-30) HIGH-fix: deterministic tie-break.
-      // Old code relied on Map insertion order (= Mongo result order) which
-      // can differ across replicas → Cloudflare may cache mixed-hash indexes.
-      // New ordering when state.hash is unavailable in any active row:
-      //   1. count desc       (prefer the bigger cohort)
-      //   2. latestGen desc   (newer wins ties — closer to "current" state)
-      //   3. hash asc         (lexical fallback — fully deterministic)
-      const hashStats = new Map<string, { count: number; latestGen: number }>();
-      for (const m of allActiveManifests as any[]) {
-        const h = m.qualifiedLanguagesHash || 'unknown';
-        const gen = m.generatedAt instanceof Date ? m.generatedAt.getTime() : 0;
-        const cur = hashStats.get(h);
-        if (cur) {
-          cur.count += 1;
-          if (gen > cur.latestGen) cur.latestGen = gen;
-        } else {
-          hashStats.set(h, { count: 1, latestGen: gen });
-        }
-      }
-      let pickedHash: string;
-      if (hashStats.has(state.hash)) {
-        pickedHash = state.hash;
-      } else {
-        // Deterministic 3-key sort.
-        const sorted = Array.from(hashStats.entries()).sort((a, b) => {
-          if (b[1].count !== a[1].count) return b[1].count - a[1].count;
-          if (b[1].latestGen !== a[1].latestGen) return b[1].latestGen - a[1].latestGen;
-          return a[0].localeCompare(b[0]);
-        });
-        pickedHash = sorted[0][0];
-        logger.warn(`⚠️ sitemap-index: state.hash=${state.hash.slice(0,8)} not in any active manifest; deterministic-fallback hash=${pickedHash.slice(0,8)} (count=${sorted[0][1].count}, rolling-swap drift)`);
-      }
-      const manifests = allActiveManifests.filter(
-        (m: any) => (m.qualifiedLanguagesHash || 'unknown') === pickedHash,
-      );
-      if (!hasPublishableSitemapChildren(manifests)) {
+      // Each child reads its own active manifest, regardless of cohort hash.
+      // Keep all those serving snapshots during the per-language rolling swap.
+      // Filtering to the first new hash used to hide every unfinished locale.
+      const manifests = allActiveManifests;
+      if (!hasCompleteManifestCoverage(manifests, qualifiedLanguages) || !hasPublishableSitemapChildren(manifests)) {
         send503EmptySitemapIndex(res);
         return;
       }
-
-      // Compute ETag from qualified-langs hash + sorted manifest versions.
-      const manifestSig = manifests
-        .map((m: any) => `${m.type}:${m.language}:${m.version}`)
-        .sort()
-        .join('|');
-      const etag = makeManifestEtag(['index', state.hash, crypto.createHash('sha256').update(manifestSig).digest('hex').slice(0, 16)]);
 
       // Compute per-(type,lang) max lastmod for the index entries.
       const manifestByKey = new Map<string, any>();
@@ -1819,26 +1742,6 @@ ${buildHreflangLinks(altLang, baseUrl + altPath).slice(1)}`);
           : undefined;
         manifestByKey.set(`${m.type}:${m.language}`, { ...m, maxUpdatedAt });
       }
-
-      // Pre-compute index-level Last-Modified so we can offer BOTH
-      // If-None-Match (ETag) AND If-Modified-Since 304 short-circuits.
-      // Bingbot/Yandex sometimes send only IMS — without this they re-download
-      // the full index every poll. (Architect #4 audit, MEDIUM fix.)
-      let indexMaxLastmodPrecomputed: Date | null = null;
-      for (const m of manifestByKey.values() as any) {
-        if (m?.maxUpdatedAt instanceof Date && (!indexMaxLastmodPrecomputed || m.maxUpdatedAt > indexMaxLastmodPrecomputed)) {
-          indexMaxLastmodPrecomputed = m.maxUpdatedAt;
-        }
-        if (Array.isArray(m?.chunks)) {
-          for (const chunk of m.chunks) {
-            if (chunk?.maxUpdatedAt instanceof Date && (!indexMaxLastmodPrecomputed || chunk.maxUpdatedAt > indexMaxLastmodPrecomputed)) {
-              indexMaxLastmodPrecomputed = chunk.maxUpdatedAt;
-            }
-          }
-        }
-      }
-      if (send304IfMatch(req, res, etag, indexCacheControl)) return;
-      if (send304IfNotModifiedSince(req, res, indexMaxLastmodPrecomputed, etag, indexCacheControl)) return;
 
       const parts: string[] = [];
       parts.push(`<?xml version="1.0" encoding="UTF-8"?>
@@ -1914,11 +1817,7 @@ ${buildHreflangLinks(altLang, baseUrl + altPath).slice(1)}`);
 </sitemapindex>`);
       const xml = parts.join('');
 
-      res.setHeader('Content-Type', 'application/xml');
-      res.setHeader('ETag', etag);
-      setLastModifiedHeader(res, indexMaxLastmod);
-      res.setHeader('Cache-Control', indexCacheControl);
-      res.send(xml);
+      sendSitemapXml(req, res, cacheSitemapXml(xml), indexCacheControl, indexMaxLastmod);
 
       logger.log(`✅ sitemap-index.xml: ${qualifiedLanguages.length} langs, ${totalChildSitemaps} station chunks, ${manifests.length} total entries`);
     } catch (error) {
@@ -1971,7 +1870,7 @@ ${buildHreflangLinks(altLang, baseUrl + altPath).slice(1)}`);
         res.setHeader('Cache-Control', 'no-store');
         return void res.status(503).send('Sitemap manifest building — retry shortly');
       }
-      if (!hasPublishableSitemapChildren(langManifests)) {
+      if (!hasCompleteManifestCoverage(langManifests, [lang]) || !hasPublishableSitemapChildren(langManifests)) {
         send503EmptySitemapIndex(res);
         return;
       }
@@ -1987,18 +1886,6 @@ ${buildHreflangLinks(altLang, baseUrl + altPath).slice(1)}`);
           : undefined;
         byType.set(m.type, { ...m, maxUpdatedAt });
       }
-
-      const manifestSig = langManifests
-        .map((m: any) => `${m.type}:${m.language}:${m.version}`)
-        .sort()
-        .join('|');
-      const etag = makeManifestEtag([
-        'lang-index',
-        lang,
-        state.hash,
-        crypto.createHash('sha256').update(manifestSig).digest('hex').slice(0, 16),
-      ]);
-      if (send304IfMatch(req, res, etag, cacheControl)) return;
 
       const parts: string[] = [];
       parts.push(`<?xml version="1.0" encoding="UTF-8"?>
@@ -2045,10 +1932,7 @@ ${buildHreflangLinks(altLang, baseUrl + altPath).slice(1)}`);
 </sitemapindex>`);
       const xml = parts.join('');
 
-      res.setHeader('Content-Type', 'application/xml');
-      res.setHeader('ETag', etag);
-      res.setHeader('Cache-Control', cacheControl);
-      res.send(xml);
+      sendSitemapXml(req, res, cacheSitemapXml(xml), cacheControl);
 
       logger.log(`✅ sitemap-${lang}.xml: main=${!!(mainM?.chunkCount > 0)} genres=${!!(genresM?.chunkCount > 0)} stationChunks=${stationsM?.chunks?.length ?? 0}`);
     } catch (error) {
