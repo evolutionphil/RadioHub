@@ -166,3 +166,6 @@ overrides:
   # typecheck across megaradio's auth/profile/station forms. Forcing a
   # single resolution restores type compatibility.
   zod: "^3.25.76"
+
+patchedDependencies:
+  '@radix-ui/react-select@2.2.6': patches/@radix-ui__react-select@2.2.6.patch

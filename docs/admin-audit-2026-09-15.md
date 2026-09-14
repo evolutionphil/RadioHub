@@ -18,17 +18,21 @@ Production records were not deleted, mass-regenerated, or charged for this audit
 - Genre edits preserve existing posters; saves wait for uploads; closed-dialog late uploads cannot replace another form. Catalog/logo failures expose retry instead of false empty data.
 - Station-slug generation tracks every progress update and existing jobs after navigation. Stopped/failed jobs have accurate state, and the action is correctly labelled as generating missing slugs.
 - Database maintenance controls cannot overlap or run before status is known. Translation-language deletions describe their effect and require confirmation.
+- Post-deploy keyboard testing exposed a Radix Select 2.2.6 delayed-focus race when typeahead was immediately followed by closing the menu. Backported the upstream null-ref guard using pnpm's reproducible patch mechanism (ESM and CJS); no selection behavior or design changes. All four Docker builds copy the patch before dependency installation. Upstream reference: [Radix Select source](https://github.com/radix-ui/primitives/blob/main/packages/react/select/src/select.tsx).
 
 ## Validation
 
-- Final frontend regression suite: 99 files / 1,400 tests passed, including desktop-resize focus release and single-target dashboard links.
+- Final frontend regression suite: 100 files / 1,402 tests passed, including desktop-resize focus release, single-target dashboard links and two actual Select behavior tests (queued focus after unmount and normal typeahead/Enter selection). The unmount test reproduced the production error before patching and passed afterward.
 - Backend feedback and localization tests: 15 passed, zero skipped, including real isolated PostgreSQL pagination/filter contracts. Additional locale/text-ID validation regression passed afterward.
 - Frontend and API TypeScript checks passed.
 - Production frontend build passed (203 outputs; verification build did not write artifacts).
 - `git diff --check` passed.
+- Frozen offline dependency installation passed with development dependencies retained and no version upgrades; ESM and CJS both contain the null-safe guard. Patch line endings are fixed to LF so Windows/Linux checkouts retain the same lockfile hash.
 
 ## Limits and rollout
 
 Deploy frontend and API together: the compact translation summary is a new additive API contract. An older API is detected as unavailable rather than silently displaying incorrect completion counts.
 
 Existing failed sync/backfill/error records remain visible for diagnosis; this audit does not erase history or claim all past operations succeeded. Live payment, destructive cleanup, mass merging and paid translation jobs were deliberately not triggered merely to test their buttons.
+
+First production rollout (`05691b296`) succeeded for API and web. All 40 post-release read checks passed, including the new key/language/summary filters. Summary payload: 50,104 characters / 879 rows / 173 ms; German values: 145,291 characters / 879 rows / 161 ms; one key: 58 rows, all matching the requested key. Desktop search and refresh worked; existing modal translations populated; mobile search/navigation closed correctly with a 390 px viewport and no page overflow. A separate follow-up release includes the observed delayed-focus fix.

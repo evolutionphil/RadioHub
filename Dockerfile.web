@@ -13,6 +13,7 @@ WORKDIR /app
 
 # ── Step 1: copy only manifests so pnpm install is layer-cached ──────────────
 COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
+COPY patches ./patches
 COPY tsconfig.base.json tsconfig.json ./
 COPY artifacts/api-server/package.json          ./artifacts/api-server/
 COPY artifacts/megaradio/package.json           ./artifacts/megaradio/

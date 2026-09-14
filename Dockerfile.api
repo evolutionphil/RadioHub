@@ -15,6 +15,7 @@ WORKDIR /app
 # As long as no dependency changes, this layer is reused across deploys and
 # pnpm install is skipped entirely — saves 5-10 minutes per deploy.
 COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
+COPY patches ./patches
 COPY tsconfig.base.json tsconfig.json ./
 COPY artifacts/api-server/package.json          ./artifacts/api-server/
 COPY artifacts/megaradio/package.json           ./artifacts/megaradio/
