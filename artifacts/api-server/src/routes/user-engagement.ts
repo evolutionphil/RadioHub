@@ -278,16 +278,14 @@ router.post('/unfollow/:userId', async (req, res) => {
 router.get('/profiles/popular', async (req, res) => {
     try {
         const { limit = '20' } = req.query;
-        const cacheKey = `user-engagement-popular-profiles:${limit}`;
-        const cached = await CacheManager.get(cacheKey);
-        if (cached)
-            return void res.json(cached);
+        res.set('Cache-Control', 'no-store');
+        res.set('CDN-Cache-Control', 'no-store');
+        res.set('Cloudflare-CDN-Cache-Control', 'no-store');
         const profiles = await userEngagementService.getPopularProfiles(parseInt(limit as string));
         const result = {
             profiles,
             meta: { count: profiles.length, generatedAt: new Date().toISOString() }
         };
-        await CacheManager.set(cacheKey, result, { ttl: 300 });
         res.json(result);
     }
     catch (error) {

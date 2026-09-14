@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery } from "@tanstack/react-query";
 import { useState, useEffect } from "react";
 import { Link } from "wouter";
 import { Search, ArrowRight, Filter, ChevronDown } from "lucide-react";
@@ -6,7 +6,9 @@ import { useSeoRouting } from "@/hooks/useSeoRouting";
 import { useTranslation } from "@/hooks/useTranslation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { getAvatarUrl } from "@/lib/utils";
+import { communityDisplayName, communityFavoriteCount, communityLabels, type CommunityProfile } from '@/lib/community-profile';
+import { PublicProfileAvatar } from '@/components/ui/public-profile-avatar';
+import { apiFetch } from '@/lib/queryClient';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -14,22 +16,17 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
-interface User {
-  _id: string;
-  fullName?: string;
-  username: string;
-  avatar?: string;
-  followersCount?: number;
-  favoriteStationsCount?: number;
-  slug?: string;
+interface UsersResponse {
+  users: CommunityProfile[];
+  pagination: { page: number; pages: number };
 }
 
 export default function UsersIndex() {
   const { getLocalizedUrl } = useSeoRouting();
-  const { t } = useTranslation();
+  const { t, language, localeTranslations } = useTranslation();
+  const labels = communityLabels(language, localeTranslations);
   const [searchQuery, setSearchQuery] = useState("");
-  const [page, setPage] = useState(1);
-  const [sortBy, setSortBy] = useState("newest"); // newest, oldest, most_radios, least_radios
+  const [sortBy, setSortBy] = useState("recent_favorites");
   const limit = 20;
 
   // Auto-scroll to top when entering the page
@@ -44,33 +41,29 @@ export default function UsersIndex() {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  // Fetch users from PUBLIC discovery endpoint (no auth required, isPublicProfile filter, newest first by default)
-  const { data: usersData, isLoading } = useQuery({
-    queryKey: ["/api/users/search", { q: debouncedSearch, page, limit, sortBy }],
-    queryFn: async () => {
+  // A new search/order has its own pages; Load More appends instead of replacing cards.
+  const { data: usersData, isLoading, isFetchingNextPage, hasNextPage, fetchNextPage } = useInfiniteQuery({
+    queryKey: ["/api/users/search", { q: debouncedSearch, limit, sortBy }],
+    initialPageParam: 1,
+    queryFn: async ({ pageParam, signal }): Promise<UsersResponse> => {
       const params = new URLSearchParams({
-        page: page.toString(),
+        page: pageParam.toString(),
         limit: limit.toString(),
         sortBy: sortBy,
         ...(debouncedSearch && { q: debouncedSearch })
       });
-      const response = await fetch(`/api/users/search?${params}`);
+      const response = await apiFetch(`/api/users/search?${params}`, { signal });
       if (!response.ok) throw new Error(`Failed to load users (${response.status})`);
       return response.json();
     },
+    getNextPageParam: lastPage => lastPage.pagination.page < lastPage.pagination.pages ? lastPage.pagination.page + 1 : undefined,
     staleTime: 30_000,
+    refetchOnWindowFocus: true,
   });
 
-  const users = usersData?.users || [];
-  const hasMore = usersData?.pagination?.page < usersData?.pagination?.pages;
-
-  const handleLoadMore = () => {
-    setPage(prev => prev + 1);
-  };
-
-  const displayName = (user: User) => {
-    return user.fullName || user.username || "User";
-  };
+  // Recent activity can reorder two requests; render each profile only once.
+  const users = [...new Map((usersData?.pages.flatMap(page => page.users) || []).map(user => [user._id, user])).values()];
+  const displayName = (user: CommunityProfile) => communityDisplayName(user, t('user_anonymous', 'Anonymous'));
 
   return (
     <div className="min-h-screen bg-[#0E0E0E] text-white pb-16">
@@ -92,7 +85,6 @@ export default function UsersIndex() {
                   value={searchQuery}
                   onChange={(e) => {
                     setSearchQuery(e.target.value);
-                    setPage(1); // Reset to first page on search
                   }}
                   className="pl-10 w-full bg-[#454545] border-0 text-white text-lg font-medium placeholder-[#FFFFFF70] focus:ring-0 focus:outline-none py-3 px-6 rounded"
                 />
@@ -109,12 +101,12 @@ export default function UsersIndex() {
                       <div className="flex items-center space-x-2">
                         <Filter className="w-4 h-4" />
                         <span className="hidden sm:inline">
-                          {sortBy === "newest" ? t('users_newest', 'Newest') : 
+                          {sortBy === "recent_favorites" ? labels.recentFavorites : sortBy === "newest" ? t('users_newest', 'Newest') :
                            sortBy === "oldest" ? t('users_oldest', 'Oldest') : 
                            sortBy === "most_radios" ? t('users_most_radios', 'Most Radios') : t('users_least_radios', 'Least Radios')}
                         </span>
                         <span className="sm:hidden">
-                          {sortBy === "newest" ? t('users_new', 'New') : 
+                          {sortBy === "recent_favorites" ? labels.recentFavorites : sortBy === "newest" ? t('users_new', 'New') :
                            sortBy === "oldest" ? t('users_old', 'Old') : 
                            sortBy === "most_radios" ? t('users_most', 'Most') : t('users_least', 'Least')}
                         </span>
@@ -123,26 +115,32 @@ export default function UsersIndex() {
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent className="bg-[#2F2F2F] border-gray-600">
+                    <DropdownMenuItem
+                      onClick={() => setSortBy("recent_favorites")}
+                      className="text-white hover:bg-[#404040] cursor-pointer"
+                    >
+                      {labels.recentFavorites}
+                    </DropdownMenuItem>
                     <DropdownMenuItem 
-                      onClick={() => { setSortBy("newest"); setPage(1); }}
+                      onClick={() => setSortBy("newest")}
                       className="text-white hover:bg-[#404040] cursor-pointer"
                     >
                       {t('users_newest_first', 'Newest First')}
                     </DropdownMenuItem>
                     <DropdownMenuItem 
-                      onClick={() => { setSortBy("oldest"); setPage(1); }}
+                      onClick={() => setSortBy("oldest")}
                       className="text-white hover:bg-[#404040] cursor-pointer"
                     >
                       {t('users_oldest_first', 'Oldest First')}
                     </DropdownMenuItem>
                     <DropdownMenuItem 
-                      onClick={() => { setSortBy("most_radios"); setPage(1); }}
+                      onClick={() => setSortBy("most_radios")}
                       className="text-white hover:bg-[#404040] cursor-pointer"
                     >
                       {t('users_most_radios', 'Most Radios')}
                     </DropdownMenuItem>
                     <DropdownMenuItem 
-                      onClick={() => { setSortBy("least_radios"); setPage(1); }}
+                      onClick={() => setSortBy("least_radios")}
                       className="text-white hover:bg-[#404040] cursor-pointer"
                     >
                       {t('users_least_radios', 'Least Radios')}
@@ -157,41 +155,28 @@ export default function UsersIndex() {
         {/* Users Grid - RESPONSIVE DESIGN (1 col mobile, 2 tablet, 3 desktop) */}
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 md:gap-6">
           {users
-            .filter((user: User) => (user as any).isPublicProfile !== false) // Only show public profiles
-            .map((user: User) => (
+            .filter(user => user.isPublicProfile !== false)
+            .map(user => (
             <div key={user._id} className="flex items-center rounded-md bg-[#2F2F2F] px-4 py-6 md:py-6">
               {/* Avatar */}
-              <div className="h-16 w-16 rounded-full md:h-20 md:w-20">
-                <img 
-                  className="h-16 w-16 rounded-full md:h-20 md:w-20 object-cover" 
-                  src={getAvatarUrl(user)}
-                  alt={displayName(user)} 
-                  onError={(e) => {
-                    const img = e.target as HTMLImageElement;
-                    img.style.display = 'none';
-                    const parent = img.parentElement;
-                    if (parent) {
-                      parent.innerHTML = `<div class="h-16 w-16 rounded-full md:h-20 md:w-20 bg-[#FF4199] flex items-center justify-center text-white font-bold text-xl">${displayName(user).charAt(0).toUpperCase()}</div>`;
-                    }
-                  }}
-                />
-              </div>
+              <PublicProfileAvatar profile={user} name={displayName(user)} size={80}
+                className="h-16 w-16 rounded-full md:h-20 md:w-20 flex-shrink-0" />
               
               {/* User Info */}
-              <div className="pl-4 md:pl-6 flex-1">
-                <Link href={getLocalizedUrl(`/users/${user._id}`)}>
-                  <h3 className="text-xl font-medium text-white hover:text-accent transition-colors">
+              <div className="pl-4 md:pl-6 flex-1 min-w-0">
+                <Link href={getLocalizedUrl(`/users/${user.slug || user._id}`)}>
+                  <h3 className="text-xl font-medium text-white hover:text-accent transition-colors truncate">
                     {displayName(user)}
                   </h3>
                 </Link>
                 <p className="text-sm font-medium text-gray-400">
-                  {user.favoriteStationsCount || 0} {t('users_radios', 'radios')}
+                  {communityFavoriteCount(user).toLocaleString(language)} {labels.radios}
                 </p>
               </div>
               
               {/* Discover Button */}
               <div className="ml-auto">
-                <Link href={getLocalizedUrl(`/users/${user._id}`)}>
+                <Link href={getLocalizedUrl(`/users/${user.slug || user._id}`)}>
                   <Button 
                     variant="ghost" 
                     size="sm"
@@ -207,7 +192,7 @@ export default function UsersIndex() {
         </div>
 
         {/* Loading State - RESPONSIVE DESIGN */}
-        {isLoading && page === 1 && (
+        {isLoading && (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 md:gap-6">
             {[...Array(6)].map((_, i) => (
               <div key={i} className="animate-pulse">
@@ -224,10 +209,11 @@ export default function UsersIndex() {
         )}
 
         {/* Load More Button */}
-        {hasMore && !isLoading && (
+        {hasNextPage && !isLoading && (
           <div className="text-center mt-8">
             <Button
-              onClick={handleLoadMore}
+              onClick={() => void fetchNextPage()}
+              disabled={isFetchingNextPage}
               variant="outline"
               className="border-gray-600 text-white hover:bg-white/5"
             >

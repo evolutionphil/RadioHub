@@ -8,7 +8,7 @@ interface UserAvatarProps {
 }
 
 export default function UserAvatar({ avatar, name, className = '', size = 'md' }: UserAvatarProps) {
-  const [imageError, setImageError] = useState(false);
+  const [failedAvatar, setFailedAvatar] = useState<string>();
   
   const sizeClasses = {
     sm: 'h-8 w-8',
@@ -17,11 +17,11 @@ export default function UserAvatar({ avatar, name, className = '', size = 'md' }
   };
 
   const handleImageError = () => {
-    setImageError(true);
+    setFailedAvatar(avatar);
   };
 
   // Use avatar if available and no error, otherwise fallback
-  const shouldShowAvatar = avatar && !imageError;
+  const shouldShowAvatar = avatar && avatar !== failedAvatar;
 
   return (
     <div className={`${sizeClasses[size]} rounded-full ${className}`}>

@@ -9,6 +9,9 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { apiRequest } from "@/lib/queryClient";
+import { communityDisplayName, communityAvatarUrl, communityLabels, type CommunityProfile } from '@/lib/community-profile';
+import { useTranslation } from '@/hooks/useTranslation';
+import { useSeoRouting } from '@/hooks/useSeoRouting';
 import {
   Search,
   UserPlus,
@@ -21,7 +24,7 @@ import {
   Sparkles,
 } from "lucide-react";
 
-interface User {
+interface User extends CommunityProfile {
   _id: string;
   fullName?: string;
   username: string;
@@ -45,6 +48,9 @@ interface SearchUsersResponse {
 }
 
 export default function UserSearchAndFollow() {
+  const { language, localeTranslations } = useTranslation();
+  const { getLocalizedUrl } = useSeoRouting();
+  const labels = communityLabels(language, localeTranslations);
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const { user: currentUser, isAuthenticated } = useAuth();
@@ -60,9 +66,9 @@ export default function UserSearchAndFollow() {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  // Default community list (newest public users) — shown when search is empty
+  // Surface real favorite additions rather than keeping recently joined accounts pinned.
   const { data: communityResults, isLoading: isLoadingCommunity } = useQuery<SearchUsersResponse>({
-    queryKey: ["/api/users/search", { q: "", page: 1, limit: 24 }],
+    queryKey: ["/api/users/search", { q: "", page: 1, limit: 24, sortBy: "recent_favorites" }],
     enabled: debouncedQuery.length < 2,
     staleTime: 60_000,
   });
@@ -139,7 +145,7 @@ export default function UserSearchAndFollow() {
         title: "Sign in required",
         description: "Please sign in to follow other users.",
       });
-      navigate("/auth/login");
+      navigate(getLocalizedUrl("/auth/login"));
       return;
     }
     followMutation.mutate(userId);
@@ -153,7 +159,8 @@ export default function UserSearchAndFollow() {
   const renderUserCard = (user: User) => {
     const isFollowing = getFollowingStatus(user._id);
     const isCurrentUser = isAuthenticated && user._id === currentUser?._id;
-    const profileHref = `/users/${user.slug || user._id}`;
+    const profileHref = getLocalizedUrl(`/users/${user.slug || user._id}`);
+    const displayName = communityDisplayName(user);
 
     return (
       <div
@@ -162,16 +169,16 @@ export default function UserSearchAndFollow() {
       >
         <Link href={profileHref} className="flex items-center space-x-4 flex-1 min-w-0">
           <Avatar className="w-12 h-12 flex-shrink-0">
-            <AvatarImage src={user.avatar} alt={user.fullName || user.username} />
+            <AvatarImage src={communityAvatarUrl(user)} alt={displayName} />
             <AvatarFallback className="bg-blue-600 text-white">
-              {(user.fullName || user.username || "U").charAt(0).toUpperCase()}
+              {displayName.charAt(0).toUpperCase()}
             </AvatarFallback>
           </Avatar>
 
           <div className="flex-1 min-w-0">
             <div className="flex items-center space-x-2">
               <h3 className="font-medium text-white truncate">
-                {user.fullName || user.username || "User"}
+                {displayName}
               </h3>
               {isCurrentUser && (
                 <Badge variant="outline" className="text-xs text-blue-400 border-blue-400">
@@ -267,7 +274,7 @@ export default function UserSearchAndFollow() {
         </CardContent>
       </Card>
 
-      {/* Results: search-mode shows matches, otherwise shows newest community members */}
+      {/* Search matches or the most recent public favorite activity. */}
       <Card className="bg-[#151515] border-gray-800">
         <CardHeader>
           <CardTitle className="text-white flex items-center">
@@ -283,12 +290,12 @@ export default function UserSearchAndFollow() {
             ) : (
               <>
                 <Sparkles className="w-5 h-5 mr-2 text-pink-400" />
-                Community Favorites — Newest Members
+                {labels.recentFavorites}
               </>
             )}
           </CardTitle>
           {!isSearchMode && (
-            <p className="text-gray-400 text-sm">Latest public profiles, newest first</p>
+            <p className="text-gray-400 text-sm">{labels.recentFavorites}</p>
           )}
         </CardHeader>
 

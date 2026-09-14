@@ -361,6 +361,7 @@ export async function pgListUsers(options: {
   }
   const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
   const order = options.sortBy === "oldest" ? "u.created_at ASC"
+    : options.sortBy === "recent_favorites" ? "last_favorited_at DESC NULLS LAST,u.created_at DESC"
     : options.sortBy === "most_radios" ? "favorite_count DESC,u.created_at DESC"
       : options.sortBy === "least_radios" ? "favorite_count ASC,u.created_at DESC"
         : "u.created_at DESC";
@@ -368,11 +369,15 @@ export async function pgListUsers(options: {
   const rowValues = [...values, limit, (page - 1) * limit];
   const result = await getPostgresPool().query(
     `SELECT u.*,
-       (SELECT count(*)::int FROM user_favorites f WHERE f.user_id=u.id) favorite_count,
+       favorites.favorite_count,favorites.last_favorited_at,
        (SELECT count(*)::int FROM user_follows f WHERE f.following_id=u.id) followers_count,
        (SELECT count(*)::int FROM user_follows f WHERE f.follower_id=u.id) following_count,
-       (SELECT count(*)::int FROM stations s WHERE s.source->>'createdBy'=u.id) stations_created_count
-     FROM users u ${where} ORDER BY ${order},u.id ASC
+       ${options.publicOnly ? '0::int' : "(SELECT count(*)::int FROM stations s WHERE s.source->>'createdBy'=u.id)"} stations_created_count
+     FROM users u LEFT JOIN LATERAL (
+       SELECT count(*)::int favorite_count,max(f.created_at) last_favorited_at
+       FROM user_favorites f ${options.publicOnly ? 'JOIN stations s ON s.id=f.station_id' : ''}
+       WHERE f.user_id=u.id ${options.publicOnly ? 'AND (s.is_list_visible IS TRUE OR COALESCE(s.visibility_expires_at<=now(),false))' : ''}
+     ) favorites ON true ${where} ORDER BY ${order},u.id ASC
      LIMIT $${rowValues.length - 1} OFFSET $${rowValues.length}`,
     rowValues,
   );
@@ -381,6 +386,7 @@ export async function pgListUsers(options: {
     users: result.rows.map((row) => ({
       ...shape(row), location: row.source?.location,
       favoriteStationsCount: row.favorite_count, followersCount: row.followers_count,
+      lastFavoritedAt: row.last_favorited_at,
       followingCount: row.following_count, stationsCreatedCount: row.stations_created_count,
     })),
   };

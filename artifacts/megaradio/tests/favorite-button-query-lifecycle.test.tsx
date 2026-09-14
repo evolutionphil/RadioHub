@@ -81,7 +81,7 @@ it('retains add/remove requests, all favorites invalidation and cache-only rich 
   client.setQueryData(['/api/stations', 'station-0'], { _id: 'station-0', name: 'Old name' });
   effects.request.mockImplementation(async (method: string) => {
     serverFavorites = method === 'POST' ? [{ _id: 'station-0' }] : [];
-    return { alreadyFavorited: false };
+    return new Response(JSON.stringify({ alreadyFavorited: false }), { status: 200 });
   });
   const view = render(wrap(1));
   // Data arriving after mount is read at mutation completion, without subscribing.
@@ -121,7 +121,7 @@ it('keeps pending click disabled and a rejected mutation does not invent favorit
 
 it('keeps anonymous login intent through pending OAuth hydration and adds only after authentication', async () => {
   client.setQueryData(['/api/auth/me'], { authenticated: false, user: null, _pendingTokenExchange: true });
-  effects.request.mockResolvedValue({ alreadyFavorited: true });
+  effects.request.mockImplementation(async () => new Response(JSON.stringify({ alreadyFavorited: true }), { status: 200 }));
   const view = render(wrap(1));
   fireEvent.click(view.getByRole('button', { name: 'Add to favorites' }));
   await view.findByTestId('favorite-login');

@@ -3,6 +3,8 @@ import { profileFieldsSchema, authProfileSchema, notificationSettingsSchema } fr
 import { getPostgresPool } from '../postgres-runtime';
 import { pgListAuthEvents } from '../data/postgres-api-access-store';
 import { logger } from '../utils/logger';
+import { publicUserIdentity } from '../utils/public-user-identity';
+import { invalidateCommunityProfiles } from '../services/community-profiles';
 import { SEO_LANGUAGES } from '@workspace/seo-shared/seo-config';
 // 2026-05-13 hotfix: `deps` (built in routes.ts) does NOT export CacheKeys
 // or CacheManager — three sites in this file used to do
@@ -27,6 +29,7 @@ function notificationSettingsFor(user: any) {
     return Object.fromEntries(Object.entries({ favorites: true, nowPlaying: true, newStations: false, recommendations: false }).map(([key, fallback]) => [key, typeof stored[key] === 'boolean' ? stored[key] : fallback]));
 }
 async function invalidateProfileCaches(user: any): Promise<void> {
+    await invalidateCommunityProfiles();
     for (const key of [user?._id, user?.id, user?.slug, user?.username].filter(Boolean)) {
         for (const prefix of ['user-engagement-profile:', 'user-engagement-favs:', 'user-engagement-full:', 'user-engagement-recent:', 'user_profile_', 'user-profile:']) await CacheManager.clearByPattern(`${prefix}${key}`);
     }
@@ -140,7 +143,7 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
     // Lists/searches only users that have isPublicProfile:true (privacy-safe).
     // Default sort: createdAt desc (newest community members first).
     // Used by /users (Discover/Community) page; supports search by username/fullName/email.
-    // Also supports sortBy: newest|oldest|most_radios|least_radios.
+    // Also supports sortBy: newest|oldest|most_radios|least_radios|recent_favorites.
     // Accepts BOTH `q` and `search` for query (legacy compat).
     app.get("/api/users/search", async (req, res) => {
         try {
@@ -173,13 +176,15 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
                     sortBy: sortKey, page: pageNum, limit: limitNum,
                 });
                 const users = result.users.map((user: any) => ({
-                    _id: user._id, username: user.username, fullName: user.fullName,
-                    avatar: user.avatar, location: user.location, bio: user.bio,
+                    _id: user._id, ...publicUserIdentity(user), location: user.location, bio: user.bio,
                     followersCount: user.followersCount || 0, followingCount: user.followingCount || 0,
                     favoriteStationsCount: user.favoriteStationsCount || 0,
+                    lastFavoritedAt: user.lastFavoritedAt,
                     createdAt: user.createdAt, slug: user.slug,
                 }));
-                res.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=120');
+                res.set('Cache-Control', 'no-store');
+                res.set('CDN-Cache-Control', 'no-store');
+                res.set('Cloudflare-CDN-Cache-Control', 'no-store');
                 return void res.json({ users, pagination: {
                         page: pageNum, limit: limitNum, total: result.total,
                         pages: Math.ceil(result.total / limitNum),

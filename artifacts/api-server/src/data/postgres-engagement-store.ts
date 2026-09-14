@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import { getPostgresPool } from "../postgres-runtime";
 import { stationVisibilityFields } from '../utils/station-visibility';
 import { lockStationIdentity, resolveStationId, resolveStationIds } from './station-identity-store';
+import { publicUserIdentity } from '../utils/public-user-identity';
 
 const pool = () => getPostgresPool();
 
@@ -43,7 +44,7 @@ export async function pgResolveUserId(value: string): Promise<string | null> {
 export async function pgPublicProfileCacheIdentity(value: string): Promise<string | null> {
   const result = await pool().query<{ id: string; revision: string }>(
     `SELECT id,updated_at::text AS revision FROM users
-     WHERE (id=$1 OR slug=$1 OR username=$1) AND is_public_profile=true LIMIT 1`, [value],
+     WHERE (id=$1 OR slug=$1 OR username=$1) AND is_public_profile=true AND status='active' LIMIT 1`, [value],
   );
   const row = result.rows[0];
   return row ? `${row.id}:${row.revision}` : null;
@@ -56,7 +57,7 @@ export async function pgPublicProfile(value: string, currentUserId?: string): Pr
        (SELECT count(*)::int FROM user_follows f WHERE f.follower_id=u.id) following_count,
        EXISTS(SELECT 1 FROM user_follows f WHERE f.follower_id=$2 AND f.following_id=u.id) is_following
      FROM users u
-     WHERE (u.id=$1 OR u.slug=$1 OR u.username=$1) AND u.is_public_profile=true LIMIT 1`,
+     WHERE (u.id=$1 OR u.slug=$1 OR u.username=$1) AND u.is_public_profile=true AND u.status='active' LIMIT 1`,
     [value, currentUserId || ""],
   );
   const user = result.rows[0];
@@ -84,10 +85,9 @@ export async function pgPublicProfile(value: string, currentUserId?: string): Pr
       .slice(0, 10);
   return {
     _id: user.id,
-    displayName: user.full_name || user.username || user.email?.split("@")[0] || "Anonymous User",
+    ...publicUserIdentity({ ...user, profileImageUrl: user.source?.profileImageUrl }),
     bio: user.bio || `Radio enthusiast with ${total} favorite stations`,
     slug: user.slug || user.id,
-    avatar: user.avatar,
     createdAt: user.created_at,
     favoriteStationsCount: total,
     isPublic: user.is_public_profile,
@@ -419,16 +419,38 @@ export async function pgFollowPage(
 
 export async function pgPopularProfiles(limit: number): Promise<any[]> {
   const result = await pool().query(
-    `SELECT u.id AS _id,u.full_name AS "fullName",u.username,u.email,u.slug,u.avatar,u.created_at AS "createdAt",
-       COALESCE(count(f.station_id),0)::int AS "favoriteCount",
-       COALESCE(u.full_name,u.username,split_part(u.email,'@',1)) AS "displayName"
-     FROM users u LEFT JOIN user_favorites f ON f.user_id=u.id
-     WHERE u.is_public_profile=true AND (u.full_name<>'' OR u.username<>'')
-     GROUP BY u.id HAVING count(f.station_id)>=1
-     ORDER BY count(f.station_id) DESC,u.created_at DESC LIMIT $1`,
-    [limit],
+    `SELECT u.id AS _id,u.full_name AS "fullName",u.username,u.slug,u.avatar,
+       u.source->>'profileImageUrl' AS "profileImageUrl",u.created_at AS "createdAt",
+       count(*)::int AS "favoriteCount",max(f.created_at) AS "lastFavoritedAt"
+     FROM users u JOIN user_favorites f ON f.user_id=u.id JOIN stations s ON s.id=f.station_id
+     WHERE u.is_public_profile=true AND u.status='active'
+       AND (s.is_list_visible IS TRUE OR COALESCE(s.visibility_expires_at<=now(),false))
+     GROUP BY u.id
+     ORDER BY max(f.created_at) DESC,u.id ASC LIMIT $1`,
+    [Math.max(1, Math.min(100, Math.trunc(Number(limit)) || 20))],
   );
-  return result.rows;
+  return result.rows.map(row => ({
+    ...row, ...publicUserIdentity(row), id: row._id,
+    favorites_count: row.favoriteCount, favoriteStationsCount: row.favoriteCount,
+  }));
+}
+
+/** Cached discovery order must never expose an account that has since gone private. */
+export async function pgRefreshPublicProfiles(profiles: any[]): Promise<any[]> {
+  if (!profiles.length) return [];
+  const result = await pool().query(
+    `SELECT u.id,u.full_name AS "fullName",u.username,u.slug,u.avatar,
+       u.source->>'profileImageUrl' AS "profileImageUrl"
+     FROM users u WHERE u.id=ANY($1::text[]) AND u.is_public_profile=true AND u.status='active'
+       AND EXISTS(SELECT 1 FROM user_favorites f JOIN stations s ON s.id=f.station_id
+         WHERE f.user_id=u.id AND (s.is_list_visible IS TRUE OR COALESCE(s.visibility_expires_at<=now(),false)))`,
+    [profiles.map(profile => profile._id)],
+  );
+  const visible = new Map(result.rows.map(row => [row.id, row]));
+  return profiles.flatMap(profile => {
+    const user = visible.get(profile._id);
+    return user ? [{ ...profile, ...publicUserIdentity(user), slug: user.slug }] : [];
+  });
 }
 
 export async function pgRecentlyPlayed(value: string, limit: number): Promise<any[]> {

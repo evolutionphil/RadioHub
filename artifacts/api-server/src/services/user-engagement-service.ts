@@ -1,4 +1,5 @@
-import { pgCommunityFavorites, pgPopularProfiles, pgPublicProfile, pgRateStation, pgRecentlyPlayed, pgSetFavorite, pgSetFollow, pgStationRatings, pgTrendingStations, pgUserFavorites, } from '../data/postgres-engagement-store';
+import { pgCommunityFavorites, pgPublicProfile, pgRateStation, pgRecentlyPlayed, pgSetFavorite, pgSetFollow, pgStationRatings, pgTrendingStations, pgUserFavorites, } from '../data/postgres-engagement-store';
+import { getCommunityProfiles, invalidateCommunityProfiles } from './community-profiles';
 import { ensurePostgresUser } from '../data/auth-token-store';
 export const engagementStore: string = "postgres";
 export interface TrendingStation {
@@ -91,11 +92,15 @@ export class UserEngagementService {
     }
     // Add station to favorites
     async addFavorite(userId: string, stationId: string): Promise<any> {
-        return pgSetFavorite(userId, stationId, true);
+        const result = await pgSetFavorite(userId, stationId, true);
+        await invalidateCommunityProfiles();
+        return result;
     }
     // Remove station from favorites
     async removeFavorite(userId: string, stationId: string): Promise<any> {
-        return pgSetFavorite(userId, stationId, false);
+        const result = await pgSetFavorite(userId, stationId, false);
+        await invalidateCommunityProfiles();
+        return result;
     }
     // Follow a user
     async followUser(followerId: string, followeeId: string): Promise<any> {
@@ -107,7 +112,7 @@ export class UserEngagementService {
     }
     // Get popular user profiles
     async getPopularProfiles(limit = 20): Promise<any[]> {
-        return pgPopularProfiles(limit);
+        return getCommunityProfiles(limit);
     }
     async getRecentlyPlayed(slug: string, limit = 20): Promise<any[]> {
         return pgRecentlyPlayed(slug, limit);

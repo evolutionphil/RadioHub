@@ -6,6 +6,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { useTranslation } from "@/hooks/useTranslation";
 import { useFavoriteState } from "@/hooks/useFavoriteState";
 import { trackStationFavorite } from "@/lib/analytics";
+import { invalidateCommunityProfiles } from '@/lib/community-profile';
 import fav60Icon from "@assets/fav60.png";
 
 // A closed auth dialog must not download/initialize forms for every station
@@ -38,7 +39,8 @@ const FavoriteButton = memo(function FavoriteButton({ stationId, className = "",
   // Add to favorites mutation
   const addToFavoritesMutation = useMutation({
     mutationFn: async () => {
-      return await apiRequest('POST', '/api/user/favorites', { body: { stationId } });
+      const response = await apiRequest('POST', '/api/user/favorites', { body: { stationId } });
+      return response.json();
     },
     onSuccess: (data: any) => {
       // This metadata was always cache-only (enabled:false). Read its latest
@@ -90,6 +92,7 @@ const FavoriteButton = memo(function FavoriteButton({ stationId, className = "",
       queryClient.invalidateQueries({ 
         predicate: (query) => query.queryKey[0] === '/api/user/favorites'
       });
+      invalidateCommunityProfiles(queryClient);
     },
     onError: (error: any) => {
       // Don't show error if it's just already favorited
@@ -127,6 +130,7 @@ const FavoriteButton = memo(function FavoriteButton({ stationId, className = "",
       queryClient.invalidateQueries({ 
         predicate: (query) => query.queryKey[0] === '/api/user/favorites'
       });
+      invalidateCommunityProfiles(queryClient);
     },
     onError: () => {
       toast({

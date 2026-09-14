@@ -25,7 +25,9 @@ import { isQuotaExceeded, isQuotaError, handleQuotaError, safeWrite } from "../u
 import { performanceCache } from "../performance-cache";
 import { getPhaseCTranslations } from "../data/phase-c-translations";
 import { UserEngagementService } from "../services/user-engagement-service";
-import { pgAddRecentlyPlayed, pgFavoriteStationsForUser, pgFindStationRating, pgIsFavorite, pgRateStationIdentity, pgRecentlyPlayedStations, pgPopularProfiles, pgStationRatingsDetailed, } from "../data/postgres-engagement-store";
+import { getCommunityProfiles } from '../services/community-profiles';
+import { publicUserIdentity } from '../utils/public-user-identity';
+import { pgAddRecentlyPlayed, pgFavoriteStationsForUser, pgFindStationRating, pgIsFavorite, pgRateStationIdentity, pgRecentlyPlayedStations, pgStationRatingsDetailed, } from "../data/postgres-engagement-store";
 import { ensurePostgresUser } from "../data/auth-token-store";
 import { getStationByIdentifier } from "../data/station-read-store";
 import { incrementStationClick, incrementStationVote } from "../data/station-write-store";
@@ -1837,16 +1839,13 @@ ${keysText}`;
         try {
             const { id } = req.params;
             const user: any = await pgFindUserByIdOrSlug(String(id));
-            if (!user || !user.isPublicProfile) {
+            if (!user || !user.isPublicProfile || user.status !== 'active') {
                 return void res.status(404).json({ error: 'User not found or profile is private' });
             }
             // Return user profile in expected format
             const profile = {
                 _id: user._id,
-                name: user.fullName || user.name || user.email?.split('@')[0] || 'User',
-                fullName: user.fullName,
-                email: user.email,
-                profileImageUrl: user.profileImageUrl,
+                ...publicUserIdentity(user),
                 isPublicProfile: user.isPublicProfile,
                 createdAt: user.createdAt,
                 ...await pgUserFollowCounts(String(user._id))
@@ -2040,20 +2039,13 @@ ${keysText}`;
             res.status(500).json({ error: 'Failed to fetch recent plays' });
         }
     });
-    // PUBLIC PROFILES API - 24-HOUR CACHE for Community Favorites section
+    // Public community activity: short-lived ranking, live privacy/identity checks.
     app.get("/api/public-profiles", async (req, res) => {
         try {
-            // Check cache first - 24 hours TTL (public profiles rarely change)
-            const cacheKey = 'public_profiles:v4';
-            const cachedData = await CacheManager.get(cacheKey);
-            if (cachedData) {
-                return void res.json({ data: cachedData });
-            }
-            {
-                const profiles = await pgPopularProfiles(100);
-                await CacheManager.set(cacheKey, profiles, { ttl: 86400 });
-                return void res.json({ data: profiles });
-            }
+            res.set('Cache-Control', 'no-store');
+            res.set('CDN-Cache-Control', 'no-store');
+            res.set('Cloudflare-CDN-Cache-Control', 'no-store');
+            return void res.json({ data: await getCommunityProfiles(Number(req.query.limit) || 100) });
         }
         catch (error) {
             console.error('Error fetching public profiles:', error);

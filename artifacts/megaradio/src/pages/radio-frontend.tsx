@@ -13,6 +13,9 @@ import OptimizedImage from "@/components/ui/optimized-image";
 import { useGlobalPlayer } from "@/hooks/useGlobalPlayer";
 import { useTranslation } from "@/hooks/useTranslation";
 import { useAuth } from "@/hooks/useAuth";
+import { apiRequest, getQueryFn } from '@/lib/queryClient';
+import { communityDisplayName, communityFavoriteCount, communityLabels, type CommunityProfile } from '@/lib/community-profile';
+import { PublicProfileAvatar } from '@/components/ui/public-profile-avatar';
 import { MapPin, ChevronLeft, ChevronRight, ThumbsUp, Heart } from "lucide-react";
 
 // Format vote count to K/M format (9.3K, 1.2M, etc.)
@@ -82,27 +85,61 @@ import 'swiper/css/navigation';
 
 // Public Users Section Component - OPTIMIZED FOR TBT
 function PublicUsersSection({ inViewFromParent }: { inViewFromParent: boolean }) {
-  const { t } = useTranslation();
+  const { t, language, localeTranslations } = useTranslation();
+  const labels = communityLabels(language, localeTranslations);
   const { getLocalizedUrl } = useSeoRouting();
   const { user: currentUser } = useAuth();
+  const queryClient = useQueryClient();
   const [followingUsers, setFollowingUsers] = useState<Set<string>>(new Set());
   const [animatingUsers, setAnimatingUsers] = useState<Map<string, 'following' | 'unfollowing'>>(new Map());
+  const sectionRef = useRef<HTMLDivElement>(null);
+  const [isVisible, setIsVisible] = useState(false);
+  const followTimers = useRef(new Set<ReturnType<typeof setTimeout>>());
+  useEffect(() => () => {
+    followTimers.current.forEach(clearTimeout);
+    followTimers.current.clear();
+  }, [currentUser?._id]);
+
+  // Reuse the profile page's batched graph, rather than querying every card or
+  // displaying Follow for listeners the current account already follows.
+  const { data: socialData, isLoading: isFollowingLoading } = useQuery<{ following: Array<{ _id: string }> }>({
+    queryKey: ['/api/user/social', currentUser?.email],
+    queryFn: context => getQueryFn<{ following: Array<{ _id: string }> }>({ on401: 'throw' })({
+      ...context, queryKey: [`/api/user/social/${encodeURIComponent(currentUser?.email || '')}`],
+    }),
+    enabled: inViewFromParent && !!currentUser?.email,
+    staleTime: 60_000,
+  });
+  useEffect(() => {
+    setFollowingUsers(new Set(currentUser ? socialData?.following?.map(profile => profile._id) || [] : []));
+    setAnimatingUsers(new Map());
+  }, [currentUser?._id, socialData]);
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(([entry]) => setIsVisible(entry.isIntersecting));
+    if (sectionRef.current) observer.observe(sectionRef.current);
+    return () => observer.disconnect();
+  }, []);
   
-  const { data: publicProfilesData, isLoading } = useQuery({
+  const { data: publicProfilesData, isLoading } = useQuery<{ data: CommunityProfile[] }>({
     queryKey: ['/api/public-profiles'],
     retry: false,
     enabled: inViewFromParent, // Only fetch when section is visible
-    staleTime: 24 * 60 * 60 * 1000, // 24 hours - matches server cache TTL
-    gcTime: 25 * 60 * 60 * 1000, // 25 hours garbage collection
+    staleTime: 60_000,
+    gcTime: 5 * 60_000,
+    refetchInterval: inViewFromParent && isVisible ? 60_000 : false,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: true,
   });
 
   const handleFollowToggle = async (e: React.MouseEvent, userId: string) => {
     e.preventDefault();
     e.stopPropagation();
+    if (animatingUsers.has(userId) || userId === currentUser?._id || isFollowingLoading) return;
     
     if (!currentUser) {
       // Redirect to login if not authenticated
-      window.location.href = '/login';
+      window.location.href = getLocalizedUrl('/auth/login');
       return;
     }
     
@@ -112,15 +149,12 @@ function PublicUsersSection({ inViewFromParent }: { inViewFromParent: boolean })
     setAnimatingUsers(prev => new Map(prev).set(userId, isCurrentlyFollowing ? 'unfollowing' : 'following'));
     
     try {
-      const response = await fetch(isCurrentlyFollowing ? `/api/user/unfollow/${userId}` : `/api/user/follow/${userId}`, {
-        method: isCurrentlyFollowing ? 'DELETE' : 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include'
-      });
+      const response = await apiRequest(isCurrentlyFollowing ? 'DELETE' : 'POST', isCurrentlyFollowing ? `/api/user/unfollow/${userId}` : `/api/user/follow/${userId}`);
       
       if (response.ok) {
         // Wait for animation to complete before updating state
-        setTimeout(() => {
+        const timer = setTimeout(() => {
+          followTimers.current.delete(timer);
           setFollowingUsers(prev => {
             const newSet = new Set(prev);
             if (isCurrentlyFollowing) {
@@ -136,7 +170,10 @@ function PublicUsersSection({ inViewFromParent }: { inViewFromParent: boolean })
             newMap.delete(userId);
             return newMap;
           });
+          void queryClient.invalidateQueries({ queryKey: ['/api/user/social'] });
+          void queryClient.invalidateQueries({ queryKey: [`/api/user/is-following/${userId}`] });
         }, isCurrentlyFollowing ? 200 : 600); // Faster for unfollow, slower for follow
+        followTimers.current.add(timer);
       } else {
         // Clear animation on error
         setAnimatingUsers(prev => {
@@ -157,7 +194,7 @@ function PublicUsersSection({ inViewFromParent }: { inViewFromParent: boolean })
 
   if (isLoading || !inViewFromParent) {
     return (
-      <div className="container">
+      <div ref={sectionRef} className="container">
         <div className="flex justify-between pb-4">
           <h3 className="section-header pb-4">
             {t('homepage_community_favorites')}
@@ -181,14 +218,14 @@ function PublicUsersSection({ inViewFromParent }: { inViewFromParent: boolean })
     );
   }
 
-  const publicProfiles = (publicProfilesData as any)?.data || [];
+  const publicProfiles = (publicProfilesData?.data || []).filter(profile => profile.isPublicProfile !== false);
 
   if (publicProfiles.length === 0) {
-    return null; // Don't show section if no public profiles (exactly like original Vue.js)
+    return <div ref={sectionRef} />; // Keep visibility observation attached for subsequent cache updates.
   }
 
   return (
-    <div className="container">
+    <div ref={sectionRef} className="container">
       <div className="flex justify-between pb-4">
         <h4 className="section-header">
           {t('homepage_community_favorites')}
@@ -200,41 +237,22 @@ function PublicUsersSection({ inViewFromParent }: { inViewFromParent: boolean })
       
       {/* Users 3x3 Grid Layout - Optimized mobile height */}
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-x-[21px] gap-y-3 md:gap-y-[20px]">
-        {publicProfiles.slice(0, 6).map((user: any, i: number) => (
+        {publicProfiles.slice(0, 6).map((user) => (
           <Link 
-            key={`public-user-${user._id || i}`}
+            key={`public-user-${user._id}`}
             href={getLocalizedUrl(`/users/${user.slug || user._id}`)}
             className="flex items-center rounded-md bg-[#2F2F2F] px-3 py-3 md:px-4 md:py-4 hover:bg-[#3A3A3A] transition-colors"
           >
-            {user.profileImageUrl ? (
-              <img 
-                height="56"
-                width="56"
-                src={user.profileImageUrl} 
-                alt={`${user.name || user.email?.split('@')[0] || 'User'} profile photo`}
-                className="h-12 w-12 md:h-14 md:w-14 rounded-full shadow-inner flex-shrink-0"
-                loading="lazy"
-                onError={(e) => {
-                  (e.target as HTMLImageElement).src = '/assets/images/no-avatar.svg';
-                }}
-              />
-            ) : (
-              <img 
-                height="56"
-                width="56"
-                src="/assets/images/no-avatar.svg"
-                alt={`${user.name || user.email?.split('@')[0] || 'User'} profile photo`}
-                className="h-12 w-12 md:h-14 md:w-14 rounded-full shadow-inner flex-shrink-0"
-                loading="lazy"
-              />
-            )}
+            <PublicProfileAvatar profile={user} name={communityDisplayName(user, t('user_anonymous', 'Anonymous'))}
+              className="h-12 w-12 md:h-14 md:w-14 rounded-full shadow-inner flex-shrink-0" />
             <div className="pl-3 md:pl-4 flex-1 min-w-0">
-              <h3 className="text-base md:text-lg font-medium text-white truncate">{user.name || user.email?.split('@')[0] || t('user_anonymous', 'Anonymous')}</h3>
-              <p className="text-xs md:text-sm font-medium text-gray-400 truncate">{user.favorites_count} radios</p>
+              <h3 className="text-base md:text-lg font-medium text-white truncate">{communityDisplayName(user, t('user_anonymous', 'Anonymous'))}</h3>
+              <p className="text-xs md:text-sm font-medium text-gray-400 truncate">{communityFavoriteCount(user).toLocaleString(language)} {labels.radios}</p>
             </div>
             {/* Follow Button - Apple-style Animation */}
-            <button
+            {user._id !== currentUser?._id && <button
               onClick={(e) => handleFollowToggle(e, user._id)}
+              disabled={animatingUsers.has(user._id) || isFollowingLoading}
               className={`follow-btn ml-2 px-3 py-1.5 md:px-4 md:py-2 rounded-full text-xs md:text-sm font-medium flex-shrink-0 bg-[#FF4199] text-white hover:bg-[#E0357F] ${
                 animatingUsers.get(user._id) === 'following' ? 'is-following' : ''
               } ${
@@ -252,7 +270,7 @@ function PublicUsersSection({ inViewFromParent }: { inViewFromParent: boolean })
                 fill={followingUsers.has(user._id) || animatingUsers.get(user._id) === 'following' ? 'currentColor' : 'none'}
                 strokeWidth={2}
               />
-            </button>
+            </button>}
           </Link>
         ))}
       </div>

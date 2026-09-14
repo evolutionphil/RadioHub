@@ -12,6 +12,7 @@ import { useAuth } from '@/hooks/useAuth';
 import NotFound from "@/pages/not-found";
 import { useSeoRouting } from "@/hooks/useSeoRouting";
 import { useTranslation } from "@/hooks/useTranslation";
+import { communityAvatarUrl, communityDisplayName } from '@/lib/community-profile';
 
 interface UserProfile {
   _id: string;
@@ -20,6 +21,8 @@ interface UserProfile {
   name?: string;
   displayName?: string;
   avatar?: string;
+  profileImageUrl?: string;
+  username?: string;
   isPublic?: boolean;
   isPublicProfile?: boolean;
   favoriteStations?: any[];
@@ -219,7 +222,7 @@ export default function UserProfile() {
   }
 
   // Extract proper display name - use displayName from API response
-  const displayName = userProfile.displayName || userProfile.fullName || userProfile.name || userProfile.email?.split('@')[0] || 'User';
+  const displayName = communityDisplayName(userProfile, t('user_anonymous', 'Anonymous'));
   const followersCount = userProfile.followersCount || 0;
   const unknown = t('not_available', '—');
   const joined = new Date(userProfile.createdAt || userProfile.listeningStats?.joinedDate || '');
@@ -238,7 +241,7 @@ export default function UserProfile() {
             <div className="flex items-center gap-6">
               <div className="relative h-24 w-24 lg:h-32 lg:w-32 flex-shrink-0">
                 <UserAvatar 
-                  avatar={userProfile.avatar}
+                  avatar={communityAvatarUrl(userProfile)}
                   name={displayName}
                   size="lg"
                   className="h-full w-full border-4 border-white/20"
@@ -298,7 +301,7 @@ export default function UserProfile() {
             <div className="flex items-center gap-4 mb-4">
               <div className="relative h-16 w-16 flex-shrink-0">
                 <UserAvatar 
-                  avatar={userProfile.avatar}
+                  avatar={communityAvatarUrl(userProfile)}
                   name={displayName}
                   size="lg"
                   className="h-full w-full border-3 border-white/20"
