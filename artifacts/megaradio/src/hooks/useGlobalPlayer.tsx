@@ -7,6 +7,7 @@ import { logger } from '@/lib/logger';
 import { getStreamProxyUrl, resolveStreamUrl } from '@/lib/utils';
 import { addRecentlyPlayed } from '@/utils/recently-played';
 import { adjacentAvailableStation, availableStations, isExplicitlyFailedStation } from '@/utils/station-availability';
+import { usePlaybackSpaceShortcut } from './usePlaybackSpaceShortcut';
 
 import type { GlobalPlayerState } from './useGlobalPlayer.shell';
 import { GlobalPlayerContext } from './useGlobalPlayer.shell';
@@ -1096,6 +1097,8 @@ export function GlobalPlayerProvider({ children }: { children: ReactNode }) {
 
   const pauseStation = () => pause();
   const resumeStation = () => resume();
+
+  usePlaybackSpaceShortcut({ enabled: !!currentStation, isPlaying, pause: pauseStation, resume: resumeStation });
   
   // Record listening time before stopping
   const recordListeningTime = async () => {
