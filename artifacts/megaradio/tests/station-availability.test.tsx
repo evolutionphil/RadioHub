@@ -1,6 +1,7 @@
 import React from 'react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { isExplicitlyFailedStation, availableStations, adjacentAvailableStation } from '@/utils/station-availability';
 import { stationQueryFreshness } from '@/lib/station-query-policy';
 import { homeStationPageOptions } from '@/lib/home-station-query';
@@ -35,11 +36,14 @@ it('allows an explicit retry even for a station excluded from discovery lists', 
   const network = vi.fn(async () => ({ok:true,json:async()=>({}),text:async()=>''})); vi.stubGlobal('fetch', network);
   const play = vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue();
   localStorage.setItem('recentlyPlayed', '[{"_id":"retained"}]');
-  const { result } = renderHook(() => useGlobalPlayer(), { wrapper: ({ children }) => <GlobalPlayerProvider>{children}</GlobalPlayerProvider> });
+  const client = new QueryClient();
+  client.setQueryData(['/api/auth/me'], { authenticated: false, user: null });
+  const { result, unmount } = renderHook(() => useGlobalPlayer(), { wrapper: ({ children }) => <QueryClientProvider client={client}><GlobalPlayerProvider>{children}</GlobalPlayerProvider></QueryClientProvider> });
   await act(async () => { await result.current.playStation({ _id: 'failed', name: 'Retry', url: 'https://example.invalid/live.mp3', lastCheckOk: false,isListVisible:false } as any); });
   expect(result.current.currentStation?._id).toBe('failed');
   await waitFor(()=>expect(play).toHaveBeenCalled());
   expect(JSON.parse(localStorage.getItem('recentlyPlayed') || '[]').some((s:any)=>s._id==='retained')).toBe(true);
+  unmount(); client.clear();
 });
 
 it('keeps station refresh bounded and opt-in without a per-card polling interval', () => {

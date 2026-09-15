@@ -82,13 +82,24 @@ interface BreadcrumbItem {
   path: string;
 }
 
+const accountBreadcrumbLabels: Record<string, readonly [string, string, string]> = {
+  en: ['Listeners', 'Profile', 'Settings'], de: ['Hörer', 'Profil', 'Einstellungen'],
+  tr: ['Dinleyiciler', 'Profil', 'Ayarlar'], es: ['Oyentes', 'Perfil', 'Configuración'],
+  fr: ['Auditeurs', 'Profil', 'Paramètres'], pt: ['Ouvintes', 'Perfil', 'Configurações'],
+  it: ['Ascoltatori', 'Profilo', 'Impostazioni'], ru: ['Слушатели', 'Профиль', 'Настройки'],
+  ar: ['المستمعون', 'الملف الشخصي', 'الإعدادات'], zh: ['听众', '个人资料', '设置'],
+  ja: ['リスナー', 'プロフィール', '設定'], ko: ['청취자', '프로필', '설정'],
+  hi: ['श्रोता', 'प्रोफ़ाइल', 'सेटिंग'], he: ['מאזינים', 'פרופיל', 'הגדרות'],
+};
+
 function computeItems(params: {
   language: string;
   cleanPath: string;
   t: (key: string, fallback?: string) => string;
+  localeTranslations?: Readonly<Record<string, string>>;
   lastItemName?: string;
 }): BreadcrumbItem[] {
-  const { language, cleanPath, t, lastItemName } = params;
+  const { language, cleanPath, t, localeTranslations, lastItemName } = params;
   if (!cleanPath || cleanPath === '/' || cleanPath === '') return [];
 
   const lang = language || 'en';
@@ -122,7 +133,12 @@ function computeItems(params: {
     } else if (segment !== 'stations' && segment !== 'station') {
       const translationKey = `nav_${segment}`;
       const fallback = titleCaseSlug(segment);
-      const baseName = t(translationKey, fallback);
+      const accountLabelIndex = ['users', 'profile', 'settings'].indexOf(segment);
+      // Account routes need a local fallback before the global translator's
+      // English dictionary. Other breadcrumb labels keep their existing policy.
+      const baseName = accountLabelIndex >= 0
+        ? localeTranslations?.[translationKey]?.trim() || (accountBreadcrumbLabels[lang] || accountBreadcrumbLabels.en)[accountLabelIndex]
+        : t(translationKey, fallback);
       const displayName = isLastSegment && lastItemName ? lastItemName : baseName;
       items.push({ name: displayName, path: `/${lang}${currentPath}` });
     }
@@ -150,7 +166,7 @@ function computeItems(params: {
 
 export function RouteBreadcrumbs() {
   const [location] = useLocation();
-  const { t } = useTranslation();
+  const { t, localeTranslations } = useTranslation();
   const { override } = useContext(BreadcrumbOverrideContext);
 
   const { language, cleanPath } = getLanguageFromPath(location);
@@ -161,9 +177,10 @@ export function RouteBreadcrumbs() {
         language: language || 'en',
         cleanPath,
         t,
+        localeTranslations,
         lastItemName: override.lastItemName,
       }),
-    [language, cleanPath, t, override.lastItemName],
+    [language, cleanPath, t, localeTranslations, override.lastItemName],
   );
 
   if (items.length === 0) return null;
@@ -171,7 +188,7 @@ export function RouteBreadcrumbs() {
   return (
     <nav
       aria-label="breadcrumb"
-      className="breadcrumb bg-[#101010] px-4 py-3 text-xs sm:text-sm"
+      className={`breadcrumb bg-[#101010] px-4 py-3 text-xs sm:text-sm ${cleanPath.startsWith('/profile/') ? 'lg:pl-[272px]' : ''}`}
     >
       <ol className="container mx-auto flex flex-wrap items-center gap-2 text-gray-400">
         {items.map((item, idx) => {

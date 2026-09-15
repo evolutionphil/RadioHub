@@ -86,7 +86,7 @@ export async function pgPublicProfile(value: string, currentUserId?: string): Pr
   return {
     _id: user.id,
     ...publicUserIdentity({ ...user, profileImageUrl: user.source?.profileImageUrl }),
-    bio: user.bio || `Radio enthusiast with ${total} favorite stations`,
+    bio: user.bio || '',
     slug: user.slug || user.id,
     createdAt: user.created_at,
     favoriteStationsCount: total,

@@ -50,6 +50,9 @@ mock.module('../src/data/postgres-user-store', { namedExports: {
   },
 } });
 mock.module('../src/services/user-engagement-service', { namedExports: { engagementStore: 'postgres', UserEngagementService: class {} } });
+mock.module('../src/services/community-profiles', { namedExports: {
+  invalidateCommunityProfiles: async () => { invalidations.push('community-profiles:recent:v1:'); },
+} });
 mock.module('../src/data/postgres-engagement-store', { namedExports: { pgFollowPage: async () => ({}), pgIsFollowing: async () => false } });
 mock.module('../src/data/postgres-notification-store', { namedExports: { notificationStore: 'postgres', pgCreateNotification: async () => {} } });
 mock.module('bcrypt', { defaultExport: { hash: async (password: string) => `hashed:${password}` } });

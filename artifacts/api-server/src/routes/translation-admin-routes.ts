@@ -1590,7 +1590,7 @@ ${keysText}`;
     // GET RECENTLY PLAYED STATIONS (returns [] silently for anonymous — no console-noise 401)
     app.get("/api/recently-played", async (req, res) => {
         try {
-            const currentUserId = (req.session as any)?.user?.userId || (req.session as any)?.userId;
+            const currentUserId = await authenticatedUserId(req);
             if (!currentUserId)
                 return void res.json([]);
             const cacheKey = `recently-played:${currentUserId}`;
@@ -1610,7 +1610,7 @@ ${keysText}`;
     });
     app.post("/api/recently-played", async (req, res) => {
         try {
-            const currentUserId = (req.session as any)?.user?.userId || (req.session as any)?.userId;
+            const currentUserId = await authenticatedUserId(req);
             if (!currentUserId)
                 return void res.status(204).end();
             const { stationId } = req.body;

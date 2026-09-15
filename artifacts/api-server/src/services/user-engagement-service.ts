@@ -1,6 +1,24 @@
 import { pgCommunityFavorites, pgPublicProfile, pgRateStation, pgRecentlyPlayed, pgSetFavorite, pgSetFollow, pgStationRatings, pgTrendingStations, pgUserFavorites, } from '../data/postgres-engagement-store';
 import { getCommunityProfiles, invalidateCommunityProfiles } from './community-profiles';
 import { ensurePostgresUser } from '../data/auth-token-store';
+import { publicStationCache } from '../public-station-cache';
+
+async function invalidatePublicProfileSummaries(...userIds: string[]): Promise<void> {
+    // Keys begin with the canonical ID so a mutation refreshes every slug,
+    // viewer and favorites limit for both affected public profile counts.
+    await Promise.all([...new Set(userIds)].flatMap(id => [
+        publicStationCache.clearByPattern(`user-engagement-profile:v2:${id}:`),
+        publicStationCache.clearByPattern(`user-engagement-full:v2:${id}:`),
+    ]));
+}
+
+async function invalidateFavoriteProfile(userId: string): Promise<void> {
+    await Promise.all([
+        invalidateCommunityProfiles(),
+        invalidatePublicProfileSummaries(userId),
+        publicStationCache.clearByPattern(`user-engagement-favs:v2:${userId}:`),
+    ]);
+}
 export const engagementStore: string = "postgres";
 export interface TrendingStation {
     stationId: string;
@@ -93,22 +111,26 @@ export class UserEngagementService {
     // Add station to favorites
     async addFavorite(userId: string, stationId: string): Promise<any> {
         const result = await pgSetFavorite(userId, stationId, true);
-        await invalidateCommunityProfiles();
+        await invalidateFavoriteProfile(userId);
         return result;
     }
     // Remove station from favorites
     async removeFavorite(userId: string, stationId: string): Promise<any> {
         const result = await pgSetFavorite(userId, stationId, false);
-        await invalidateCommunityProfiles();
+        await invalidateFavoriteProfile(userId);
         return result;
     }
     // Follow a user
     async followUser(followerId: string, followeeId: string): Promise<any> {
-        return pgSetFollow(followerId, followeeId, true);
+        const result = await pgSetFollow(followerId, followeeId, true);
+        await invalidatePublicProfileSummaries(followerId, followeeId);
+        return result;
     }
     // Unfollow a user
     async unfollowUser(followerId: string, followeeId: string): Promise<any> {
-        return pgSetFollow(followerId, followeeId, false);
+        const result = await pgSetFollow(followerId, followeeId, false);
+        await invalidatePublicProfileSummaries(followerId, followeeId);
+        return result;
     }
     // Get popular user profiles
     async getPopularProfiles(limit = 20): Promise<any[]> {

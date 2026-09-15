@@ -1,6 +1,4 @@
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useRef } from "react";
-import { useGlobalPlayer } from "@/hooks/useGlobalPlayer";
 import { authQueryOptions } from '@/lib/auth-query';
 
 export interface User {
@@ -22,6 +20,11 @@ export interface User {
   // Play at login preferences
   playAtLogin?: 'last-played' | 'favorite' | 'random' | 'disabled';
   autoplay?: boolean;
+  preferences?: {
+    language?: string;
+    autoplay?: boolean;
+    playAtLogin?: 'LAST_PLAYED' | 'RANDOM' | 'FAVORITE';
+  };
   // Notification preferences
   notificationSettings?: {
     favorites: boolean;
@@ -39,26 +42,8 @@ export function useAuth() {
   // (ProtectedRoute, header, etc.) don't briefly render a logged-out UI.
   const isLoading = queryLoading || (data as any)?._pendingTokenExchange === true;
 
-  const { playAtLogin } = useGlobalPlayer();
-  const hasTriggeredPlayAtLogin = useRef(false);
-
   const user = (data as any)?.user as User | null;
   const isAuthenticated = (data as any)?.authenticated === true;
-
-  // Play at Login Integration - Trigger when user first authenticates
-  useEffect(() => {
-    if (isAuthenticated && user && !hasTriggeredPlayAtLogin.current && !isLoading) {
-      hasTriggeredPlayAtLogin.current = true;
-
-      // Trigger play at login with user preferences
-      if (user.playAtLogin && user.playAtLogin !== 'disabled') {
-        // Triggering play at login
-        playAtLogin(user).catch((error: Error) => {
-          // Play at login failed (autoplay blocked)
-        });
-      }
-    }
-  }, [isAuthenticated, user, playAtLogin, isLoading]);
 
   return {
     user,

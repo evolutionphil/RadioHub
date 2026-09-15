@@ -5,6 +5,7 @@ import { onlineManager, QueryClient, QueryClientProvider } from '@tanstack/react
 import { getQueryFn } from '../src/lib/queryClient';
 import { authQueryOptions, isTransientAuthError } from '../src/lib/auth-query';
 import { useAuth } from '../src/hooks/useAuth';
+import { useLoginPlayback } from '../src/hooks/useLoginPlayback';
 import { usePremiumStatus } from '../src/hooks/usePremiumStatus';
 import { FavoriteStateProvider } from '../src/hooks/useFavoriteState';
 import { TranslationProvider } from '../src/hooks/useTranslation';
@@ -23,7 +24,11 @@ function PremiumConsumer() {
   const status = usePremiumStatus();
   return <output>{status.isLoading ? 'loading' : status.error ? 'error' : status.isPremium ? 'premium' : 'public'}</output>;
 }
-function LoginConsumer() { useAuth(); return null; }
+function LoginConsumer() {
+  useAuth();
+  useLoginPlayback({ isReady: true, currentStation: null, playStation: player.playAtLogin });
+  return null;
+}
 const wrap = (count = 1) => <QueryClientProvider client={client}>
   <TranslationProvider><FavoriteStateProvider>
     {Array.from({ length: count }, (_, index) => <PremiumConsumer key={index} />)}
@@ -151,9 +156,12 @@ it('forwards AbortSignal and Bearer and cancels a pending request before OAuth h
 });
 
 it('does not replay play-at-login when the same authenticated user recovers from a transient error', async () => {
-  const user = { ...premiumUser, user: { ...premiumUser.user, playAtLogin: 'last-played' } };
+  const user = { ...premiumUser, user: { ...premiumUser.user, preferences: { autoplay: true, playAtLogin: 'LAST_PLAYED' } } };
+  network.mockImplementation(async (url: string) => url === '/api/auth/me' ? response()
+    : Response.json([{ _id: 'recent-station', name: 'Recent station' }]));
   client.setQueryData(['/api/auth/me'], user);
   render(<QueryClientProvider client={client}><LoginConsumer /></QueryClientProvider>);
+  await flush(1);
   expect(player.playAtLogin).toHaveBeenCalledTimes(1);
   response = async () => new Response('Unavailable', { status: 503 });
   let refresh!: Promise<void>;

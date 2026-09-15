@@ -32,13 +32,18 @@ export function communityFavoriteCount(profile: CommunityProfile): number {
 }
 
 export function communityAvatarUrl(profile: Pick<CommunityProfile, 'avatar' | 'profileImageUrl'>): string | undefined {
+  return communityAvatarUrls(profile)[0];
+}
+
+export function communityAvatarUrls(profile: Pick<CommunityProfile, 'avatar' | 'profileImageUrl'>): string[] {
+  const candidates: string[] = [];
   for (const value of [profile.avatar, profile.profileImageUrl]) {
     if (typeof value !== 'string') continue;
     const url = value.trim();
-    if (/^\/(?!\/)/.test(url) || /^https:\/\//i.test(url)) return url;
-    if (/^http:\/\//i.test(url)) return getApiProxyUrl(`/api/image/${safeBase64Encode(url)}`);
+    if (/^\/(?!\/)/.test(url) || /^https:\/\//i.test(url)) candidates.push(url);
+    else if (/^http:\/\//i.test(url)) candidates.push(getApiProxyUrl(`/api/image/${safeBase64Encode(url)}`));
   }
-  return undefined;
+  return [...new Set(candidates)];
 }
 
 const labels: Record<string, readonly [string, string]> = {
@@ -62,4 +67,8 @@ export function communityLabels(language: string, translations?: Readonly<Record
 export function invalidateCommunityProfiles(queryClient: QueryClient): void {
   void queryClient.invalidateQueries({ queryKey: ['/api/public-profiles'] });
   void queryClient.invalidateQueries({ queryKey: ['/api/users/search'] });
+  // Identity, privacy and favorites edits also affect an already-open profile.
+  // The full endpoint is a string key, so an array-prefix match is insufficient.
+  void queryClient.invalidateQueries({ predicate: query => typeof query.queryKey[0] === 'string'
+    && query.queryKey[0].startsWith('/api/user-engagement/profile/') });
 }

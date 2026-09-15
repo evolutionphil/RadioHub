@@ -81,15 +81,15 @@ it('active profile route preserves hooks, uses canonical identity and exposes un
   fixture.query.mockResolvedValue({ profile, favorites: [], recentlyPlayed: [] });
   const view = mount(ActiveUserProfile); expect(screen.getByText('Missing profile')).toBeInTheDocument();
   fixture.id = 'listener-slug'; view.rerender(<ActiveUserProfile />); await screen.findAllByText('Listener');
-  expect(screen.getByText('—')).toBeInTheDocument(); expect(screen.queryByText('Invalid Date')).not.toBeInTheDocument();
-  fireEvent.click(screen.getAllByRole('button', { name: 'Follow' })[0]);
+  expect(screen.getAllByText('—')).toHaveLength(2); expect(screen.queryByText('Invalid Date')).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Folgen' }));
   await waitFor(() => expect(fixture.request).toHaveBeenCalledWith('POST', '/api/user-engagement/follow/canonical-user-id'));
   fixture.user = { _id: 'canonical-user-id', following: [] }; view.rerender(<ActiveUserProfile />);
-  await waitFor(() => expect(screen.queryByRole('button', { name: 'Follow' })).not.toBeInTheDocument());
+  await waitFor(() => expect(screen.queryByRole('button', { name: 'Folgen' })).not.toBeInTheDocument());
 });
 it('active profile stats use real total and localized registration date, not truncated favorites or fake activity', async () => {
   fixture.query.mockResolvedValue({ profile: { ...profile, createdAt: '2026-03-12T12:00:00Z', favoriteStationsCount: 37 }, favorites: [], recentlyPlayed: [] });
   mount(ActiveUserProfile); await screen.findAllByText('Listener');
   expect(screen.getByText(new Date('2026-03-12T12:00:00Z').toLocaleDateString('de', { month: 'short', day: 'numeric', year: 'numeric' }))).toBeInTheDocument();
-  expect(screen.getAllByText('37')).toHaveLength(2);
+  expect(screen.getAllByText('37')).toHaveLength(1);
 });

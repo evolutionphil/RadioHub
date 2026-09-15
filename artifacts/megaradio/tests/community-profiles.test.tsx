@@ -47,21 +47,23 @@ describe('public community identity and counts', () => {
     const { rerender } = render(<PublicProfileAvatar profile={{ avatar: '/uploads/first.webp' }} name="A Listener" className="h-12 w-12" />);
     const img = screen.getByRole('img', { name: 'A Listener' });
     fireEvent.error(img);
-    expect(img).toHaveAttribute('src', '/no-avatar.svg');
-    fireEvent.error(img);
-    expect(img).toHaveAttribute('src', '/no-avatar.svg');
+    expect(screen.getByRole('img', { name: 'A Listener' })).toHaveTextContent('AL');
+    expect(img).not.toBeInTheDocument();
     rerender(<PublicProfileAvatar profile={{ avatar: '/uploads/second.webp' }} name="A Listener" className="h-12 w-12" />);
-    expect(img).toHaveAttribute('src', '/uploads/second.webp');
+    expect(screen.getByRole('img', { name: 'A Listener' })).toHaveAttribute('src', '/uploads/second.webp');
   });
 
   it('invalidates home and every discovery variant on a favorite change', () => {
     const client = new QueryClient();
     client.setQueryData(['/api/public-profiles'], { data: [] });
     client.setQueryData(['/api/users/search', { sortBy: 'recent_favorites' }], { users: [] });
+    const profileKey = ['/api/user-engagement/profile/listener/full', { viewer: 'owner' }];
+    client.setQueryData(profileKey, { pages: [] });
     client.setQueryData(['/api/stations'], []);
     invalidateCommunityProfiles(client);
     expect(client.getQueryState(['/api/public-profiles'])?.isInvalidated).toBe(true);
     expect(client.getQueryState(['/api/users/search', { sortBy: 'recent_favorites' }])?.isInvalidated).toBe(true);
+    expect(client.getQueryState(profileKey)?.isInvalidated).toBe(true);
     expect(client.getQueryState(['/api/stations'])?.isInvalidated).toBe(false);
     client.clear();
   });
@@ -83,10 +85,10 @@ it('discovers recent favorite activity with actual names/counts and appends page
   expect(screen.queryByText('thomas-wagner-37')).toBeNull();
   expect(screen.getByRole('img', { name: 'Thomas Wagner' })).toHaveAttribute('src', '/uploads/thomas.webp');
   expect(screen.getByRole('link', { name: 'Thomas Wagner' })).toHaveAttribute('href', '/de/users/thomas-wagner');
-  fireEvent.click(screen.getByRole('button', { name: 'Load More Users' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Weitere Benutzer laden' }));
   expect(await screen.findByText('A New Listener')).toBeInTheDocument();
   expect(screen.getAllByText('Thomas Wagner')).toHaveLength(1);
-  await waitFor(() => expect(screen.queryByRole('button', { name: 'Load More Users' })).toBeNull());
+  await waitFor(() => expect(screen.queryByRole('button', { name: 'Weitere Benutzer laden' })).toBeNull());
   expect(fetchMock).toHaveBeenCalledTimes(2);
   client.clear();
 });

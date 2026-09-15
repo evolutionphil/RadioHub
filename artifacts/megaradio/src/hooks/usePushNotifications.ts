@@ -22,7 +22,22 @@ export interface UsePushNotificationsResult {
   }) => Promise<void>;
 }
 
-export function usePushNotifications(): UsePushNotificationsResult {
+export interface PushNotificationMessages {
+  successTitle: string;
+  errorTitle: string;
+  unsupported: string;
+  blocked: string;
+  permissionGranted: string;
+  permissionDismissed: string;
+  subscribed: string;
+  unsubscribed: string;
+  testSent: string;
+  failed: string;
+  notSubscribed: string;
+}
+
+/** Callers may supply their current locale without changing legacy consumers. */
+export function usePushNotifications(messages?: PushNotificationMessages): UsePushNotificationsResult {
   const [isSupported, setIsSupported] = useState(false);
   const [isSubscribed, setIsSubscribed] = useState(false);
   const [permission, setPermission] = useState<NotificationPermission>('default');
@@ -83,9 +98,9 @@ export function usePushNotifications(): UsePushNotificationsResult {
     };
   }, []);
 
-  const requestPermission = useCallback(async (): Promise<boolean> => {
+  const requestPermission = useCallback(async (announceSuccess = true): Promise<boolean> => {
     if (!isSupported) {
-      error('Push notifications not supported', 'Your browser does not support push notifications.');
+      error(messages?.errorTitle || 'Push notifications not supported', messages?.unsupported || 'Your browser does not support push notifications.');
       return false;
     }
 
@@ -111,39 +126,42 @@ export function usePushNotifications(): UsePushNotificationsResult {
           : isSafari
             ? 'In Safari: Settings → Websites → Notifications → find this site → Allow.'
             : 'Open your browser settings, find this site under Notifications, set it to Allow, then reload.';
-      error('Notifications Blocked by Browser', detail);
+      error(messages?.errorTitle || 'Notifications Blocked by Browser', messages?.blocked || detail);
       return false;
     }
 
     setIsLoading(true);
     try {
       const granted = await pushManager.requestPermission();
-      setPermission(pushManager.getPermissionStatus());
+      const nextPermission = pushManager.getPermissionStatus();
+      setPermission(nextPermission);
 
       if (granted) {
-        success('Permission Granted', 'You can now receive push notifications!');
+        if (announceSuccess) success(messages?.successTitle || 'Permission Granted', messages?.permissionGranted || 'You can now receive push notifications!');
       } else {
         // 'default' here means the user dismissed the prompt without choosing.
-        error('Permission Not Granted', 'You closed the prompt. Click Enable again and choose Allow.');
+        error(messages?.errorTitle || 'Permission Not Granted', (nextPermission === 'denied' ? messages?.blocked : messages?.permissionDismissed) || 'You closed the prompt. Click Enable again and choose Allow.');
       }
 
       return granted;
     } catch (err) {
-      error('Permission Error', 'Failed to request notification permission.');
+      error(messages?.errorTitle || 'Permission Error', messages?.failed || 'Failed to request notification permission.');
       return false;
     } finally {
       setIsLoading(false);
     }
-  }, [isSupported, success, error]);
+  }, [isSupported, success, error, messages]);
 
   const subscribe = useCallback(async (): Promise<boolean> => {
     if (!isSupported) {
-      error('Not Supported', 'Push notifications are not supported in your browser.');
+      error(messages?.errorTitle || 'Not Supported', messages?.unsupported || 'Push notifications are not supported in your browser.');
       return false;
     }
 
     if (permission !== 'granted') {
-      const granted = await requestPermission();
+      // Settings reports the final subscription outcome once. Permission errors
+      // remain visible; existing consumers retain their permission success toast.
+      const granted = await requestPermission(!messages);
       if (!granted) return false;
     }
 
@@ -153,23 +171,23 @@ export function usePushNotifications(): UsePushNotificationsResult {
       
       if (subscriptionData) {
         setIsSubscribed(true);
-        success('Subscribed Successfully', 'You will now receive push notifications!');
+        success(messages?.successTitle || 'Subscribed Successfully', messages?.subscribed || 'You will now receive push notifications!');
         return true;
       } else {
-        error('Subscription Failed', 'Failed to subscribe to push notifications.');
+        error(messages?.errorTitle || 'Subscription Failed', messages?.failed || 'Failed to subscribe to push notifications.');
         return false;
       }
     } catch (err) {
-      error('Subscription Error', 'An error occurred while subscribing to notifications.');
+      error(messages?.errorTitle || 'Subscription Error', messages?.failed || 'An error occurred while subscribing to notifications.');
       return false;
     } finally {
       setIsLoading(false);
     }
-  }, [isSupported, permission, requestPermission, success, error]);
+  }, [isSupported, permission, requestPermission, success, error, messages]);
 
   const unsubscribe = useCallback(async (): Promise<boolean> => {
     if (!isSupported) {
-      error('Not Supported', 'Push notifications are not supported in your browser.');
+      error(messages?.errorTitle || 'Not Supported', messages?.unsupported || 'Push notifications are not supported in your browser.');
       return false;
     }
 
@@ -179,23 +197,23 @@ export function usePushNotifications(): UsePushNotificationsResult {
       
       if (unsubscribed) {
         setIsSubscribed(false);
-        success('Unsubscribed', 'You will no longer receive push notifications.');
+        success(messages?.successTitle || 'Unsubscribed', messages?.unsubscribed || 'You will no longer receive push notifications.');
         return true;
       } else {
-        error('Unsubscribe Failed', 'Failed to unsubscribe from push notifications.');
+        error(messages?.errorTitle || 'Unsubscribe Failed', messages?.failed || 'Failed to unsubscribe from push notifications.');
         return false;
       }
     } catch (err) {
-      error('Unsubscribe Error', 'An error occurred while unsubscribing from notifications.');
+      error(messages?.errorTitle || 'Unsubscribe Error', messages?.failed || 'An error occurred while unsubscribing from notifications.');
       return false;
     } finally {
       setIsLoading(false);
     }
-  }, [isSupported, success, error]);
+  }, [isSupported, success, error, messages]);
 
   const sendTestNotification = useCallback(async (): Promise<void> => {
     if (!isSubscribed) {
-      error('Not Subscribed', 'Please subscribe to push notifications first.');
+      error(messages?.errorTitle || 'Not Subscribed', messages?.notSubscribed || 'Please subscribe to push notifications first.');
       return;
     }
 
@@ -209,15 +227,15 @@ export function usePushNotifications(): UsePushNotificationsResult {
 
       const result = await response.json();
       
-      if (result.success) {
-        success('Test Sent', 'A test notification has been sent!');
+      if (response.ok && result.success) {
+        success(messages?.successTitle || 'Test Sent', messages?.testSent || 'A test notification has been sent!');
       } else {
-        error('Send Failed', result.message || 'Failed to send test notification.');
+        error(messages?.errorTitle || 'Send Failed', messages?.failed || result.message || 'Failed to send test notification.');
       }
     } catch (err) {
-      error('Send Error', 'An error occurred while sending the test notification.');
+      error(messages?.errorTitle || 'Send Error', messages?.failed || 'An error occurred while sending the test notification.');
     }
-  }, [isSubscribed, success, error]);
+  }, [isSubscribed, success, error, messages]);
 
   const sendNowPlayingNotification = useCallback(async (stationData: {
     stationName: string;

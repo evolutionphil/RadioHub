@@ -15,16 +15,15 @@ const userEngagementService = new UserEngagementService();
 router.get('/profile/:slug', async (req, res) => {
     try {
         const { slug } = req.params;
-        const session = (req as any).session;
-        const currentUserId = session?.user?.userId || null;
+        const currentUserId = await resolveCurrentUserId(req);
         const identity = await pgPublicProfileCacheIdentity(slug);
         if (!identity) return void res.status(404).json({ error: 'Profile not found' });
-        const cacheKey = `user-engagement-profile:${slug}:${identity}:${currentUserId || 'anon'}`;
+        const cacheKey = `user-engagement-profile:v2:${identity}:${currentUserId || 'anon'}`;
         const cached = await CacheManager.get(cacheKey);
         if (cached) {
             return void res.json(cached);
         }
-        const profile = await userEngagementService.getUserProfileBySlug(slug, currentUserId);
+        const profile = await userEngagementService.getUserProfileBySlug(slug, currentUserId || undefined);
         if (!profile) {
             return void res.status(404).json({ error: 'Profile not found' });
         }
@@ -43,7 +42,7 @@ router.get('/profile/:slug/favorites', async (req, res) => {
         const { page = '1', limit = '20' } = req.query;
         const identity = await pgPublicProfileCacheIdentity(slug);
         if (!identity) return void res.status(404).json({ error: 'Profile not found or favorites private' });
-        const cacheKey = `user-engagement-favs:${slug}:${identity}:p${page}:l${limit}`;
+        const cacheKey = `user-engagement-favs:v2:${identity}:p${page}:l${limit}`;
         const cached = await CacheManager.get(cacheKey);
         if (cached) {
             return void res.json(cached);
@@ -66,29 +65,29 @@ router.get('/profile/:slug/full', async (req, res) => {
     try {
         const { slug } = req.params;
         const { favLimit = '20', recentLimit = '20' } = req.query;
-        const session = (req as any).session;
-        const currentUserId = session?.user?.userId || null;
+        const currentUserId = await resolveCurrentUserId(req);
         const identity = await pgPublicProfileCacheIdentity(slug);
         if (!identity) return void res.status(404).json({ error: 'Profile not found' });
-        const cacheKey = `user-engagement-full:${slug}:${identity}:${currentUserId || 'anon'}:fl${favLimit}:rl${recentLimit}`;
+        const cacheKey = `user-engagement-full:v2:${identity}:${currentUserId || 'anon'}:fl${favLimit}:rl${recentLimit}`;
         const cached = await CacheManager.get(cacheKey);
         if (cached)
             return void res.json(cached);
-        const profile = await userEngagementService.getUserProfileBySlug(slug, currentUserId);
+        const profile = await userEngagementService.getUserProfileBySlug(slug, currentUserId || undefined);
         if (!profile)
             return void res.status(404).json({ error: 'Profile not found' });
         let favorites: any[] = [];
+        let total = 0;
         let recentlyPlayed: any[] = [];
         if (profile.isPublic) {
-            const isObjectId = /^[0-9a-fA-F]{24}$/.test(slug);
             const [favResult, recentlyPlayedResult] = await Promise.all([
                 userEngagementService.getUserFavoritesBySlug(slug, 1, parseInt(favLimit as string)),
                 userEngagementService.getRecentlyPlayed(slug, parseInt(recentLimit as string)),
             ]);
             favorites = favResult?.favorites || [];
+            total = favResult?.total ?? favorites.length;
             recentlyPlayed = recentlyPlayedResult;
         }
-        const result = { profile, favorites, recentlyPlayed };
+        const result = { profile, favorites, total, recentlyPlayed };
         await CacheManager.set(cacheKey, result, { ttl: 90 });
         res.json(result);
     }
@@ -208,7 +207,7 @@ router.post('/stations/:stationId/favorite', async (req, res) => {
 // Helper: resolve userId from session (web) or Bearer token (mobile)
 async function resolveCurrentUserId(req: any): Promise<string | null> {
     const session = req.session;
-    const fromSession = session?.userId || session?.user?.userId || session?.passport?.user;
+    const fromSession = session?.userId || session?.user?.userId || session?.passport?.user || req.user?._id || req.user?.id;
     if (fromSession)
         return fromSession.toString();
     const authHeader = req.headers['authorization'];

@@ -8,6 +8,8 @@ import { getStreamProxyUrl, resolveStreamUrl } from '@/lib/utils';
 import { addRecentlyPlayed } from '@/utils/recently-played';
 import { adjacentAvailableStation, availableStations, isExplicitlyFailedStation } from '@/utils/station-availability';
 import { usePlaybackSpaceShortcut } from './usePlaybackSpaceShortcut';
+import { useLoginPlayback } from './useLoginPlayback';
+import { apiRequest } from '@/lib/queryClient';
 
 import type { GlobalPlayerState } from './useGlobalPlayer.shell';
 import { GlobalPlayerContext } from './useGlobalPlayer.shell';
@@ -774,12 +776,7 @@ export function GlobalPlayerProvider({ children }: { children: ReactNode }) {
         localStorage.setItem('recentlyPlayed', JSON.stringify(updated));
         window.dispatchEvent(new CustomEvent('recentlyPlayedUpdated'));
         
-        fetch('/api/recently-played', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({ stationId: station._id })
-        }).catch(() => {});
+        void apiRequest('POST', '/api/recently-played', { body: { stationId: station._id } }).catch(() => {});
       } catch (e) {}
       
       // Set up station queue for next/prev
@@ -1202,10 +1199,7 @@ export function GlobalPlayerProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  // Simple login handling
-  const playAtLogin = async (user: any) => {
-    logger.log('🔑 Play at login for user:', user);
-  };
+  const playAtLogin = useLoginPlayback({ isReady: !!audioElement, currentStation, playStation });
 
   // Set up simple media session handlers
   useEffect(() => {
