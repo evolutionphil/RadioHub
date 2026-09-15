@@ -15,6 +15,9 @@ COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
 COPY patches ./patches
 COPY tsconfig.base.json tsconfig.json ./
 COPY artifacts/api-server ./artifacts/api-server
+# Legacy deploy resolves workspace patches against every package manifest.
+# Keep the frontend patch owner visible even though only the proxy is installed.
+COPY artifacts/megaradio/package.json ./artifacts/megaradio/
 COPY lib ./lib
 COPY scripts ./scripts
 

@@ -11,7 +11,7 @@ import { reverseTranslateUrl, translateUrl } from '@workspace/seo-shared/url-tra
 // not a second hand-maintained set of patterns that could hide a broken mount.
 const app = readFileSync('src/App.tsx', 'utf8');
 const patterns = [...app.matchAll(/<Route path="([^"]+)" component=\{PlayerWrapper\} \/>/g)].map(match => match[1]);
-const accountPaths = ['/premium/success', '/activate/success', '/profile/messages/partner-id'];
+const accountPaths = ['/premium/success', '/activate/success', '/profile/messages', '/profile/messages/partner-id'];
 
 function ResolvedAccountPage() {
   const [location] = useLocation();

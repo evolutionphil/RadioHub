@@ -16,6 +16,7 @@ import { PublicProfileAvatar } from "@/components/ui/public-profile-avatar";
 const AddYourStationModal = lazy(() => import("@/components/modals/AddYourStationModal"));
 const MobileNavigation = lazy(() => import('./mobile-navigation'));
 import { useTranslation } from "@/hooks/useTranslation";
+import { getProfileNavCopy } from '@/lib/chat-copy';
 import { logoutAccount } from '@/lib/logout';
 import { toast } from '@/hooks/use-toast';
 import { useSeoRouting } from "@/hooks/useSeoRouting";
@@ -62,8 +63,14 @@ export default function RadioHeader({
   const [isNotificationDropdownOpen, setIsNotificationDropdownOpen] = useState(false);
   const [isMobileProfileMenuOpen, setIsMobileProfileMenuOpen] = useState(false);
   
-  const { t, setLanguage } = useTranslation();
+  const { t, setLanguage, localeTranslations } = useTranslation();
   const { getLocalizedUrl, cleanPath, navigateTranslated, currentLanguage } = useSeoRouting();
+  const profileNavCopy = getProfileNavCopy(currentLanguage);
+  const englishProfileNav = getProfileNavCopy('en');
+  const profileNavLabel = (key: string, name: keyof typeof profileNavCopy) => {
+    const value = localeTranslations?.[key]?.trim();
+    return value && !(currentLanguage !== 'en' && value === englishProfileNav[name]) ? value : profileNavCopy[name];
+  };
   const langPrefix = currentLanguage === "en" ? "" : `/${currentLanguage}`;
   // 2026-05-12 SEO audit: header search dropdown was emitting hardcoded
   // /<lang>/regions/... links, but per-language routes expect the
@@ -302,8 +309,8 @@ export default function RadioHeader({
       
       setIsCountryDropdownOpen(false);
       setCountrySearchQuery("");
-      setIsMobileProfileMenuOpen(false);
-      setIsNotificationDropdownOpen(false);
+      // Profile and notification menus close only for an outside target above.
+      // Closing them on an inside mousedown removes links before click can fire.
     };
 
     if (isCountryDropdownOpen || isNotificationDropdownOpen || isMobileProfileMenuOpen) {
@@ -1915,7 +1922,7 @@ export default function RadioHeader({
             className="flex items-center px-4 py-3 hover:bg-[#2D2D2D] transition-colors"
           >
             <Heart className="w-5 h-5 mr-3 text-[#FF4199]" />
-            <span className="text-white text-sm font-medium">{t('nav_your_favorites', 'Your Favorites')}</span>
+            <span className="text-white text-sm font-medium">{profileNavLabel('nav_your_favorites', 'favorites')}</span>
           </Link>
 
           <Link
@@ -1924,7 +1931,7 @@ export default function RadioHeader({
             className="flex items-center px-4 py-3 hover:bg-[#2D2D2D] transition-colors"
           >
             <Compass className="w-5 h-5 mr-3 text-[#FF4199]" />
-            <span className="text-white text-sm font-medium">{t('user_menu_discover', 'Discover')}</span>
+            <span className="text-white text-sm font-medium">{profileNavLabel('user_menu_discover', 'discover')}</span>
           </Link>
 
           <Link
@@ -1933,7 +1940,7 @@ export default function RadioHeader({
             className="flex items-center px-4 py-3 hover:bg-[#2D2D2D] transition-colors"
           >
             <User className="w-5 h-5 mr-3 text-[#FF4199]" />
-            <span className="text-white text-sm font-medium">{t('user_menu_profile', 'Profile')}</span>
+            <span className="text-white text-sm font-medium">{profileNavLabel('user_menu_profile', 'profile')}</span>
           </Link>
 
           <Link
@@ -1942,7 +1949,7 @@ export default function RadioHeader({
             className="flex items-center px-4 py-3 hover:bg-[#2D2D2D] transition-colors"
           >
             <MessageCircle className="w-5 h-5 mr-3 text-[#FF4199]" />
-            <span className="text-white text-sm font-medium">{t('messages', 'Messages')}</span>
+            <span className="text-white text-sm font-medium">{profileNavLabel('messages', 'messages')}</span>
           </Link>
 
           <div className="border-t border-[#2D2D2D] my-1"></div>
@@ -1953,7 +1960,7 @@ export default function RadioHeader({
             className="flex items-center px-4 py-3 hover:bg-[#2D2D2D] transition-colors"
           >
             <MessageSquareWarning className="w-5 h-5 mr-3 text-[#FF4199]" />
-            <span className="text-white text-sm font-medium">{t('feedback', 'Feedback')}</span>
+            <span className="text-white text-sm font-medium">{profileNavLabel('feedback', 'feedback')}</span>
           </Link>
 
           <button
@@ -1966,7 +1973,7 @@ export default function RadioHeader({
             className="flex items-center w-full px-4 py-3 hover:bg-[#2D2D2D] transition-colors text-left"
           >
             <LogOut className="w-5 h-5 mr-3 text-gray-400" />
-            <span className="text-white text-sm font-medium">{t('nav_logout', 'Logout')}</span>
+            <span className="text-white text-sm font-medium">{profileNavLabel('nav_logout', 'logout')}</span>
           </button>
         </div>,
         document.body
