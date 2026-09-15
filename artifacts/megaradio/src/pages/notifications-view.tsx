@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
+import { PublicProfileAvatar } from '@/components/ui/public-profile-avatar';
 import { Bell, CheckCircle, User, Heart, Radio, Calendar, MessageSquare, Settings } from 'lucide-react';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useAuth } from '@/hooks/useAuth';
@@ -27,6 +28,7 @@ interface UserNotification {
     fullName?: string;
     username?: string;
     avatar?: string;
+    profileImageUrl?: string;
   };
 }
 
@@ -284,15 +286,12 @@ function NotificationsSession({ userId }: { userId: string }) {
                 >
                   <div className="flex space-x-3">
                     <div className="flex-shrink-0">
-                      {notification.fromUserId?.avatar ? (
-                        <img
-                          src={notification.fromUserId.avatar}
-                          alt={`${notification.fromUserId.fullName || 'User'} avatar`}
-                          className="h-10 w-10 rounded-full object-cover"
-                          onError={(e) => {
-                            const img = e.target as HTMLImageElement;
-                            img.style.display = 'none';
-                          }}
+                      {notification.fromUserId ? (
+                        <PublicProfileAvatar
+                          profile={notification.fromUserId}
+                          name={`${notification.fromUserId.fullName || 'User'} avatar`}
+                          size={40}
+                          className="h-10 w-10"
                         />
                       ) : (
                         <div className="h-10 w-10 rounded-full bg-[#2A2A2A] flex items-center justify-center">

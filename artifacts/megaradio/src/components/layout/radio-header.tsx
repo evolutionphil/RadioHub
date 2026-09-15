@@ -11,6 +11,7 @@ import notificationIcon from "@assets/notification1.png";
 import { useGlobalPlayer } from "@/hooks/useGlobalPlayer";
 import { useAuth } from "@/hooks/useAuth";
 import { UserMenuDropdown } from "@/components/ui/UserMenuDropdown";
+import { PublicProfileAvatar } from "@/components/ui/public-profile-avatar";
 // 🚀 LAZY: modal only loads on first open
 const AddYourStationModal = lazy(() => import("@/components/modals/AddYourStationModal"));
 const MobileNavigation = lazy(() => import('./mobile-navigation'));
@@ -1821,6 +1822,7 @@ export default function RadioHeader({
                   <div 
                     className="flex-shrink-0 overflow-hidden"
                     style={{ width: '32px', height: '32px', borderRadius: '16.49px' }}
+                    aria-hidden="true"
                   >
                     {isStation && notification.data?.stationFavicon ? (
                       <img 
@@ -1830,29 +1832,7 @@ export default function RadioHeader({
                         onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
                       />
                     ) : (isFollow || isMessage) && fromUser ? (
-                      fromUser.avatar || fromUser.profileImageUrl ? (
-                        <img 
-                          src={fromUser.avatar || fromUser.profileImageUrl} 
-                          alt="" 
-                          className="w-full h-full object-cover"
-                          onError={(e) => {
-                            const img = e.target as HTMLImageElement;
-                            img.style.display = 'none';
-                            const parent = img.parentElement;
-                            if (parent) {
-                              const letter = (fromUser.fullName || fromUser.username || 'U').charAt(0).toUpperCase();
-                              const bg = isMessage ? '#FF4199' : '#2F2F2F';
-                              parent.innerHTML = `<div class="w-full h-full flex items-center justify-center" style="background:${bg}"><span class="text-white text-xs font-medium">${letter}</span></div>`;
-                            }
-                          }}
-                        />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center" style={{ background: isMessage ? '#FF4199' : '#2F2F2F' }}>
-                          <span className="text-white text-xs font-medium">
-                            {(fromUser.fullName || fromUser.username || 'U').charAt(0).toUpperCase()}
-                          </span>
-                        </div>
-                      )
+                      <PublicProfileAvatar profile={fromUser} name="" size={32} className="h-full w-full" />
                     ) : (
                       <div className="w-full h-full bg-[#2F2F2F] flex items-center justify-center">
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4 text-gray-400">

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { PublicProfileAvatar } from './public-profile-avatar';
 
 interface UserAvatarProps {
   avatar?: string;
@@ -8,7 +8,6 @@ interface UserAvatarProps {
 }
 
 export default function UserAvatar({ avatar, name, className = '', size = 'md' }: UserAvatarProps) {
-  const [failedAvatar, setFailedAvatar] = useState<string>();
   
   const sizeClasses = {
     sm: 'h-8 w-8',
@@ -16,31 +15,7 @@ export default function UserAvatar({ avatar, name, className = '', size = 'md' }
     lg: 'h-24 w-24 md:h-32 md:w-32'
   };
 
-  const handleImageError = () => {
-    setFailedAvatar(avatar);
-  };
-
-  // Use avatar if available and no error, otherwise fallback
-  const shouldShowAvatar = avatar && avatar !== failedAvatar;
-
-  return (
-    <div className={`${sizeClasses[size]} rounded-full ${className}`}>
-      {shouldShowAvatar ? (
-        <img 
-          className={`${sizeClasses[size]} rounded-full object-cover`}
-          src={avatar}
-          alt={name || 'User avatar'}
-          onError={handleImageError}
-          loading="lazy"
-        />
-      ) : (
-        <img 
-          className={`${sizeClasses[size]} rounded-full object-cover`}
-          src="/no-avatar.svg"
-          alt={name || 'User avatar'}
-          loading="lazy"
-        />
-      )}
-    </div>
-  );
+  return <PublicProfileAvatar profile={{ avatar }} name={name || 'User avatar'}
+    size={size === 'sm' ? 32 : size === 'lg' ? 128 : 80}
+    className={`${sizeClasses[size]} ${className}`} />;
 }

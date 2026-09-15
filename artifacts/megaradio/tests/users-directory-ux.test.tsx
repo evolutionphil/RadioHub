@@ -45,11 +45,11 @@ it('never renders private profiles and uses one whole-card accessible link',asyn
   expect(link).toHaveAttribute('href','/de/users/radio-friend');expect(link.querySelector('button')).toBeNull();
   expect(screen.queryByText('Private Person')).toBeNull();
 });
-it('tries the second stored avatar once then uses request-free initials within the fixed crop',()=>{
+it('tries the second stored avatar once then uses a request-free default avatar within the fixed crop',()=>{
   const view=render(<PublicProfileAvatar profile={{avatar:'/broken.jpg',profileImageUrl:'/other.jpg'}} name="Radio Friend" className="size-16"/>);
   fireEvent.error(screen.getByRole('img',{name:'Radio Friend'}));
   expect(screen.getByRole('img',{name:'Radio Friend'})).toHaveAttribute('src','/other.jpg');
   fireEvent.error(screen.getByRole('img',{name:'Radio Friend'}));
-  expect(screen.getByRole('img',{name:'Radio Friend'})).toHaveTextContent('RF');expect(view.container.querySelector('img')).toBeNull();
+  expect(screen.getByRole('img',{name:'Radio Friend'}).tagName.toLowerCase()).toBe('svg');expect(view.container.querySelector('img')).toBeNull();
   expect(view.container.firstElementChild).toHaveClass('size-16','overflow-hidden','rounded-full','shrink-0');
 });

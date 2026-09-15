@@ -165,6 +165,31 @@ const SAMPLE_NOTIFICATION = {
 };
 
 describe("RadioHeader notifications bell — keyboard support", () => {
+  it("keeps notification avatars decorative and replaces failed or missing photos with a visible default icon", () => {
+    renderHeader([
+      { _id: 'follow1', type: 'follow', title: 'New follower', read: true,
+        fromUserId: { _id: 'sender1', fullName: 'Bob', avatar: '/uploads/broken.webp', profileImageUrl: '/uploads/alternate.webp' } },
+      { _id: 'message1', type: 'new_message', title: 'New message', read: true,
+        fromUserId: { _id: 'sender2', fullName: 'Carol' } },
+    ]);
+    fireEvent.click(getNotificationTrigger());
+    const follower = screen.getByTestId('notification-item-0');
+    const original = follower.querySelector('img')!;
+    expect(original).toHaveAttribute('alt', '');
+    expect(original).toHaveAttribute('src', '/uploads/broken.webp');
+    expect(original.closest('[aria-hidden="true"]')).not.toBeNull();
+    fireEvent.error(original);
+    const alternate = follower.querySelector('img')!;
+    expect(alternate).toHaveAttribute('src', '/uploads/alternate.webp');
+    fireEvent.error(alternate);
+    expect(follower.querySelector('img')).toBeNull();
+    const fallback = follower.querySelector('[role="img"]')!;
+    expect(fallback).toBeVisible();
+    expect(fallback.tagName.toLowerCase()).toBe('svg');
+    expect(fallback.closest('[aria-hidden="true"]')).not.toBeNull();
+    expect(screen.getByTestId('notification-item-1').querySelector('svg[role="img"]')).not.toBeNull();
+  });
+
   it("trigger exposes aria-haspopup=dialog and aria-expanded reflects open state", () => {
     renderHeader();
     const trigger = getNotificationTrigger();

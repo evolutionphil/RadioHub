@@ -4,14 +4,13 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { PublicProfileAvatar } from "@/components/ui/public-profile-avatar";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { useNotificationService } from "@/services/NotificationService";
 import { useNotifications } from "@/hooks/useNotifications";
 import { apiRequest, getQueryFn } from "@/lib/queryClient";
-import { getAvatarUrl } from "@/lib/utils";
 import { 
   User, 
   Settings, 
@@ -200,12 +199,7 @@ function ProfileContent() {
         <Card className="bg-[#151515] border-gray-800 mb-6">
           <CardHeader>
             <div className="flex items-center space-x-4">
-              <Avatar className="w-20 h-20">
-                <AvatarImage src={getAvatarUrl(user)} alt={user.fullName || user.username} />
-                <AvatarFallback className="bg-blue-600 text-white text-xl">
-                  {(user.fullName || user.username || user.email || 'U').charAt(0).toUpperCase()}
-                </AvatarFallback>
-              </Avatar>
+              <PublicProfileAvatar profile={user} name={user.fullName || user.username || 'User'} size={80} className="w-20 h-20" />
               <div className="flex-1">
                 <h2 className="text-2xl font-bold text-white">
                   {user.fullName || user.username || 'User'}
@@ -497,12 +491,7 @@ function ProfileContent() {
                       {(socialData?.followers || []).map((follower: any, i: number) => (
                         <div key={i} className="flex items-center justify-between p-3 bg-[#1A1A1A] rounded-lg">
                           <div className="flex items-center space-x-3">
-                            <Avatar className="w-12 h-12">
-                              <AvatarImage src={follower.avatar} />
-                              <AvatarFallback className="bg-blue-600 text-white">
-                                {(follower.name || follower.email || 'U').charAt(0).toUpperCase()}
-                              </AvatarFallback>
-                            </Avatar>
+                            <PublicProfileAvatar profile={follower} name={follower.name || 'User'} size={48} className="w-12 h-12" />
                             <div>
                               <h4 className="font-medium text-white">{follower.name || 'User'}</h4>
                               <p className="text-sm text-gray-400">{follower.email}</p>
@@ -554,12 +543,7 @@ function ProfileContent() {
                       {(socialData?.following || []).map((following: any, i: number) => (
                         <div key={i} className="flex items-center justify-between p-3 bg-[#1A1A1A] rounded-lg">
                           <div className="flex items-center space-x-3">
-                            <Avatar className="w-12 h-12">
-                              <AvatarImage src={following.avatar} />
-                              <AvatarFallback className="bg-green-600 text-white">
-                                {(following.name || following.email || 'U').charAt(0).toUpperCase()}
-                              </AvatarFallback>
-                            </Avatar>
+                            <PublicProfileAvatar profile={following} name={following.name || 'User'} size={48} className="w-12 h-12" />
                             <div>
                               <h4 className="font-medium text-white">{following.name || 'User'}</h4>
                               <p className="text-sm text-gray-400">{following.email}</p>

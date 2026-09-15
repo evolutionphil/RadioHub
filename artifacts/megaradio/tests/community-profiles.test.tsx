@@ -47,7 +47,7 @@ describe('public community identity and counts', () => {
     const { rerender } = render(<PublicProfileAvatar profile={{ avatar: '/uploads/first.webp' }} name="A Listener" className="h-12 w-12" />);
     const img = screen.getByRole('img', { name: 'A Listener' });
     fireEvent.error(img);
-    expect(screen.getByRole('img', { name: 'A Listener' })).toHaveTextContent('AL');
+    expect(screen.getByRole('img', { name: 'A Listener' }).tagName.toLowerCase()).toBe('svg');
     expect(img).not.toBeInTheDocument();
     rerender(<PublicProfileAvatar profile={{ avatar: '/uploads/second.webp' }} name="A Listener" className="h-12 w-12" />);
     expect(screen.getByRole('img', { name: 'A Listener' })).toHaveAttribute('src', '/uploads/second.webp');

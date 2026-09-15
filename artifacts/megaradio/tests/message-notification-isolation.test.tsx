@@ -104,6 +104,45 @@ it('native read=true stays read and native sender ID opens the localized message
   expect(fetchMock.mock.calls.some(([url])=>String(url).endsWith('/read'))).toBe(false);
 });
 
+it('notification avatars try a stored alternate photo, then show a default icon without hiding the sender slot', async () => {
+  fetchMock.mockImplementation(async (url: string) => url.startsWith('/api/user/notifications?') ? json({
+    notifications: [{ _id: msgId, type: 'follow', read: true, fromUserId: {
+      _id: B, fullName: 'Bob', avatar: '/uploads/broken.webp', profileImageUrl: '/uploads/alternate.webp',
+    }, title: 'New follower', message: 'Body', createdAt: '2026-01-01' }],
+    pagination: { page: 1, pages: 1, total: 1 }, unreadCount: 0,
+  }) : defaults(url));
+  mount(<NotificationsView />);
+  const original = await screen.findByRole('img', { name: 'Bob avatar' });
+  expect(original).toHaveAttribute('src', '/uploads/broken.webp');
+  fireEvent.error(original);
+  const alternate = screen.getByRole('img', { name: 'Bob avatar' });
+  expect(alternate).toHaveAttribute('src', '/uploads/alternate.webp');
+  fireEvent.error(alternate);
+  const fallback = screen.getByRole('img', { name: 'Bob avatar' });
+  expect(fallback).toBeVisible();
+  expect(fallback).not.toHaveAttribute('src');
+  expect(fallback.tagName.toLowerCase()).toBe('svg');
+  expect(original).not.toBeInTheDocument();
+  expect(alternate).not.toBeInTheDocument();
+});
+
+it('missing notification photos show a default avatar while system icons and private names remain unchanged', async () => {
+  fetchMock.mockImplementation(async (url: string) => url.startsWith('/api/user/notifications?') ? json({
+    notifications: [
+      { _id: msgId, type: 'follow', read: true, fromUserId: { _id: B, username: 'private-handle', email: 'private@example.test' }, title: 'New follower', message: 'Body', createdAt: '2026-01-01' },
+      { _id: 'system1', type: 'system', read: true, title: 'System maintenance', message: 'Body', createdAt: '2026-01-01' },
+    ], pagination: { page: 1, pages: 1, total: 2 }, unreadCount: 0,
+  }) : defaults(url));
+  mount(<NotificationsView />);
+  const fallback = await screen.findByRole('img', { name: 'User avatar' });
+  expect(fallback).toBeVisible();
+  expect(fallback.tagName.toLowerCase()).toBe('svg');
+  expect(screen.queryByText(/private-handle|private@example.test/)).not.toBeInTheDocument();
+  const systemRow = screen.getByText('System maintenance').closest('.cursor-pointer')!;
+  expect(systemRow.querySelector('svg.lucide-settings')).not.toBeNull();
+  expect(systemRow.querySelector('img, [role="img"]')).toBeNull();
+});
+
 it('notification query failure is not mislabeled as an empty inbox',async () => {
   fetchMock.mockImplementation(async()=>json({},500));
   mount(<NotificationsView/>);

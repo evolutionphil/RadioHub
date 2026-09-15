@@ -7,6 +7,7 @@ import { apiRequest, oauthBearerHeader, resolveApiUrl } from "@/lib/queryClient"
 import { useTranslation } from '@/hooks/useTranslation';
 import { useChatViewport } from '@/hooks/use-chat-viewport';
 import { getChatCopy } from '@/lib/chat-copy';
+import { PublicProfileAvatar } from '@/components/ui/public-profile-avatar';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -56,7 +57,6 @@ interface WsEvent {
 // ─── Avatar ───────────────────────────────────────────────────────────────────
 
 function Avatar({ user, size = 40 }: { user: UserInfo | null; size?: number }) {
-  const [failedSource, setFailedSource] = useState<string | null>(null);
   if (!user) {
     return (
       <div
@@ -67,8 +67,6 @@ function Avatar({ user, size = 40 }: { user: UserInfo | null; size?: number }) {
       </div>
     );
   }
-  const src = user.avatar || user.profileImageUrl;
-  const initial = (user.fullName || user.username || "?").charAt(0).toUpperCase();
   const dot = user.online !== undefined && (
     <span
       className="absolute bottom-0 right-0 rounded-full border-2"
@@ -83,16 +81,7 @@ function Avatar({ user, size = 40 }: { user: UserInfo | null; size?: number }) {
 
   return (
     <div className="relative flex-shrink-0" style={{ width: size, height: size }}>
-      {src && src !== failedSource ? (
-        <img src={src} alt={user.fullName || user.username} onError={() => setFailedSource(src)} className="rounded-full object-cover w-full h-full" />
-      ) : (
-        <div
-          className="rounded-full flex items-center justify-center text-white font-bold w-full h-full"
-          style={{ background: "linear-gradient(135deg,#F86DAD,#FF4FA0)", fontSize: size * 0.4 }}
-        >
-          {initial}
-        </div>
-      )}
+      <PublicProfileAvatar profile={user} name={user.fullName || user.username || 'User'} size={size} className="h-full w-full" />
       {dot}
     </div>
   );
