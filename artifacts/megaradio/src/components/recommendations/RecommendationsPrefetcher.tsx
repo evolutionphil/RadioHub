@@ -1,14 +1,12 @@
 import { useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { getPrecomputedStationsSlice } from '@/lib/precomputed-pool';
+import { fetchRecommendationPool, recommendationPoolKey } from '@/lib/recommendation-pool';
 
 /**
  * RecommendationsPrefetcher
  *
- * Background-prefetches every network request the /recommendations
- * ("For You") page makes so that, by the time the user clicks the
- * sidebar entry, the page renders instantly from TanStack Query's
- * cache instead of triggering 3-4 fresh HTTP round-trips.
+ * Warms the one bounded country pool shared by For You's discovery and
+ * trending sections. Specific moods/tastes are fetched only when needed.
  *
  * Why a separate component:
  *   - Mounted once at the top of <App> (next to TranslationPreloader)
@@ -16,10 +14,7 @@ import { getPrecomputedStationsSlice } from '@/lib/precomputed-pool';
  *   - Speculative work waits for load and interaction (or an 8s grace
  *     period), then idle. Window load alone can precede async page content
  *     and is not proof that LCP has finished. Actual route queries never wait.
- *   - QueryKeys, URLs, limits and 7-day staleTimes mirror exactly
- *     what `pages/recommendations.tsx` registers, so the cache hit
- *     is byte-identical and TanStack Query reuses the data instead
- *     of refetching.
+ *   - The query key and five-minute browser freshness match the page.
  *
  * If the user is on a Save-Data / 2G-effective connection, prefetch
  * is skipped — bandwidth-conscious users shouldn't pay for content
@@ -43,44 +38,12 @@ export function RecommendationsPrefetcher() {
       }
     }
 
-    // Defaults for non-logged-in / cold prefetch. The /recommendations
-    // page itself uses `selectedCountry` from the URL/picker; "all"
-    // (→ countryName=global) is by far the most common starting state
-    // and matches what the page hits on first paint.
-    const selectedCountry = 'all';
-    const countryParam = 'global';
-
     const prefetchAll = () => {
-      // 1. Mood pool (200-station global cache, drives every mood card).
+      let country = 'all';
+      try { country = localStorage.getItem('selectedCountry') || 'all'; } catch { /* storage may be disabled */ }
       queryClient.prefetchQuery({
-        queryKey: ['/api/stations/precomputed', 'global', 200, 'mood-pool'],
-        // PageSpeed 2026-07-03: all four prefetches below share ONE
-        // limit=200 network request via getPrecomputedStationsSlice —
-        // the server slices the same cached pool, so the rows are
-        // identical to the previous per-limit fetches.
-        queryFn: async () => getPrecomputedStationsSlice('global', 200),
-        staleTime: STATION_FRESHNESS_MS,
-      });
-
-      // 2. Trending (50 stations, /api/stations/trending key).
-      queryClient.prefetchQuery({
-        queryKey: ['/api/stations/trending', selectedCountry],
-        queryFn: async () => getPrecomputedStationsSlice(countryParam, 50),
-        staleTime: STATION_FRESHNESS_MS,
-      });
-
-      // 3. Discovery (100 stations, /api/stations/discovery key).
-      queryClient.prefetchQuery({
-        queryKey: ['/api/stations/discovery', selectedCountry],
-        queryFn: async () => getPrecomputedStationsSlice(countryParam, 100),
-        staleTime: STATION_FRESHNESS_MS,
-      });
-
-      // 4. Default recommendations (12 stations shown when no mood is
-      //    picked — first thing the user sees).
-      queryClient.prefetchQuery({
-        queryKey: ['/api/stations/default-recommendations', selectedCountry],
-        queryFn: async () => getPrecomputedStationsSlice(countryParam, 12),
+        queryKey: recommendationPoolKey(country),
+        queryFn: ({ signal }) => fetchRecommendationPool(country, [], signal),
         staleTime: STATION_FRESHNESS_MS,
       });
     };

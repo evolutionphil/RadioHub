@@ -62,7 +62,7 @@ function getDeviceType(): 'mobile' | 'desktop' | 'tablet' {
   return 'desktop';
 }
 
-export function useMLRecommendations() {
+export function useMLRecommendations(options: { recommendations?: boolean } = {}) {
   const queryClient = useQueryClient();
   const sessionId = getSessionId();
 
@@ -99,7 +99,7 @@ export function useMLRecommendations() {
   const { data: recommendations, isLoading: recommendationsLoading } = useQuery<StationWithRecommendation[]>({
     queryKey: ['/api/ml/recommendations', sessionId],
     ...stationQueryFreshness,
-    enabled: true, // Always enabled - backend provides starter recommendations for new users
+    enabled: options.recommendations !== false,
     staleTime: 2 * 60 * 1000, // 2 minutes (reduced from 10 minutes for faster updates)
     retry: 1
   });

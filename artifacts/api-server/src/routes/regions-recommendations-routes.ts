@@ -14,6 +14,7 @@ import {
   pgSaveMaintenanceJob,
 } from "../data/postgres-maintenance-store";
 import { safeFetch, INTERNAL_SERVICE_PORTS } from "../utils/safe-fetch";
+import { getRecommendationPool, recommendationPoolScope } from '../services/recommendation-pool';
 
 // REGIONS DATA STRUCTURE
 const WORLD_REGIONS = {
@@ -1069,6 +1070,18 @@ export function registerRegionsRecommendationsRoutes(app: Express, deps: any) {
       }
     },
   );
+
+  app.get('/api/recommendations/pool', async (req, res) => {
+    let scope: ReturnType<typeof recommendationPoolScope>;
+    try { scope = recommendationPoolScope(req.query.country, req.query.genres); }
+    catch { return void res.status(400).json({ error: 'Invalid recommendation filters' }); }
+    try { res.json(await getRecommendationPool(scope)); }
+    catch (error) {
+      logger.error({ err: error }, 'Recommendation pool unavailable');
+      res.set('Cache-Control', 'no-store');
+      res.status(503).json({ error: 'Station data is temporarily unavailable' });
+    }
+  });
 
   // Dedicated Recommendations
   app.get("/api/recommendations/dedicated", async (req, res) => {

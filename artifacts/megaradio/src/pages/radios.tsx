@@ -4,6 +4,7 @@ import { fetchStationCardList } from '@/lib/station-card-list-request';
 import { stationQueryFreshness } from '@/lib/station-query-policy';
 import { useLocation } from 'wouter';
 import StationCard from '@/components/ui/station-card';
+import CatalogStationItems from '@/components/ads/CatalogStationItems';
 import { useGlobalPlayer } from '@/hooks/useGlobalPlayer';
 import { useTranslation } from '@/hooks/useTranslation';
 import { Swiper, SwiperSlide } from 'swiper/react';
@@ -478,7 +479,8 @@ export default function RadiosPage({ selectedCountry = 'all', onCountryChange }:
           {/* Stations Grid - Match GitHub layout exactly */}
           {!stationsLoading && stationsData && (
             <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4 md:gap-5">
-              {stationsData.stations.map((station: any) => (
+              <CatalogStationItems stations={stationsData.stations} getKey={(station: any) => station._id}>
+              {(station: any) => (
                 <StationCard
                   key={station._id}
                   station={station}
@@ -487,7 +489,8 @@ export default function RadiosPage({ selectedCountry = 'all', onCountryChange }:
                   playlistName="allStations"
                   showVotes={true}
                 />
-              ))}
+              )}
+              </CatalogStationItems>
             </div>
           )}
 

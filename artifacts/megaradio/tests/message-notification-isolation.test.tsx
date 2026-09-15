@@ -9,6 +9,11 @@ import NotificationSettings from '../src/pages/notifications';
 const state = vi.hoisted(() => ({ user: { _id:'aaaaaaaaaaaaaaaaaaaaaaaa', notificationSettings: undefined as any }, navigate:vi.fn(), toast:vi.fn() }));
 vi.mock('@/hooks/useAuth', () => ({useAuth:() => ({user:state.user,isAuthenticated:!!state.user})}));
 vi.mock('@/hooks/useTranslation', () => ({useTranslation:() => ({language:'de',t:(_key:string,fallback:string) => fallback})}));
+// These regression tests focus on request/account isolation, independent of copy.
+vi.mock('@/lib/chat-copy', async (importOriginal) => {
+  const original = await importOriginal<typeof import('../src/lib/chat-copy')>();
+  return { getChatCopy: () => original.getChatCopy('en') };
+});
 vi.mock('@/hooks/use-toast', () => ({useToast:() => ({toast:state.toast})}));
 vi.mock('wouter', () => ({useLocation:() => ['/de/profile/notifications',state.navigate]}));
 vi.mock('@/hooks/usePushNotifications', () => ({usePushNotifications:() => ({isSupported:true,isSubscribed:true,permission:'granted',isLoading:false,

@@ -11,7 +11,7 @@ const AddYourStationModal = lazy(() => import("@/components/modals/AddYourStatio
 import { Globe } from "lucide-react";
 import AdSenseUnit from "@/components/ads/AdSenseUnit";
 import { getAdSensePageType } from '@/lib/adsense-runtime';
-import { AD_SLOTS } from '@/lib/advertising-placements';
+import { AD_SLOTS, usesInlineMobileCatalogAd } from '@/lib/advertising-placements';
 import PrivacySettingsButton from "@/components/ads/PrivacySettingsButton";
 
 interface FooterSocialLink {
@@ -201,7 +201,7 @@ export default function Footer() {
       {/* One content-end placement, separated from footer navigation. Station
           pages already own their capped placements; private pages get none. */}
       {showCatalogAdvertisement && <AdSenseUnit adSlot={AD_SLOTS.catalogFooter} adFormat="horizontal"
-        fullWidthResponsive={true} className="w-full max-w-[1206px] mx-auto px-4 pt-8 mb-8" />}
+        fullWidthResponsive={true} className={`${usesInlineMobileCatalogAd(window.location.pathname + window.location.search) ? 'hidden md:block ' : ''}w-full max-w-[1206px] mx-auto px-4 pt-8 mb-8`} />}
       <div className="container mx-auto">
         {/* Main footer grid - responsive from mobile to 4K */}
         <div className="relative flex flex-col gap-8 pb-6 pt-8 sm:pt-12 md:pt-16 lg:pt-20 xl:pt-24

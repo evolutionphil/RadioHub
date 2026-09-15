@@ -1,7 +1,7 @@
 import { useLocation } from "wouter";
 import { useEffect, useState } from "react";
 import { useQueryClient } from '@tanstack/react-query';
-import { getLanguageFromPath, DEFAULT_LANGUAGE, SEO_LANGUAGES, COUNTRY_TO_LANGUAGE } from "@workspace/seo-shared/seo-config";
+import { getLanguageFromPath, DEFAULT_LANGUAGE, SEO_LANGUAGES, COUNTRY_TO_LANGUAGE, ACTIVE_SITEMAP_LANGUAGES } from "@workspace/seo-shared/seo-config";
 import { translateUrl, reverseTranslateUrl, normalizeUrlForLanguage } from "@workspace/seo-shared/url-translations";
 import { getBrowserLanguage, saveBrowserLanguage, syncBrowserLanguageFromUrl } from '@/lib/browser-language';
 import { prefetchNavigationTranslations } from '@/lib/translation-navigation-prefetch';
@@ -76,13 +76,14 @@ export function useSeoRouting() {
   // Function to change language - stays on current page, translates URL
   // User expects to stay on same page when switching language (better UX)
   const changeLanguage = (newLanguage: string) => {
-    if (!SEO_LANGUAGES.find(lang => lang.code === newLanguage && lang.enabled)) {
+    if (!ACTIVE_SITEMAP_LANGUAGES.some(language => language === newLanguage)) {
       // Invalid language code
       return;
     }
     
     // Store the preferred language immediately (localStorage + cookie for SSR)
     saveBrowserLanguage(newLanguage);
+    if (newLanguage === effectiveLanguage) return;
     
     // Translate current page to new language and stay on same page
     // Use englishPath (already computed) to get canonical English route
@@ -101,11 +102,11 @@ export function useSeoRouting() {
     
     logger.log(`🌐 Language changed to: ${newLanguage}, navigating to: ${newPath}`);
     
-    // CRITICAL FIX: Use full page reload instead of SPA navigation
-    // This ensures translations are properly loaded for non-Latin scripts
-    // (Arabic, Chinese, Japanese, Hindi, etc.)
-    // SPA navigation (setLocation) doesn't trigger proper re-render of translation system
-    window.location.href = newPath;
+    // TranslationProvider observes the URL now; keep the audio runtime and
+    // current session mounted instead of reloading the entire document.
+    // Warm only the chosen locale, without delaying navigation on the network.
+    void prefetchNavigationTranslations(queryClient, newLanguage);
+    setLocation(`${newPath}${window.location.search}${window.location.hash}`);
   };
   
   // Function to navigate with language prefix preservation (for SEO URLs)

@@ -7,6 +7,8 @@ import { Menu, X, Heart, Compass, User as UserIcon, MessageCircle, MessageSquare
 import { useSeoRouting } from "@/hooks/useSeoRouting";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from '@/lib/queryClient';
+import { useTranslation } from '@/hooks/useTranslation';
+import { getProfileNavCopy } from '@/lib/chat-copy';
 
 function NavLink({ href, children, isActive }: { href: string; children: React.ReactNode; isActive: boolean }) {
   const [, navigate] = useLocation();
@@ -30,7 +32,15 @@ interface ProfileLayoutProps {
 
 export default function ProfileLayout({ children }: ProfileLayoutProps) {
   const { user } = useAuth();
-  const { getLocalizedUrl } = useSeoRouting();
+  const { language, localeTranslations } = useTranslation();
+  const navCopy = getProfileNavCopy(language);
+  const englishNav = getProfileNavCopy('en');
+  const navLabel = (key: string, name: keyof typeof navCopy) => {
+    const value = localeTranslations?.[key]?.trim();
+    return value && !(language !== 'en' && value === englishNav[name]) ? value : navCopy[name];
+  };
+  const { getLocalizedUrl, englishPath } = useSeoRouting();
+  const isMessagesPage = englishPath.replace(/\/$/, '') === '/profile/messages';
   const [location] = useLocation();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
@@ -81,10 +91,10 @@ export default function ProfileLayout({ children }: ProfileLayoutProps) {
   };
 
   return (
-    <div data-layout="user" className="text-white bg-[#0E0E0E] min-h-screen">
+    <div data-layout="user" className={`text-white bg-[#0E0E0E] ${isMessagesPage ? 'h-full min-h-0' : 'min-h-screen'}`}>
       {/* NO HEADER HERE - RadioHeader is provided by PlayerWrapper in App.tsx for ALL pages */}
 
-      <div className="text-white">
+      <div className={`text-white ${isMessagesPage ? 'h-full min-h-0' : ''}`}>
         {/* Sidebar Navigation - fixed full-width layout */}
         <div className="
           hidden
@@ -96,22 +106,22 @@ export default function ProfileLayout({ children }: ProfileLayoutProps) {
             <div className="space-y-5 pt-10">
               <NavLink href={getLocalizedUrl("/profile/favorites")} isActive={isActive(getLocalizedUrl("/profile/favorites"))}>
                 <div className="mr-5"><Heart className="w-6 h-6 text-[#FF4199]" /></div>
-                <div className="text-base font-bold">Your Favorites</div>
+                <div className="text-base font-bold">{navLabel('nav_your_favorites', 'favorites')}</div>
               </NavLink>
 
               <NavLink href={getLocalizedUrl("/profile/discover")} isActive={isActive(getLocalizedUrl("/profile/discover"))}>
                 <div className="mr-5"><Compass className="w-6 h-6 text-[#FF4199]" /></div>
-                <div className="text-base font-bold">Discover</div>
+                <div className="text-base font-bold">{navLabel('user_menu_discover', 'discover')}</div>
               </NavLink>
 
               <NavLink href={getLocalizedUrl("/profile/settings")} isActive={isActive(getLocalizedUrl("/profile/settings"))}>
                 <div className="mr-5"><UserIcon className="w-6 h-6 text-[#FF4199]" /></div>
-                <div className="text-base font-bold">Profile</div>
+                <div className="text-base font-bold">{navLabel('user_menu_profile', 'profile')}</div>
               </NavLink>
 
               <NavLink href={getLocalizedUrl("/profile/messages")} isActive={isActive(getLocalizedUrl("/profile/messages"))}>
                 <div className="mr-5"><MessageCircle className="w-6 h-6 text-[#FF4199]" /></div>
-                <div className="text-base font-bold flex-1">Messages</div>
+                <div className="text-base font-bold flex-1">{navLabel('messages', 'messages')}</div>
                 {unreadCount > 0 && (
                   <span className="bg-[#FF4199] text-white text-[12px] font-bold rounded-full px-1.5 py-0.5 min-w-[18px] text-center">
                     {unreadCount > 99 ? "99+" : unreadCount}
@@ -124,7 +134,7 @@ export default function ProfileLayout({ children }: ProfileLayoutProps) {
             <div className="mb-4 space-y-5">
               <NavLink href={getLocalizedUrl("/feedback")} isActive={isActive(getLocalizedUrl("/feedback"))}>
                 <div className="mr-5"><MessageSquareWarning className="w-6 h-6 text-[#FF4199]" /></div>
-                <div className="text-base font-bold">Feedback</div>
+                <div className="text-base font-bold">{navLabel('feedback', 'feedback')}</div>
               </NavLink>
 
               <button
@@ -142,16 +152,16 @@ export default function ProfileLayout({ children }: ProfileLayoutProps) {
                 <div className="mr-5">
                   <LogOut className="w-6 h-6 text-[#FF4199]" />
                 </div>
-                <div className="text-base font-bold">Logout</div>
+                <div className="text-base font-bold">{navLabel('nav_logout', 'logout')}</div>
               </button>
             </div>
           </div>
         </div>
 
         {/* Main Content Area - full width with sidebar offset */}
-        <div className="relative w-full">
-          <div className="w-full bg-[#0E0E0E] lg:pl-64">
-            <div className="px-2 py-8 md:px-8">
+        <div className={`relative w-full ${isMessagesPage ? 'h-full min-h-0' : ''}`}>
+          <div className={`w-full bg-[#0E0E0E] lg:pl-64 ${isMessagesPage ? 'h-full min-h-0' : ''}`}>
+            <div className={isMessagesPage ? 'h-full min-h-0' : 'px-2 py-8 md:px-8'}>
               {children}
             </div>
           </div>

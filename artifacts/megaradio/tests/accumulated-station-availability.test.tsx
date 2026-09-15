@@ -87,7 +87,8 @@ it('chunks at fifty IDs sequentially and never treats partial batch failure as a
 it('uses the authoritative visible view for homepage cards and playback queues without mutating the accumulator', () => {
   const source = readFileSync('src/pages/radio-frontend.tsx', 'utf8');
   expect(source).toContain('useAvailableStationSnapshots(allLoadedStations)');
-  expect(source).toContain('availableLoadedStations.map((station: any, i: number)');
+  expect(source).toContain('stations={availableLoadedStations}');
+  expect(source).toContain('<CatalogStationItems');
   expect(source).toContain('allLoadedStations.length > 0 ? availableLoadedStations :');
   expect(source).not.toContain('setAllLoadedStations(availableLoadedStations)');
 });

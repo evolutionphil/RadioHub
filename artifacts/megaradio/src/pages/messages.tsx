@@ -1,10 +1,12 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { Fragment, useState, useEffect, useLayoutEffect, useRef, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Search, Send, Circle, CheckCheck, Users, MessageCircle, ArrowLeft, Smile, ImagePlus, X } from "lucide-react";
 
 import { useAuth } from "@/hooks/useAuth";
 import { apiRequest, oauthBearerHeader, resolveApiUrl } from "@/lib/queryClient";
 import { useTranslation } from '@/hooks/useTranslation';
+import { useChatViewport } from '@/hooks/use-chat-viewport';
+import { getChatCopy } from '@/lib/chat-copy';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -54,6 +56,7 @@ interface WsEvent {
 // ─── Avatar ───────────────────────────────────────────────────────────────────
 
 function Avatar({ user, size = 40 }: { user: UserInfo | null; size?: number }) {
+  const [failedSource, setFailedSource] = useState<string | null>(null);
   if (!user) {
     return (
       <div
@@ -80,8 +83,8 @@ function Avatar({ user, size = 40 }: { user: UserInfo | null; size?: number }) {
 
   return (
     <div className="relative flex-shrink-0" style={{ width: size, height: size }}>
-      {src ? (
-        <img src={src} alt={user.fullName || user.username} className="rounded-full object-cover w-full h-full" />
+      {src && src !== failedSource ? (
+        <img src={src} alt={user.fullName || user.username} onError={() => setFailedSource(src)} className="rounded-full object-cover w-full h-full" />
       ) : (
         <div
           className="rounded-full flex items-center justify-center text-white font-bold w-full h-full"
@@ -112,9 +115,11 @@ function formatTime(iso: string, language: string) {
 function ConvItem({ conv, active, onClick, language }: { conv: Conversation; active: boolean; onClick: () => void; language: string }) {
   const name = conv.partner?.fullName || conv.partner?.username || "Unknown";
   return (
-    <div
+    <button
+      type="button"
       onClick={onClick}
-      className="flex items-center gap-3 px-4 py-3 cursor-pointer transition-all"
+      aria-pressed={active}
+      className="flex w-full items-center gap-3 px-4 py-4 text-start cursor-pointer transition-colors hover:bg-white/[.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#FF4199]"
       style={{
         background: active ? "rgba(255,65,153,0.1)" : "transparent",
         borderLeft: active ? "3px solid #FF4199" : "3px solid transparent",
@@ -139,7 +144,7 @@ function ConvItem({ conv, active, onClick, language }: { conv: Conversation; act
           )}
         </div>
       </div>
-    </div>
+    </button>
   );
 }
 
@@ -165,19 +170,19 @@ function Bubble({ msg, isOwn, isLast, language }: { msg: Message; isOwn: boolean
   if (isImage) {
     return (
       <div className={`flex ${isOwn ? "justify-end" : "justify-start"} mb-1.5`}>
-        <div className="max-w-[85%] sm:max-w-[75%] md:max-w-[70%]">
+        <div className="min-w-0 max-w-[85%] sm:max-w-[75%] md:max-w-[70%]">
           <img
             src={msg.imageUrl}
             alt="Shared image"
-            className="rounded-2xl max-h-64 w-full object-cover cursor-pointer"
+            className="rounded-2xl max-h-64 max-w-full object-contain cursor-pointer"
             style={{ borderBottomRightRadius: isOwn ? 4 : undefined, borderBottomLeftRadius: isOwn ? undefined : 4 }}
-            onClick={() => window.open(msg.imageUrl, '_blank')}
+            onClick={() => window.open(msg.imageUrl, '_blank', 'noopener,noreferrer')}
           />
           {msg.content && msg.content !== '📷 Photo' && (
-            <p className="text-white text-sm mt-1 px-1 break-words">{msg.content}</p>
+            <p dir="auto" className="text-white text-sm mt-1 px-1 [overflow-wrap:anywhere]">{msg.content}</p>
           )}
           <div className={`flex items-center gap-1 mt-1 px-1 ${isOwn ? "justify-end" : "justify-start"}`}>
-            <span className="text-[10px]" style={{ color: "#5a5a6a" }}>
+            <span className="text-[11px] text-[#A7A7B2]">
               {new Date(msg.createdAt).toLocaleTimeString(language, { hour: "2-digit", minute: "2-digit" })}
             </span>
             {isOwn && isLast && msg.read && <CheckCheck size={10} className="text-white/50" />}
@@ -190,16 +195,16 @@ function Bubble({ msg, isOwn, isLast, language }: { msg: Message; isOwn: boolean
   return (
     <div className={`flex ${isOwn ? "justify-end" : "justify-start"} mb-1.5`}>
       <div
-        className="max-w-[85%] sm:max-w-[75%] md:max-w-[70%] rounded-2xl px-4 py-2.5"
+        className="min-w-0 max-w-[85%] sm:max-w-[75%] md:max-w-[70%] rounded-[20px] px-3.5 py-2.5 shadow-sm"
         style={{
-          background: isOwn ? "#FF4199" : "#2A2A2A",
+          background: isOwn ? "#D72578" : "#252529",
           borderBottomRightRadius: isOwn ? 4 : undefined,
           borderBottomLeftRadius: isOwn ? undefined : 4,
         }}
       >
-        <p className="text-white text-sm leading-relaxed break-words whitespace-pre-wrap">{msg.content}</p>
+        <p dir="auto" className="text-white text-[15px] leading-relaxed [overflow-wrap:anywhere] whitespace-pre-wrap">{msg.content}</p>
         <div className={`flex items-center gap-1 mt-1 ${isOwn ? "justify-end" : "justify-start"}`}>
-          <span className="text-[10px]" style={{ color: isOwn ? "rgba(255,255,255,0.55)" : "#5a5a6a" }}>
+          <span className="text-[11px]" style={{ color: isOwn ? "rgba(255,255,255,0.85)" : "#B5B5C0" }}>
             {new Date(msg.createdAt).toLocaleTimeString(language, { hour: "2-digit", minute: "2-digit" })}
           </span>
           {isOwn && isLast && msg.read && <CheckCheck size={10} className="text-white/50" />}
@@ -240,7 +245,16 @@ async function messageJson(url: string, signal?: AbortSignal) {
 }
 
 function MessagesSession({ myId }: { myId: string }) {
-  const { t, language } = useTranslation();
+  const { t, language, localeTranslations } = useTranslation();
+  const copy = getChatCopy(language);
+  const englishLabels = new Set(Object.values(getChatCopy('en')));
+  const chatLabel = (key: string, fallback: string) => {
+    const value = localeTranslations?.[key]?.trim();
+    // t() also consults the global English dictionary before its fallback.
+    // Keep this fully localized shell independent of that legacy behavior.
+    return value && !(language !== 'en' && englishLabels.has(value)) ? value : fallback;
+  };
+  const chatViewportRef = useChatViewport();
   const qc = useQueryClient();
 
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -267,8 +281,12 @@ function MessagesSession({ myId }: { myId: string }) {
   useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
 
   const wsRef = useRef<WebSocket | null>(null);
-  const bottomRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const messagesRef = useRef<HTMLDivElement>(null);
+  const nearBottomRef = useRef(true);
+  const scrollViewportRef = useRef({ width: 0, height: 0 });
+  const lastScrollRef = useRef({ partner: '', message: '' });
+  const prependScrollRef = useRef<{ height: number; top: number } | null>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const emojiRef = useRef<HTMLDivElement>(null);
   const typingTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -292,7 +310,7 @@ function MessagesSession({ myId }: { myId: string }) {
   useEffect(() => {
     setLocalMsgs([]);
     setOlderMessages([]); setOlderHasMore(null); setLoadingOlder(false);
-    setInput(''); setSendError(''); setImageFile(null); setImagePreview(null);
+    setInput(''); setSendError(''); setImageFile(null); setImagePreview(null); setShowEmoji(false);
     // Tell server which conversation we're viewing so it skips notifications for active chats
     const ws = wsRef.current;
     if (ws?.readyState === WebSocket.OPEN) {
@@ -511,7 +529,46 @@ function MessagesSession({ myId }: { myId: string }) {
 
   // ─── Auto-scroll ───────────────────────────────────────────────────────────
 
-  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages.length, typing.size]);
+  useLayoutEffect(() => {
+    const element = messagesRef.current;
+    if (!element) return;
+    const last = messages[messages.length - 1];
+    const previous = lastScrollRef.current;
+    if (prependScrollRef.current) {
+      element.scrollTop = prependScrollRef.current.top + element.scrollHeight - prependScrollRef.current.height;
+      prependScrollRef.current = null;
+    } else if (previous.partner !== activeId ||
+      (previous.message !== (last?._id || '') && (nearBottomRef.current || last?.fromUserId === myId)) ||
+      (partnerTyping && nearBottomRef.current)) {
+      // Never scroll the document/header: only the conversation owns scrolling.
+      element.scrollTop = element.scrollHeight;
+      nearBottomRef.current = true;
+    }
+    lastScrollRef.current = { partner: activeId || '', message: last?._id || '' };
+  }, [activeId, messages.length, messages[messages.length - 1]?._id, typing.size, myId, mobileView]);
+
+  useLayoutEffect(() => {
+    const element = inputRef.current;
+    if (!element) return;
+    element.style.height = 'auto';
+    const height = input ? Math.min(element.scrollHeight || 24, 112) : 24;
+    element.style.height = `${height}px`;
+    element.style.overflowY = input && element.scrollHeight > 112 ? 'auto' : 'hidden';
+  }, [input, activeId]);
+
+  useLayoutEffect(() => {
+    const element = messagesRef.current;
+    if (!element || typeof ResizeObserver === 'undefined') return;
+    scrollViewportRef.current = { width: element.clientWidth, height: element.clientHeight };
+    const observer = new ResizeObserver(() => {
+      // Opening the keyboard, growing the composer, or rotating the device
+      // should keep the latest message visible unless reading older history.
+      if (nearBottomRef.current) element.scrollTop = element.scrollHeight;
+      scrollViewportRef.current = { width: element.clientWidth, height: element.clientHeight };
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [activeId]);
 
   // ─── Reset local msgs on conversation switch ───────────────────────────────
 
@@ -600,6 +657,8 @@ function MessagesSession({ myId }: { myId: string }) {
     try {
       const page = await messageJson(`/api/messages/conversation/${partnerId}?before=${messages[0]._id}`);
       if (mountedRef.current && activeIdRef.current === partnerId) {
+        const scroller = messagesRef.current;
+        if (scroller) prependScrollRef.current = { height: scroller.scrollHeight, top: scroller.scrollTop };
         setOlderMessages(previous => [...page.messages, ...previous]); setOlderHasMore(page.hasMore);
       }
     } catch { if (activeIdRef.current === partnerId) setSendError(t('messages_load_failed', 'Messages could not be loaded. Please try again.')); }
@@ -615,24 +674,6 @@ function MessagesSession({ myId }: { myId: string }) {
 
   // ─── Render ────────────────────────────────────────────────────────────────
 
-  useEffect(() => {
-    let startX = 0;
-    const handleTouchStart = (e: TouchEvent) => {
-      startX = e.touches[0].clientX;
-    };
-    const handleTouchEnd = (e: TouchEvent) => {
-      if (mobileView === 'chat' && e.changedTouches[0].clientX - startX > 100) {
-        setMobileView('list');
-      }
-    };
-    document.addEventListener('touchstart', handleTouchStart);
-    document.addEventListener('touchend', handleTouchEnd);
-    return () => {
-      document.removeEventListener('touchstart', handleTouchStart);
-      document.removeEventListener('touchend', handleTouchEnd);
-    };
-  }, [mobileView]);
-
   return (
     <>
       <style>{`
@@ -640,71 +681,84 @@ function MessagesSession({ myId }: { myId: string }) {
           0%,80%,100%{transform:translateY(0)}
           40%{transform:translateY(-5px)}
         }
+        @media(prefers-reduced-motion:reduce) { .chat-shell * { animation:none!important; scroll-behavior:auto!important; } }
+        .chat-shell { color-scheme:dark; }
+        .chat-shell * { scrollbar-width:thin; scrollbar-color:#45454f transparent; }
+        .chat-shell ::-webkit-scrollbar { width:6px; height:6px; }
+        .chat-shell ::-webkit-scrollbar-track { background:transparent; }
+        .chat-shell ::-webkit-scrollbar-thumb { background:#45454f; border-radius:6px; }
+        .chat-shell textarea::placeholder { white-space:nowrap; text-overflow:ellipsis; }
       `}</style>
 
       <div
-        className="-mx-2 -my-8 md:-mx-8 flex h-[calc(100dvh-70px)] sm:h-[calc(100dvh-80px)] lg:h-[calc(100dvh-90px)] xl:h-[calc(100dvh-105px)] overflow-hidden"
+        ref={chatViewportRef}
+        data-testid="chat-shell"
+        dir={language === 'ar' || language === 'he' ? 'rtl' : 'ltr'}
+        className="chat-shell flex h-full min-h-0 w-full min-w-0 overflow-hidden bg-[#101013]"
       >
         {/* ── Left: conversation list ──
             Mobile: full-width, hidden when chat is open
             Desktop (md+): fixed 260px, always visible  */}
         <div
-          className={`flex-col border-r flex-shrink-0 ${mobileView === 'list' ? 'flex' : 'hidden'} sm:flex w-full sm:w-[280px] md:w-[300px]`}
-          style={{ background: "#151515", borderColor: "#222" }}
+          data-testid="chat-conversations"
+          className={`min-h-0 min-w-0 flex-col border-e border-white/[.08] flex-shrink-0 ${mobileView === 'list' ? 'flex' : 'hidden'} md:flex w-full md:w-[280px] xl:w-[320px]`}
+          style={{ background: "#161619" }}
         >
           {/* Header */}
-          <div className="px-4 pt-4 pb-2 border-b flex-shrink-0" style={{ borderColor: "#222" }}>
+          <div className="px-4 pt-5 pb-4 border-b flex-shrink-0" style={{ borderColor: "#28282D" }}>
             <div className="flex items-center justify-between mb-3">
-              <span className="text-white font-bold text-base">{t('messages_title', 'Messages')}</span>
+              <h1 className="text-white font-bold text-2xl tracking-tight">{chatLabel('messages_title', copy.title)}</h1>
               <div className="flex items-center gap-1">
                 <div
                   className="w-2 h-2 rounded-full"
                   style={{ background: wsOk ? "#22c55e" : "#eab308", animation: wsOk ? "none" : "pulse 1s infinite" }}
                 />
                 <span className="text-[10px]" style={{ color: wsOk ? "#22c55e" : "#eab308" }}>
-                  {wsOk ? "Live" : "Connecting…"}
+                  {wsOk ? chatLabel('messages_live', copy.live) : chatLabel('messages_connecting', copy.connecting)}
                 </span>
               </div>
             </div>
 
             {/* Tabs */}
-            <div className="flex gap-1 mb-3">
-              {(["chats", "contacts"] as const).map(t => (
+            <div className="flex gap-1 mb-3 rounded-xl bg-[#232328] p-1">
+              {(["chats", "contacts"] as const).map(tabName => (
                 <button
-                  key={t}
-                  onClick={() => setTab(t)}
-                  className="flex-1 py-1.5 rounded text-xs font-semibold capitalize transition-all"
-                  style={{ background: tab === t ? "#FF4199" : "#2D2D2D", color: tab === t ? "#fff" : "#9ca3af" }}
+                  key={tabName}
+                  aria-pressed={tab === tabName}
+                  onClick={() => setTab(tabName)}
+                  className="flex-1 min-h-10 rounded-lg text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF4199]"
+                  style={{ background: tab === tabName ? "#3A2A33" : "transparent", color: tab === tabName ? "#FF86BD" : "#A7A7B2" }}
                 >
-                  {t}
+                  {chatLabel(`messages_${tabName}`, copy[tabName])}
                 </button>
               ))}
             </div>
 
             {/* Search */}
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-600" />
+              <Search className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#9696A3]" />
               <input
                 value={searchQ}
                 onChange={e => setSearchQ(e.target.value)}
-                placeholder="Search to chat…"
-                className="w-full pl-8 pr-3 py-2 rounded text-xs text-white placeholder-gray-600 outline-none"
-                style={{ background: "#2D2D2D", border: "none" }}
+                aria-label={chatLabel('messages_search', copy.search)}
+                placeholder={chatLabel('messages_search', copy.search)}
+                className="w-full min-w-0 ps-10 pe-3 py-3 rounded-xl text-base md:text-sm text-white placeholder:text-[#9696A3] outline-none focus:ring-2 focus:ring-[#FF4199]/60"
+                style={{ background: "#232328", border: "none" }}
               />
             </div>
           </div>
 
           {/* Search results */}
           {searchRes.length > 0 && (
-            <div className="border-b flex-shrink-0" style={{ borderColor: "#222" }}>
+            <div className="border-b shrink-0 max-h-[35%] overflow-y-auto overscroll-contain" style={{ borderColor: "#222" }}>
               <div className="px-4 py-1.5 text-[9px] text-gray-500 uppercase tracking-widest">
-                {searching ? "Searching…" : "Start chat with"}
+                {chatLabel('messages_contacts', copy.contacts)}
               </div>
               {searchRes.map(u => (
-                <div
+                <button type="button"
                   key={u._id}
                   onClick={() => openConv(u._id)}
-                  className="flex items-center gap-2.5 px-4 py-2.5 cursor-pointer hover:bg-[#2D2D2D] transition-colors"
+                  className="flex w-full text-start items-center gap-2.5 px-4 py-3 cursor-pointer hover:bg-[#2D2D2D] transition-colors"
                 >
                   <Avatar user={{ ...u, online: online.has(u._id) }} size={32} />
                   <div className="min-w-0 flex-1">
@@ -712,13 +766,13 @@ function MessagesSession({ myId }: { myId: string }) {
                     {u.fullName && <div className="text-gray-500 text-[10px]">@{u.username}</div>}
                   </div>
                   {online.has(u._id) && <Circle size={7} className="text-green-400 fill-green-400 flex-shrink-0" />}
-                </div>
+                </button>
               ))}
             </div>
           )}
 
           {/* List */}
-          <div className="flex-1 overflow-y-auto">
+          <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
             {tab === "chats" && (
               <>
                 {convsLoading && (
@@ -735,7 +789,8 @@ function MessagesSession({ myId }: { myId: string }) {
                 {!convsLoading && !convsError && enrichedConvs.length === 0 && !searchRes.length && (
                   <div className="flex flex-col items-center justify-center h-32 text-center px-4">
                     <MessageCircle size={22} className="text-gray-700 mb-2" />
-                    <p className="text-gray-600 text-xs">No conversations yet. Follow someone to start chatting.</p>
+                    <p className="text-[#DADAE0] text-sm font-medium">{chatLabel('messages_empty', copy.empty)}</p>
+                    <p className="text-[#9696A3] text-sm mt-2 max-w-60">{chatLabel('messages_start', copy.start)}</p>
                   </div>
                 )}
                 {enrichedConvs.map(c => (
@@ -749,23 +804,23 @@ function MessagesSession({ myId }: { myId: string }) {
                 {contactsLoading ? <p role="status">{t('loading', 'Loading…')}</p> : contactsError ? <p role="alert">{t('messages_load_failed', 'Messages could not be loaded. Please try again.')}</p> : enrichedContacts.length === 0 ? (
                   <div className="flex flex-col items-center justify-center h-32 text-center px-4">
                     <Users size={22} className="text-gray-700 mb-2" />
-                    <p className="text-gray-600 text-xs">Follow or be followed to see contacts here.</p>
+                    <p className="text-[#9696A3] text-sm">{chatLabel('messages_no_contacts', copy.noContacts)}</p>
                   </div>
                 ) : (
                   <div className="py-1">
                     {enrichedContacts.map(c => (
-                      <div
+                      <button type="button"
                         key={c._id}
                         onClick={() => openConv(c._id)}
-                        className="flex items-center gap-3 px-4 py-2.5 cursor-pointer hover:bg-[#1A1A1A] transition-colors"
+                        className="flex w-full text-start items-center gap-3 px-4 py-3 cursor-pointer hover:bg-[#1A1A1A] transition-colors"
                       >
                         <Avatar user={c} size={36} />
                         <div className="flex-1 min-w-0">
-                          <div className="text-white text-xs font-semibold truncate">{c.fullName || c.username}</div>
+                          <div className="text-white text-sm font-semibold truncate">{c.fullName || c.username}</div>
                           <div className="text-gray-600 text-[10px]">@{c.username}</div>
                         </div>
                         {c.online && <Circle size={7} className="text-green-400 fill-green-400 flex-shrink-0" />}
-                      </div>
+                      </button>
                     ))}
                   </div>
                 )}
@@ -778,39 +833,61 @@ function MessagesSession({ myId }: { myId: string }) {
             Mobile: full-width, hidden when list is showing
             Desktop (md+): flex-1, always visible  */}
         <div
-          className={`flex-col min-w-0 ${mobileView === 'chat' ? 'flex' : 'hidden'} sm:flex flex-1`}
-          style={{ background: "#0E0E0E" }}
+          data-testid="chat-conversation"
+          className={`min-h-0 flex-col min-w-0 ${mobileView === 'chat' ? 'flex' : 'hidden'} md:flex flex-1`}
+          style={{ background: "radial-gradient(ellipse at top right, rgba(255,65,153,.035), transparent 55%), #101013" }}
         >
           {activeId ? (
             <>
               {/* Chat header */}
               <div
-                className="flex items-center gap-3 px-4 py-3 border-b flex-shrink-0"
-                style={{ background: "#151515", borderColor: "#222" }}
+                className="flex items-center gap-3 px-3 md:px-5 py-3 border-b flex-shrink-0"
+                style={{ background: "#161619", borderColor: "#28282D" }}
               >
                 {/* Back button — mobile only */}
                 <button
-                  onClick={() => setMobileView('list')}
-                  className="md:hidden flex items-center justify-center w-8 h-8 rounded-full flex-shrink-0 hover:bg-[#2D2D2D] transition-colors"
-                  aria-label="Back to conversations"
+                  onClick={() => {
+                    setMobileView('list'); setShowEmoji(false); inputRef.current?.blur();
+                    // The hidden mobile conversation must no longer mark incoming messages read.
+                    activeIdRef.current = null; setActiveId(null);
+                  }}
+                  className="md:hidden flex items-center justify-center w-11 h-11 rounded-full flex-shrink-0 hover:bg-[#2D2D2D] transition-colors"
+                  aria-label={chatLabel('messages_back', copy.back)}
                 >
-                  <ArrowLeft size={18} className="text-white" />
+                  <ArrowLeft size={20} className="text-white rtl:rotate-180" />
                 </button>
                 <Avatar user={partner ? { ...partner, online: partnerOnline } : null} size={38} />
                 <div className="flex-1 min-w-0">
-                  <div className="text-white font-semibold text-sm truncate">{activeName}</div>
+                  <div className="text-white font-semibold text-base truncate">{activeName}</div>
                   <div
                     className="text-xs transition-colors"
                     style={{ color: partnerTyping ? "#FF4199" : partnerOnline ? "#22c55e" : "#6b7280" }}
                   >
-                    {partnerTyping ? "typing…" : partnerOnline ? "Online" : "Offline"}
+                    {partnerTyping ? chatLabel('messages_typing', copy.typing) : partnerOnline ? chatLabel('messages_online', copy.online) : chatLabel('messages_offline', copy.offline)}
                   </div>
                 </div>
               </div>
 
               {/* Messages area */}
-              <div className="flex-1 overflow-y-auto px-4 py-4">
-                {(olderHasMore ?? chatData?.hasMore) && <button onClick={loadOlder} disabled={loadingOlder}>{t('messages_load_older', 'Load earlier messages')}</button>}
+              <div
+                ref={messagesRef}
+                data-testid="chat-message-scroll"
+                role="log"
+                aria-label={chatLabel('messages_title', copy.title)}
+                aria-relevant="additions"
+                onScroll={event => {
+                  const node = event.currentTarget;
+                  const previous = scrollViewportRef.current;
+                  // Browsers may dispatch a scroll event for a resized/clamped
+                  // viewport before ResizeObserver. It is not a user scroll;
+                  // preserve the pre-resize anchor until the observer settles it.
+                  if (typeof ResizeObserver !== 'undefined' &&
+                    (previous.height !== node.clientHeight || previous.width !== node.clientWidth)) return;
+                  nearBottomRef.current = node.scrollHeight - node.scrollTop - node.clientHeight < 100;
+                }}
+                className="flex-1 min-h-0 min-w-0 overflow-y-auto overscroll-contain px-3 md:px-6 py-4 [scrollbar-gutter:stable]"
+              >
+                {(olderHasMore ?? chatData?.hasMore) && <button className="block mx-auto mb-4 rounded-full border border-white/10 px-4 py-2.5 text-xs text-[#B5B5C0] hover:bg-white/5 disabled:opacity-50" onClick={loadOlder} disabled={loadingOlder}>{t('messages_load_older', 'Load earlier messages')}</button>}
                 {chatError ? <p role="alert">{t('messages_load_failed', 'Messages could not be loaded. Please try again.')}</p> : chatLoading ? (
                   <div className="flex flex-col gap-3">
                     {[80, 140, 60, 110].map((w, i) => (
@@ -820,33 +897,35 @@ function MessagesSession({ myId }: { myId: string }) {
                     ))}
                   </div>
                 ) : messages.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center h-full gap-3 opacity-50">
+                  <div className="flex flex-col items-center justify-center h-full gap-3">
                     <MessageCircle size={32} style={{ color: "#FF4199" }} />
-                    <p className="text-gray-400 text-sm">Say hello to {activeName}! 👋</p>
+                    <p className="text-[#A7A7B2] text-sm text-center">{chatLabel('messages_greeting', copy.greeting).replace('{name}', activeName)} 👋</p>
                   </div>
                 ) : (
                   messages.map((m, i) => (
+                    <Fragment key={m._id}>
+                    {(i === 0 || new Date(m.createdAt).toDateString() !== new Date(messages[i - 1].createdAt).toDateString()) && <div className="flex justify-center py-4"><time dateTime={m.createdAt} className="rounded-full border border-white/[.06] bg-[#1B1B20] px-3 py-1 text-[11px] text-[#A7A7B2]">{new Date(m.createdAt).toLocaleDateString(language, { day: 'numeric', month: 'short', year: 'numeric' })}</time></div>}
                     <Bubble
-                      key={m._id}
                       msg={m}
                       isOwn={m.fromUserId === myId}
                       isLast={i === messages.length - 1}
                       language={language}
                     />
+                    </Fragment>
                   ))
                 )}
                 {partnerTyping && <TypingIndicator />}
-                <div ref={bottomRef} />
               </div>
 
               {/* Image preview */}
               {imagePreview && (
-                <div className="flex-shrink-0 px-3 py-2 border-t" style={{ background: "#151515", borderColor: "#222" }}>
+                <div className="min-h-0 shrink max-h-[30%] overflow-y-auto overscroll-contain px-3 py-2 border-t" style={{ background: "#151515", borderColor: "#222" }}>
                   <div className="relative inline-block">
                     <img src={imagePreview} alt="Preview" className="h-24 rounded-xl object-cover" />
                     <button
                       onClick={cancelImage}
-                      className="absolute -top-2 -right-2 w-6 h-6 rounded-full flex items-center justify-center"
+                      aria-label={chatLabel('messages_remove_image', copy.removeImage)}
+                      className="absolute -top-2 -right-2 w-8 h-8 rounded-full flex items-center justify-center"
                       style={{ background: "#FF4199" }}
                     >
                       <X size={12} className="text-white" />
@@ -857,13 +936,15 @@ function MessagesSession({ myId }: { myId: string }) {
 
               {/* Emoji picker */}
               {showEmoji && (
-                <div ref={emojiRef} className="flex-shrink-0 border-t" style={{ background: "#1A1A1A", borderColor: "#222" }}>
-                  <div className="grid grid-cols-6 sm:grid-cols-8 gap-1 p-3 max-h-48 overflow-y-auto">
+                <div ref={emojiRef} className="min-h-0 shrink max-h-[30%] overflow-y-auto overscroll-contain border-t" style={{ background: "#1A1A1A", borderColor: "#222" }}>
+                  <div className="grid grid-cols-6 sm:grid-cols-8 gap-1 p-3">
                     {['😀','😂','🤣','😍','😘','🥰','😊','😎','🤩','🥺','😢','😭','😤','🤔','🤗','🤫','😴','🤮','🥳','😈','👿','💀','👻','🤡','💩','👍','👎','👏','🙌','🤝','❤️','🧡','💛','💚','💙','💜','🖤','💔','🔥','⭐','🎵','🎶','🎤','🎧','📻','📡','🌍','🌈'].map(e => (
                       <button
                         key={e}
                         onClick={() => doSendEmoji(e)}
-                        className="text-2xl p-1.5 rounded-lg hover:bg-[#2D2D2D] transition-colors flex items-center justify-center"
+                        disabled={sendMut.isPending || uploadingImage}
+                        aria-label={e}
+                        className="text-2xl min-h-11 p-1.5 rounded-lg hover:bg-[#2D2D2D] disabled:opacity-50 transition-colors flex items-center justify-center"
                       >
                         {e}
                       </button>
@@ -875,34 +956,43 @@ function MessagesSession({ myId }: { myId: string }) {
               {sendError && <p role="alert" className="px-3 text-sm text-red-400">{sendError}</p>}
               {/* Input */}
               <div
-                className="flex-shrink-0 flex items-center gap-1.5 px-2 py-2 border-t"
-                style={{ background: "#151515", borderColor: "#222", paddingBottom: "max(8px, env(safe-area-inset-bottom))" }}
+                data-testid="chat-composer"
+                className="flex-shrink-0 min-w-0 flex items-end gap-1 px-2 md:px-4 py-3 border-t"
+                style={{ background: "#161619", borderColor: "#28282D", paddingBottom: "max(12px, env(safe-area-inset-bottom))" }}
               >
                 <input type="file" ref={fileInputRef} accept="image/*" onChange={handleImageSelect} className="hidden" />
                 <button
                   onClick={() => fileInputRef.current?.click()}
-                  className="flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center hover:bg-[#2D2D2D] transition-colors"
-                  title="Send image"
+                  disabled={uploadingImage || sendMut.isPending}
+                  className="flex-shrink-0 w-11 h-11 rounded-full flex items-center justify-center hover:bg-[#2D2D2D] disabled:opacity-50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF4199]"
+                  title={chatLabel('messages_image', copy.image)}
+                  aria-label={chatLabel('messages_image', copy.image)}
                 >
                   <ImagePlus size={18} className="text-gray-400" />
                 </button>
                 <button
                   onClick={() => setShowEmoji(prev => !prev)}
-                  className="flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center hover:bg-[#2D2D2D] transition-colors"
+                  className="flex-shrink-0 w-11 h-11 rounded-full flex items-center justify-center hover:bg-[#2D2D2D] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF4199]"
                   style={{ color: showEmoji ? "#FF4199" : undefined }}
                   title="Emoji"
+                  aria-label="Emoji"
+                  aria-expanded={showEmoji}
                 >
                   <Smile size={18} className={showEmoji ? "text-[#FF4199]" : "text-gray-400"} />
                 </button>
-                <div className="flex-1 flex items-center rounded-full overflow-hidden" style={{ background: "#2D2D2D" }}>
-                  <input
+                <div className="flex-1 min-w-0 flex items-end rounded-[22px] py-2.5 border border-white/[.08] focus-within:border-[#FF4199]/50" style={{ background: "#252529" }}>
+                  <textarea
                     ref={inputRef}
                     value={input}
                     onChange={e => { setInput(e.target.value); emitTyping(); }}
-                    onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); imagePreview ? doSendImage() : doSend(); } }}
-                    placeholder={`Message ${activeName || "…"}`}
+                    onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); imagePreview ? doSendImage() : doSend(); } }}
+                    placeholder={chatLabel('messages_message', copy.message).replace('{name}', activeName || '…')}
+                    aria-label={chatLabel('messages_message', copy.message).replace('{name}', activeName || '…')}
                     maxLength={2000}
-                    className="flex-1 px-3 py-2 bg-transparent text-white text-sm placeholder-gray-600 outline-none"
+                    rows={1}
+                    dir="auto"
+                    style={{ border: 0, padding: '0 12px', appearance: 'none', boxShadow: 'none', minHeight: 24 }}
+                    className="block flex-1 min-w-0 w-full resize-none px-3 bg-transparent text-white text-base leading-6 placeholder:text-[#9696A3] outline-none max-h-28 overflow-y-auto"
                   />
                   {input.length > 1800 && (
                     <span className="pr-2 text-[10px]" style={{ color: input.length > 1950 ? "#ef4444" : "#6b7280" }}>
@@ -912,25 +1002,25 @@ function MessagesSession({ myId }: { myId: string }) {
                 </div>
                 <button
                   onClick={imagePreview ? doSendImage : doSend}
-                  aria-label={t('messages_send', 'Send message')}
-                  disabled={imagePreview ? uploadingImage : (!input.trim() || sendMut.isPending)}
-                  className="flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center transition-all"
+                  aria-label={chatLabel('messages_send', copy.send)}
+                  disabled={uploadingImage || sendMut.isPending || (!imagePreview && !input.trim())}
+                  className="flex-shrink-0 w-11 h-11 rounded-full flex items-center justify-center transition-colors disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF4199] focus-visible:ring-offset-2 focus-visible:ring-offset-[#161619]"
                   style={{
                     background: (imagePreview || (input.trim() && !sendMut.isPending)) ? "#FF4199" : "#2D2D2D",
                     cursor: (imagePreview || (input.trim() && !sendMut.isPending)) ? "pointer" : "default",
                   }}
                 >
-                  <Send size={14} className="text-white" style={{ marginLeft: 1 }} />
+                  <Send size={18} className="text-white rtl:-scale-x-100" style={{ marginLeft: 1 }} />
                 </button>
               </div>
             </>
           ) : (
             /* Empty state — only shown on sm+ when no conversation selected */
-            <div className="flex-1 hidden sm:flex flex-col items-center justify-center gap-4 opacity-40">
-              <MessageCircle size={48} style={{ color: "#FF4199" }} />
-              <div className="text-center">
-                <p className="text-white font-semibold text-base">Your Messages</p>
-                <p className="text-gray-500 text-sm mt-1">Select a conversation or start a new one</p>
+            <div className="flex-1 hidden md:flex flex-col items-center justify-center gap-5 p-6">
+              <div className="flex h-20 w-20 items-center justify-center rounded-[28px] border border-[#FF4199]/20 bg-[#FF4199]/10"><MessageCircle size={34} style={{ color: "#FF75B4" }} /></div>
+              <div className="text-center max-w-72">
+                <p className="text-white font-semibold text-xl">{chatLabel('messages_title', copy.title)}</p>
+                <p className="text-[#9696A3] text-sm mt-2 leading-relaxed">{chatLabel('messages_select', copy.select)}</p>
               </div>
             </div>
           )}

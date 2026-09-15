@@ -6,6 +6,7 @@ import { useAvailableStationSnapshots } from '@/hooks/useAvailableStationSnapsho
 import { fetchStationCardList } from '@/lib/station-card-list-request';
 import { Link } from "wouter";
 import StationCard from "@/components/ui/station-card";
+import CatalogStationItems from '@/components/ads/CatalogStationItems';
 import StationCardSkeleton from "@/components/ui/station-card-skeleton";
 import GenreCardSkeleton from "@/components/ui/genre-card-skeleton";
 import VirtualizedStationList from "@/components/ui/virtualized-station-list";
@@ -1348,9 +1349,9 @@ export default function RadioFrontend({
 
               {/* All Stations Grid - Always use 3-column grid layout for consistent design */}
               <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-x-[21px] gap-y-[20px]">
-                {availableLoadedStations.map((station: any, i: number) => (
-                  <StationCard key={`all-stations-${station._id || i}`} station={station} onPlay={handlePlay} />
-                ))}
+                <CatalogStationItems stations={availableLoadedStations} getKey={(station: any, i) => `all-stations-${station._id || i}`}>
+                  {(station: any) => <StationCard station={station} onPlay={handlePlay} />}
+                </CatalogStationItems>
               </div>
               
               {/* See More Button - EXACT from original LoadMoreButton.vue - Centered below stations */}

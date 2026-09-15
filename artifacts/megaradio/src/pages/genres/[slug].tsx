@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import type { StationWithCountry } from "@workspace/db-shared/schema";
 import { Link } from "wouter";
 import StationCard from "@/components/ui/station-card";
+import CatalogStationItems from '@/components/ads/CatalogStationItems';
 import { useGlobalPlayer } from "@/hooks/useGlobalPlayer";
 import { ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
 import NotFound from "@/pages/not-found";
@@ -253,7 +254,8 @@ export default function GenreDetail({
                   <>
                     {stations.length > 0 ? (
                       <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4 md:gap-6">
-                        {stations.map((station, i) => (
+                        <CatalogStationItems stations={stations} getKey={(station, i) => station._id || i}>
+                        {(station, i) => (
                           <StationCard 
                             key={station._id || i} 
                             station={station} 
@@ -261,7 +263,8 @@ export default function GenreDetail({
                             onPlay={handlePlay}
                             onStop={handleStop}
                           />
-                        ))}
+                        )}
+                        </CatalogStationItems>
                       </div>
                     ) : (
                       <div className="text-white">{t('no_stations_found', 'No stations found.')}</div>

@@ -1,12 +1,12 @@
 import { useState, useEffect, memo, lazy, Suspense } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
-import { useNotificationService } from "@/services/NotificationService";
 import { apiRequest } from "@/lib/queryClient";
 import { useTranslation } from "@/hooks/useTranslation";
 import { useFavoriteState } from "@/hooks/useFavoriteState";
 import { trackStationFavorite } from "@/lib/analytics";
 import { invalidateCommunityProfiles } from '@/lib/community-profile';
+import { acquireFavoriteMutation, favoriteNotificationText } from '@/lib/favorite-notification';
 import fav60Icon from "@assets/fav60.png";
 
 // A closed auth dialog must not download/initialize forms for every station
@@ -29,35 +29,44 @@ const FavoriteButton = memo(function FavoriteButton({ stationId, className = "",
   const [hasOpenedAuthModal, setHasOpenedAuthModal] = useState(false);
   const [pendingFavorite, setPendingFavorite] = useState<string | null>(null);
   const { toast } = useToast();
-  const notificationService = useNotificationService();
   const queryClient = useQueryClient();
-  const { t } = useTranslation();
+  const { t, language, localeTranslations } = useTranslation();
 
   const { user, favoriteStationIds } = useFavoriteState();
   const isFavorited = favoriteStationIds.has(stationId);
+  const feedback = favoriteNotificationText(language, localeTranslations);
 
   // Add to favorites mutation
   const addToFavoritesMutation = useMutation({
     mutationFn: async () => {
-      const response = await apiRequest('POST', '/api/user/favorites', { body: { stationId } });
-      return response.json();
+      const release = acquireFavoriteMutation(queryClient, user?._id || '', stationId);
+      if (!release) return { duplicate: true };
+      try {
+        const response = await apiRequest('POST', '/api/user/favorites', { body: { stationId } });
+        return { ...await response.json(), release };
+      } catch (error) { release(); throw error; }
     },
     onSuccess: (data: any) => {
+      if (data.duplicate) return;
       // This metadata was always cache-only (enabled:false). Read its latest
       // value only when a notification is needed, without a per-card observer.
       const stationData = queryClient.getQueryData<any>(['/api/stations', stationId]);
       if (!data.alreadyFavorited) {
-        // Show toast for immediate feedback
+        // One quiet, localized confirmation instead of two overlapping toast
+        // systems (the former rich service also hardcoded English and reloaded
+        // the document when opening Favorites).
         toast({
-          title: t('favorites_added_to_favorites') || "Added to Favorites",
-          description: t('favorites_added_to_favorites_description') || "Station has been added to your favorites!",
+          title: feedback.added,
+          description: stationData?.name || feedback.addedDescription,
+          variant: 'favorite',
+          type: 'background',
+          duration: 3200,
+          closeLabel: feedback.close,
         });
 
-        // Show rich notification with station details
+        // Reuse cached metadata for analytics and the existing push integration.
         const stationName = stationData?.name || "Unknown Station";
         const stationCountry = stationData?.country || "";
-        
-        notificationService.addedToFavorites(stationName, stationCountry);
         
         // Track analytics event
         trackStationFavorite(stationName, stationCountry, 'add');
@@ -70,7 +79,7 @@ const FavoriteButton = memo(function FavoriteButton({ stationId, className = "",
               headers: { 'Content-Type': 'application/json' },
               credentials: 'include',
               body: JSON.stringify({
-                stationId: stationData?._id,
+                stationId,
                 stationName: stationName,
                 country: stationCountry,
                 genre: stationData?.genre,
@@ -89,11 +98,13 @@ const FavoriteButton = memo(function FavoriteButton({ stationId, className = "",
         sendFavoriteNotification();
       }
       // Invalidate ALL favorites queries (with any parameters)
-      queryClient.invalidateQueries({ 
+      const refreshed = queryClient.invalidateQueries({
         predicate: (query) => query.queryKey[0] === '/api/user/favorites'
       });
       invalidateCommunityProfiles(queryClient);
+      return refreshed;
     },
+    onSettled: (data) => data?.release?.(),
     onError: (error: any) => {
       // Don't show error if it's just already favorited
       if (!error.message?.includes('already')) {
@@ -109,29 +120,40 @@ const FavoriteButton = memo(function FavoriteButton({ stationId, className = "",
   // Remove from favorites mutation
   const removeFromFavoritesMutation = useMutation({
     mutationFn: async () => {
-      return await apiRequest('DELETE', `/api/user/favorites/${stationId}`);
+      const release = acquireFavoriteMutation(queryClient, user?._id || '', stationId);
+      if (!release) return { duplicate: true };
+      try {
+        await apiRequest('DELETE', `/api/user/favorites/${stationId}`);
+        return { release };
+      } catch (error) { release(); throw error; }
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
+      if (data.duplicate) return;
       const stationData = queryClient.getQueryData<any>(['/api/stations', stationId]);
       toast({
-        title: t('favorites_removed_from_favorites') || "Removed from Favorites",
-        description: t('favorites_removed_from_favorites_description') || "Station has been removed from your favorites",
+        title: feedback.removed,
+        description: stationData?.name || feedback.removedDescription,
+        variant: 'favorite-removed',
+        type: 'background',
+        duration: 3200,
+        closeLabel: feedback.close,
       });
       
-      // Show rich notification for favorite removal
+      // Reuse cached metadata without making a per-station request.
       const stationName = stationData?.name || "Unknown Station";
-      notificationService.removedFromFavorites(stationName);
       
       // Track analytics event
       trackStationFavorite(stationName, stationData?.country || "", 'remove');
       
       // Cache will be updated automatically by invalidation
       // Invalidate ALL favorites queries (with any parameters)
-      queryClient.invalidateQueries({ 
+      const refreshed = queryClient.invalidateQueries({
         predicate: (query) => query.queryKey[0] === '/api/user/favorites'
       });
       invalidateCommunityProfiles(queryClient);
+      return refreshed;
     },
+    onSettled: (data) => data?.release?.(),
     onError: () => {
       toast({
         title: t('general_error') || "Error",

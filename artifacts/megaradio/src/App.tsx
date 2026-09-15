@@ -42,6 +42,7 @@ import { PushNotificationBridge } from "@/components/PushNotificationBridge";
 import { useState, useEffect, useDeferredValue } from "react";
 import { useLocation } from "wouter";
 import { getLanguageFromPath } from "@workspace/seo-shared/seo-config";
+import { syncDocumentLocale } from '@/lib/document-locale';
 import { useScrollToTop } from "@/hooks/useScrollToTop";
 import { initGA } from "./lib/analytics";
 import { useAnalytics } from "./hooks/use-analytics";
@@ -344,7 +345,7 @@ function PublicRouter({ selectedCountry, onCountryChange }: { selectedCountry?: 
     if (pathToUse === '/trending') return <LazyRoutes.TrendingStations />;
     if (pathToUse === '/test-user') return <div className="min-h-screen bg-[#0E0E0E] text-white flex items-center justify-center"><h1 className="text-2xl">Test Route Works!</h1></div>;
     if (pathToUse === '/request-station') return <LazyRoutes.RequestStation />;
-    if (pathToUse === '/recommendations') return <LazyRoutes.RecommendationsPage />;
+    if (pathToUse === '/recommendations') return <LazyRoutes.RecommendationsPage selectedCountry={selectedCountry} onCountryChange={onCountryChange} />;
     if (pathToUse === '/privacy-policy' || pathToUse === '/pages/privacy-policy') return <LazyRoutes.PrivacyPolicy />;
     if (pathToUse === '/notifications') return <LazyRoutes.NotificationSettings />;
     // Regions routing system - TuneIn style navigation
@@ -396,7 +397,7 @@ function PublicRouter({ selectedCountry, onCountryChange }: { selectedCountry?: 
 
 function PlayerWrapper() {
   const [showAddStationModal, setShowAddStationModal] = useState(false);
-  const { cleanPath, changeLanguage, currentLanguage } = useSeoRouting();
+  const { cleanPath, englishPath, changeLanguage, currentLanguage } = useSeoRouting();
   const { setLanguage: setTranslationLanguage } = useTranslation();
   const [, setLocation] = useLocation();
   
@@ -503,12 +504,13 @@ function PlayerWrapper() {
   };
 
   // Reference: Profile pages do NOT have footer (user.vue layout)
-  const isProfilePage = cleanPath.startsWith('/profile');
+  const isProfilePage = englishPath === '/profile' || englishPath.startsWith('/profile/');
+  const isMessagesPage = englishPath === '/profile/messages' || englishPath.startsWith('/profile/messages/');
 
   return (
     <SeoPageWrapper pageType={getPageType()}>
       <BreadcrumbOverrideProvider>
-      <div className="min-h-screen bg-[#0E0E0E] radio-theme flex flex-col w-full overflow-x-hidden">
+      <div className={`${isMessagesPage ? 'h-[100dvh] min-h-0 overflow-hidden' : 'min-h-screen overflow-x-hidden'} bg-[#0E0E0E] radio-theme flex flex-col w-full`}>
         {/* Header with centered content - header itself is full-width for background */}
         <Suspense fallback={<RadioHeaderFallback />}>
           <RadioHeader 
@@ -519,12 +521,12 @@ function PlayerWrapper() {
           />
         </Suspense>
         {/* Main content area - pages handle their own max-width for full-bleed hero support */}
-        <main className="pt-[70px] md:pt-[80px] lg:pt-[90px] xl:pt-[105px] flex-1 w-full">
+        <main className={`pt-[70px] md:pt-[80px] lg:pt-[90px] xl:pt-[105px] flex-1 w-full ${isMessagesPage ? 'box-border min-h-0 overflow-hidden' : ''}`}>
           {/* Task #371: visible breadcrumb trail on every non-home page —
               client-side counterpart to the SSR breadcrumb in
               api-server/seo-renderer.ts so the BreadcrumbList JSON-LD always
               has matching visible links post-hydration. */}
-          <RouteBreadcrumbs />
+          {!isMessagesPage && <RouteBreadcrumbs />}
           <PublicRouter selectedCountry={selectedCountry} onCountryChange={handleCountryChange} />
         </main>
         {/* Footer - hidden on profile pages per reference (user.vue has no footer) */}
@@ -1338,10 +1340,10 @@ function App() {
     };
   }, []);
   
-  // Update HTML lang attribute dynamically based on URL
+  // Keep both language and writing direction aligned with SSR after SPA switches.
   useEffect(() => {
     const { language } = getLanguageFromPath(location);
-    document.documentElement.setAttribute('lang', language);
+    syncDocumentLocale(language);
   }, [location]);
   
   return (

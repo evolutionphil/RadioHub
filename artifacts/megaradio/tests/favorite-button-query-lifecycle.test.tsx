@@ -75,7 +75,7 @@ it('reflects cached favorites updates in all buttons without fetching per-statio
   expect(network).not.toHaveBeenCalled();
 });
 
-it('retains add/remove requests, all favorites invalidation and cache-only rich notifications', async () => {
+it('retains add/remove requests, all favorites invalidation and one cache-only branded notification', async () => {
   client.setQueryData(['/api/auth/me'], { authenticated: true, user: { _id: 'listener' } });
   client.setQueryData(['/api/user/favorites', 'profile'], []);
   client.setQueryData(['/api/stations', 'station-0'], { _id: 'station-0', name: 'Old name' });
@@ -90,7 +90,9 @@ it('retains add/remove requests, all favorites invalidation and cache-only rich 
   fireEvent.click(view.getByRole('button', { name: 'Add to favorites' }));
   await waitFor(() => expect(view.getByRole('button')).toHaveAttribute('aria-pressed', 'true'));
   expect(effects.request).toHaveBeenNthCalledWith(1, 'POST', '/api/user/favorites', { body: { stationId: 'station-0' } });
-  expect(effects.added).toHaveBeenCalledWith('Current name', 'Austria');
+  expect(effects.toast).toHaveBeenCalledTimes(1);
+  expect(effects.toast).toHaveBeenLastCalledWith(expect.objectContaining({ variant: 'favorite', description: 'Current name', type: 'background' }));
+  expect(effects.added).not.toHaveBeenCalled();
   expect(effects.analytics).toHaveBeenCalledWith('Current name', 'Austria', 'add');
   expect(client.getQueryState(['/api/user/favorites', 'profile'])?.isInvalidated).toBe(true);
   expect(network).toHaveBeenCalledWith('/api/push/favorite-added', expect.objectContaining({ method: 'POST', credentials: 'include' }));
@@ -98,9 +100,40 @@ it('retains add/remove requests, all favorites invalidation and cache-only rich 
   fireEvent.click(view.getByRole('button', { name: 'Remove from favorites' }));
   await waitFor(() => expect(view.getByRole('button')).toHaveAttribute('aria-pressed', 'false'));
   expect(effects.request).toHaveBeenNthCalledWith(2, 'DELETE', '/api/user/favorites/station-0');
-  expect(effects.removed).toHaveBeenCalledWith('Current name');
+  expect(effects.toast).toHaveBeenCalledTimes(2);
+  expect(effects.toast).toHaveBeenLastCalledWith(expect.objectContaining({ variant: 'favorite-removed', description: 'Current name', type: 'background' }));
+  expect(effects.removed).not.toHaveBeenCalled();
   expect(network.mock.calls.filter(([url]) => url === '/api/user/favorites')).toHaveLength(2);
   expect(network.mock.calls.some(([url]) => url.startsWith('/api/stations/'))).toBe(false);
+});
+
+it('concurrent list/player hearts issue one write and one notification for the same station', async () => {
+  client.setQueryData(['/api/auth/me'], { authenticated: true, user: { _id: 'listener' } });
+  let finish!: (response: Response) => void;
+  effects.request.mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+  const view = render(<QueryClientProvider client={client}><FavoriteStateProvider>
+    <FavoriteButton stationId="station-0" /><FavoriteButton stationId="station-0" />
+  </FavoriteStateProvider></QueryClientProvider>);
+  fireEvent.click(view.getAllByRole('button')[0]);
+  fireEvent.click(view.getAllByRole('button')[1]);
+  await waitFor(() => expect(effects.request).toHaveBeenCalledTimes(1));
+  expect(effects.toast).not.toHaveBeenCalled();
+  serverFavorites = [{ _id: 'station-0' }];
+  await act(async () => { finish(new Response(JSON.stringify({ alreadyFavorited: false }), { status: 200 })); });
+  await waitFor(() => expect(view.getAllByRole('button').every(button => button.getAttribute('aria-pressed') === 'true')).toBe(true));
+  expect(effects.toast).toHaveBeenCalledTimes(1);
+  expect(effects.added).not.toHaveBeenCalled();
+});
+
+it('already-favorited responses do not show a duplicate success announcement', async () => {
+  client.setQueryData(['/api/auth/me'], { authenticated: true, user: { _id: 'listener' } });
+  effects.request.mockResolvedValue(new Response(JSON.stringify({ alreadyFavorited: true }), { status: 200 }));
+  const view = render(wrap(1));
+  fireEvent.click(view.getByRole('button'));
+  await waitFor(() => expect(effects.request).toHaveBeenCalledTimes(1));
+  await waitFor(() => expect(view.getByRole('button')).not.toBeDisabled());
+  expect(effects.toast).not.toHaveBeenCalled();
+  expect(effects.added).not.toHaveBeenCalled();
 });
 
 it('keeps pending click disabled and a rejected mutation does not invent favorite membership', async () => {

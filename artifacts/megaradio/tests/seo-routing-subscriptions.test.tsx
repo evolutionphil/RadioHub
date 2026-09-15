@@ -86,16 +86,28 @@ it('SPA locale navigation warms only its missing target dictionary once and cach
   expect(localStorage.getItem('preferredLanguage')).toBe('de');
 });
 
-it('explicit user choice still saves immediately and reloads the same translated page', () => {
-  window.history.replaceState({}, '', '/de/genres/rock');
-  mount(1);
-  // Observe the navigation assignment without asking jsdom to perform an
-  // unsupported real document navigation; the real storage/cookie APIs remain.
-  const target = { href: '' }; vi.stubGlobal('window', { location: target });
-  routing.changeLanguage('ar');
-  expect(target.href).toBe('/ar/anwaa/rock');
+it('explicit user choice uses SPA navigation, preserving the document and query/hash', async () => {
+  window.history.replaceState({}, '', '/de/genres/rock?country=Austria#stations');
+  const view = mount(1, true);
+  const originalDocument = document.documentElement;
+  const originalLink = view.container.querySelector('a');
+  await act(async () => { routing.changeLanguage('ar'); });
+  expect(window.location.pathname).toBe('/ar/anwaa/rock');
+  expect(window.location.search).toBe('?country=Austria');
+  expect(window.location.hash).toBe('#stations');
+  expect(document.documentElement).toBe(originalDocument);
+  expect(view.container.querySelector('a')).toBe(originalLink);
   expect(localStorage.getItem('preferredLanguage')).toBe('ar');
   expect(document.cookie).toContain('preferredLanguage=ar');
+  expect(fetchDictionary).toHaveBeenCalledWith('/api/translations/ar');
+  expect(renderedLocales).toEqual(['ar']);
+});
+
+it('same-locale and unsupported choices do not navigate or fetch', () => {
+  mount(1);
+  const push = vi.spyOn(window.history, 'pushState');
+  act(() => { routing.changeLanguage('de'); routing.changeLanguage('xx'); routing.changeLanguage('at'); });
+  expect(push).not.toHaveBeenCalled();
   expect(fetchDictionary).not.toHaveBeenCalled();
 });
 
