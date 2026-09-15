@@ -13,6 +13,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { UserMenuDropdown } from "@/components/ui/UserMenuDropdown";
 // 🚀 LAZY: modal only loads on first open
 const AddYourStationModal = lazy(() => import("@/components/modals/AddYourStationModal"));
+const MobileNavigation = lazy(() => import('./mobile-navigation'));
 import { useTranslation } from "@/hooks/useTranslation";
 import { logoutAccount } from '@/lib/logout';
 import { toast } from '@/hooks/use-toast';
@@ -54,6 +55,8 @@ export default function RadioHeader({
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const mobileMenuTriggerRef = useRef<HTMLButtonElement>(null);
+  const [internalAddStationOpen, setInternalAddStationOpen] = useState(false);
   const [isMobileDevice, setIsMobileDevice] = useState(false);
   const [isNotificationDropdownOpen, setIsNotificationDropdownOpen] = useState(false);
   const [isMobileProfileMenuOpen, setIsMobileProfileMenuOpen] = useState(false);
@@ -236,6 +239,7 @@ export default function RadioHeader({
   useEffect(() => {
     setIsSearchOpen(false);
     setSearchQuery("");
+    setIsMobileMenuOpen(false);
   }, [location]);
 
   // Handle click outside to close country dropdown and notification dropdown
@@ -297,6 +301,8 @@ export default function RadioHeader({
       
       setIsCountryDropdownOpen(false);
       setCountrySearchQuery("");
+      setIsMobileProfileMenuOpen(false);
+      setIsNotificationDropdownOpen(false);
     };
 
     if (isCountryDropdownOpen || isNotificationDropdownOpen || isMobileProfileMenuOpen) {
@@ -828,9 +834,14 @@ export default function RadioHeader({
             <div className="col-span-2 flex items-center gap-5 xl:col-auto xl:gap-2">
               {/* Mobile Menu Toggle - hidden on desktop (xl+) */}
               <button
+                ref={mobileMenuTriggerRef}
                 onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
                 className="xl:hidden flex items-center justify-center text-white flex-shrink-0 p-3 -m-3 min-h-[48px] min-w-[48px]"
-                aria-label="Toggle menu"
+                aria-label={t('nav_menu', 'Menu')}
+                aria-expanded={isMobileMenuOpen}
+                aria-controls="mobile-navigation"
+                aria-haspopup="dialog"
+                data-testid="button-mobile-menu"
               >
                 {isMobileMenuOpen ? (
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1222,93 +1233,17 @@ export default function RadioHeader({
         </div>
       </nav>
 
-      {/* Mobile Menu - Rendered via portal for absolute positioning */}
-      {isMobileMenuOpen && typeof document !== 'undefined' && createPortal(
-          <div
-            className="fixed inset-0 xl:hidden"
-            style={{ zIndex: 45, top: 0, left: 0, right: 0, bottom: 0 }}
-          >
-            {/* Backdrop — tap to close */}
-            <div
-              className="absolute inset-0 bg-black/60"
-              onClick={() => setIsMobileMenuOpen(false)}
-            />
-            {/* Drawer */}
-            <div
-              className="absolute left-0 right-0 bottom-0 bg-[#0E0E0E]/98 backdrop-blur overflow-y-auto"
-              style={{ top: typeof window !== 'undefined' ? (window.innerWidth >= 1024 ? 90 : window.innerWidth >= 768 ? 80 : 70) : 70 }}
-          >
-            <div className="pt-4 pb-3">
-              <div className="space-y-1">
-                <Link 
-                  href={getLocalizedUrl("/genres")} 
-                  className="nav-item flex items-center min-h-[48px] px-4 py-3 text-base font-medium text-white hover:text-[#FF4199] transition-colors"
-                  onClick={() => setIsMobileMenuOpen(false)}
-                >
-                  {t('nav_genres', 'Genres')}
-                </Link>
-                <Link 
-                  href={getLocalizedUrl("/recommendations")} 
-                  className="nav-item flex items-center min-h-[48px] px-4 py-3 text-base font-medium text-white hover:text-[#FF4199] transition-colors"
-                  onClick={() => setIsMobileMenuOpen(false)}
-                >
-                  {t('nav_for_you', 'For You')}
-                </Link>
-
-                <button 
-                  className="nav-item flex items-center min-h-[48px] px-4 py-3 text-base font-medium text-white hover:text-[#FF4199] transition-colors text-left w-full"
-                  onClick={() => {
-                    // console.log(' Mobile Add Station button clicked!', { setShowAddStationModal });
-                    setIsMobileMenuOpen(false);
-                    setShowAddStationModal?.(true);
-                  }}
-                >
-                  {t('nav_add_your_station', 'Add your station')}
-                </button>
-                
-                {/* Mobile Auth section - EXACT from original LayoutHeader.vue */}
-                <div className="auth-section border-t border-gray-900">
-                  {authLoading ? (
-                    // Loading placeholders for mobile to prevent layout shift
-                    <div className="space-y-2 px-4 py-2">
-                      <div className="nav-skeleton nav-skeleton-text loading-placeholder"></div>
-                      <div className="nav-skeleton nav-skeleton-text loading-placeholder"></div>
-                    </div>
-                  ) : isAuthenticated ? (
-                    <>
-                      <Link 
-                        href={getLocalizedUrl("/profile/favorites")} 
-                        className="nav-item flex items-center min-h-[48px] px-4 py-3 text-base font-medium text-white hover:text-[#FF4199] transition-colors"
-                        onClick={() => setIsMobileMenuOpen(false)}
-                      >
-                        {t('nav_your_favorites', 'Your Favorites')}
-                      </Link>
-                    </>
-                    ) : (
-                      <>
-                        <Link
-                          href={`${getLocalizedUrl("/login")}?returnTo=${encodeURIComponent(location)}`}
-                          className="nav-item flex items-center min-h-[48px] px-4 py-3 text-base font-medium text-white hover:text-[#FF4199] transition-colors"
-                          onClick={() => setIsMobileMenuOpen(false)}
-                        >
-                          {t('nav_login', 'Login') || 'Login'}
-                        </Link>
-                        <Link 
-                          href={getLocalizedUrl("/signup")} 
-                          className="nav-item flex items-center min-h-[48px] px-4 py-3 text-base font-medium text-white hover:text-[#FF4199] transition-colors"
-                          onClick={() => setIsMobileMenuOpen(false)}
-                        >
-                          {t('nav_signup', 'Sign up') || 'Sign up'}
-                        </Link>
-                      </>
-                    )}
-                </div>
-              </div>
-            </div>
-            </div>
-          </div>,
-          document.body
-        )}
+      {isMobileMenuOpen && (
+        <Suspense fallback={null}>
+          <MobileNavigation open={isMobileMenuOpen} onOpenChange={setIsMobileMenuOpen}
+            triggerRef={mobileMenuTriggerRef} isAuthenticated={isAuthenticated} authLoading={authLoading}
+            onAddStation={() => {
+              setIsMobileMenuOpen(false);
+              if (setShowAddStationModal) setShowAddStationModal(true);
+              else setInternalAddStationOpen(true);
+            }} />
+        </Suspense>
+      )}
 
       {/* Search Popup Modal - EXACT from original */}
       {isSearchOpen && showSearch && !isMobileMenuOpen && createPortal(
@@ -1981,7 +1916,7 @@ export default function RadioHeader({
           ref={mobileProfileDropdownRef}
           className="fixed w-56 bg-[#1D1D1D] rounded-lg shadow-xl py-2 border border-[#2D2D2D] focus:outline-none"
           style={{
-            top: window.scrollY + mobileProfileButtonRef.current.getBoundingClientRect().bottom + 8,
+            top: mobileProfileButtonRef.current.getBoundingClientRect().bottom + 8,
             right: window.innerWidth - mobileProfileButtonRef.current.getBoundingClientRect().right,
             zIndex: 9999
           }}
@@ -2000,7 +1935,7 @@ export default function RadioHeader({
             className="flex items-center px-4 py-3 hover:bg-[#2D2D2D] transition-colors"
           >
             <Heart className="w-5 h-5 mr-3 text-[#FF4199]" />
-            <span className="text-white text-sm font-medium">Your Favorites</span>
+            <span className="text-white text-sm font-medium">{t('nav_your_favorites', 'Your Favorites')}</span>
           </Link>
 
           <Link
@@ -2009,7 +1944,7 @@ export default function RadioHeader({
             className="flex items-center px-4 py-3 hover:bg-[#2D2D2D] transition-colors"
           >
             <Compass className="w-5 h-5 mr-3 text-[#FF4199]" />
-            <span className="text-white text-sm font-medium">Discover</span>
+            <span className="text-white text-sm font-medium">{t('user_menu_discover', 'Discover')}</span>
           </Link>
 
           <Link
@@ -2018,7 +1953,7 @@ export default function RadioHeader({
             className="flex items-center px-4 py-3 hover:bg-[#2D2D2D] transition-colors"
           >
             <User className="w-5 h-5 mr-3 text-[#FF4199]" />
-            <span className="text-white text-sm font-medium">Profile</span>
+            <span className="text-white text-sm font-medium">{t('user_menu_profile', 'Profile')}</span>
           </Link>
 
           <Link
@@ -2027,7 +1962,7 @@ export default function RadioHeader({
             className="flex items-center px-4 py-3 hover:bg-[#2D2D2D] transition-colors"
           >
             <MessageCircle className="w-5 h-5 mr-3 text-[#FF4199]" />
-            <span className="text-white text-sm font-medium">Messages</span>
+            <span className="text-white text-sm font-medium">{t('messages', 'Messages')}</span>
           </Link>
 
           <div className="border-t border-[#2D2D2D] my-1"></div>
@@ -2038,7 +1973,7 @@ export default function RadioHeader({
             className="flex items-center px-4 py-3 hover:bg-[#2D2D2D] transition-colors"
           >
             <MessageSquareWarning className="w-5 h-5 mr-3 text-[#FF4199]" />
-            <span className="text-white text-sm font-medium">Feedback</span>
+            <span className="text-white text-sm font-medium">{t('feedback', 'Feedback')}</span>
           </Link>
 
           <button
@@ -2051,18 +1986,18 @@ export default function RadioHeader({
             className="flex items-center w-full px-4 py-3 hover:bg-[#2D2D2D] transition-colors text-left"
           >
             <LogOut className="w-5 h-5 mr-3 text-gray-400" />
-            <span className="text-white text-sm font-medium">Logout</span>
+            <span className="text-white text-sm font-medium">{t('nav_logout', 'Logout')}</span>
           </button>
         </div>,
         document.body
       )}
 
       {/* Modals — lazy-loaded; Suspense gates the chunk fetch on first open */}
-      {showAddStationModal && setShowAddStationModal && (
+      {(showAddStationModal || internalAddStationOpen) && (
         <Suspense fallback={null}>
           <AddYourStationModal 
-            isOpen={showAddStationModal} 
-            onClose={() => setShowAddStationModal(false)} 
+            isOpen={showAddStationModal || internalAddStationOpen}
+            onClose={() => { setShowAddStationModal?.(false); setInternalAddStationOpen(false); }}
           />
         </Suspense>
       )}

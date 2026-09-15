@@ -1,5 +1,5 @@
 import { Link, useLocation, useSearch } from "wouter";
-import { useState, Suspense, lazy, useEffect, useRef } from "react";
+import { useState, Suspense, lazy, useEffect, useRef, useId } from "react";
 import { useGlobalPlayer } from "@/hooks/useGlobalPlayer";
 import { useTranslation } from "@/hooks/useTranslation";
 import { useSeoRouting } from "@/hooks/useSeoRouting";
@@ -8,7 +8,6 @@ import { SEO_LANGUAGES, ACTIVE_SITEMAP_LANGUAGES } from "@workspace/seo-shared/s
 // 🚀 LAZY: modals only load on first open — keeps Radix Select/Input
 // out of the footer chunk until the user clicks the action.
 const AddYourStationModal = lazy(() => import("@/components/modals/AddYourStationModal"));
-const RequestStationModal = lazy(() => import("@/components/modals/RequestStationModal"));
 import { Globe } from "lucide-react";
 import AdSenseUnit from "@/components/ads/AdSenseUnit";
 import { getAdSensePageType } from '@/lib/adsense-runtime';
@@ -35,6 +34,8 @@ const platformColors: Record<string, string> = {
   youtube: '#FF0000',
   tiktok: '#000000',
 };
+
+const footerLinkClass = "inline-flex min-w-0 items-center min-h-11 md:min-h-[30px] py-1 text-left text-sm leading-5 text-[#c5c5cb] [overflow-wrap:anywhere] hyphens-auto hover:text-[#FF4199] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF4199] focus-visible:ring-offset-2 focus-visible:ring-offset-black rounded-sm";
 
 const getSocialIcon = (platform: string) => {
   const svgClass = "w-4 h-4 sm:w-5 sm:h-5 fill-current";
@@ -65,11 +66,10 @@ const getSocialIcon = (platform: string) => {
 };
 
 export default function Footer() {
-  const [location, setLocation] = useLocation();
+  useLocation();
   useSearch();
   const adPageType = getAdSensePageType(window.location.pathname + window.location.search);
   const showCatalogAdvertisement = adPageType === 'home' || adPageType === 'catalog';
-  const isProfilePage = location.startsWith('/profile');
   const { currentStation } = useGlobalPlayer();
   const isPlayerEnabled = currentStation !== null;
   const { t, isLoading: translationsLoading } = useTranslation();
@@ -79,6 +79,8 @@ export default function Footer() {
   const [isLanguageDropdownOpen, setIsLanguageDropdownOpen] = useState(false);
   const [languageSearchQuery, setLanguageSearchQuery] = useState("");
   const languageDropdownRef = useRef<HTMLDivElement>(null);
+  const languageTriggerRef = useRef<HTMLButtonElement>(null);
+  const languageDropdownId = useId();
   
   // The metadata catalog also contains legacy locales that public routing
   // does not support. Offer only actual UI locales, not redirect-to-English choices.
@@ -91,19 +93,36 @@ export default function Footer() {
     lang.code.toLowerCase().includes(languageSearchQuery.toLowerCase())
   );
   
-  // Close language dropdown when clicking outside
+  // Native buttons retain keyboard navigation; close on touch, outside focus,
+  // and Escape as well as mouse clicks. Restore the trigger on Escape only.
   useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
+    const closeDropdown = () => {
+      setIsLanguageDropdownOpen(false);
+      setLanguageSearchQuery("");
+    };
+    const handleClickOutside = (event: PointerEvent | FocusEvent) => {
       if (languageDropdownRef.current && !languageDropdownRef.current.contains(event.target as Node)) {
-        setIsLanguageDropdownOpen(false);
-        setLanguageSearchQuery("");
+        closeDropdown();
+      }
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        closeDropdown();
+        languageTriggerRef.current?.focus();
       }
     };
     
     if (isLanguageDropdownOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
+      document.addEventListener('pointerdown', handleClickOutside);
+      document.addEventListener('focusin', handleClickOutside);
+      document.addEventListener('keydown', handleKeyDown);
     }
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('pointerdown', handleClickOutside);
+      document.removeEventListener('focusin', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
   }, [isLanguageDropdownOpen]);
   
   // LABEL SANITIZER (2026-07-04): the Turkish translation rows for the
@@ -132,22 +151,22 @@ export default function Footer() {
   
   // Modal states
   const [showAddStationModal, setShowAddStationModal] = useState(false);
-  const [showRequestStationModal, setShowRequestStationModal] = useState(false);
   
   // Lazy load footer background image for LCP optimization
   const footerRef = useRef<HTMLElement>(null);
   const [bgLoaded, setBgLoaded] = useState(false);
   
   useEffect(() => {
+    let observer: IntersectionObserver | undefined;
     // Defer background loading to after critical content renders
     // This prevents the footer background from being detected as LCP
     const timer = setTimeout(() => {
       if (typeof window !== 'undefined' && 'IntersectionObserver' in window) {
-        const observer = new IntersectionObserver(
+        observer = new IntersectionObserver(
           (entries) => {
-            if (entries[0].isIntersecting) {
+            if (entries.some(entry => entry.isIntersecting)) {
               setBgLoaded(true);
-              observer.disconnect();
+              observer?.disconnect();
             }
           },
           { rootMargin: '200px' } // Start loading 200px before visible
@@ -157,46 +176,50 @@ export default function Footer() {
           observer.observe(footerRef.current);
         }
         
-        return () => observer.disconnect();
+        return;
       }
       // Fallback for browsers without IntersectionObserver
       setBgLoaded(true);
-      return undefined;
     }, 100); // Small delay to ensure hero content loads first
     
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+      observer?.disconnect();
+    };
   }, []);
 
   return (
     <footer 
       ref={footerRef}
-      className="bg-[rgb(0,0,0)] bg-[length:auto_100%] bg-no-repeat text-white transition-all duration-300"
+      lang={currentLanguage}
+      className="border-t border-white/10 bg-black bg-[length:auto_100%] bg-no-repeat text-white"
       style={{
-        backgroundImage: bgLoaded ? 'url(/images/footer-bg.webp)' : 'none'
+        backgroundImage: bgLoaded ? 'linear-gradient(180deg, rgba(0,0,0,.5), rgba(0,0,0,.85)), url(/images/footer-bg.webp)' : 'none',
+        paddingBottom: `calc(${isPlayerEnabled ? '144px' : '0px'} + env(safe-area-inset-bottom, 0px))`,
       }}
     >
       {/* One content-end placement, separated from footer navigation. Station
           pages already own their capped placements; private pages get none. */}
       {showCatalogAdvertisement && <AdSenseUnit adSlot={AD_SLOTS.catalogFooter} adFormat="horizontal"
         fullWidthResponsive={true} className="w-full max-w-[1206px] mx-auto px-4 pt-8 mb-8" />}
-      <div className={`container mx-auto ${isPlayerEnabled ? 'pb-36' : ''}`}>
+      <div className="container mx-auto">
         {/* Main footer grid - responsive from mobile to 4K */}
-        <div className="relative flex flex-col gap-6 pb-6 pt-10 sm:pt-12 md:pt-16 lg:pt-20 xl:pt-24
+        <div className="relative flex flex-col gap-8 pb-6 pt-8 sm:pt-12 md:pt-16 lg:pt-20 xl:pt-24
                         md:grid md:grid-cols-12 md:gap-4 md:pb-8 lg:gap-6 xl:gap-8">
           
           {/* Logo and Megaradio Brand - Responsive sizing */}
-          <div className="flex justify-center md:justify-start md:col-span-3 lg:col-span-3 xl:col-span-3 md:self-end md:mb-[47px]">
-            <Link href={getLocalizedUrl("/")} aria-label="MegaRadio" className="flex flex-col items-center md:flex-row md:items-center md:gap-2 lg:gap-3 xl:gap-4 flex-shrink-0">
+          <div className="flex min-w-0 justify-start md:col-span-3 md:self-end md:mb-[47px]">
+            <Link href={getLocalizedUrl("/")} aria-label="MegaRadio" className="inline-flex min-w-0 items-center gap-2.5 md:gap-2 lg:gap-3 xl:gap-4 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF4199]">
               <img 
                 loading="lazy"
                 width="97"
                 height="97"
-                  className="w-10 h-10 sm:w-12 sm:h-12 md:w-16 md:h-16 lg:w-20 lg:h-20 xl:w-[97px] xl:h-[97px] object-contain flex-shrink-0"
+                  className="w-10 h-10 sm:w-12 sm:h-12 md:w-16 md:h-16 lg:w-20 lg:h-20 object-contain flex-shrink-0"
                 src="/images/logo-icon.webp" 
                 alt=""
                 title="MegaRadio"
               />
-              <div className="flex items-center mt-2 md:mt-0">
+              <div className="flex min-w-0 items-center">
                 <span 
                   className="font-bold"
                   style={{ 
@@ -206,7 +229,7 @@ export default function Footer() {
                     letterSpacing: '0%'
                   }}
                 >
-                  <span className="text-xs md:text-lg lg:text-2xl xl:text-[36.11px]">mega</span>
+                  <span className="text-[26px] md:text-lg lg:text-2xl xl:text-[32px]">mega</span>
                 </span>
                 <span 
                   style={{ 
@@ -216,17 +239,17 @@ export default function Footer() {
                     letterSpacing: '0%'
                   }}
                 >
-                  <span className="text-xs md:text-lg lg:text-2xl xl:text-[36.11px]">radio</span>
+                  <span className="text-[26px] md:text-lg lg:text-2xl xl:text-[32px]">radio</span>
                 </span>
               </div>
             </Link>
           </div>
 
           {/* PAGE LINKS - COMPANY AND REGIONS - Responsive columns */}
-          <div className="flex flex-col md:col-span-6 lg:col-span-6 xl:col-span-6">
-            <div className="flex flex-wrap justify-center gap-x-8 gap-y-6 sm:gap-x-12 md:gap-x-8 lg:gap-x-12 xl:gap-x-16 text-center md:text-left">
+          <div className="min-w-0 md:col-span-6">
+            <div className="grid grid-cols-2 gap-x-6 gap-y-6 text-left md:gap-x-4 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,.7fr)] lg:gap-x-5 xl:gap-x-8">
               {/* Company Column */}
-              <div className="flex flex-col gap-2 min-w-[100px] sm:min-w-[120px]">
+              <div className="flex min-w-0 flex-col gap-2">
                 {translationsLoading ? (
                   <>
                     <div className="animate-pulse bg-gray-700 rounded h-5 w-20 mb-2"></div>
@@ -238,17 +261,17 @@ export default function Footer() {
                   </>
                 ) : (
                   <>
-                    <div className="text-sm sm:text-base font-medium mb-2 text-white">
+                    <h2 className="text-sm sm:text-base font-medium mb-1 text-white break-words">
                       {ft('footer_company', 'Company')}
-                    </div>
-                    <div className="grid grid-cols-1 gap-1.5 sm:gap-2">
-                      <Link to={getLocalizedUrl("/about")} className="inline-flex items-center min-h-[44px] md:min-h-[30px] text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
+                    </h2>
+                    <div className="grid min-w-0 grid-cols-1 gap-0.5 md:gap-1.5 [&>button]:min-w-0 [&>button]:text-sm [&>button]:leading-5 [&>button]:[overflow-wrap:anywhere] [&>button]:hyphens-auto">
+                      <Link to={getLocalizedUrl("/about")} className={footerLinkClass}>
                         {ft('footer_about_us', 'About Us')}
                       </Link>
-                      <Link to={getLocalizedUrl("/applications")} className="inline-flex items-center min-h-[44px] md:min-h-[30px] text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
+                      <Link to={getLocalizedUrl("/applications")} className={footerLinkClass}>
                         {ft('footer_applications', 'Applications')}
                       </Link>
-                      <Link to={getLocalizedUrl("/contact")} className="inline-flex items-center min-h-[44px] md:min-h-[30px] text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
+                      <Link to={getLocalizedUrl("/contact")} className={footerLinkClass}>
                         {ft('footer_contact', 'Contact')}
                       </Link>
                       {/* Internal-link boost: Semrush flagged ~60+ localized
@@ -259,10 +282,10 @@ export default function Footer() {
                           footer is intentionally hidden on profile/admin/
                           standalone views), which should clear the warning
                           on the next crawl. */}
-                      <Link to={getLocalizedUrl("/recommendations")} className="inline-flex items-center min-h-[44px] md:min-h-[30px] text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
+                      <Link to={getLocalizedUrl("/recommendations")} className={footerLinkClass}>
                         {ft('footer_recommendations', t('nav_for_you', 'Recommendations'))}
                       </Link>
-                      <Link to={getLocalizedUrl("/users")} className="inline-flex items-center min-h-[44px] md:min-h-[30px] text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
+                      <Link to={getLocalizedUrl("/users")} className={footerLinkClass}>
                         {ft('footer_users', t('users', 'Listeners'))}
                       </Link>
                       {/* Link to the CANONICAL legal URLs (not the /pages/*
@@ -271,16 +294,16 @@ export default function Footer() {
                           and each self-canonicals; the sitemap lists the clean
                           form, so the footer must match it to avoid duplicate-
                           content signals and split link equity. */}
-                      <Link to={getLocalizedUrl("/terms-and-conditions")} className="inline-flex items-center min-h-[44px] md:min-h-[30px] text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
+                      <Link to={getLocalizedUrl("/terms-and-conditions")} className={footerLinkClass}>
                         {ft('footer_terms', 'Terms and Co.')}
                       </Link>
-                      <Link to={getLocalizedUrl("/privacy-policy")} className="inline-flex items-center min-h-[44px] md:min-h-[30px] text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
+                      <Link to={getLocalizedUrl("/privacy-policy")} className={footerLinkClass}>
                         {ft('footer_privacy', 'Privacy')}
                       </Link>
                       <PrivacySettingsButton language={currentLanguage} />
                       <button
                         type="button"
-                        className="inline-flex items-center min-h-[44px] md:min-h-[30px] text-left bg-transparent border-0 p-0 m-0 cursor-pointer text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors"
+                        className={`${footerLinkClass} bg-transparent border-0 m-0 cursor-pointer`}
                         onClick={() => setShowAddStationModal(true)}
                       >
                         {ft('footer_add_station', 'Add Your Station')}
@@ -291,7 +314,7 @@ export default function Footer() {
               </div>
               
               {/* Regions Column */}
-              <div className="flex flex-col gap-2 min-w-[100px] sm:min-w-[120px]">
+              <div className="flex min-w-0 flex-col gap-2">
                 {translationsLoading ? (
                   <>
                     <div className="animate-pulse bg-gray-700 rounded h-5 w-16 mb-2"></div>
@@ -303,30 +326,36 @@ export default function Footer() {
                   </>
                 ) : (
                   <>
-                    <div className="text-sm sm:text-base font-medium mb-2 text-white">
+                    <h2 className="text-sm sm:text-base font-medium mb-1 text-white break-words">
                       {ft('footer_regions', 'Regions')}
-                    </div>
-                    <div className="grid grid-cols-1 gap-1.5 sm:gap-2">
-                      <Link to={getLocalizedUrl("/regions")} className="inline-flex items-center min-h-[44px] md:min-h-[30px] text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
+                    </h2>
+                    <div className="grid min-w-0 grid-cols-1 gap-0.5 md:gap-1.5">
+                      <Link to={getLocalizedUrl("/regions")} className={footerLinkClass}>
                         {ft('footer_all_regions', 'All Regions')}
                       </Link>
-                      <Link to={getLocalizedUrl("/regions/north-america/united-states")} className="inline-flex items-center min-h-[44px] md:min-h-[30px] text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
+                      <Link to={getLocalizedUrl("/regions/north-america/united-states")} className={footerLinkClass}>
                         {ft('footer_united_states', 'United States')}
                       </Link>
-                      <Link to={getLocalizedUrl("/regions/europe/germany")} className="inline-flex items-center min-h-[44px] md:min-h-[30px] text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
+                      <Link to={getLocalizedUrl("/regions/europe/germany")} className={footerLinkClass}>
                         {ft('footer_germany', 'Germany')}
                       </Link>
-                      <Link to={getLocalizedUrl("/regions/europe/turkey")} className="inline-flex items-center min-h-[44px] md:min-h-[30px] text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
-                        Türkiye
+                      <Link to={getLocalizedUrl("/regions/europe/turkey")} className={footerLinkClass}>
+                        {ft('footer_turkey', 'Türkiye')}
                       </Link>
-                      <Link to={getLocalizedUrl("/regions/europe/austria")} className="inline-flex items-center min-h-[44px] md:min-h-[30px] text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
+                      <Link to={getLocalizedUrl("/regions/europe/austria")} className={footerLinkClass}>
                         {ft('footer_austria', 'Austria')}
                       </Link>
-                      <Link to={getLocalizedUrl("/regions/europe/united-kingdom")} className="inline-flex items-center min-h-[44px] md:min-h-[30px] text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
+                      <Link to={getLocalizedUrl("/regions/europe/united-kingdom")} className={footerLinkClass}>
                         {ft('footer_united_kingdom', 'United Kingdom')}
                       </Link>
-                      <Link to={getLocalizedUrl("/regions/europe/france")} className="inline-flex items-center min-h-[44px] md:min-h-[30px] text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
+                      <Link to={getLocalizedUrl("/regions/europe/france")} className={footerLinkClass}>
                         {ft('footer_france', 'France')}
+                      </Link>
+                      <Link to={getLocalizedUrl("/regions/europe/spain")} className={`${footerLinkClass} lg:hidden`}>
+                        {ft('footer_spain', 'Spain')}
+                      </Link>
+                      <Link to={getLocalizedUrl("/regions/europe/italy")} className={`${footerLinkClass} lg:hidden`}>
+                        {ft('footer_italy', 'Italy')}
                       </Link>
                     </div>
                   </>
@@ -334,7 +363,7 @@ export default function Footer() {
               </div>
               
               {/* Additional Regions Column - Hidden on small screens */}
-              <div className="hidden lg:flex flex-col gap-2 min-w-[80px]">
+              <div className="hidden min-w-0 lg:flex flex-col gap-2">
                 {translationsLoading ? (
                   <>
                     <div className="animate-pulse bg-gray-700 rounded h-5 w-16 mb-2 invisible"></div>
@@ -346,14 +375,14 @@ export default function Footer() {
                   </>
                 ) : (
                   <>
-                    <div className="text-sm sm:text-base font-medium mb-2 text-white invisible">
+                    <div aria-hidden="true" className="text-sm sm:text-base font-medium mb-1 text-white invisible">
                       &nbsp;
                     </div>
-                    <div className="grid grid-cols-1 gap-1.5 sm:gap-2">
-                      <Link to={getLocalizedUrl("/regions/europe/spain")} className="inline-flex items-center min-h-[44px] md:min-h-[30px] text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
+                    <div className="grid min-w-0 grid-cols-1 gap-0.5 md:gap-1.5">
+                      <Link to={getLocalizedUrl("/regions/europe/spain")} className={footerLinkClass}>
                         {ft('footer_spain', 'Spain')}
                       </Link>
-                      <Link to={getLocalizedUrl("/regions/europe/italy")} className="inline-flex items-center min-h-[44px] md:min-h-[30px] text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
+                      <Link to={getLocalizedUrl("/regions/europe/italy")} className={footerLinkClass}>
                         {ft('footer_italy', 'Italy')}
                       </Link>
                     </div>
@@ -364,23 +393,23 @@ export default function Footer() {
           </div>
 
           {/* SOCIAL MEDIA LINKS - Responsive and bottom aligned with menu */}
-          <div className="flex justify-center md:justify-end md:col-span-3 lg:col-span-3 xl:col-span-3 md:self-end md:mb-[47px]">
-            <div className="flex flex-col items-center md:items-end">
-              <div className="mb-3 text-sm sm:text-base font-medium whitespace-nowrap">
+          <div className="flex min-w-0 justify-start border-t border-white/10 pt-6 md:border-0 md:pt-0 md:justify-end md:col-span-3 md:self-end md:mb-[47px]">
+            <div className="flex min-w-0 flex-col items-start md:items-end">
+              <div className="mb-3 text-sm sm:text-base font-medium break-words md:text-right">
                 {translationsLoading ? (
                   <div className="animate-pulse bg-gray-700 rounded h-5 w-28"></div>
                 ) : (
                   ft('footer_social_media', 'Share Mega Radio')
                 )}
               </div>
-              <div className="flex gap-2 sm:gap-3 flex-wrap justify-center md:justify-end">
-                {socialLinks.map((link) => (
+              <div className="flex gap-2 sm:gap-3 flex-wrap justify-start md:justify-end">
+                {socialLinks.filter(link => link.isActive !== false).map((link) => (
                   <a
                     key={link._id}
                     href={link.url}
                     target="_blank"
                     rel="noopener noreferrer nofollow"
-                    className="inline-flex items-center justify-center w-12 h-12 rounded-full text-white transition-colors flex-shrink-0 hover:opacity-80"
+                    className="inline-flex items-center justify-center w-11 h-11 rounded-full border border-white/15 text-white transition-colors flex-shrink-0 hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF4199] focus-visible:ring-offset-2 focus-visible:ring-offset-black"
                     style={{ backgroundColor: platformColors[link.platform] || '#FF4199' }}
                     aria-label={link.platform}
                     title={link.platform}
@@ -395,9 +424,8 @@ export default function Footer() {
                 href="https://mxrtoken.com"
                 target="_blank"
                 rel="noopener noreferrer nofollow"
-                className="mt-3 text-sm font-medium hover:opacity-80 transition-opacity"
+                className="mt-2 inline-flex min-h-11 items-center rounded-sm text-xs font-medium tracking-[.14em] text-[#b7b7bf] hover:text-[#FF4199] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF4199]"
                 style={{ 
-                  color: '#000000',
                   fontFamily: 'Ubuntu, sans-serif',
                   fontWeight: 600
                 }}
@@ -409,52 +437,64 @@ export default function Footer() {
         </div>
         
         {/* COPYRIGHT & LANGUAGE SELECTOR - Below social media */}
-        <div className="pb-6 pt-4 flex flex-col sm:flex-row items-center justify-between gap-4">
+        <div className="border-t border-white/10 pb-6 pt-5 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-5">
           {/* Language Selector */}
-          <div className="relative" ref={languageDropdownRef}>
+          <div className="relative min-w-0 sm:shrink-0" ref={languageDropdownRef}>
             <button
-              onClick={() => setIsLanguageDropdownOpen(!isLanguageDropdownOpen)}
-              className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[#1A1A1A] hover:bg-[#2A2A2A] border border-[#333] transition-colors text-sm"
+              type="button"
+              ref={languageTriggerRef}
+              aria-expanded={isLanguageDropdownOpen}
+              aria-controls={languageDropdownId}
+              onClick={() => {
+                setIsLanguageDropdownOpen(open => !open);
+                setLanguageSearchQuery("");
+              }}
+              className="flex min-h-12 w-full sm:w-auto items-center gap-3 px-4 py-3 rounded-xl bg-[#18181b] hover:bg-[#232327] border border-white/15 transition-colors text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF4199]"
               data-testid="footer-language-selector"
             >
-              <Globe className="w-4 h-4 text-[#FF4199]" />
-              <span className="text-white">{currentLangInfo?.name || 'English'}</span>
-              <svg className={`w-4 h-4 text-gray-400 transition-transform ${isLanguageDropdownOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <Globe aria-hidden="true" className="w-4 h-4 shrink-0 text-[#FF4199]" />
+              <span className="min-w-0 flex-1 text-left text-white">{currentLangInfo?.name || 'English'}</span>
+              <svg aria-hidden="true" className={`w-4 h-4 shrink-0 text-gray-400 transition-transform ${isLanguageDropdownOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
               </svg>
             </button>
             
             {/* Language Dropdown */}
             {isLanguageDropdownOpen && (
-              <div className="absolute bottom-full mb-2 left-0 w-64 max-h-80 bg-[#0E0E0E] border border-[#333] rounded-lg shadow-2xl overflow-hidden z-50">
+              <div id={languageDropdownId} role="region" aria-label={t('search_language', 'Search language...')} className="absolute bottom-full mb-2 left-0 w-full sm:w-64 max-w-[calc(100vw_-_2rem)] max-h-[min(320px,60dvh)] flex flex-col bg-[#141416] border border-white/15 rounded-xl shadow-2xl overflow-hidden z-50">
                 <div className="p-2 border-b border-[#333]">
                   <input
                     type="text"
+                    autoFocus
+                    aria-label={t('search_language', 'Search language...')}
                     value={languageSearchQuery}
                     onChange={(e) => setLanguageSearchQuery(e.target.value)}
                     placeholder={t('search_language', 'Search language...')}
-                    className="w-full px-3 py-2 bg-[#1A1A1A] border border-[#444] rounded text-white text-sm placeholder-gray-500 focus:outline-none focus:border-[#FF4199]"
+                    className="min-h-11 w-full px-3 py-2 bg-[#1A1A1A] border border-[#444] rounded-lg text-white text-base sm:text-sm placeholder-gray-400 focus:outline-none focus:border-[#FF4199]"
                     data-testid="language-search-input"
                   />
                 </div>
-                <div className="max-h-60 overflow-y-auto">
+                <div className="min-h-0 overflow-y-auto overscroll-contain p-1">
                   {filteredLanguages.map((lang) => (
                     <button
+                      type="button"
                       key={lang.code}
+                      aria-pressed={lang.code === currentLanguage}
                       onClick={() => {
                         changeLanguage(lang.code);
                         setIsLanguageDropdownOpen(false);
                         setLanguageSearchQuery("");
                       }}
-                      className={`w-full px-4 py-2 text-left text-sm hover:bg-[#2A2A2A] transition-colors flex items-center justify-between ${
+                      className={`min-h-11 w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-[#2A2A2A] transition-colors flex items-center justify-between gap-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#FF4199] ${
                         lang.code === currentLanguage ? 'bg-[#FF4199]/20 text-[#FF4199]' : 'text-white'
                       }`}
                       data-testid={`language-option-${lang.code}`}
                     >
                       <span>{lang.name}</span>
-                      <span className="text-xs text-gray-500 uppercase">{lang.code}</span>
+                      <span className="text-xs text-gray-400 uppercase">{lang.code}</span>
                     </button>
                   ))}
+                  {filteredLanguages.length === 0 && <p role="status" className="px-3 py-4 text-sm text-gray-400">{t('no_results', 'No results')}</p>}
                 </div>
               </div>
             )}
@@ -464,7 +504,7 @@ export default function Footer() {
           {translationsLoading ? (
             <div className="animate-pulse bg-gray-700 rounded h-4 w-48"></div>
           ) : (
-            <p className="text-xs sm:text-sm text-center text-[#9B9B9B]">
+            <p className="min-w-0 text-xs sm:text-sm leading-5 text-left sm:text-right text-[#a5a5ad] [overflow-wrap:anywhere]">
               © {new Date().getFullYear()} Megaradio · {ft('footer_copyright', 'All rights reserved')}
             </p>
           )}
@@ -477,14 +517,6 @@ export default function Footer() {
           <AddYourStationModal 
             isOpen={showAddStationModal} 
             onClose={() => setShowAddStationModal(false)} 
-          />
-        </Suspense>
-      )}
-      {showRequestStationModal && (
-        <Suspense fallback={null}>
-          <RequestStationModal 
-            isOpen={showRequestStationModal} 
-            onClose={() => setShowRequestStationModal(false)} 
           />
         </Suspense>
       )}
