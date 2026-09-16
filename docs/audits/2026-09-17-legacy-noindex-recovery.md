@@ -48,8 +48,28 @@ from the SEO noindex/redirect/content gates.
 
 ## Remaining work
 
-Finish verified recovery batches, rebuild all 14 locale sitemaps and verify their
-published counts. Do not equate sitemap inclusion with guaranteed Google indexing.
+All 453 preview-qualified recoveries completed in live selected batches. An
+intermediate rebuild published 48,977 station entries per locale after 276 repairs;
+the final rebuild was triggered after all 453 repairs. Refreshed live health rows
+confirmed all 14 locales at 49,154 entries each. The final read-only preview showed
+62,020 total stations, 12,841 stored noindex flags and zero remaining candidates
+under this conservative recovery policy. The first two
+sample stations (`92-citi-fm`, `100-hitradio`) passed HTTP/robots/canonical/hreflang
+checks across all 14 locales; this does not certify every translated phrase.
+The latter still exposes the English country alias “The United States Of America”
+inside localized titles, which is a separate localization follow-up, not a noindex
+failure. No blanket claim of perfect multilingual SEO is supported.
+
+The public sitemap index returned HTTP200 XML with 98 children; English, German
+and Turkish station chunk1 endpoints returned HTTP200 XML with10,000 URLs each.
+These public spot checks are not an exhaustive download of every XML entry.
+Do not equate sitemap inclusion with guaranteed Google indexing.
 Do not mass-translate all excluded stations or clear unknown flags blindly.
 Any incomplete-content candidates need all non-content eligibility checks before
 the existing missing-only GPT-4o-mini job is started for explicit selected IDs.
+
+Fresh Search Console overview check after recovery still showed report update
+14 September: 404 (646), noindex (416), crawled-not-indexed (50,906) Failed;
+soft404 (299), 5xx (50), redirected pages (33), Google-selected-other-canonical
+(207) Started. No new GSC validation was initiated in this recovery operation.
+Those report counts are not the database recovery candidate counts.

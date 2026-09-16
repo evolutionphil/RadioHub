@@ -12,14 +12,15 @@ export interface RecoveryIdentity {
 export interface RecoveryStation extends RecoveryIdentity {
   stationuuid: string; noIndex: boolean; redirectToSlug: string | null;
   manualEditFields: unknown; automaticNoIndex: unknown;
-  lastCheckOk: boolean; lastCheckTime: Date | string | null; lastCheckOkTime: unknown;
+  lastCheckOk: boolean | null; lastCheckTime: Date | string | null; lastCheckOkTime: unknown;
   completeLanguageCount: number; rowVersion: string; sourceIsObject: boolean; journalIsObject: boolean;
 }
 export interface RecoveryCandidate {
   id: string; slug: string; name: string; country: string; countryCode: string;
-  lastCheckOkTime: string; completeLanguageCount: number;
+  lastCheckOkTime: string | null; completeLanguageCount: number;
   evidence: { provenance: 'legacy-unknown' | 'owned-duplicate'; providerUuidPresent: true;
-    recentProviderSuccess: true; identityPeers: 0 };
+    providerLastCheckOk: boolean | null; recentProviderSuccess: boolean; identityPeers: 0;
+    recoveryBasis: 'complete-unique-information-page' };
 }
 
 /** Deliberately broader than the automatic-merge identity test: punctuation,
@@ -114,8 +115,9 @@ export function createRecoveryIdentityIndex() {
 }
 export type RecoveryIdentityIndex = ReturnType<typeof createRecoveryIdentityIndex>;
 
-/** An unknown flag alone is never evidence for recovery. Every independent
- * positive gate must pass and the whole current catalog must rule out peers. */
+/** An unknown flag alone is never evidence for recovery. Complete retained
+ * information and identity must pass every guard. Stream availability is
+ * recorded as evidence; it does not determine this information page's SEO. */
 export function assessLegacyNoindexRecovery(station: RecoveryStation, index: RecoveryIdentityIndex, now: number):
   { reason: string; candidate?: RecoveryCandidate } {
   const reject = (reason: string) => ({ reason });
@@ -138,18 +140,23 @@ export function assessLegacyNoindexRecovery(station: RecoveryStation, index: Rec
   if (!text(station.country) || !/^[a-z]{2}$/i.test(station.countryCode || '') || !normalized(station.name)) return reject('missing-country-identity');
   if (!recoveryEndpoint(station.url) || (station.urlResolved && !recoveryEndpoint(station.urlResolved))) return reject('ambiguous-stream-endpoint');
   if (['lastCheckOk', 'lastCheckTime', 'lastCheckOkTime', 'url', 'urlResolved'].some(key => Object.hasOwn(manual, key))) return reject('manual-provider-evidence');
-  if (station.lastCheckOk !== true) return reject('provider-not-healthy');
   const checkedAt = station.lastCheckTime == null ? NaN : new Date(station.lastCheckTime).getTime();
-  const successfulAt = station.lastCheckOkTime == null ? checkedAt :
+  // A failed latest check is never relabelled as a successful check. Only an
+  // explicit successful timestamp, or a check actually marked successful,
+  // can supply this optional historical evidence.
+  const successfulAt = station.lastCheckOkTime == null ? (station.lastCheckOk === true ? checkedAt : NaN) :
     typeof station.lastCheckOkTime === 'string' ? new Date(station.lastCheckOkTime).getTime() : NaN;
-  if (![checkedAt, successfulAt].every(value => Number.isFinite(value) && value <= now && value >= now - RECOVERY_MAX_AGE_MS) ||
-      successfulAt > checkedAt) return reject('missing-recent-provider-success');
+  const knownSuccessfulAt = Number.isFinite(successfulAt) && successfulAt <= now &&
+    (!Number.isFinite(checkedAt) || successfulAt <= checkedAt) ? successfulAt : null;
+  const recentProviderSuccess = station.lastCheckOk === true && knownSuccessfulAt !== null &&
+    [checkedAt, knownSuccessfulAt].every(value => Number.isFinite(value) && value <= now && value >= now - RECOVERY_MAX_AGE_MS);
   if (station.completeLanguageCount !== AUDIT_LANGUAGES.length) return reject('incomplete-descriptions');
   if (index.hasPeer(station)) return reject('plausible-identity-peer');
   return { reason: 'eligible', candidate: {
     id: station.id, slug: station.slug, name: station.name, country: station.country, countryCode: station.countryCode!,
-    lastCheckOkTime: new Date(successfulAt).toISOString(), completeLanguageCount: station.completeLanguageCount,
+    lastCheckOkTime: knownSuccessfulAt === null ? null : new Date(knownSuccessfulAt).toISOString(), completeLanguageCount: station.completeLanguageCount,
     evidence: { provenance: ownedDuplicate ? 'owned-duplicate' : 'legacy-unknown', providerUuidPresent: true,
-      recentProviderSuccess: true, identityPeers: 0 },
+      providerLastCheckOk: typeof station.lastCheckOk === 'boolean' ? station.lastCheckOk : null,
+      recentProviderSuccess, identityPeers: 0, recoveryBasis: 'complete-unique-information-page' },
   } };
 }

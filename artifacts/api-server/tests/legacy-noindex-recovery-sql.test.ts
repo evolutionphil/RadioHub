@@ -7,6 +7,7 @@ import { LegacyNoindexRecoveryStore } from '../src/data/postgres-legacy-noindex-
 import { AUDIT_LANGUAGES } from '../src/seo/station-indexability-audit';
 import { pgAdminDescriptionCoverage } from '../src/data/postgres-admin-catalog-store';
 import { catalogShape } from '../src/data/postgres-catalog-store';
+import { getIndexableLanguagesForStation } from '../src/seo/junk-station-rules';
 
 /** Optional real PostgreSQL-engine SQL validation without a production
  * connection. PGlite checks SQL/transaction semantics, not network locking. */
@@ -19,7 +20,8 @@ test('PostgreSQL engine executes recovery SQL, preserves all content and journal
         id text PRIMARY KEY,station_uuid text NOT NULL,name text,slug text,slug_aliases text[] DEFAULT '{}',
         country text,country_code text,url text,url_resolved text,no_index boolean,redirect_to_slug text,
         manual_edit_fields jsonb,source jsonb,last_check_ok boolean,last_check_time timestamptz,
-        descriptions jsonb,updated_at timestamptz DEFAULT now()
+        descriptions jsonb,updated_at timestamptz DEFAULT now(),is_list_visible boolean DEFAULT true,
+        visibility_expires_at timestamptz,availability_outcome text,availability_checked_at timestamptz
       )`);
       await db.exec(await readFile(new URL('../../../lib/db/migrations/0034_private_noindex_recovery_journal.sql', import.meta.url), 'utf8'));
       const descriptions = Object.fromEntries(AUDIT_LANGUAGES.map(language => [language, { full: `Full article ${language}`, meta: `Summary ${language}` }]));
@@ -74,6 +76,7 @@ test('PostgreSQL engine executes recovery SQL, preserves all content and journal
       const journal = after.no_index_recovery_journal[preview.previewId];
       assert.deepEqual(journal.before, { noIndex: true, sourceNoIndexPresent: true, sourceNoIndex: true, automaticNoIndex: null });
       assert.equal(journal.actor, 'sql-fixture-admin'); assert.equal(journal.evidence.completeLanguageCount, 14);
+      assert.equal(journal.evidence.evidence.recoveryBasis, 'complete-unique-information-page');
       const publicStation = catalogShape(after);
       assert.equal(Object.hasOwn(publicStation, 'no_index_recovery_journal'), false);
       assert.equal(Object.hasOwn(publicStation, 'noIndexRecoveryJournal'), false);
@@ -112,6 +115,30 @@ test('PostgreSQL engine executes recovery SQL, preserves all content and journal
       assert.equal(rolledBack.no_index, true);
       assert.equal(Object.hasOwn(rolledBack.no_index_recovery_journal, notCommitted.previewId), false,
         'a rolled back operation cannot claim success using another operation\'s receipt');
+
+      // Restoring the retained information page must not invent a working
+      // stream or override the independent public-list visibility decision.
+      rejectBeforeCommit = false;
+      await db.query(`UPDATE stations SET last_check_ok=false,last_check_time=now()-interval '1 minute',
+        is_list_visible=false,visibility_expires_at=now()+interval '1 day',
+        availability_outcome='failed',availability_checked_at=now()-interval '1 minute'`);
+      const offlineBefore = (await db.query('SELECT * FROM stations')).rows[0];
+      const offlinePreview = await store.preview();
+      assert.equal(offlinePreview.totalCandidates, 1);
+      assert.equal(offlinePreview.candidates[0].lastCheckOkTime, null);
+      assert.equal(offlinePreview.candidates[0].evidence.providerLastCheckOk, false);
+      assert.equal(offlinePreview.candidates[0].evidence.recentProviderSuccess, false);
+      assert.equal((await store.apply({ previewId: offlinePreview.previewId, stationIds: ['station-a'] })).restored, 1);
+      const offlineAfter = (await db.query('SELECT * FROM stations')).rows[0];
+      assert.equal(offlineAfter.no_index, false);
+      for (const field of ['last_check_ok', 'last_check_time', 'is_list_visible', 'visibility_expires_at',
+        'availability_outcome', 'availability_checked_at', 'descriptions', 'url', 'url_resolved']) {
+        assert.deepEqual(offlineAfter[field], offlineBefore[field], `offline recovery preserves ${field}`);
+      }
+      assert.equal(catalogShape(offlineAfter).availabilityStatus, 'unavailable');
+      assert.equal(catalogShape(offlineAfter).isListVisible, false);
+      assert.deepEqual(new Set(getIndexableLanguagesForStation(catalogShape(offlineAfter), AUDIT_LANGUAGES)),
+        new Set(AUDIT_LANGUAGES), 'the complete retained page is indexable in all qualified locales while playback/list visibility stays unavailable');
       assert.ok(clients.every(client => client.released));
     } finally { await db.close(); }
   });

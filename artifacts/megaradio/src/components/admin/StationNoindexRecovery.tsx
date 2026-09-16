@@ -6,8 +6,11 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 interface RecoveryCandidate {
   id: string; slug: string; name: string; country: string; countryCode: string;
-  lastCheckOkTime: string; completeLanguageCount: number;
-  evidence: { provenance: string; providerUuidPresent: boolean; recentProviderSuccess: boolean; identityPeers: number };
+  lastCheckOkTime: string | null; completeLanguageCount: number;
+  evidence: {
+    provenance: string; providerUuidPresent: boolean; recentProviderSuccess: boolean;
+    providerLastCheckOk: boolean | null; recoveryBasis: 'complete-unique-information-page'; identityPeers: number;
+  };
 }
 interface RecoveryPreview {
   previewId: string; createdAt: string; expiresAt: string; totalScanned: number;
@@ -15,7 +18,12 @@ interface RecoveryPreview {
   candidates: RecoveryCandidate[]; candidateLimit: number;
 }
 interface RecoveryResult { restored: number; restoredIds: string[]; skipped: number; skippedReasons: unknown[] }
-const BATCH_LIMIT = 25;
+const BATCH_LIMIT = 100;
+
+function formatSuccessfulCheck(value: string | null) {
+  if (!value || !Number.isFinite(Date.parse(value))) return 'Kayıt yok';
+  return new Date(value).toLocaleString();
+}
 
 /** Explicit, reversible repair only. Opening this screen never starts a scan or a write. */
 export function StationNoindexRecovery() {
@@ -51,9 +59,11 @@ export function StationNoindexRecovery() {
   return <Card className="border-l-4 border-l-amber-500 bg-white">
     <CardHeader><CardTitle className="text-base">Eski noindex işaretlerini kontrollü onar</CardTitle></CardHeader>
     <CardContent className="space-y-4">
-      <p className="max-w-3xl text-sm text-slate-600">Önce adayları inceleyin, sonra en fazla 25 radyoyu seçin.
-        Yalnızca 14 dil içeriği tam, sağlayıcı kontrolü güncel ve başarılı, kimlik kopyası şüphesi bulunmayan kayıtlar aday olur.
-        Manuel kararlar, yönlendirmeler ve belirsiz kayıtlar korunur.</p>
+      <p className="max-w-3xl text-sm text-slate-600">Önce adayları inceleyin, sonra en fazla {BATCH_LIMIT} radyoyu seçin.
+        Yayın çevrimdışı olsa da 14 dilde zengin ve eksiksiz içerik sunan, kimlik kopyası şüphesi bulunmayan benzersiz bilgi sayfaları arama motorlarında indekslenebilir.
+        Sağlayıcı kontrolünün sonucu bilgi olarak gösterilir; güncel başarılı kontrol adaylık koşulu değildir.
+        Manuel kararlar, yönlendirmeler ve belirsiz kayıtlar korunur.
+        Bu işlem yayını yeniden başlatmaz, gizli radyoları listelerde görünür yapmaz.</p>
       <Button variant="outline" onClick={() => { apply.reset(); scan.mutate(); }} disabled={busy}>
         {scan.isPending ? 'Adaylar inceleniyor…' : 'Onarım adaylarını incele'}
       </Button>
@@ -85,15 +95,19 @@ export function StationNoindexRecovery() {
           <div className="max-h-96 overflow-auto rounded-lg border">
             <table className="w-full text-left text-sm">
               <caption className="sr-only">İnceleme sonuçlarına göre onarılabilecek radyolar</caption>
-              <thead className="sticky top-0 bg-slate-50"><tr><th className="p-3">Seç</th><th className="p-3">Radyo</th><th className="p-3">Ülke</th><th className="p-3 whitespace-nowrap">Son başarılı kontrol</th><th className="p-3">İçerik</th></tr></thead>
+              <thead className="sticky top-0 bg-slate-50"><tr><th className="p-3">Seç</th><th className="p-3">Radyo</th><th className="p-3">Ülke</th><th className="p-3">Sağlayıcının son kontrolü</th><th className="p-3 whitespace-nowrap">Son başarılı kontrol</th><th className="p-3">İçerik</th></tr></thead>
               <tbody>{preview.candidates.map(row => <tr key={row.id} className="border-t">
                 <td className="p-3"><input type="checkbox" aria-label={`${row.name} onarım için seç`} checked={selected.includes(row.id)}
                   disabled={busy || expired || (!selected.includes(row.id) && selected.length >= BATCH_LIMIT)}
                   onChange={event => setSelected(ids => event.target.checked ? [...ids, row.id] : ids.filter(id => id !== row.id))} className="h-4 w-4 accent-amber-600" /></td>
                 <td className="p-3"><a className="font-medium underline underline-offset-2" target="_blank" rel="noopener noreferrer" href={`/admin/stations?search=${encodeURIComponent(row.id)}`}>{row.name}</a><div className="max-w-80 truncate text-xs text-slate-500">{row.slug}</div></td>
                 <td className="p-3">{row.country || row.countryCode}</td>
-                <td className="p-3 whitespace-nowrap">{new Date(row.lastCheckOkTime).toLocaleString()}</td>
-                <td className="p-3 whitespace-nowrap">{row.completeLanguageCount}/14 dil</td>
+                <td className="p-3">
+                  <div>{row.evidence.providerLastCheckOk === true ? 'Başarılı' : row.evidence.providerLastCheckOk === false ? 'Başarısız' : 'Bilinmiyor'}</div>
+                  <div className="text-xs text-slate-500">{row.evidence.recentProviderSuccess ? 'Yakın tarihli başarı kaydı var' : 'Yakın tarihli başarı kaydı yok'}</div>
+                </td>
+                <td className="p-3 whitespace-nowrap">{formatSuccessfulCheck(row.lastCheckOkTime)}</td>
+                <td className="p-3"><div className="whitespace-nowrap">{row.completeLanguageCount}/14 dil</div><div className="text-xs text-slate-500">Tam ve benzersiz bilgi sayfası</div></td>
               </tr>)}</tbody>
             </table>
           </div>
@@ -103,6 +117,7 @@ export function StationNoindexRecovery() {
           </div>
           {confirming && !expired && !busy && <section role="group" aria-label="Seçili radyo onarımını onayla" className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
             <p>{selected.length} radyonun noindex işareti kaldırılacak. İçerik ve URL değişmez; eski kararın kaydı korunur.</p>
+            <p className="mt-2">Bu işlem yayını yeniden başlatmaz, gizli radyoları listelerde görünür yapmaz.</p>
             <div className="mt-3 flex flex-wrap gap-2">
               <Button onClick={() => { setConfirming(false); apply.mutate(); }}>Onarımı uygula</Button>
               <Button variant="outline" onClick={() => setConfirming(false)}>Vazgeç</Button>

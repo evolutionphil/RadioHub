@@ -20,11 +20,12 @@ function assess(row: RecoveryStation, peers: RecoveryStation[] = []) {
   return assessLegacyNoindexRecovery(row, index, now);
 }
 
-test('recovery requires positive provider/content/identity evidence, never just an unknown old flag', () => {
+test('recovery requires provider identity and complete unique content, never just an unknown old flag', () => {
   const row = station(), before = structuredClone(row);
   const result = assess(row);
   assert.equal(result.reason, 'eligible');
-  assert.deepEqual(result.candidate?.evidence, { provenance: 'legacy-unknown', providerUuidPresent: true, recentProviderSuccess: true, identityPeers: 0 });
+  assert.deepEqual(result.candidate?.evidence, { provenance: 'legacy-unknown', providerUuidPresent: true,
+    providerLastCheckOk: true, recentProviderSuccess: true, identityPeers: 0, recoveryBasis: 'complete-unique-information-page' });
   assert.equal(assess(station({ automaticNoIndex: owned })).candidate?.evidence.provenance, 'owned-duplicate');
   assert.deepEqual(row, before);
   assert.equal(assess(station({ lastCheckOkTime: null })).reason, 'eligible', 'a recent provider check marked successful is sufficient');
@@ -46,14 +47,34 @@ test('recovery requires positive provider/content/identity evidence, never just 
     [{ url: 'http:example.invalid/live' }, 'ambiguous-stream-endpoint'],
     [{ urlResolved: 'https://user:password@example.invalid' }, 'ambiguous-stream-endpoint'],
     [{ manualEditFields: { lastCheckOk: true } }, 'manual-provider-evidence'],
-    [{ manualEditFields: { url: true } }, 'manual-provider-evidence'], [{ lastCheckOk: false }, 'provider-not-healthy'],
-    [{ lastCheckTime: null }, 'missing-recent-provider-success'],
-    [{ lastCheckTime: new Date(now + 1) }, 'missing-recent-provider-success'],
-    [{ lastCheckOkTime: '2026-08-01' }, 'missing-recent-provider-success'],
-    [{ lastCheckOkTime: {} }, 'missing-recent-provider-success'],
+    [{ manualEditFields: { url: true } }, 'manual-provider-evidence'],
     [{ completeLanguageCount: 13 }, 'incomplete-descriptions'],
   ];
   for (const [patch, expected] of cases) assert.equal(assess(station(patch)).reason, expected, JSON.stringify(patch));
+});
+
+test('offline, stale and unknown health qualify only through complete unique content and retain factual evidence', () => {
+  const cases: Array<[Partial<RecoveryStation>, boolean | null, string | null]> = [
+    [{ lastCheckOk: false, lastCheckOkTime: null }, false, null],
+    [{ lastCheckOk: false, lastCheckOkTime: '2026-08-01T00:00:00Z' }, false, '2026-08-01T00:00:00.000Z'],
+    [{ lastCheckTime: '2026-08-01T00:00:00Z', lastCheckOkTime: null }, true, '2026-08-01T00:00:00.000Z'],
+    [{ lastCheckOk: null, lastCheckTime: null, lastCheckOkTime: null }, null, null],
+    [{ lastCheckTime: null, lastCheckOkTime: null }, true, null],
+    [{ lastCheckTime: new Date(now + 1), lastCheckOkTime: null }, true, null],
+    [{ lastCheckOkTime: 'invalid' }, true, null], [{ lastCheckOkTime: {} }, true, null],
+  ];
+  for (const [patch, actualHealth, successfulDate] of cases) {
+    const row = station(patch), before = structuredClone(row), result = assess(row);
+    assert.equal(result.reason, 'eligible');
+    assert.equal(result.candidate?.evidence.providerLastCheckOk, actualHealth);
+    assert.equal(result.candidate?.evidence.recentProviderSuccess, false);
+    assert.equal(result.candidate?.evidence.recoveryBasis, 'complete-unique-information-page');
+    assert.equal(result.candidate?.lastCheckOkTime, successfulDate);
+    assert.deepEqual(row, before, 'classification never changes health or metadata');
+    assert.equal(assess(station({ ...patch, completeLanguageCount: 13 })).reason, 'incomplete-descriptions');
+    assert.equal(assess(station({ ...patch, manualEditFields: { noIndex: true } })).reason, 'manual-protection');
+    assert.equal(assess(row, [station({ id: 'peer', slug: 'different-slug' })]).reason, 'plausible-identity-peer');
+  }
 });
 
 test('whole-catalog identity peers include indexed rows, redirects, punctuation variants and missing-country ambiguity', () => {
