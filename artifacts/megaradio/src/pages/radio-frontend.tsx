@@ -7,6 +7,7 @@ import { fetchStationCardList } from '@/lib/station-card-list-request';
 import { Link } from "wouter";
 import StationCard from "@/components/ui/station-card";
 import CatalogStationItems from '@/components/ads/CatalogStationItems';
+import HomeHeroPicture from '@/components/HomeHeroPicture';
 import StationCardSkeleton from "@/components/ui/station-card-skeleton";
 import GenreCardSkeleton from "@/components/ui/genre-card-skeleton";
 import VirtualizedStationList from "@/components/ui/virtualized-station-list";
@@ -894,19 +895,7 @@ export default function RadioFrontend({
       {/* EXACT HERO SECTION FROM ORIGINAL - Hero.vue */}
       <div className="hero-container overflow-visible">
           {/* 🚀 LCP CRITICAL: Hero background image - visible in HTML with high priority for fastest LCP */}
-          <picture>
-            <source media="(min-width: 768px)" srcSet="/images/hero-bg.webp" type="image/webp" />
-            <img 
-              src="/images/hero-bg-430w.webp" 
-              alt="" 
-              className="absolute inset-0 w-full h-full object-cover pointer-events-none z-0" 
-              aria-hidden="true"
-              fetchPriority="high"
-              decoding="async"
-              width="1920"
-              height="600"
-            />
-          </picture>
+          <HomeHeroPicture />
 
           {/* 🚀 LCP OPTIMIZATION: Decorative gradients - lazy loaded (not critical for LCP) */}
           <img 
