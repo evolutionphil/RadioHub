@@ -1,5 +1,6 @@
 import { getPostgresPool } from "../postgres-runtime";
 import { stationVisibilityFields } from '../utils/station-visibility';
+import { verifiedLegacyStationAlias } from '../seo/verified-legacy-station-alias';
 
 export type StationReadMode = "postgres";
 export const stationReadMode: StationReadMode = "postgres";
@@ -63,7 +64,9 @@ async function postgresStation(identifier: string): Promise<any | null> {
        AND $1=ANY(slug_aliases) LIMIT 1)`,
     [identifier],
   );
-  return fromPostgres(result.rows[0]);
+  if (result.rows[0]) return fromPostgres(result.rows[0]);
+  const repairedAlias = verifiedLegacyStationAlias(identifier);
+  return repairedAlias ? postgresStation(repairedAlias) : null;
 }
 
 export async function getPopularStationsFromPostgres(options: {

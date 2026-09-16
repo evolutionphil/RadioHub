@@ -14,6 +14,7 @@ let stationReads = 0;
 let stationOverrides: Record<string, any> = {};
 let customMetadata: Record<string, any> | null = null;
 let mergedAlias: Record<string, any> | null = null;
+let exactLookupFixtures: Map<string, any> | null = null;
 let qualifiedLanguages = ['en'];
 const station = { _id: 'test-station', name: 'Recovery FM', slug: 'recovery-fm', url: 'https://stream.example.invalid/live', country: 'Germany', tags: 'pop', lastCheckOk: true };
 mock.module('../src/performance-cache', { namedExports: { performanceCache: {
@@ -23,9 +24,10 @@ mock.module('../src/performance-cache', { namedExports: { performanceCache: {
   getUrlTranslations: async () => new Map<string, string>(),
 } } });
 mock.module('../src/data/postgres-seo-read-store', { namedExports: { pgSeoCatalog: () => ({
-  findOne: async () => {
+  findOne: async (query: any) => {
     stationReads++;
     if (databaseFails) throw new Error('temporary PostgreSQL read outage');
+    if (exactLookupFixtures) return exactLookupFixtures.get(query.slug ? `slug:${query.slug}` : `alias:${query.slugAliases}`) ?? null;
     return missing ? null : { ...station, ...stationOverrides, noIndex };
   },
   find: async () => [], count: async () => 0, groupCount: async () => [],
@@ -58,6 +60,42 @@ beforeEach(() => {
   missing = false; noIndex = false; stationReads = 0;
   stationOverrides = {}; qualifiedLanguages = ['en']; customMetadata = null;
   mergedAlias = null;
+  exactLookupFixtures = null;
+});
+
+for (const language of ACTIVE_SITEMAP_LANGUAGES) {
+  for (const [legacy, alias, canonical] of [
+    ['kpissfm-2', 'kpiss-fm-2', 'kpiss-fm'],
+    ['flashbassfm-1', 'flashbass-fm-1', 'flashbass-fm'],
+  ]) {
+    test(`${language}: verified legacy ${legacy} redirects to its persisted localized canonical`, async () => {
+      exactLookupFixtures = new Map([[`alias:${alias}`, { ...station, slug: canonical, noIndex: false }]]);
+      const detail = URL_TRANSLATIONS[language]?.station || 'station';
+      const result = await renderer.renderStaticPage(`/${language}/${detail}/${legacy}`, 'https://themegaradio.com');
+      assert.equal(decodeURI(result.pageData?.redirectTo || ''), `/${language}/${detail}/${canonical}`);
+      assert.equal(result.pageData?.stationIsJunk, undefined);
+    });
+  }
+}
+
+test('verified legacy alias repair never bypasses an excluded target or guesses a missing record', async () => {
+  exactLookupFixtures = new Map([['alias:kpiss-fm-2', { ...station, slug: 'kpiss-fm', noIndex: true }]]);
+  const excluded = await renderer.renderStaticPage('/en/station/kpissfm-2', 'https://themegaradio.com');
+  assert.equal(excluded.pageData?.stationIsJunk, true);
+  assert.equal(excluded.pageData?.redirectTo, undefined);
+  pageCache.clear(); exactLookupFixtures.clear();
+  const missingTarget = await renderer.renderStaticPage('/en/station/kpissfm-2', 'https://themegaradio.com');
+  assert.equal(missingTarget.pageData?.notFound, true);
+  assert.equal(missingTarget.pageData?.redirectTo, undefined);
+});
+
+test('a current exact alias takes precedence over a verified historical spelling repair', async () => {
+  exactLookupFixtures = new Map([
+    ['alias:kpissfm-2', { ...station, slug: 'explicit-current-owner', noIndex: false }],
+    ['alias:kpiss-fm-2', { ...station, slug: 'kpiss-fm', noIndex: false }],
+  ]);
+  const result = await renderer.renderStaticPage('/de/sender/kpissfm-2', 'https://themegaradio.com');
+  assert.equal(result.pageData?.redirectTo, '/de/sender/explicit-current-owner');
 });
 
 for (const language of ACTIVE_SITEMAP_LANGUAGES) {

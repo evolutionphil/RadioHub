@@ -215,7 +215,9 @@ export default function Footer() {
                 width="97"
                 height="97"
                   className="w-10 h-10 sm:w-12 sm:h-12 md:w-16 md:h-16 lg:w-20 lg:h-20 object-contain flex-shrink-0"
-                src="/images/logo-icon.webp" 
+                src="/header-logo-80w.webp"
+                srcSet="/header-logo-80w.webp 80w, /images/logo-icon.webp 194w"
+                sizes="(min-width: 1024px) 80px, (min-width: 768px) 64px, (min-width: 640px) 48px, 40px"
                 alt=""
                 title="MegaRadio"
               />

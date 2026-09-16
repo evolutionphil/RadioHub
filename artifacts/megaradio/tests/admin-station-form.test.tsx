@@ -51,9 +51,69 @@ describe('admin station form session and save contracts', () => {
     const base = { name: 'Station', url: 'https://radio.invalid/live' };
     expect(stationFormSchema.parse({ ...base, bitrate: 0 }).bitrate).toBe(0);
     expect(stationFormSchema.parse({ ...base, bitrate: null, urlResolved: '', homepage: '' }).bitrate).toBeNull();
-    for (const patch of [{ name: '   ' }, { url: 'file:///etc/passwd' }, { urlResolved: 'not-a-url' }, { homepage: 'ftp://radio.invalid' }, { bitrate: -1 }, { bitrate: 1.5 }, { bitrate: 100001 }]) {
+    for (const patch of [{ name: '   ' }, { url: 'file:///etc/passwd' }, { urlResolved: 'not-a-url' }, { homepage: 'ftp://radio.invalid' }, { bitrate: -1 }, { bitrate: 1.5 }, { bitrate: 100001 }, { noIndex: 'false' }]) {
       expect(stationFormSchema.safeParse({ ...base, ...patch }).success).toBe(false);
     }
+  });
+  it.each([true, false, undefined])('shows the stored noIndex=%s policy without submitting untouched indexing or unrelated fields', async (noIndex) => {
+    const data = { ...station(), noIndex, isActive: false, lastCheckOk: false };
+    mocks.request.mockResolvedValue({ json: async () => data });
+    const view = mount(data); await ready();
+    const indexing = screen.getByRole('switch', { name: 'Allow search engine indexing' });
+    expect(indexing).toHaveAttribute('aria-checked', String(!noIndex));
+    expect(indexing).toHaveAccessibleDescription(expect.stringContaining(noIndex ? 'Indexing is disabled by this setting.' : 'Indexing is allowed by this setting.'));
+    expect(indexing).toHaveAccessibleDescription(expect.stringContaining('Page quality and duplicate checks still apply'));
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+    await waitFor(() => expect(view.submit).toHaveBeenLastCalledWith({}));
+    fireEvent.change(screen.getByLabelText(/Station Name/), { target: { value: 'Updated station name' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+    await waitFor(() => expect(view.submit).toHaveBeenLastCalledWith({ name: 'Updated station name' }));
+    expect(data.noIndex).toBe(noIndex);
+  });
+  it.each([true, false])('an explicit toggle from noIndex=%s submits only the inverse boolean', async (noIndex) => {
+    const data = { ...station(), noIndex, isActive: false, lastCheckOk: false };
+    mocks.request.mockResolvedValue({ json: async () => data });
+    const view = mount(data); await ready();
+    fireEvent.click(screen.getByRole('switch', { name: 'Allow search engine indexing' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+    await waitFor(() => expect(view.submit).toHaveBeenCalledWith({ noIndex: !noIndex }));
+    expect(data.noIndex).toBe(noIndex);
+  });
+  it('does not submit indexing after toggling back to the saved policy', async () => {
+    const data = { ...station(), noIndex: true };
+    mocks.request.mockResolvedValue({ json: async () => data });
+    const view = mount(data); await ready();
+    const indexing = screen.getByRole('switch', { name: 'Allow search engine indexing' });
+    fireEvent.click(indexing);
+    fireEvent.click(indexing);
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+    await waitFor(() => expect(view.submit).toHaveBeenCalledWith({}));
+  });
+  it('resets indexing drafts on a different station and on close/reopen', async () => {
+    const first = { ...station(a), noIndex: true }, second = { ...station(b), noIndex: true };
+    mocks.request.mockImplementation(async (_method: string, url: string) => ({ json: async () => url.endsWith(a) ? first : second }));
+    const view = mount(first); await ready();
+    fireEvent.click(screen.getByRole('switch', { name: 'Allow search engine indexing' }));
+    expect(screen.getByRole('switch', { name: 'Allow search engine indexing' })).toBeChecked();
+    view.show(second); await ready();
+    expect(screen.getByRole('switch', { name: 'Allow search engine indexing' })).not.toBeChecked();
+    fireEvent.click(screen.getByRole('switch', { name: 'Allow search engine indexing' }));
+    view.show(second, false); view.show(second); await ready();
+    expect(screen.getByRole('switch', { name: 'Allow search engine indexing' })).not.toBeChecked();
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+    await waitFor(() => expect(view.submit).toHaveBeenCalledWith({}));
+  });
+  it('loads the current indexing policy before enabling the control', async () => {
+    const pending = deferred<any>();
+    mocks.request.mockReturnValue(pending.promise);
+    const view = mount({ ...station(), noIndex: false });
+    expect(screen.getByRole('switch', { name: 'Allow search engine indexing' })).toBeDisabled();
+    await act(async () => pending.resolve({ json: async () => ({ ...station(), noIndex: true }) }));
+    await ready();
+    expect(screen.getByRole('switch', { name: 'Allow search engine indexing' })).toBeEnabled();
+    expect(screen.getByRole('switch', { name: 'Allow search engine indexing' })).not.toBeChecked();
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+    await waitFor(() => expect(view.submit).toHaveBeenCalledWith({}));
   });
   it('loads id-only records from the correct endpoint and reports a load failure before saving', async () => {
     const data = { ...station(), id: a, _id: undefined };
@@ -145,6 +205,7 @@ describe('admin station form session and save contracts', () => {
     await waitFor(() => expect(view.submit).toHaveBeenCalled());
     expect(view.submit.mock.calls[0][0]).not.toHaveProperty('lastCheckOk');
     expect(view.submit.mock.calls[0][0]).not.toHaveProperty('isActive');
+    expect(view.submit.mock.calls[0][0]).not.toHaveProperty('noIndex');
     expect(mocks.request).not.toHaveBeenCalled();
   });
 });

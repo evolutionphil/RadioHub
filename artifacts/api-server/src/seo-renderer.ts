@@ -12,6 +12,7 @@ import { PrecomputedGenresService } from './services/precomputed-genres';
 import { AZ_INDEX_KEYS, azDisplayLabel, azSlugBounds, matchAzIndexPath } from './seo/az-station-index';
 import { isMissingSeoCatalogPage, isSeoCatalogPath, parseSeoCatalogPage, seoCatalogPageLinks } from './seo/catalog-pagination';
 import { regionRouteExistence } from './seo/region-route-existence';
+import { verifiedLegacyStationAlias } from './seo/verified-legacy-station-alias';
 
 // The renderer only needs this small subset of the normalized catalog shape.
 interface LeanStationCard {
@@ -459,10 +460,21 @@ export class SeoRenderer {
           // When matched, signal a 301 redirect to the canonical URL so search
           // engines consolidate ranking on the new slug instead of indexing both.
           if (!stationData) {
-            const aliasMatch: any = await withSignal(
+            let aliasMatch: any = await withSignal(
               pgSeoCatalog().findMergedAlias(stationSlug).then(match => match ?? pgSeoCatalog().findOne({ slugAliases: stationSlug })),
               signal,
             );
+            // Only repair two verified historical spellings after every exact
+            // identity lookup missed. Keep the normal junk/canonical gates below.
+            const repairedAlias = !aliasMatch && verifiedLegacyStationAlias(stationSlug);
+            if (repairedAlias) {
+              aliasMatch = await withSignal(
+                pgSeoCatalog().findOne({ slug: repairedAlias }).then(match => match
+                  ?? pgSeoCatalog().findMergedAlias(repairedAlias).then(merged => merged
+                    ?? pgSeoCatalog().findOne({ slugAliases: repairedAlias }))),
+                signal,
+              );
+            }
             if (aliasMatch && aliasMatch.slug && aliasMatch.slug !== stationSlug) {
               // JUNK GATE (Architect P1, Apr 2026): If the canonical target is
               // itself a junk station (noIndex:true or matches isJunkStation

@@ -593,7 +593,8 @@ app.get('/admin/*path', sendAdminSpa);
 const streamServiceProxy = createProxyMiddleware({
   target: STREAM_PROXY_URL,
   changeOrigin: true,
-  // The stream service expects the same /api/image|stream paths so no rewrite.
+  // The destination needs the full /api/image|stream path. The mount wrappers
+  // below restore req.originalUrl after Express strips the mounted prefix.
   on: {
     error: (err: any, _req: any, res: any) => {
       console.error('❌ Stream-service proxy error:', err?.message || err);
@@ -605,8 +606,8 @@ const streamServiceProxy = createProxyMiddleware({
     }
   }
 });
-app.use('/api/image', streamServiceProxy);
-app.use('/api/stream', streamServiceProxy);
+app.use('/api/image', forwardApiRequest(streamServiceProxy));
+app.use('/api/stream', forwardApiRequest(streamServiceProxy));
 
 (async () => {
   await initializePostgres();
@@ -999,11 +1000,12 @@ app.use('/api/stream', streamServiceProxy);
          scanner. Preload it with high priority. Matches the asset used by
          radio-header.tsx (/header-logo-80w.webp, 2.6KB). -->
     <link rel="preload" as="image" href="/header-logo-80w.webp" fetchpriority="high">
-    <!-- Preload distinct above-the-fold Ubuntu files. The existing 600 and
-         700 faces have identical outlines/metrics and share the 700 URL. -->
-    <link rel="preload" as="font" href="/fonts/ubuntu-400.woff2" type="font/woff2" crossorigin>
-    <link rel="preload" as="font" href="/fonts/ubuntu-500.woff2" type="font/woff2" crossorigin>
-    <link rel="preload" as="font" href="/fonts/ubuntu-700.woff2" type="font/woff2" crossorigin>
+    <!-- Only preload the small shared Latin subsets, not every alphabet.
+         Unicode-range selects the other unchanged glyphs when required.
+         The 600 and 700 faces have identical metrics and share one source. -->
+    <link rel="preload" as="font" href="/fonts/ubuntu-400-latin.woff2" type="font/woff2" crossorigin>
+    <link rel="preload" as="font" href="/fonts/ubuntu-500-latin.woff2" type="font/woff2" crossorigin>
+    <link rel="preload" as="font" href="/fonts/ubuntu-700-latin.woff2" type="font/woff2" crossorigin>
     ${pageType === 'home' ? '<link rel="preload" as="image" href="/images/hero-bg-430w.webp" type="image/webp" media="(max-width: 767px)" fetchpriority="high"><link rel="preload" as="image" href="/images/hero-bg.webp" type="image/webp" media="(min-width: 768px)" fetchpriority="high">' : ''}
     ${prodTags.styles}
     ${prodTags.preloads}

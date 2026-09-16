@@ -31,6 +31,16 @@ beforeEach(() => {
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
 
 describe('mobile footer', () => {
+  it('uses the existing small brand logo with the original available for high-density screens', () => {
+    render(<Footer />);
+    const image = within(screen.getByRole('link', { name: 'MegaRadio' })).getByTitle('MegaRadio');
+    expect(image).toHaveAttribute('src', '/header-logo-80w.webp');
+    expect(image).toHaveAttribute('srcset', '/header-logo-80w.webp 80w, /images/logo-icon.webp 194w');
+    expect(image).toHaveAttribute('sizes', '(min-width: 1024px) 80px, (min-width: 768px) 64px, (min-width: 640px) 48px, 40px');
+    expect(image).toHaveAttribute('loading', 'lazy');
+    expect(image).toHaveClass('w-10', 'h-10', 'lg:w-20', 'lg:h-20', 'object-contain');
+  });
+
   it.each(ACTIVE_SITEMAP_LANGUAGES)('retains localized navigation and 14 language choices for %s', language => {
     state.language = language;
     render(<Footer />);

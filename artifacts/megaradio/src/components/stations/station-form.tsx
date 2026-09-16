@@ -37,6 +37,7 @@ export const stationFormSchema = z.object({
   hls: z.boolean().optional(),
   isFeatured: z.boolean().optional(),
   showInGlobalPopular: z.boolean().optional(),
+  noIndex: z.boolean().optional(),
   descriptionsJson: z.string().optional(),
 });
 
@@ -60,6 +61,7 @@ interface StationData {
   lastCheckOk?: boolean;
   isFeatured?: boolean;
   showInGlobalPopular?: boolean;
+  noIndex?: boolean;
   descriptions?: Record<string, any>;
 }
 
@@ -144,6 +146,7 @@ function StationFormSession({
     hls: station?.hls ?? false,
     isFeatured: station?.isFeatured ?? false,
     showInGlobalPopular: station?.showInGlobalPopular ?? false,
+    noIndex: station?.noIndex ?? false,
     descriptionsJson: station?.descriptions ? JSON.stringify(station.descriptions, null, 2) : "",
   });
 
@@ -231,6 +234,9 @@ function StationFormSession({
     try {
       const { changes, descriptions } = buildDescriptionChanges(data.descriptionsJson || '', baseline.current?.descriptions || {});
       const { descriptionsJson: _json, ...fields } = data;
+      // Only an explicit indexing edit may set the manual policy, including
+      // on creation. Merely displaying the default must not write noIndex.
+      if (!form.getFieldState('noIndex').isDirty) delete fields.noIndex;
       if (!station) return onSubmit({ ...fields, ...(Object.keys(descriptions).length ? { descriptions } : {}) } as any);
       const defaults = getDefaultValues(baseline.current);
       const changed: Record<string, unknown> = Object.fromEntries(Object.entries(fields).filter(([key, value]) => value !== (defaults as any)[key]));
@@ -655,6 +661,32 @@ function StationFormSession({
                     />
                   )}
                 </div>
+
+                <FormField
+                  control={form.control}
+                  name="noIndex"
+                  render={({ field }) => (
+                    <FormItem className="rounded-lg border p-3">
+                      <div className="flex items-center justify-between gap-4">
+                        <FormLabel className="cursor-pointer">Allow search engine indexing</FormLabel>
+                        <FormControl>
+                          <Switch
+                            checked={!field.value}
+                            onCheckedChange={allowed => field.onChange(!allowed)}
+                            onBlur={field.onBlur}
+                            ref={field.ref}
+                            disabled={busy || waitingForFreshStation || stationLoadFailed}
+                          />
+                        </FormControl>
+                      </div>
+                      <FormDescription>
+                        {field.value ? 'Indexing is disabled by this setting.' : 'Indexing is allowed by this setting.'}
+                        {' '}Save to apply changes. Page quality and duplicate checks still apply; this does not change stream availability or guarantee search engine indexing.
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
               </TabsContent>
 
               {/* AI & Translations Tab */}

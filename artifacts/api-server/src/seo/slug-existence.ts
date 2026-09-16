@@ -41,6 +41,7 @@ import {
 import { PrecomputedCitiesService } from '../services/precomputed-cities';
 import { logger } from '../utils/logger';
 import { isJunkStation } from './junk-station-rules';
+import { verifiedLegacyStationAlias } from './verified-legacy-station-alias';
 
 /**
  * Mirrors the `generateSlug()` used in PrecomputedCitiesService and the
@@ -83,7 +84,9 @@ export function isSlugExistenceReady(): boolean {
 }
 
 export function hasStationSlug(slug: string): boolean {
-  return stationSlugs.has(slug);
+  if (stationSlugs.has(slug)) return true;
+  const repairedAlias = verifiedLegacyStationAlias(slug);
+  return repairedAlias !== null && stationSlugs.has(repairedAlias);
 }
 
 /**
@@ -99,7 +102,11 @@ export function hasStationSlug(slug: string): boolean {
  */
 export function getCanonicalStationSlug(aliasSlug: string): string | null {
   if (!aliasSlug) return null;
-  const info = stationAliasToCanonical.get(aliasSlug.toLowerCase());
+  const lower = aliasSlug.toLowerCase();
+  // A current exact slug/alias always wins over a historical repair. Only
+  // known aliases carry the target's junk bit, so never guess a destination.
+  const lookup = stationSlugs.has(lower) ? lower : (verifiedLegacyStationAlias(lower) || lower);
+  const info = stationAliasToCanonical.get(lookup);
   if (!info) return null;
   if (info.canonical === aliasSlug.toLowerCase()) return null;
   if (info.junk) return null;
