@@ -22,8 +22,8 @@ export function registerAdminIndexabilityAuditRoutes(app: Express, requireAdmin:
     try {
       const qualified = await dependencies.getQualifiedLanguagesState();
       const report = await dependencies.pgAuditStationIndexability({ qualifiedLanguages: qualified.languages, signal: controller.signal,
-        ...(csv ? { onStation: async (station, decision) => {
-          if (controller.signal.aborted) throw new Error('Client disconnected');
+        ...(csv ? { onStation: async (station, decision, signal) => {
+          signal.throwIfAborted();
           if (!csvStarted) {
             res.type('text/csv');
             res.set('Content-Disposition', 'attachment; filename="station-indexability-review.csv"');
@@ -32,7 +32,7 @@ export function registerAdminIndexabilityAuditRoutes(app: Express, requireAdmin:
           // Full-catalog compact review export includes passing records so
           // reviewers can reconcile all rows, not just selected examples.
           if (!res.write(stationAuditCsv(station, decision))) {
-            await once(res, 'drain', { signal: controller.signal });
+            await once(res, 'drain', { signal });
           }
         } } : {}),
       });

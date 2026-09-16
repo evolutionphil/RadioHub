@@ -7,14 +7,30 @@ export const INDEXABILITY_AUDIT_BATCH_SIZE = 500;
 type AuditOptions = {
   qualifiedLanguages: readonly string[];
   signal?: AbortSignal;
-  onStation?: (station: AuditStation, decision: StationAuditDecision) => Promise<void>;
+  onStation?: (station: AuditStation, decision: StationAuditDecision, signal: AbortSignal) => Promise<void>;
 };
 
 /** Read-only snapshot; one 500-row page in memory, only field-presence markers
  * for descriptions. Never SELECT source or full multilingual article text. */
 export async function pgAuditStationIndexability(options: AuditOptions, pool: Pick<pg.Pool, 'connect'> = getPostgresPool()) {
   const client = await pool.connect();
-  const started = Date.now();
+  const interrupted = new AbortController();
+  let connectionLost = false;
+  let discardClient = false;
+  const interrupt = () => interrupted.abort(Object.assign(new Error('Indexability audit interrupted'), { code: 'AUDIT_INTERRUPTED' }));
+  const loseConnection = () => {
+    connectionLost = true;
+    interrupted.abort(Object.assign(new Error('Indexability audit connection lost'), { code: 'AUDIT_CONNECTION_LOST' }));
+  };
+  // pg-pool removes its idle error listener while a client is checked out.
+  // A server idle timeout during CSV backpressure must abort the download,
+  // not become an unhandled EventEmitter error in the API process.
+  client.on('error', loseConnection);
+  client.on('end', loseConnection);
+  options.signal?.addEventListener('abort', interrupt, { once: true });
+  if (options.signal?.aborted) interrupt();
+  const deadline = setTimeout(interrupt, 60_000);
+  deadline.unref();
   try {
     await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
     await client.query("SET LOCAL statement_timeout = '15s'");
@@ -43,18 +59,36 @@ export async function pgAuditStationIndexability(options: AuditOptions, pool: Pi
           WHERE d.key ~ '^[a-zA-Z]{2,3}$'),'{}'::jsonb) AS descriptions
       FROM stations s ORDER BY s.id`);
     while (true) {
-      if (options.signal?.aborted || Date.now() - started > 60_000) throw Object.assign(new Error('Indexability audit interrupted'), { code: 'AUDIT_INTERRUPTED' });
+      interrupted.signal.throwIfAborted();
       const batch = await client.query(`FETCH FORWARD ${INDEXABILITY_AUDIT_BATCH_SIZE} FROM station_indexability_audit`);
       if (batch.rows.length === 0) break;
       for (const station of batch.rows as AuditStation[]) {
         const decision = audit.consume(station);
-        if (options.onStation) await options.onStation(station, decision);
+        if (options.onStation) await options.onStation(station, decision, interrupted.signal);
       }
     }
     await client.query('COMMIT');
     return audit.report;
   } catch (error) {
-    await client.query('ROLLBACK').catch(() => {});
+    if (!connectionLost) {
+      let cleanupTimer: ReturnType<typeof setTimeout> | undefined;
+      try {
+        await Promise.race([
+          client.query('ROLLBACK'),
+          new Promise<never>((_resolve, reject) => {
+            cleanupTimer = setTimeout(() => reject(new Error('Audit rollback timed out')), 2000);
+            cleanupTimer.unref();
+          }),
+        ]);
+      } catch { discardClient = true; }
+      finally { if (cleanupTimer) clearTimeout(cleanupTimer); }
+    }
     throw error;
-  } finally { client.release(); }
+  } finally {
+    clearTimeout(deadline);
+    options.signal?.removeEventListener('abort', interrupt);
+    // Keep the listener until release reinstalls the pool's own protection.
+    try { client.release(connectionLost || discardClient); }
+    finally { client.removeListener('error', loseConnection); client.removeListener('end', loseConnection); }
+  }
 }

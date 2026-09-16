@@ -389,12 +389,23 @@ export default function Stations() {
     generatedAt: string;
   }>({
     queryKey: ['/api/admin/stations/description-coverage'],
-    queryFn: async () => {
-      const response = await apiFetch('/api/admin/stations/description-coverage');
-      if (!response.ok) throw new Error('Failed to load coverage');
-      return response.json();
+    queryFn: async ({ signal }) => {
+      const controller = new AbortController();
+      const abort = () => controller.abort();
+      signal.addEventListener('abort', abort, { once: true });
+      if (signal.aborted) abort();
+      const timeout = setTimeout(abort, 45_000);
+      try {
+        const response = await apiFetch('/api/admin/stations/description-coverage', { signal: controller.signal });
+        if (!response.ok) throw new Error('Failed to load coverage');
+        return await response.json();
+      } finally {
+        clearTimeout(timeout);
+        signal.removeEventListener('abort', abort);
+      }
     },
     enabled: showCoverageDialog,
+    retry: false,
   });
 
   // Track progress for the bulk tag re-check job over SSE. The server

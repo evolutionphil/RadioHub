@@ -16,7 +16,7 @@ before(async () => {
       const audit = createStationAudit(options.qualifiedLanguages, '2026-09-17T00:00:00Z');
       const station = { _id: 'example', slug: 'example-radio', name: '=Unsafe formula', url: 'present', noIndex: true };
       const decision = audit.consume(station);
-      if (options.onStation) await options.onStation(station, decision);
+      if (options.onStation) await options.onStation(station, decision, options.signal!);
       return audit.report;
     },
   });

@@ -31,6 +31,7 @@ import { getGenreSlugCleanupAlertThreshold } from "../services/genre-slug-cleanu
 import { logger } from "../utils/logger";
 import { buildTemplateDescription } from "../services/station-description-template";
 import { registerAdminIndexabilityAuditRoutes } from './admin-indexability-audit-routes';
+import { registerAdminLegacyNoindexRecoveryRoutes } from './admin-legacy-noindex-recovery-routes';
 
 // SEO maintenance dashboard endpoints. Surface the health metrics the
 // Türkiye audit relies on (broken streams, missing tags, missing logos,
@@ -240,6 +241,7 @@ async function runTagsBackfill(countryCode: string | null, limitMax: number) {
 
 export function registerAdminMaintenanceRoutes(app: Express, deps: any) {
   registerAdminIndexabilityAuditRoutes(app, deps.requireAdmin);
+  registerAdminLegacyNoindexRecoveryRoutes(app, deps.requireAdmin);
   const { requireAdmin } = deps;
 
   // Task #485: the admin Performance page exposes a "Clear SEO caches"

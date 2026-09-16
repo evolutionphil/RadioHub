@@ -7,15 +7,25 @@ import { SITEMAP_PRIORITY_LANGUAGES } from '@workspace/seo-shared/seo-config';
 /** All language totals share one catalog scan and database snapshot. */
 export async function pgAdminDescriptionCoverage(pool: Pick<ReturnType<typeof getPostgresPool>, 'query'> = getPostgresPool()) {
   const languages = SITEMAP_PRIORITY_LANGUAGES.universal14;
+  // Expand each station's TOASTed JSON only once, then aggregate by locale.
+  // Extracting all 42 counters directly from s.descriptions repeatedly detoasts
+  // large multilingual articles and can dominate this otherwise read-only scan.
+  const full = descriptionTextSql("d.value->'full'");
+  const meta = descriptionTextSql("d.value->'meta'");
   const columns = languages.flatMap(language => {
-    const full = descriptionTextSql(`s.descriptions->'${language}'->'full'`);
-    const meta = descriptionTextSql(`s.descriptions->'${language}'->'meta'`);
-    return [`count(*) FILTER (WHERE ${full})::int AS "${language}_full"`,
-      `count(*) FILTER (WHERE ${meta})::int AS "${language}_meta"`,
-      `count(*) FILTER (WHERE ${full} AND ${meta})::int AS "${language}_complete"`];
+    return ['full', 'meta', 'complete'].map(field =>
+      `COALESCE(max(c.${field}) FILTER (WHERE c.language='${language}'),0)::int AS "${language}_${field}"`);
   });
-  const query = { text: `SELECT count(*)::int AS total,
-    count(*) FILTER (WHERE s.no_index IS NOT TRUE)::int AS indexable,${columns.join(',')} FROM stations s`, query_timeout: 30_000 };
+  const query = { text: `WITH counts AS (
+    SELECT d.key AS language,count(*) FILTER (WHERE ${full}) AS full,
+      count(*) FILTER (WHERE ${meta}) AS meta,count(*) FILTER (WHERE ${full} AND ${meta}) AS complete
+    FROM stations s CROSS JOIN LATERAL jsonb_each(
+      CASE WHEN jsonb_typeof(s.descriptions)='object' THEN s.descriptions ELSE '{}'::jsonb END) d
+    WHERE d.key IN (${languages.map(language => `'${language}'`).join(',')}) GROUP BY d.key
+  ), totals AS (SELECT count(*)::int AS total,
+    count(*) FILTER (WHERE no_index IS NOT TRUE)::int AS indexable FROM stations)
+    SELECT totals.total,totals.indexable,${columns.join(',')} FROM totals LEFT JOIN counts c ON TRUE
+    GROUP BY totals.total,totals.indexable`, query_timeout: 30_000 };
   const row = (await pool.query(query)).rows[0];
   const totalStations = row.total as number;
   return { totalStations, indexableStations: row.indexable as number, languages: languages.map(language => {

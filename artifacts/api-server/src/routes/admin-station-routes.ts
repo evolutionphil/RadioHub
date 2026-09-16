@@ -3,7 +3,7 @@ import { getAdminSetting } from '../data/postgres-admin-settings-store';
 import crypto from 'node:crypto';
 import { pgAdminAux } from '../data/postgres-admin-auxiliary-store';
 import { pgCatalog, pgBlacklistAdd, pgBlacklistGet, pgBlacklistFind, pgBlacklistPage } from '../data/postgres-catalog-store';
-import { pgAdminCatalogPage, pgAdminStationFilterOptions, pgContentDuplicateGroups, pgDuplicateCityGroups, pgDuplicateStationGroups, pgDatabaseSizeReport, pgPurgeOperationalData } from '../data/postgres-admin-catalog-store';
+import { pgAdminCatalogPage, pgAdminStationFilterOptions, pgDuplicateCityGroups, pgDuplicateStationGroups, pgDatabaseSizeReport, pgPurgeOperationalData } from '../data/postgres-admin-catalog-store';
 import type { Express } from "express";
 import express from "express";
 import multer from "multer";
@@ -39,6 +39,7 @@ import { registerAdminOperationsStatusRoutes } from './admin-operations-status-r
 import { slugifyStationName } from '../seo/junk-station-rules';
 import { SITEMAP_PRIORITY_LANGUAGES } from '@workspace/seo-shared/seo-config';
 import { registerAdminDuplicateJobRoutes } from './admin-duplicate-job-routes';
+import { registerAdminSafeDedupRoutes } from './admin-safe-dedup-routes';
 
 // AdminSetting key used to record the most recent coverage drop alert
 // acknowledgement (Task #238). The stored value is keyed by snapshotDate
@@ -653,159 +654,8 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
     }
   });
 
-  // CONTENT-KEY DUPLICATE CLEANUP — finds stations that share (name, url,
-  // countryCode) but have different stationuuid (Radio-Browser uuid reshuffle
-  // duplicates from before the sync dedup guard landed). Without ?confirm=true
-  // the endpoint is a DRY RUN — it returns the duplicate clusters but does not
-  // touch any data. With ?confirm=true it keeps the row with the highest
-  // (votes + clickCount) and 410-marks the others by setting noIndex:true.
-  app.post('/api/admin/stations/dedup', requireAdmin, async (req, res) => {
-    try {
-      const confirm = String(req.query.confirm || '').toLowerCase() === 'true';
-      const clusters = await pgContentDuplicateGroups();
-
-      let rowsMarked = 0;
-      if (confirm) {
-        const idsToMark: any[] = [];
-        for (const c of clusters as any[]) {
-          const sorted = [...c.docs].sort((a: any, b: any) =>
-            (b.votes + b.clickCount) - (a.votes + a.clickCount)
-          );
-          const losers = sorted.slice(1).filter((d: any) => !d.noIndex);
-          for (const l of losers) idsToMark.push(l._id);
-        }
-        if (idsToMark.length > 0) {
-          const result = await pgCatalog().update({ _id: { $in: idsToMark } }, { $set: { noIndex: true } }, { many: true });
-          rowsMarked = result.modifiedCount;
-        }
-      }
-
-      res.json({
-        confirm,
-        clustersFound: clusters.length,
-        rowsMarked,
-        message: confirm
-          ? `Marked ${rowsMarked} duplicate stations with noIndex:true (kept the highest-engagement row per cluster).`
-          : 'DRY RUN — pass ?confirm=true to actually mark duplicates. Each cluster keeps its highest-engagement row; others get noIndex:true (which 410-Gone redirects them out of the sitemap).',
-        sampleClusters: clusters.slice(0, 20),
-      });
-    } catch (error: any) {
-      logger.error('Station dedup failed:', error?.message ?? error);
-      res.status(500).json({ error: 'Dedup failed' });
-    }
-  });
-
-  // FREQUENCY-FORMAT DEDUP (2026-06-18) — collapse near-duplicate station
-  // records whose slugs differ ONLY in frequency punctuation onto a single
-  // canonical URL via a 301 (redirectToSlug), instead of leaving N competing
-  // 200s in Google's index. Example cluster (countryCode US):
-  //   classical-95-9-wcri  +  classical-959-wcri  →  keep highest-engagement,
-  //   point the other's redirectToSlug at it (+ noIndex + slugAlias).
-  //
-  // Non-destructive: no records are deleted, so a subsequent Radio-Browser
-  // sync (which keys on stationuuid) cannot resurrect a duplicate. `slug`,
-  // `noIndex` and `redirectToSlug` are all in sync's preserve list.
-  //
-  // DRY RUN by default; pass ?confirm=true to apply.
-  app.post('/api/admin/stations/dedup-frequency', requireAdmin, async (req, res) => {
-    try {
-      const { frequencyClusterKey } = await import('../seo/junk-station-rules');
-      const confirm = String(req.query.confirm || '').toLowerCase() === 'true';
-
-      type Doc = {
-        _id: any;
-        slug: string;
-        countryCode?: string;
-        votes?: number;
-        clickCount?: number;
-        lastCheckOk?: boolean;
-        noIndex?: boolean;
-        redirectToSlug?: string;
-      };
-
-      // Only slugs containing a digit-hyphen-digit can be the "punctuated"
-      // member of a frequency cluster. Pull those plus their normalized
-      // (hyphen-collapsed) sibling slugs so every cluster has all its members.
-      const punctuated = await pgCatalog().find({ slug: { $regex: /[0-9]-[0-9]/ } }, { limit: 100000, fields: Object.keys({ slug: 1, countryCode: 1, votes: 1, clickCount: 1, lastCheckOk: 1, noIndex: 1, redirectToSlug: 1 }) });
-
-      // Compute each punctuated slug's normalized sibling (e.g.
-      // classical-95-9-wcri → classical-959-wcri) and fetch those records too.
-      const siblingSlugs = new Set<string>();
-      for (const d of punctuated) {
-        let n = d.slug;
-        let prev: string;
-        do { prev = n; n = n.replace(/(\d)-(\d)/g, '$1$2'); } while (n !== prev);
-        if (n !== d.slug) siblingSlugs.add(n);
-      }
-      let siblings: any[] = [];
-      if (siblingSlugs.size > 0) {
-        siblings = await pgCatalog().find({ slug: { $in: Array.from(siblingSlugs) } }, { limit: 100000, fields: Object.keys({ slug: 1, countryCode: 1, votes: 1, clickCount: 1, lastCheckOk: 1, noIndex: 1, redirectToSlug: 1 }) });
-      }
-
-      // Cluster by (frequencyClusterKey, countryCode).
-      const clusters = new Map<string, any[]>();
-      const seenIds = new Set<string>();
-      for (const d of [...punctuated, ...siblings]) {
-        const idStr = String(d._id);
-        if (seenIds.has(idStr)) continue;
-        seenIds.add(idStr);
-        const key = frequencyClusterKey(d.slug);
-        if (!key) continue;
-        const cc = (d.countryCode || '').toUpperCase();
-        const ckey = `${key}|${cc}`;
-        const arr = clusters.get(ckey) || [];
-        arr.push(d);
-        clusters.set(ckey, arr);
-      }
-
-      const engagement = (d: Doc) => (d.votes || 0) + (d.clickCount || 0);
-      const dupClusters: Array<{ canonical: string; losers: string[]; docs: Doc[] }> = [];
-      for (const [, docs] of clusters) {
-        const distinctSlugs = new Set(docs.map(d => d.slug));
-        if (distinctSlugs.size < 2) continue; // not an actual duplicate set
-        const sorted = [...docs].sort((a, b) => {
-          const e = engagement(b) - engagement(a);
-          if (e !== 0) return e;
-          const h = (b.lastCheckOk ? 1 : 0) - (a.lastCheckOk ? 1 : 0);
-          if (h !== 0) return h;
-          return a.slug.length - b.slug.length; // shortest slug as final tiebreak
-        });
-        const canonical = sorted[0];
-        const losers = sorted.slice(1).filter(d => d.slug !== canonical.slug);
-        if (losers.length === 0) continue;
-        dupClusters.push({
-          canonical: canonical.slug,
-          losers: losers.map(l => l.slug),
-          docs: sorted,
-        });
-      }
-
-      let rowsRedirected = 0;
-      if (confirm) {
-        for (const c of dupClusters) {
-          const canonicalDoc = c.docs[0];
-          const loserDocs = c.docs.filter(d => d.slug !== c.canonical);
-          if (loserDocs.length === 0) continue;
-          rowsRedirected += await pgCatalog().redirectDuplicates(canonicalDoc._id,c.canonical,loserDocs.map(doc=>({id:doc._id,slug:doc.slug})));
-        }
-        // Drop any cached SSR HTML so the new 301s take effect immediately.
-        try { (performanceCache as any).clearSeoHtml?.(); } catch { /* best-effort */ }
-      }
-
-      res.json({
-        confirm,
-        clustersFound: dupClusters.length,
-        rowsRedirected,
-        message: confirm
-          ? `Redirected ${rowsRedirected} frequency-duplicate stations (set redirectToSlug → canonical + noIndex). Re-run safe; idempotent.`
-          : 'DRY RUN — pass ?confirm=true to apply. Each cluster keeps its highest-engagement record; the others 301 to it via redirectToSlug.',
-        sampleClusters: dupClusters.slice(0, 25).map(c => ({ canonical: c.canonical, losers: c.losers })),
-      });
-    } catch (error: any) {
-      logger.error('Frequency dedup failed:', error?.message ?? error);
-      res.status(500).json({ error: 'Frequency dedup failed' });
-    }
-  });
+  // Legacy maintenance URLs keep their dry-run contracts and guarded writes.
+  registerAdminSafeDedupRoutes(app, requireAdmin);
 
   // TAGS-STATUS SUMMARY - Count stations stuck in the 30-day Radio-Browser
   // empty-tag cooldown (and the never-checked tagless bucket) so the admin UI

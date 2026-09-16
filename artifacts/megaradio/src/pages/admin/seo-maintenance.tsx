@@ -11,6 +11,7 @@ import { useToast } from "@/hooks/use-toast";
 import { RetryTrendSparkline } from "@/components/admin/RetryTrendSparkline";
 import { RetryCauseBreakdown } from "@/components/admin/RetryCauseBreakdown";
 import { StationIndexabilityAudit } from '@/components/admin/StationIndexabilityAudit';
+import { StationNoindexRecovery } from '@/components/admin/StationNoindexRecovery';
 
 interface SitemapStatRow {
   type: "stations" | "main" | "genres";
@@ -1181,6 +1182,7 @@ export default function SeoMaintenancePage() {
       </Card>
 
       <StationIndexabilityAudit />
+      <StationNoindexRecovery />
 
       {/* Health stats */}
       <Card className="bg-white">

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { EventEmitter, once } from 'node:events';
 import { AUDIT_LANGUAGES, auditCsvCell, classifyStationIndexability, createStationAudit, stationAuditCsv, type AuditStation } from '../src/seo/station-indexability-audit';
 import { pgAuditStationIndexability } from '../src/data/postgres-indexability-audit';
 import { pgAdminDescriptionCoverage } from '../src/data/postgres-admin-catalog-store';
@@ -72,16 +73,16 @@ test('CSV escapes formulas, newlines and quotes and contains compact review evid
 });
 
 function fakePool(batches: AuditStation[][], lock = true) {
-  const queries: string[] = []; let released = false;
-  const client = { async query(sql: string) {
+  const queries: string[] = []; let released = false; let discarded = false;
+  const client = Object.assign(new EventEmitter(), { async query(sql: string) {
     queries.push(sql);
     if (sql.includes('pg_try_advisory')) return { rows: [{ acquired: lock }] };
     if (sql.includes('transaction_timestamp')) return { rows: [{ at: '2026-09-17T00:00:00Z' }] };
     if (sql.startsWith('FETCH')) return { rows: batches.shift() || [] };
     if (sql.startsWith('SELECT language')) return { rows: [{ language: 'en', total_urls: 48707, generated_at: '2026-09-16T00:00:00Z' }] };
     return { rows: [] };
-  }, release() { released = true; } };
-  return { pool: { connect: async () => client } as any, queries, released: () => released };
+  }, release(discard?: boolean) { released = true; discarded = discard === true; } });
+  return { pool: { connect: async () => client } as any, client, queries, released: () => released, discarded: () => discarded };
 }
 
 test('full audit consumes bounded cursor pages in one read-only snapshot and commits complete counts', async () => {
@@ -112,9 +113,39 @@ test('description coverage uses one aggregate and missing-language filters valid
   const row = { total: 3, indexable: 2, ...Object.fromEntries(AUDIT_LANGUAGES.flatMap(lang => [[`${lang}_full`, 2], [`${lang}_meta`, 1], [`${lang}_complete`, 1]])) };
   const result = await pgAdminDescriptionCoverage({ query: async (query: any) => { queries.push(query); return { rows: [row] }; } } as any);
   assert.equal(queries.length, 1); assert.equal(result.languages.length, 14);
+  assert.match(queries[0].text, /CROSS JOIN LATERAL jsonb_each/);
+  assert.doesNotMatch(queries[0].text, /s\.descriptions->'en'/);
+  assert.match(queries[0].text, /LEFT JOIN counts c ON TRUE/);
   assert.deepEqual(result.languages[0], { language: 'en', withFull: 2, withMeta: 1, withComplete: 1, missingFull: 1, missingMeta: 2, missingComplete: 2, pctFull: 66.7, pctComplete: 33.3 });
   assert.match(adminDescriptionFilterSql('partial'), /d.value->'full'/);
   assert.match(adminDescriptionFilterSql('partial'), /d.value->'meta'/);
   assert.match(adminDescriptionFilterSql('partial'), /<14$/);
   assert.doesNotMatch(adminDescriptionFilterSql('partial'), /jsonb_object_keys|BETWEEN 1/);
+});
+
+test('connection loss during stalled CSV output aborts the wait and discards the client without an unhandled error', async () => {
+  for (const event of ['error', 'end']) {
+    const fixture = fakePool([[station()]]);
+    const output = new EventEmitter();
+    await assert.rejects(pgAuditStationIndexability({ qualifiedLanguages: AUDIT_LANGUAGES,
+      onStation: async (_station, _decision, signal) => {
+        setImmediate(() => fixture.client.emit(event, new Error('backend idle timeout')));
+        await once(output, 'drain', { signal });
+      },
+    }, fixture.pool), { name: 'AbortError' });
+    assert.equal(fixture.released(), true); assert.equal(fixture.discarded(), true);
+    assert.equal(fixture.queries.includes('ROLLBACK'), false);
+    assert.equal(fixture.client.listenerCount('error'), 0); assert.equal(fixture.client.listenerCount('end'), 0);
+    assert.equal(output.listenerCount('drain'), 0);
+  }
+});
+
+test('failed rollback discards the connection and preserves the original failure', async () => {
+  const fixture = fakePool([[station()]]);
+  const query = fixture.client.query.bind(fixture.client);
+  fixture.client.query = async sql => { if (sql === 'ROLLBACK') throw new Error('rollback unavailable'); return query(sql); };
+  await assert.rejects(pgAuditStationIndexability({ qualifiedLanguages: AUDIT_LANGUAGES,
+    onStation: async () => { throw new Error('download closed'); },
+  }, fixture.pool), /download closed/);
+  assert.equal(fixture.discarded(), true); assert.equal(fixture.client.listenerCount('error'), 0);
 });
