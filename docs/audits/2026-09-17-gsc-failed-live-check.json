@@ -1,0 +1,1065 @@
+{
+  "generatedAt": "2026-09-16T22:28:03.326Z",
+  "origin": "https://themegaradio.com",
+  "methodology": "Unauthenticated public GET, manual redirects (up to 10), max 2 concurrent requests, 20-second request timeout. HTML robots/googlebot and final X-Robots-Tag checked. httpAndRobotsIndexable does not assert Google indexing, canonical acceptance, robots.txt access, or content quality.",
+  "gscReportUpdated": "2026-09-14",
+  "gscValidationsFailed": "2026-09-15",
+  "summary": {
+    "noindex": {
+      "checked": 9,
+      "httpAndRobotsIndexable": 9,
+      "noindex": 0,
+      "errors": 0,
+      "statusCounts": {
+        "200": 9
+      }
+    },
+    "notFound": {
+      "checked": 10,
+      "httpAndRobotsIndexable": 5,
+      "noindex": 5,
+      "errors": 0,
+      "statusCounts": {
+        "200": 5,
+        "410": 5
+      }
+    },
+    "crawledNotIndexed": {
+      "checked": 10,
+      "httpAndRobotsIndexable": 10,
+      "noindex": 0,
+      "errors": 0,
+      "statusCounts": {
+        "200": 10
+      }
+    }
+  },
+  "results": [
+    {
+      "group": "noindex",
+      "inputUrl": "https://themegaradio.com/ar/mahta/radio-blacklight",
+      "checkedAt": "2026-09-16T22:27:55.496Z",
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ar/mahta/radio-blacklight",
+          "status": 200,
+          "location": null,
+          "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"
+        }
+      ],
+      "finalUrl": "https://themegaradio.com/ar/mahta/radio-blacklight",
+      "finalStatus": 200,
+      "contentType": "text/html; charset=utf-8",
+      "robots": [
+        {
+          "name": "robots",
+          "content": "index, follow"
+        }
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/ar/mahta/radio-blacklight",
+      "description": "اكتشف Radio Blacklight، محطة راديو إنترنت على مدار الساعة طوال أيام الأسبوع من هولندا، تقدم أنواع موسيقية متنوعة وطلبات أغاني.",
+      "descriptionLength": 126,
+      "title": "Radio Blacklight من The Netherlands — استمع مباشرة على الإنترنت",
+      "httpAndRobotsIndexable": true
+    },
+    {
+      "group": "noindex",
+      "inputUrl": "https://themegaradio.com/ar/station/radio-blacklight",
+      "checkedAt": "2026-09-16T22:27:55.528Z",
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ar/station/radio-blacklight",
+          "status": 301,
+          "location": "/ar/mahta/radio-blacklight",
+          "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"
+        },
+        {
+          "url": "https://themegaradio.com/ar/mahta/radio-blacklight",
+          "status": 200,
+          "location": null,
+          "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"
+        }
+      ],
+      "finalUrl": "https://themegaradio.com/ar/mahta/radio-blacklight",
+      "finalStatus": 200,
+      "contentType": "text/html; charset=utf-8",
+      "robots": [
+        {
+          "name": "robots",
+          "content": "index, follow"
+        }
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/ar/mahta/radio-blacklight",
+      "description": "اكتشف Radio Blacklight، محطة راديو إنترنت على مدار الساعة طوال أيام الأسبوع من هولندا، تقدم أنواع موسيقية متنوعة وطلبات أغاني.",
+      "descriptionLength": 126,
+      "title": "Radio Blacklight من The Netherlands — استمع مباشرة على الإنترنت",
+      "httpAndRobotsIndexable": true
+    },
+    {
+      "group": "noindex",
+      "inputUrl": "https://themegaradio.com/ar/mahta/radio-kosava-info",
+      "checkedAt": "2026-09-16T22:27:55.928Z",
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ar/mahta/radio-kosava-info",
+          "status": 200,
+          "location": null,
+          "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"
+        }
+      ],
+      "finalUrl": "https://themegaradio.com/ar/mahta/radio-kosava-info",
+      "finalStatus": 200,
+      "contentType": "text/html; charset=utf-8",
+      "robots": [
+        {
+          "name": "robots",
+          "content": "index, follow"
+        }
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/ar/mahta/radio-kosava-info",
+      "description": "اكتشف Radio Kosava Info، المحطة المفضلة في صربيا! استمتع بأنواع موسيقية متنوعة ومحتوى جذاب. استمع لتجربة استماع فريدة.",
+      "descriptionLength": 118,
+      "title": "Radio Kosava Info من صربيا — استمع مباشرة على الإنترنت",
+      "httpAndRobotsIndexable": true
+    },
+    {
+      "group": "noindex",
+      "inputUrl": "https://themegaradio.com/ar/station/radio-kosava-info",
+      "checkedAt": "2026-09-16T22:27:55.930Z",
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ar/station/radio-kosava-info",
+          "status": 301,
+          "location": "/ar/mahta/radio-kosava-info",
+          "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"
+        },
+        {
+          "url": "https://themegaradio.com/ar/mahta/radio-kosava-info",
+          "status": 200,
+          "location": null,
+          "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"
+        }
+      ],
+      "finalUrl": "https://themegaradio.com/ar/mahta/radio-kosava-info",
+      "finalStatus": 200,
+      "contentType": "text/html; charset=utf-8",
+      "robots": [
+        {
+          "name": "robots",
+          "content": "index, follow"
+        }
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/ar/mahta/radio-kosava-info",
+      "description": "اكتشف Radio Kosava Info، المحطة المفضلة في صربيا! استمتع بأنواع موسيقية متنوعة ومحتوى جذاب. استمع لتجربة استماع فريدة.",
+      "descriptionLength": 118,
+      "title": "Radio Kosava Info من صربيا — استمع مباشرة على الإنترنت",
+      "httpAndRobotsIndexable": true
+    },
+    {
+      "group": "noindex",
+      "inputUrl": "https://themegaradio.com/pl/stacja/967-1",
+      "checkedAt": "2026-09-16T22:27:56.162Z",
+      "chain": [
+        {
+          "url": "https://themegaradio.com/pl/stacja/967-1",
+          "status": 301,
+          "location": "/pl/stacja/panepistimio-kritis-96-7",
+          "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"
+        },
+        {
+          "url": "https://themegaradio.com/pl/stacja/panepistimio-kritis-96-7",
+          "status": 301,
+          "location": "/en/station/panepistimio-kritis-96-7",
+          "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"
+        },
+        {
+          "url": "https://themegaradio.com/en/station/panepistimio-kritis-96-7",
+          "status": 200,
+          "location": null,
+          "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"
+        }
+      ],
+      "finalUrl": "https://themegaradio.com/en/station/panepistimio-kritis-96-7",
+      "finalStatus": 200,
+      "contentType": "text/html; charset=utf-8",
+      "robots": [
+        {
+          "name": "robots",
+          "content": "index, follow"
+        }
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/en/station/panepistimio-kritis-96-7",
+      "description": "[Discover Πανεπιστήμιο Κρήτης 96.7, the leading student radio station in Greece! Enjoy diverse music genres and vibrant community vibes. Tune in now!]",
+      "descriptionLength": 150,
+      "title": "Πανεπιστήμιο Κρήτης 96.7 from Greece — Listen Live Online",
+      "httpAndRobotsIndexable": true
+    },
+    {
+      "group": "noindex",
+      "inputUrl": "https://themegaradio.com/pl/station/967-1",
+      "checkedAt": "2026-09-16T22:27:56.164Z",
+      "chain": [
+        {
+          "url": "https://themegaradio.com/pl/station/967-1",
+          "status": 301,
+          "location": "/pl/stacja/panepistimio-kritis-96-7",
+          "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"
+        },
+        {
+          "url": "https://themegaradio.com/pl/stacja/panepistimio-kritis-96-7",
+          "status": 301,
+          "location": "/en/station/panepistimio-kritis-96-7",
+          "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"
+        },
+        {
+          "url": "https://themegaradio.com/en/station/panepistimio-kritis-96-7",
+          "status": 200,
+          "location": null,
+          "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"
+        }
+      ],
+      "finalUrl": "https://themegaradio.com/en/station/panepistimio-kritis-96-7",
+      "finalStatus": 200,
+      "contentType": "text/html; charset=utf-8",
+      "robots": [
+        {
+          "name": "robots",
+          "content": "index, follow"
+        }
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/en/station/panepistimio-kritis-96-7",
+      "description": "[Discover Πανεπιστήμιο Κρήτης 96.7, the leading student radio station in Greece! Enjoy diverse music genres and vibrant community vibes. Tune in now!]",
+      "descriptionLength": 150,
+      "title": "Πανεπιστήμιο Κρήτης 96.7 from Greece — Listen Live Online",
+      "httpAndRobotsIndexable": true
+    },
+    {
+      "group": "noindex",
+      "inputUrl": "https://themegaradio.com/en/station/967-1",
+      "checkedAt": "2026-09-16T22:27:56.851Z",
+      "chain": [
+        {
+          "url": "https://themegaradio.com/en/station/967-1",
+          "status": 301,
+          "location": "/en/station/panepistimio-kritis-96-7",
+          "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"
+        },
+        {
+          "url": "https://themegaradio.com/en/station/panepistimio-kritis-96-7",
+          "status": 200,
+          "location": null,
+          "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"
+        }
+      ],
+      "finalUrl": "https://themegaradio.com/en/station/panepistimio-kritis-96-7",
+      "finalStatus": 200,
+      "contentType": "text/html; charset=utf-8",
+      "robots": [
+        {
+          "name": "robots",
+          "content": "index, follow"
+        }
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/en/station/panepistimio-kritis-96-7",
+      "description": "[Discover Πανεπιστήμιο Κρήτης 96.7, the leading student radio station in Greece! Enjoy diverse music genres and vibrant community vibes. Tune in now!]",
+      "descriptionLength": 150,
+      "title": "Πανεπιστήμιο Κρήτης 96.7 from Greece — Listen Live Online",
+      "httpAndRobotsIndexable": true
+    },
+    {
+      "group": "noindex",
+      "inputUrl": "https://themegaradio.com/en/station/panepistimio-kritis-96-7",
+      "checkedAt": "2026-09-16T22:27:56.852Z",
+      "chain": [
+        {
+          "url": "https://themegaradio.com/en/station/panepistimio-kritis-96-7",
+          "status": 200,
+          "location": null,
+          "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"
+        }
+      ],
+      "finalUrl": "https://themegaradio.com/en/station/panepistimio-kritis-96-7",
+      "finalStatus": 200,
+      "contentType": "text/html; charset=utf-8",
+      "robots": [
+        {
+          "name": "robots",
+          "content": "index, follow"
+        }
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/en/station/panepistimio-kritis-96-7",
+      "description": "[Discover Πανεπιστήμιο Κρήτης 96.7, the leading student radio station in Greece! Enjoy diverse music genres and vibrant community vibes. Tune in now!]",
+      "descriptionLength": 150,
+      "title": "Πανεπιστήμιο Κρήτης 96.7 from Greece — Listen Live Online",
+      "httpAndRobotsIndexable": true
+    },
+    {
+      "group": "noindex",
+      "inputUrl": "https://themegaradio.com/ar/mahta/radio-10-chernivtsi-ukraine",
+      "checkedAt": "2026-09-16T22:27:56.988Z",
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ar/mahta/radio-10-chernivtsi-ukraine",
+          "status": 200,
+          "location": null,
+          "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"
+        }
+      ],
+      "finalUrl": "https://themegaradio.com/ar/mahta/radio-10-chernivtsi-ukraine",
+      "finalStatus": 200,
+      "contentType": "text/html; charset=utf-8",
+      "robots": [
+        {
+          "name": "robots",
+          "content": "index, follow"
+        }
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/ar/mahta/radio-10-chernivtsi-ukraine",
+      "description": "اكتشف موسيقى البوب الحديثة والأغاني الأوكرانية مع Radio 10 Chernivtsi Ukraine. استمع لأفضل الأصوات والأجواء الثقافية.",
+      "descriptionLength": 117,
+      "title": "Radio 10 Chernivtsi Ukraine من أوكرانيا — استمع مباشرة على الإنترنت",
+      "httpAndRobotsIndexable": true
+    },
+    {
+      "group": "notFound",
+      "inputUrl": "https://themegaradio.com/bd/station/kpissfm-2",
+      "checkedAt": "2026-09-16T22:27:57.202Z",
+      "chain": [
+        {
+          "url": "https://themegaradio.com/bd/station/kpissfm-2",
+          "status": 301,
+          "location": "/en/station/kpissfm-2",
+          "xRobotsTag": null
+        },
+        {
+          "url": "https://themegaradio.com/en/station/kpissfm-2",
+          "status": 301,
+          "location": "/en/station/kpiss-fm",
+          "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"
+        },
+        {
+          "url": "https://themegaradio.com/en/station/kpiss-fm",
+          "status": 200,
+          "location": null,
+          "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"
+        }
+      ],
+      "finalUrl": "https://themegaradio.com/en/station/kpiss-fm",
+      "finalStatus": 200,
+      "contentType": "text/html; charset=utf-8",
+      "robots": [
+        {
+          "name": "robots",
+          "content": "index, follow"
+        }
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/en/station/kpiss-fm",
+      "description": "KPISS.FM from Brooklyn, New York, The United States Of America — community radio and freestyle music radio station with 13 Radio-Browser votes 128 kbps strea...",
+      "descriptionLength": 160,
+      "title": "KPISS.FM from The United States Of America — Listen Live Online",
+      "httpAndRobotsIndexable": true
+    },
+    {
+      "group": "notFound",
+      "inputUrl": "https://themegaradio.com/rs/station/kpissfm-1",
+      "checkedAt": "2026-09-16T22:27:57.230Z",
+      "chain": [
+        {
+          "url": "https://themegaradio.com/rs/station/kpissfm-1",
+          "status": 301,
+          "location": "/sr/station/kpissfm-1",
+          "xRobotsTag": null
+        },
+        {
+          "url": "https://themegaradio.com/sr/station/kpissfm-1",
+          "status": 301,
+          "location": "/sr/stanica/kpissfm-1",
+          "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"
+        },
+        {
+          "url": "https://themegaradio.com/sr/stanica/kpissfm-1",
+          "status": 301,
+          "location": "/en/station/kpissfm-1",
+          "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"
+        },
+        {
+          "url": "https://themegaradio.com/en/station/kpissfm-1",
+          "status": 410,
+          "location": null,
+          "xRobotsTag": "noindex, follow"
+        }
+      ],
+      "finalUrl": "https://themegaradio.com/en/station/kpissfm-1",
+      "finalStatus": 410,
+      "contentType": "text/plain; charset=utf-8",
+      "robots": [],
+      "xRobotsTag": "noindex, follow",
+      "noindex": true,
+      "canonical": null,
+      "description": null,
+      "descriptionLength": 0,
+      "title": "",
+      "httpAndRobotsIndexable": false
+    },
+    {
+      "group": "notFound",
+      "inputUrl": "https://themegaradio.com/am/station/flashbassfm-1",
+      "checkedAt": "2026-09-16T22:27:57.973Z",
+      "chain": [
+        {
+          "url": "https://themegaradio.com/am/station/flashbassfm-1",
+          "status": 301,
+          "location": "/am/%E1%8C%A3%E1%89%A2%E1%8B%AB/flashbass-fm",
+          "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"
+        },
+        {
+          "url": "https://themegaradio.com/am/%E1%8C%A3%E1%89%A2%E1%8B%AB/flashbass-fm",
+          "status": 301,
+          "location": "/en/station/flashbass-fm",
+          "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"
+        },
+        {
+          "url": "https://themegaradio.com/en/station/flashbass-fm",
+          "status": 200,
+          "location": null,
+          "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"
+        }
+      ],
+      "finalUrl": "https://themegaradio.com/en/station/flashbass-fm",
+      "finalStatus": 200,
+      "contentType": "text/html; charset=utf-8",
+      "robots": [
+        {
+          "name": "robots",
+          "content": "index, follow"
+        }
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/en/station/flashbass-fm",
+      "description": "Tune into Flashbass.fm for a diverse mix of music in Germany! Enjoy pop, dance, and more on this vibrant general station. Listen now!",
+      "descriptionLength": 133,
+      "title": "Flashbass.fm from Germany — Listen Live Online",
+      "httpAndRobotsIndexable": true
+    },
+    {
+      "group": "notFound",
+      "inputUrl": "https://themegaradio.com/ar/station/rdi-gaga",
+      "checkedAt": "2026-09-16T22:27:58.356Z",
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ar/station/rdi-gaga",
+          "status": 301,
+          "location": "/ar/mahta/rdi-gaga",
+          "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"
+        },
+        {
+          "url": "https://themegaradio.com/ar/mahta/rdi-gaga",
+          "status": 301,
+          "location": "/ar/mahta/radio-gaga",
+          "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"
+        },
+        {
+          "url": "https://themegaradio.com/ar/mahta/radio-gaga",
+          "status": 200,
+          "location": null,
+          "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"
+        }
+      ],
+      "finalUrl": "https://themegaradio.com/ar/mahta/radio-gaga",
+      "finalStatus": 200,
+      "contentType": "text/html; charset=utf-8",
+      "robots": [
+        {
+          "name": "robots",
+          "content": "index, follow"
+        }
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/ar/mahta/radio-gaga",
+      "description": "اكتشف Radio Gaga، المحطة النابضة في رومانيا لموسيقى متنوعة ومحتوى جذاب. استمع لأفضل الأغاني والكلاسيكيات الخالدة. استمع الآن!",
+      "descriptionLength": 125,
+      "title": "Radio Gaga من رومانيا — استمع مباشرة على الإنترنت",
+      "httpAndRobotsIndexable": true
+    },
+    {
+      "group": "notFound",
+      "inputUrl": "https://themegaradio.com/ar/station/trk-radyo",
+      "checkedAt": "2026-09-16T22:27:58.939Z",
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ar/station/trk-radyo",
+          "status": 301,
+          "location": "/ar/mahta/trk-radyo",
+          "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"
+        },
+        {
+          "url": "https://themegaradio.com/ar/mahta/trk-radyo",
+          "status": 410,
+          "location": null,
+          "xRobotsTag": "noindex, follow"
+        }
+      ],
+      "finalUrl": "https://themegaradio.com/ar/mahta/trk-radyo",
+      "finalStatus": 410,
+      "contentType": "text/plain; charset=utf-8",
+      "robots": [],
+      "xRobotsTag": "noindex, follow",
+      "noindex": true,
+      "canonical": null,
+      "description": null,
+      "descriptionLength": 0,
+      "title": "",
+      "httpAndRobotsIndexable": false
+    },
+    {
+      "group": "notFound",
+      "inputUrl": "https://themegaradio.com/ar/station/rdio_fm-1",
+      "checkedAt": "2026-09-16T22:27:59.018Z",
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ar/station/rdio_fm-1",
+          "status": 301,
+          "location": "/ar/mahta/rdio_fm-1",
+          "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"
+        },
+        {
+          "url": "https://themegaradio.com/ar/mahta/rdio_fm-1",
+          "status": 301,
+          "location": "/ar/mahta/sro4-radio-fm",
+          "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"
+        },
+        {
+          "url": "https://themegaradio.com/ar/mahta/sro4-radio-fm",
+          "status": 200,
+          "location": null,
+          "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"
+        }
+      ],
+      "finalUrl": "https://themegaradio.com/ar/mahta/sro4-radio-fm",
+      "finalStatus": 200,
+      "contentType": "text/html; charset=utf-8",
+      "robots": [
+        {
+          "name": "robots",
+          "content": "index, follow"
+        }
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/ar/mahta/sro4-radio-fm",
+      "description": "اكتشف SRo4 Rádio FM، أفضل محطة إذاعية عامة في سلوفاكيا للموسيقى البديلة، المستقلة، والبوب. استمع الآن لمحتوى يركز على الشباب وأصوات جديدة.",
+      "descriptionLength": 138,
+      "title": "SRo4 Rádio FM من سلوفاكيا — استمع مباشرة على الإنترنت",
+      "httpAndRobotsIndexable": true
+    },
+    {
+      "group": "notFound",
+      "inputUrl": "https://themegaradio.com/et/station/radio-yar-5",
+      "checkedAt": "2026-09-16T22:27:59.310Z",
+      "chain": [
+        {
+          "url": "https://themegaradio.com/et/station/radio-yar-5",
+          "status": 301,
+          "location": "/et/jaam/radio-yar-5",
+          "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"
+        },
+        {
+          "url": "https://themegaradio.com/et/jaam/radio-yar-5",
+          "status": 301,
+          "location": "/en/station/radio-yar-5",
+          "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"
+        },
+        {
+          "url": "https://themegaradio.com/en/station/radio-yar-5",
+          "status": 410,
+          "location": null,
+          "xRobotsTag": "noindex, follow"
+        }
+      ],
+      "finalUrl": "https://themegaradio.com/en/station/radio-yar-5",
+      "finalStatus": 410,
+      "contentType": "text/plain; charset=utf-8",
+      "robots": [],
+      "xRobotsTag": "noindex, follow",
+      "noindex": true,
+      "canonical": null,
+      "description": null,
+      "descriptionLength": 0,
+      "title": "",
+      "httpAndRobotsIndexable": false
+    },
+    {
+      "group": "notFound",
+      "inputUrl": "https://themegaradio.com/ar/station/dr-p8-jazz-aac",
+      "checkedAt": "2026-09-16T22:27:59.638Z",
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ar/station/dr-p8-jazz-aac",
+          "status": 301,
+          "location": "/ar/mahta/dr-p8-jazz-aac",
+          "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"
+        },
+        {
+          "url": "https://themegaradio.com/ar/mahta/dr-p8-jazz-aac",
+          "status": 410,
+          "location": null,
+          "xRobotsTag": "noindex, follow"
+        }
+      ],
+      "finalUrl": "https://themegaradio.com/ar/mahta/dr-p8-jazz-aac",
+      "finalStatus": 410,
+      "contentType": "text/plain; charset=utf-8",
+      "robots": [],
+      "xRobotsTag": "noindex, follow",
+      "noindex": true,
+      "canonical": null,
+      "description": null,
+      "descriptionLength": 0,
+      "title": "",
+      "httpAndRobotsIndexable": false
+    },
+    {
+      "group": "notFound",
+      "inputUrl": "https://themegaradio.com/ar/station/smooth-3",
+      "checkedAt": "2026-09-16T22:27:59.860Z",
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ar/station/smooth-3",
+          "status": 301,
+          "location": "/ar/mahta/smooth-3",
+          "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"
+        },
+        {
+          "url": "https://themegaradio.com/ar/mahta/smooth-3",
+          "status": 301,
+          "location": "/ar/mahta/radio-jazz-smooth",
+          "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"
+        },
+        {
+          "url": "https://themegaradio.com/ar/mahta/radio-jazz-smooth",
+          "status": 200,
+          "location": null,
+          "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"
+        }
+      ],
+      "finalUrl": "https://themegaradio.com/ar/mahta/radio-jazz-smooth",
+      "finalStatus": 200,
+      "contentType": "text/html; charset=utf-8",
+      "robots": [
+        {
+          "name": "robots",
+          "content": "index, follow"
+        }
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/ar/mahta/radio-jazz-smooth",
+      "description": "استمع إلى Радио Jazz Smooth لأفضل جاز سلس في الاتحاد الروسي. استرخ مع قوائم التشغيل المختارة لدينا من الأغاني الجاز الخالدة والمعاصرة.",
+      "descriptionLength": 134,
+      "title": "Радио Jazz Smooth من The Russian Federation — استمع مباشرة على",
+      "httpAndRobotsIndexable": true
+    },
+    {
+      "group": "notFound",
+      "inputUrl": "https://themegaradio.com/am/station/-2173",
+      "checkedAt": "2026-09-16T22:27:59.958Z",
+      "chain": [
+        {
+          "url": "https://themegaradio.com/am/station/-2173",
+          "status": 301,
+          "location": "/am/%E1%8C%A3%E1%89%A2%E1%8B%AB/-2173",
+          "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"
+        },
+        {
+          "url": "https://themegaradio.com/am/%E1%8C%A3%E1%89%A2%E1%8B%AB/-2173",
+          "status": 301,
+          "location": "/en/station/-2173",
+          "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"
+        },
+        {
+          "url": "https://themegaradio.com/en/station/-2173",
+          "status": 410,
+          "location": null,
+          "xRobotsTag": "noindex, follow"
+        }
+      ],
+      "finalUrl": "https://themegaradio.com/en/station/-2173",
+      "finalStatus": 410,
+      "contentType": "text/plain; charset=utf-8",
+      "robots": [],
+      "xRobotsTag": "noindex, follow",
+      "noindex": true,
+      "canonical": null,
+      "description": null,
+      "descriptionLength": 0,
+      "title": "",
+      "httpAndRobotsIndexable": false
+    },
+    {
+      "group": "crawledNotIndexed",
+      "inputUrl": "https://themegaradio.com/in/station/0-n-2010s-on-radio-1",
+      "checkedAt": "2026-09-16T22:28:00.521Z",
+      "chain": [
+        {
+          "url": "https://themegaradio.com/in/station/0-n-2010s-on-radio-1",
+          "status": 301,
+          "location": "/hi/station/0-n-2010s-on-radio-1",
+          "xRobotsTag": null
+        },
+        {
+          "url": "https://themegaradio.com/hi/station/0-n-2010s-on-radio-1",
+          "status": 301,
+          "location": "/hi/station/0-n-2010s-on-radio",
+          "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"
+        },
+        {
+          "url": "https://themegaradio.com/hi/station/0-n-2010s-on-radio",
+          "status": 200,
+          "location": null,
+          "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"
+        }
+      ],
+      "finalUrl": "https://themegaradio.com/hi/station/0-n-2010s-on-radio",
+      "finalStatus": 200,
+      "contentType": "text/html; charset=utf-8",
+      "robots": [
+        {
+          "name": "robots",
+          "content": "index, follow"
+        }
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/hi/station/0-n-2010s-on-radio",
+      "description": "- 0 N - 2010s on Radio: 2010 के दशक के बेहतरीन पॉप, रॉक, और डांस हिट्स के लिए ट्यून इन करें! दशक के सबसे बड़े ट्रैक फिर से जीएं। अभी सुनें!",
+      "descriptionLength": 139,
+      "title": "- 0 N - 2010s on Radio से Germany — लाइव ऑनलाइन सुनें",
+      "httpAndRobotsIndexable": true
+    },
+    {
+      "group": "crawledNotIndexed",
+      "inputUrl": "https://themegaradio.com/it/stazione/0-n-2010s-on-radio",
+      "checkedAt": "2026-09-16T22:28:00.691Z",
+      "chain": [
+        {
+          "url": "https://themegaradio.com/it/stazione/0-n-2010s-on-radio",
+          "status": 200,
+          "location": null,
+          "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"
+        }
+      ],
+      "finalUrl": "https://themegaradio.com/it/stazione/0-n-2010s-on-radio",
+      "finalStatus": 200,
+      "contentType": "text/html; charset=utf-8",
+      "robots": [
+        {
+          "name": "robots",
+          "content": "index, follow"
+        }
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/it/stazione/0-n-2010s-on-radio",
+      "description": "Sintonizzati su - 0 N - 2010s on Radio per i migliori successi pop, rock e dance degli anni 2010! Rivivi le tracce più grandi del decennio. Ascolta ora!",
+      "descriptionLength": 152,
+      "title": "- 0 N - 2010s on Radio da Germania — Ascolta in diretta online",
+      "httpAndRobotsIndexable": true
+    },
+    {
+      "group": "crawledNotIndexed",
+      "inputUrl": "https://themegaradio.com/it/station/0-n-2010s-on-radio-1",
+      "checkedAt": "2026-09-16T22:28:01.291Z",
+      "chain": [
+        {
+          "url": "https://themegaradio.com/it/station/0-n-2010s-on-radio-1",
+          "status": 301,
+          "location": "/it/stazione/0-n-2010s-on-radio",
+          "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"
+        },
+        {
+          "url": "https://themegaradio.com/it/stazione/0-n-2010s-on-radio",
+          "status": 200,
+          "location": null,
+          "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"
+        }
+      ],
+      "finalUrl": "https://themegaradio.com/it/stazione/0-n-2010s-on-radio",
+      "finalStatus": 200,
+      "contentType": "text/html; charset=utf-8",
+      "robots": [
+        {
+          "name": "robots",
+          "content": "index, follow"
+        }
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/it/stazione/0-n-2010s-on-radio",
+      "description": "Sintonizzati su - 0 N - 2010s on Radio per i migliori successi pop, rock e dance degli anni 2010! Rivivi le tracce più grandi del decennio. Ascolta ora!",
+      "descriptionLength": 152,
+      "title": "- 0 N - 2010s on Radio da Germania — Ascolta in diretta online",
+      "httpAndRobotsIndexable": true
+    },
+    {
+      "group": "crawledNotIndexed",
+      "inputUrl": "https://themegaradio.com/ar/mahta/0-n-2010s-on-radio",
+      "checkedAt": "2026-09-16T22:28:01.422Z",
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ar/mahta/0-n-2010s-on-radio",
+          "status": 200,
+          "location": null,
+          "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"
+        }
+      ],
+      "finalUrl": "https://themegaradio.com/ar/mahta/0-n-2010s-on-radio",
+      "finalStatus": 200,
+      "contentType": "text/html; charset=utf-8",
+      "robots": [
+        {
+          "name": "robots",
+          "content": "index, follow"
+        }
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/ar/mahta/0-n-2010s-on-radio",
+      "description": "- 0 N - 2010s on Radio: استمع إلى - 0 N - 2010s on Radio لأفضل أغاني البوب والروك والرقص من العقد 2010! استعد لأعظم مسارات العقد. استمع الآن!",
+      "descriptionLength": 141,
+      "title": "- 0 N - 2010s on Radio من ألمانيا — استمع مباشرة على الإنترنت",
+      "httpAndRobotsIndexable": true
+    },
+    {
+      "group": "crawledNotIndexed",
+      "inputUrl": "https://themegaradio.com/ar/station/0-n-2010s-on-radio-1",
+      "checkedAt": "2026-09-16T22:28:01.618Z",
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ar/station/0-n-2010s-on-radio-1",
+          "status": 301,
+          "location": "/ar/mahta/0-n-2010s-on-radio",
+          "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"
+        },
+        {
+          "url": "https://themegaradio.com/ar/mahta/0-n-2010s-on-radio",
+          "status": 200,
+          "location": null,
+          "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"
+        }
+      ],
+      "finalUrl": "https://themegaradio.com/ar/mahta/0-n-2010s-on-radio",
+      "finalStatus": 200,
+      "contentType": "text/html; charset=utf-8",
+      "robots": [
+        {
+          "name": "robots",
+          "content": "index, follow"
+        }
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/ar/mahta/0-n-2010s-on-radio",
+      "description": "- 0 N - 2010s on Radio: استمع إلى - 0 N - 2010s on Radio لأفضل أغاني البوب والروك والرقص من العقد 2010! استعد لأعظم مسارات العقد. استمع الآن!",
+      "descriptionLength": 141,
+      "title": "- 0 N - 2010s on Radio من ألمانيا — استمع مباشرة على الإنترنت",
+      "httpAndRobotsIndexable": true
+    },
+    {
+      "group": "crawledNotIndexed",
+      "inputUrl": "https://themegaradio.com/om/station/0-n-2010s-on-radio-1",
+      "checkedAt": "2026-09-16T22:28:01.977Z",
+      "chain": [
+        {
+          "url": "https://themegaradio.com/om/station/0-n-2010s-on-radio-1",
+          "status": 301,
+          "location": "/ar/station/0-n-2010s-on-radio-1",
+          "xRobotsTag": null
+        },
+        {
+          "url": "https://themegaradio.com/ar/station/0-n-2010s-on-radio-1",
+          "status": 301,
+          "location": "/ar/mahta/0-n-2010s-on-radio",
+          "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"
+        },
+        {
+          "url": "https://themegaradio.com/ar/mahta/0-n-2010s-on-radio",
+          "status": 200,
+          "location": null,
+          "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"
+        }
+      ],
+      "finalUrl": "https://themegaradio.com/ar/mahta/0-n-2010s-on-radio",
+      "finalStatus": 200,
+      "contentType": "text/html; charset=utf-8",
+      "robots": [
+        {
+          "name": "robots",
+          "content": "index, follow"
+        }
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/ar/mahta/0-n-2010s-on-radio",
+      "description": "- 0 N - 2010s on Radio: استمع إلى - 0 N - 2010s on Radio لأفضل أغاني البوب والروك والرقص من العقد 2010! استعد لأعظم مسارات العقد. استمع الآن!",
+      "descriptionLength": 141,
+      "title": "- 0 N - 2010s on Radio من ألمانيا — استمع مباشرة على الإنترنت",
+      "httpAndRobotsIndexable": true
+    },
+    {
+      "group": "crawledNotIndexed",
+      "inputUrl": "https://themegaradio.com/ar/mahta/folk-alley-aac-64k",
+      "checkedAt": "2026-09-16T22:28:01.977Z",
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ar/mahta/folk-alley-aac-64k",
+          "status": 200,
+          "location": null,
+          "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"
+        }
+      ],
+      "finalUrl": "https://themegaradio.com/ar/mahta/folk-alley-aac-64k",
+      "finalStatus": 200,
+      "contentType": "text/html; charset=utf-8",
+      "robots": [
+        {
+          "name": "robots",
+          "content": "index, follow"
+        }
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/ar/mahta/folk-alley-aac-64k",
+      "description": "اكتشف Folk Alley [AAC+ 64k]، محطتك المفضلة للموسيقى الشعبية في أوهايو. استمع على Mega Radio لألحان خالدة وأصوات جديدة!",
+      "descriptionLength": 118,
+      "title": "Folk Alley [AAC+ 64k] من The United States Of America — استمع مباشرة",
+      "httpAndRobotsIndexable": true
+    },
+    {
+      "group": "crawledNotIndexed",
+      "inputUrl": "https://themegaradio.com/ar/station/folk-alley-aac-64k",
+      "checkedAt": "2026-09-16T22:28:02.262Z",
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ar/station/folk-alley-aac-64k",
+          "status": 301,
+          "location": "/ar/mahta/folk-alley-aac-64k",
+          "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"
+        },
+        {
+          "url": "https://themegaradio.com/ar/mahta/folk-alley-aac-64k",
+          "status": 200,
+          "location": null,
+          "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"
+        }
+      ],
+      "finalUrl": "https://themegaradio.com/ar/mahta/folk-alley-aac-64k",
+      "finalStatus": 200,
+      "contentType": "text/html; charset=utf-8",
+      "robots": [
+        {
+          "name": "robots",
+          "content": "index, follow"
+        }
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/ar/mahta/folk-alley-aac-64k",
+      "description": "اكتشف Folk Alley [AAC+ 64k]، محطتك المفضلة للموسيقى الشعبية في أوهايو. استمع على Mega Radio لألحان خالدة وأصوات جديدة!",
+      "descriptionLength": 118,
+      "title": "Folk Alley [AAC+ 64k] من The United States Of America — استمع مباشرة",
+      "httpAndRobotsIndexable": true
+    },
+    {
+      "group": "crawledNotIndexed",
+      "inputUrl": "https://themegaradio.com/tn/station/folk-alley-aac-64k",
+      "checkedAt": "2026-09-16T22:28:02.756Z",
+      "chain": [
+        {
+          "url": "https://themegaradio.com/tn/station/folk-alley-aac-64k",
+          "status": 301,
+          "location": "/ar/station/folk-alley-aac-64k",
+          "xRobotsTag": null
+        },
+        {
+          "url": "https://themegaradio.com/ar/station/folk-alley-aac-64k",
+          "status": 301,
+          "location": "/ar/mahta/folk-alley-aac-64k",
+          "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"
+        },
+        {
+          "url": "https://themegaradio.com/ar/mahta/folk-alley-aac-64k",
+          "status": 200,
+          "location": null,
+          "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"
+        }
+      ],
+      "finalUrl": "https://themegaradio.com/ar/mahta/folk-alley-aac-64k",
+      "finalStatus": 200,
+      "contentType": "text/html; charset=utf-8",
+      "robots": [
+        {
+          "name": "robots",
+          "content": "index, follow"
+        }
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/ar/mahta/folk-alley-aac-64k",
+      "description": "اكتشف Folk Alley [AAC+ 64k]، محطتك المفضلة للموسيقى الشعبية في أوهايو. استمع على Mega Radio لألحان خالدة وأصوات جديدة!",
+      "descriptionLength": 118,
+      "title": "Folk Alley [AAC+ 64k] من The United States Of America — استمع مباشرة",
+      "httpAndRobotsIndexable": true
+    },
+    {
+      "group": "crawledNotIndexed",
+      "inputUrl": "https://themegaradio.com/de/sender/hr3-mittgelhessen",
+      "checkedAt": "2026-09-16T22:28:02.757Z",
+      "chain": [
+        {
+          "url": "https://themegaradio.com/de/sender/hr3-mittgelhessen",
+          "status": 200,
+          "location": null,
+          "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"
+        }
+      ],
+      "finalUrl": "https://themegaradio.com/de/sender/hr3-mittgelhessen",
+      "finalStatus": 200,
+      "contentType": "text/html; charset=utf-8",
+      "robots": [
+        {
+          "name": "robots",
+          "content": "index, follow"
+        }
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/de/sender/hr3-mittgelhessen",
+      "description": "Schalten Sie hr3 Mittgelhessen ein für die besten allgemeinen Musikangebote aus Deutschland! Genießen Sie vielfältige Genres und fesselnde Inhalte.",
+      "descriptionLength": 147,
+      "title": "hr3 Mittgelhessen aus Deutschland — Jetzt live online hören",
+      "httpAndRobotsIndexable": true
+    }
+  ]
+}

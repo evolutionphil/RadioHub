@@ -14,9 +14,10 @@ const reset = (rows: any[]) => { stations = rows; updates = []; batches = []; in
 const catalog = {
   find: async (filter: any) => {
     if (filter.slug && failSiblingLookup) throw new Error('Fixture sibling read unavailable');
-    return filter.stationuuid ? stations : [];
+    return filter.stationuuid ? stations.filter(s => filter.stationuuid.$in.includes(s.stationuuid))
+      : filter.slug ? stations.filter(s => filter.slug.$in.includes(s.slug)) : [];
   },
-  findOne: async () => null,
+  findOne: async (filter: any) => stations.find(s => s.slug === filter.slug && s._id !== filter._id?.$ne) || null,
   count: async () => stations.length,
   iterate: async function* () { for (const station of stations) yield station; },
   insertMany: async (docs: any[]) => { inserts.push(...docs); return docs; },
@@ -128,4 +129,34 @@ test('cleanup new flags have provenance and existing unknown flags are not adopt
   assert.equal(updates[0].update.$set.automaticNoIndex.reason, 'test-feed:test-stream');
   reset([row({ noIndex: true })]); await runJunkCleanup({ dryRun: false, reportPath: '/not-written.csv', log() {} });
   assert.equal(updates.length, 0);
+});
+
+test('sync never noindexes a frequency-prefix collision with a different broadcaster', async () => {
+  const current = row({ slug: '1046-oriental', name: 'Oriental', country: 'Germany', countryCode: 'DE' });
+  const sibling = row({ _id: 'station-b', stationuuid: 'uuid-b', country: 'Turkey', countryCode: 'TR', url: 'https://other.invalid/live' });
+  reset([current, sibling]); await sync(incoming());
+  assert.equal(updates.length, 0);
+  assert.equal(batches[0].patch.noIndex, undefined);
+});
+
+test('sync requires exact identity and shared endpoint before excluding a duplicate', async () => {
+  const current = row({ slug: '1046-oriental', country: 'Germany', countryCode: 'DE' });
+  const sibling = row({ _id: 'station-b', stationuuid: 'uuid-b', country: 'Germany', countryCode: 'DE' });
+  reset([current, sibling]); await sync(incoming());
+  assert.equal(updates[0].update.$set.noIndex, true);
+  assert.equal(updates[0].update.$set.automaticNoIndex.reason, 'duplicate-of:oriental');
+});
+
+test('cleanup does not infer duplicates from a collision counter alone', async () => {
+  const current = row({ slug: 'oriental-1', country: 'Germany', countryCode: 'DE' });
+  const sibling = row({ _id: 'station-b', stationuuid: 'uuid-b', country: 'Turkey', countryCode: 'TR', url: 'https://other.invalid/live' });
+  reset([current, sibling]); await runJunkCleanup({ dryRun: false, reportPath: '/not-written.csv', log() {} });
+  assert.equal(updates.some(write => write.update.$set.noIndex === true), false);
+});
+
+test('cleanup still excludes verified collision-counter duplicates', async () => {
+  const current = row({ slug: 'oriental-1', country: 'Germany', countryCode: 'DE' });
+  const sibling = row({ _id: 'station-b', stationuuid: 'uuid-b', country: 'Germany', countryCode: 'DE' });
+  reset([current, sibling]); await runJunkCleanup({ dryRun: false, reportPath: '/not-written.csv', log() {} });
+  assert.equal(updates.find(write => write.filter._id === current._id)?.update.$set.noIndex, true);
 });

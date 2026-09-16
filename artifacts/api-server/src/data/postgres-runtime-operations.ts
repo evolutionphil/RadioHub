@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { getPostgresPool } from '../postgres-runtime';
+import { getPostgresPool, getPostgresCoordinationPool } from '../postgres-runtime';
 import { lockStationIdentity } from './station-identity-store';
 
 export async function pgTrackVisitor(ipAddress: string, userAgent?: string): Promise<void> {
@@ -48,4 +48,42 @@ export async function pgSaveDescriptionJob(jobId: string, totalStations: number,
   await getPostgresPool().query(`INSERT INTO bulk_description_jobs(id,job_id,total_stations${entries.map(([key])=>','+columns[key]).join('')})
     VALUES (${values.map((_,i)=>'$'+(i+1)).join(',')}) ON CONFLICT(job_id) DO UPDATE SET updated_at=now()
     ${entries.map(([key])=>`,${columns[key]}=EXCLUDED.${columns[key]}`).join('')}`,values);
+}
+
+/** Read persisted progress, detecting a worker restart through its session lock. */
+export async function pgReadDescriptionJob(jobId: string): Promise<any | null> {
+  const record = (await getPostgresPool().query('SELECT * FROM bulk_description_jobs WHERE job_id=$1', [jobId])).rows[0];
+  if (!record) return null;
+  let interrupted = false;
+  if (record.status === 'running') {
+    const client = await getPostgresCoordinationPool().connect();
+    const key = `radiohub-description-job:${jobId}`;
+    let acquired = false;
+    let discard = false;
+    try {
+      acquired = (await client.query('SELECT pg_try_advisory_lock(hashtext($1)) AS acquired', [key])).rows[0].acquired;
+      if (acquired) {
+        // The worker may have completed between our first read and lock claim.
+        const latest = (await getPostgresPool().query('SELECT * FROM bulk_description_jobs WHERE job_id=$1', [jobId])).rows[0];
+        if (latest) Object.assign(record, latest);
+        if (record.status === 'running') {
+          interrupted = true;
+          record.status = 'failed';
+          record.error_message = 'Description worker was interrupted. Rerun the same selection; completed fields are preserved and only missing content is filled.';
+          await pgSaveDescriptionJob(jobId, record.total_stations, { status: 'failed', errorMessage: record.error_message });
+        }
+      }
+    } finally {
+      if (acquired) await client.query('SELECT pg_advisory_unlock(hashtext($1))', [key]).catch(() => { discard = true; });
+      client.release(discard);
+    }
+  }
+  return {
+    jobId: record.job_id, status: record.status, total: record.total_stations,
+    processed: record.processed_stations, successful: record.success_count,
+    failed: record.failed_count, skipped: record.skipped_count,
+    startedAt: record.created_at, updatedAt: record.updated_at,
+    error: record.error_message, interrupted, currentStation: '', currentAction: 'idle',
+    targetLanguages: [], successfulStations: [], skippedStations: [], failedStations: [],
+  };
 }

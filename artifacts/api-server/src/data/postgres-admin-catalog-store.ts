@@ -1,6 +1,33 @@
 import { getPostgresPool } from '../postgres-runtime';
 import { catalogShape, compileCatalogFilter, type CatalogFilter } from './postgres-catalog-store';
 import { stationListVisibleSql, stationAvailabilityStatusSql } from '../utils/station-visibility';
+import { adminDescriptionFilterSql, descriptionTextSql } from './station-description-sql';
+import { SITEMAP_PRIORITY_LANGUAGES } from '@workspace/seo-shared/seo-config';
+
+/** All language totals share one catalog scan and database snapshot. */
+export async function pgAdminDescriptionCoverage(pool: Pick<ReturnType<typeof getPostgresPool>, 'query'> = getPostgresPool()) {
+  const languages = SITEMAP_PRIORITY_LANGUAGES.universal14;
+  const columns = languages.flatMap(language => {
+    const full = descriptionTextSql(`s.descriptions->'${language}'->'full'`);
+    const meta = descriptionTextSql(`s.descriptions->'${language}'->'meta'`);
+    return [`count(*) FILTER (WHERE ${full})::int AS "${language}_full"`,
+      `count(*) FILTER (WHERE ${meta})::int AS "${language}_meta"`,
+      `count(*) FILTER (WHERE ${full} AND ${meta})::int AS "${language}_complete"`];
+  });
+  const query = { text: `SELECT count(*)::int AS total,
+    count(*) FILTER (WHERE s.no_index IS NOT TRUE)::int AS indexable,${columns.join(',')} FROM stations s`, query_timeout: 30_000 };
+  const row = (await pool.query(query)).rows[0];
+  const totalStations = row.total as number;
+  return { totalStations, indexableStations: row.indexable as number, languages: languages.map(language => {
+    const withFull = Number(row[`${language}_full`]);
+    const withMeta = Number(row[`${language}_meta`]);
+    const withComplete = Number(row[`${language}_complete`]);
+    return { language, withFull, withMeta, withComplete, missingFull: totalStations - withFull,
+      missingMeta: totalStations - withMeta, missingComplete: totalStations - withComplete,
+      pctFull: totalStations ? Math.round(withFull / totalStations * 1000) / 10 : 0,
+      pctComplete: totalStations ? Math.round(withComplete / totalStations * 1000) / 10 : 0 };
+  }) };
+}
 
 /** SQL groups retain the stable public station IDs used throughout the UI. */
 export async function pgDuplicateStationGroups(minLength = 3, limit = 10000): Promise<any[]> {
@@ -29,9 +56,7 @@ export async function pgDuplicateCityGroups(): Promise<any[]> {
 }
 export async function pgAdminCatalogPage(filter: CatalogFilter, options: { descriptionState?: string; healthStatus?: string; sortBy: string; direction: number; limit: number; offset: number }): Promise<{ stations: any[]; total: number }> {
   const { sql,values } = compileCatalogFilter(filter);
-  const countExpr = "(SELECT count(*) FROM jsonb_object_keys(CASE WHEN jsonb_typeof(s.descriptions)='object' THEN s.descriptions ELSE '{}'::jsonb END))";
-  const status = options.descriptionState;
-  const descriptionFilter = status==='yes' ? `${countExpr}>0` : status==='no' ? `${countExpr}=0` : status==='partial' ? `${countExpr} BETWEEN 1 AND 13` : 'TRUE';
+  const descriptionFilter = adminDescriptionFilterSql(options.descriptionState);
   const availability = stationAvailabilityStatusSql('s');
   const healthFilters: Record<string,string> = {
     working: `(${availability})='working'`,

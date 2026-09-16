@@ -129,3 +129,12 @@ test('no station is ever eligible OUTSIDE the 14 universal languages after quali
   assert.deepEqual(indexable.sort(), ['en']);
   assert.ok(!indexable.includes('el'), 'el (non-universal) must never be indexable');
 });
+
+test('redirect records never enter sitemap/hreflang even without a noindex flag', () => {
+  const station = { name: 'Radio Example', slug: 'radio-example-old', url: 'https://stream.example/live',
+    countryCode: 'AT', descriptions: { de: { full: 'Original text', meta: 'Original meta' } } };
+  for (const noIndex of [false, undefined]) {
+    assert.deepEqual(getIndexableLanguagesForStation({ ...station, noIndex, redirectToSlug: 'radio-example' }, UNIVERSAL_14), []);
+  }
+  assert.deepEqual(getIndexableLanguagesForStation({ ...station, redirectToSlug: null }, UNIVERSAL_14).sort(), ['de', 'en']);
+});

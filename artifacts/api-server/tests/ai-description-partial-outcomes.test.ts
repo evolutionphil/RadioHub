@@ -16,11 +16,15 @@ let phase: 'empty' | 'partial';
 let translate: (languages: string[]) => Promise<Map<string, Description>>;
 let manualEdit = false;
 let translationCalls = 0;
+let generationCalls = 0;
+let activeJobId: string;
+let registeredRoutes: Map<string, any>;
 let strip: (value: unknown) => unknown = value => value;
 
 const catalog = {
   count: async () => 1,
   find: async (_query: any, options: any) => options?.offset > 0 ? [] : [structuredClone(fixture)],
+  findOne: async () => structuredClone(fixture),
   descriptionFillCandidates: async function* (requestedPhase: string) {
     if (requestedPhase === phase) yield structuredClone(fixture);
   },
@@ -39,7 +43,9 @@ const catalog = {
 mock.module(new URL('../src/data/postgres-catalog-store.ts', import.meta.url).href, { namedExports: { pgCatalog: () => catalog } });
 mock.module(new URL('../src/data/postgres-runtime-operations.ts', import.meta.url).href, { namedExports: {
   pgSaveDescriptionJob: async (_jobId: string, _total: number, snapshot: any) => snapshots.push(snapshot),
+  pgReadDescriptionJob: async () => null,
 } });
+mock.module(new URL('../src/data/postgres-admin-catalog-store.ts', import.meta.url).href, { namedExports: { pgAdminDescriptionCoverage: async () => ({}) } });
 mock.module(new URL('../src/postgres-runtime.ts', import.meta.url).href, { namedExports: {
   getPostgresCoordinationPool: () => ({ connect: async () => ({
     on: () => {}, removeListener: () => {}, release: () => {},
@@ -47,13 +53,13 @@ mock.module(new URL('../src/postgres-runtime.ts', import.meta.url).href, { named
   }) }),
 } });
 mock.module(new URL('../src/routes/shared-utils.ts', import.meta.url).href, { namedExports: { stripPlaceholders: (value: unknown) => strip(value), TV_STATION_PROJECTION: {} } });
-mock.module(new URL('../src/performance-cache.ts', import.meta.url).href, { namedExports: { performanceCache: {} } });
+mock.module(new URL('../src/performance-cache.ts', import.meta.url).href, { namedExports: { performanceCache: { invalidateStationCache: () => {}, setQuick: () => {} } } });
 mock.module(new URL('../src/utils/logger.ts', import.meta.url).href, { namedExports: { logger: {
   log: (...args: unknown[]) => messages.push(args.join(' ')), warn: (...args: unknown[]) => messages.push(args.join(' ')), error: (...args: unknown[]) => messages.push(args.join(' ')),
 } } });
 mock.module(new URL('../src/services/ai-station-description.ts', import.meta.url).href, { namedExports: {
   detectStationLanguage: () => sourceLanguage,
-  generateStationDescription: async () => ({ success: true, fullDescription: description(sourceLanguage).full, metaDescription: description(sourceLanguage).meta, language: sourceLanguage }),
+  generateStationDescription: async () => { generationCalls++; return { success: true, fullDescription: description(sourceLanguage).full, metaDescription: description(sourceLanguage).meta, language: sourceLanguage }; },
   translateDescription: async (_full: string, _meta: string, _source: string, languages: string[]) => { translationCalls++; return translate(languages); },
 } });
 mock.module('node-cron', { defaultExport: { schedule: () => { throw new Error('No cron jobs may be started by this test'); } } });
@@ -67,13 +73,14 @@ after(() => mock.restoreAll());
 
 beforeEach(() => {
   fixture = { _id: 'fixture-station', name: 'Fixture Radio', slug: 'fixture-radio', descriptions: {}, manualEditFields: {} };
-  persisted = {}; writes = []; snapshots = []; messages = []; backgrounds = []; sourceLanguage = 'en'; phase = 'partial'; manualEdit = false; translationCalls = 0;
+  persisted = {}; writes = []; snapshots = []; messages = []; backgrounds = []; sourceLanguage = 'en'; phase = 'partial'; manualEdit = false; translationCalls = 0; generationCalls = 0;
   strip = value => value;
   translate = async languages => new Map(languages.map(language => [language, description(language)]));
 });
 
 async function runAdminJob(route: string, languages: string[]) {
   const routes = new Map<string, any>();
+  registeredRoutes = routes;
   const app: any = { post: (path: string, ...handlers: any[]) => routes.set(`POST ${path}`, handlers.at(-1)), get: (path: string, ...handlers: any[]) => routes.set(`GET ${path}`, handlers.at(-1)) };
   await registerAiDescriptionRoutes(app, { requireAdmin: () => {} });
   let response: any;
@@ -81,6 +88,7 @@ async function runAdminJob(route: string, languages: string[]) {
   await routes.get(`POST ${route}`)({ body: { selectedStationIds: [fixture._id], languages }, params: {} }, res);
   assert.equal(response.success, true);
   const jobId = response.jobId;
+  activeJobId = jobId;
   assert.equal(backgrounds.length, 1);
   await backgrounds.shift()!();
   await routes.get('GET /api/admin/stations/description-job-status/:jobId')({ params: { jobId } }, res);
@@ -125,7 +133,7 @@ for (const route of ['fix-missing-english', 'generate-bulk-descriptions']) {
         assert.equal(job.successfulStations.length, outcome === 'complete' ? 1 : 0);
         assert.equal(job.failedStations.length, outcome === 'complete' ? 0 : 1);
         for (const language of requested.filter(language => !accepted.includes(language))) assert.ok(job.failedStations[0].error.includes(language));
-        for (const language of accepted) assert.deepEqual(persisted[language], description(language));
+        for (const language of accepted) assert.deepEqual(persisted[language], language === 'fr' ? { ...description(language), meta: oldPartial.meta } : description(language));
         if (!accepted.includes('fr')) assert.deepEqual(persisted.fr, oldPartial, 'a rejected target must not overwrite previous data');
         assert.deepEqual(persisted[sourceLanguage], description(sourceLanguage), 'existing/native source must survive partial target failures');
         assert.equal(writes.length, accepted.length + (useExistingSource ? 0 : 1), 'write accepted translations only');
@@ -179,6 +187,82 @@ test('scheduled partial successes never overwrite a concurrent manual translatio
   assert.equal(result.failed, 0, 'model produced every requested translation; CAS preserves concurrent edits');
   assert.deepEqual(persisted.fr, manual);
   assert.deepEqual(persisted.de, description('de'));
+});
+
+test('admin metadata-only gaps preserve full text and locale extensions without model calls', async () => {
+  fixture.descriptions = { en: { ...description('en'), meta: '  ', reviewed: true }, de: description('de') };
+  persisted = structuredClone(fixture.descriptions);
+  const job = await runAdminJob('/api/admin/stations/generate-bulk-descriptions', ['en', 'de']);
+  assert.equal(job.successful, 1);
+  assert.equal(job.failed, 0);
+  assert.equal(persisted.en.full, fixture.descriptions.en.full);
+  assert.equal((persisted.en as any).reviewed, true);
+  assert.ok(persisted.en.meta.trim());
+  assert.deepEqual(persisted.de, fixture.descriptions.de);
+  assert.equal(generationCalls + translationCalls, 0);
+  assert.equal(snapshots.at(-1).processedStations, 1);
+});
+
+test('admin full-only repair preserves existing metadata and rerunning completed content makes no model calls', async () => {
+  fixture.descriptions = { en: description('en'), fr: { full: '', meta: 'Preserve this manually written French metadata.', reviewed: true } };
+  persisted = structuredClone(fixture.descriptions);
+  const job = await runAdminJob('/api/admin/stations/generate-bulk-descriptions', ['en', 'fr']);
+  assert.equal(job.successful, 1);
+  assert.equal(persisted.fr.meta, fixture.descriptions.fr.meta);
+  assert.equal((persisted.fr as any).reviewed, true);
+  fixture.descriptions = structuredClone(persisted);
+  const again = await runAdminJob('/api/admin/stations/generate-bulk-descriptions', ['en', 'fr']);
+  assert.equal(again.skipped, 1);
+  assert.equal(translationCalls, 1);
+  assert.equal(generationCalls, 0);
+});
+
+test('admin manually protected station is skipped before any paid generation or writes', async () => {
+  fixture.manualEditFields = { descriptions: true };
+  const job = await runAdminJob('/api/admin/stations/generate-bulk-descriptions', ['en', 'fr']);
+  assert.equal(job.skipped, 1);
+  assert.equal(generationCalls + translationCalls, 0);
+  assert.equal(writes.length, 0);
+});
+
+test('malformed description arrays are reported before paid generation or a false successful save', async () => {
+  fixture.descriptions = [];
+  const job = await runAdminJob('/api/admin/stations/generate-bulk-descriptions', ['en', 'fr']);
+  assert.equal(job.failed, 1);
+  assert.match(job.failedStations[0].error, /Malformed description collection/);
+  assert.equal(generationCalls + translationCalls, 0);
+  assert.equal(writes.length, 0);
+});
+
+test('admin concurrent edits survive and prevent a false successful station result', async () => {
+  fixture.descriptions = { en: description('en') };
+  persisted = structuredClone(fixture.descriptions);
+  const manual = { full: 'Concurrent French content must survive.', meta: 'Concurrent summary.' };
+  translate = async languages => {
+    persisted.fr = manual;
+    return new Map(languages.map(language => [language, description(language)]));
+  };
+  const job = await runAdminJob('/api/admin/stations/generate-bulk-descriptions', ['en', 'fr']);
+  assert.equal(job.successful, 0);
+  assert.equal(job.failed, 1);
+  assert.deepEqual(persisted.fr, manual);
+  assert.match(job.failedStations[0].error, /concurrently/);
+  assert.deepEqual(writes[0].filter['manualEditFields.descriptions'], { $ne: true });
+});
+
+test('admin cancellation during translation prevents saving and cannot become completed', async () => {
+  fixture.descriptions = { en: description('en') };
+  persisted = structuredClone(fixture.descriptions);
+  translate = async languages => {
+    const res: any = { json: () => res, status: () => res };
+    await registeredRoutes.get('POST /api/admin/stations/description-job/:jobId/cancel')({ params: { jobId: activeJobId } }, res);
+    return new Map(languages.map(language => [language, description(language)]));
+  };
+  const job = await runAdminJob('/api/admin/stations/generate-bulk-descriptions', ['en', 'fr']);
+  assert.equal(job.status, 'cancelled');
+  assert.equal(job.successful, 0);
+  assert.equal(persisted.fr, undefined);
+  assert.equal(snapshots.at(-1).status, 'cancelled');
 });
 
 test('scheduled manual-edit guard skips native persistence and does not request target translations', async () => {

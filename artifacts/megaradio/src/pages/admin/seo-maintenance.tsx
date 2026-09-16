@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { RetryTrendSparkline } from "@/components/admin/RetryTrendSparkline";
 import { RetryCauseBreakdown } from "@/components/admin/RetryCauseBreakdown";
+import { StationIndexabilityAudit } from '@/components/admin/StationIndexabilityAudit';
 
 interface SitemapStatRow {
   type: "stations" | "main" | "genres";
@@ -1179,6 +1180,8 @@ export default function SeoMaintenancePage() {
         </CardContent>
       </Card>
 
+      <StationIndexabilityAudit />
+
       {/* Health stats */}
       <Card className="bg-white">
         <CardHeader>
@@ -1194,7 +1197,7 @@ export default function SeoMaintenancePage() {
               <div>
                 <div className="text-xs uppercase tracking-wide text-slate-500 mb-2">Genel</div>
                 <StatRow label="Toplam radyo" value={stats.total} total={stats.total} />
-                <StatRow label="noIndex=true (junk)" value={stats.noIndex} total={stats.total} />
+                <StatRow label="Kayıtlı noIndex=true (tüm nedenler)" value={stats.noIndex} total={stats.total} />
               </div>
               <div>
                 <div className="text-xs uppercase tracking-wide text-slate-500 mb-2">İçerik eksikliği</div>
@@ -1206,12 +1209,12 @@ export default function SeoMaintenancePage() {
               </div>
               <div className="md:col-span-2 mt-4 pt-4 border-t border-slate-200">
                 <div className="text-xs uppercase tracking-wide text-slate-500 mb-2">Bozuk stream durumu</div>
-                <StatRow label="lastCheckOk=false ama indexable" value={stats.brokenStream.indexableTotal} total={stats.total} danger />
-                <StatRow label="↳ Son 30 gün içinde recover etmemiş (junk gate yakalar)" value={stats.brokenStream.deadOver30Days} total={stats.total} danger />
+                <StatRow label="Sağlayıcı offline, kayıtlı noindex yok" value={stats.brokenStream.indexableTotal} total={stats.total} />
+                <StatRow label="↳ Son başarılı kontrol 30 günden eski veya bilinmiyor" value={stats.brokenStream.deadOver30Days} total={stats.total} />
                 {stats.brokenStream.deadOver30Days > 0 && (
                   <div className="mt-3 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2">
-                    Junk-station-rules güncellemesi yayına alındıktan sonra bu {stats.brokenStream.deadOver30Days} kayıt
-                    SSR'da otomatik 410 Gone dönecek.
+                    Yayının çalışmaması tek başına bir SEO dışlama nedeni değildir. Bilgi sayfası korunur;
+                    bu sayı sitemap uygunluğunu veya HTTP 410 durumunu göstermez.
                   </div>
                 )}
               </div>

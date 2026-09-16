@@ -490,11 +490,15 @@ export function getIndexableLanguagesForStation(
     language?: string;
     languageCodes?: string;
     noIndex?: boolean;
+    redirectToSlug?: string | null;
   },
   qualifiedLangs?: string[] | ReadonlyArray<string> | Set<string>,
 ): string[] {
   if (!station) return [];
   if (station.noIndex === true) return [];
+  // Redirects are not canonical sitemap/hreflang destinations even if an old
+  // or manually edited record forgot to retain its noindex flag.
+  if (typeof station.redirectToSlug === 'string' && station.redirectToSlug.trim()) return [];
   // Match SSR's existing policy: numeric callsign URLs remain usable but
   // noindex; negative numeric artifact URLs are gone. Neither belongs in a
   // sitemap or an indexable hreflang cluster.

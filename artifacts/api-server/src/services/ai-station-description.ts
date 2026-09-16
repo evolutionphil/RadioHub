@@ -359,7 +359,8 @@ export async function translateDescription(
   metaDescription: string,
   sourceLanguage: string,
   targetLanguages: string[],
-  stationName?: string
+  stationName?: string,
+  assertActive?: () => void,
 ): Promise<Map<string, {full: string, meta: string}>> {
   const translations = new Map<string, {full: string, meta: string}>();
   
@@ -375,8 +376,8 @@ export async function translateDescription(
   if (!languagesToTranslate.length) return translations;
   const openai = getOpenAIClient();
   
-  // Create all translation requests in parallel
-  const translationPromises = languagesToTranslate.map(async (targetLang) => {
+  // Keep paid requests bounded even for all 14 locales.
+  const translateLanguage = async (targetLang: string) => {
     try {
       const targetLangName = LANGUAGE_NAMES[targetLang] || targetLang;
       
@@ -533,10 +534,13 @@ ${stationName}: [translated meta, 155-160 chars]`;
       logger.error(`❌ AI: Translation error for ${targetLang}:`, error.message);
       return { lang: targetLang, success: false };
     }
-  });
-  
-  // Execute all translations in parallel
-  const results = await Promise.all(translationPromises);
+  };
+
+  const results: Awaited<ReturnType<typeof translateLanguage>>[] = [];
+  for (let index = 0; index < languagesToTranslate.length; index += 2) {
+    assertActive?.();
+    results.push(...await Promise.all(languagesToTranslate.slice(index, index + 2).map(translateLanguage)));
+  }
   
   // Collect successful translations into the map
   results.forEach(result => {

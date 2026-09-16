@@ -382,10 +382,10 @@ export default function Stations() {
   // Per-language AI description coverage (14 universal languages). Fetched only
   // when the coverage dialog is open so we don't run 14 countDocuments scans on
   // every page load.
-  const { data: coverageData, isFetching: coverageFetching, refetch: refetchCoverage } = useQuery<{
+  const { data: coverageData, isFetching: coverageFetching, error: coverageError, refetch: refetchCoverage } = useQuery<{
     totalStations: number;
     indexableStations: number;
-    languages: { language: string; withFull: number; withMeta: number; missingFull: number; pctFull: number }[];
+    languages: { language: string; withFull: number; withMeta: number; missingFull: number; pctFull: number; complete?: number; missingEither?: number; pctComplete?: number }[];
     generatedAt: string;
   }>({
     queryKey: ['/api/admin/stations/description-coverage'],
@@ -540,12 +540,12 @@ export default function Stations() {
     }
     const stationIds = selectedStations.size > 0 ? Array.from(selectedStations) : undefined;
     const countryFilter = selectedStations.size === 0 ? filters.country : undefined; // Use country only if no specific stations selected
-    const scope = stationIds ? `${stationIds.length} selected station(s)` : `all eligible stations in ${countryFilter}`;
-    if (!confirm(`Generate AI content for ${scope} in ${selectedLanguages.size} language(s)? Provider charges may apply. Search, health and other filters do not limit this job.`)) return;
+    const scope = stationIds ? `${stationIds.length} selected station(s)` : `up to 10 stations in ${countryFilter}`;
+    if (!confirm(`Fill missing content for ${scope} in ${selectedLanguages.size} language(s) using gpt-4o-mini? Existing text is preserved. Provider charges may apply. Search, health and other filters do not limit a country batch.`)) return;
     bulkAiMutation.mutate({
       filterByCountry: countryFilter || undefined,
       skipExisting: true,
-      limit: undefined,
+      limit: stationIds?.length ?? 10,
       selectedStationIds: stationIds,
       languages: Array.from(selectedLanguages)
     });
@@ -587,14 +587,16 @@ export default function Stations() {
   // Handle fix missing English descriptions
   const handleFixMissingEnglish = async () => {
     try {
-      // If stations are selected, only fix those; otherwise fix all
+      // Explicit bounded English-only scope; this action must not unexpectedly
+      // launch translations for thirteen additional languages.
       const stationIds = selectedStations.size > 0 ? Array.from(selectedStations) : undefined;
+      if (!confirm(`Fill missing English content for ${stationIds ? `${stationIds.length} selected station(s)` : 'up to 10 matching stations'} using gpt-4o-mini? Existing text is preserved. Provider charges may apply.`)) return;
       
       const response = await apiFetch('/api/admin/stations/fix-missing-english', {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ selectedStationIds: stationIds })
+        body: JSON.stringify({ selectedStationIds: stationIds, languages: ['en'], limit: stationIds?.length ?? 10 })
       });
 
       if (!response.ok) {
@@ -1272,7 +1274,7 @@ export default function Stations() {
                 onClick={handleFixMissingEnglish}
                 disabled={bulkAiMutation.isPending || aiJobStatus?.status === 'running'}
                 className="w-full sm:w-auto bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 text-white border-0"
-                title={selectedStations.size > 0 ? `Fix English for ${selectedStations.size} selected station(s)` : "Find and fix all stations with missing English descriptions"}
+                title={selectedStations.size > 0 ? `Fix English for ${selectedStations.size} selected station(s)` : "Fill missing English full/meta content for up to 10 stations"}
                 data-testid="button-fix-missing-english"
               >
                 <Sparkles className="w-4 h-4 mr-2" />
@@ -1941,7 +1943,7 @@ export default function Stations() {
             {coverageData && (
               <div className="text-sm text-gray-600">
                 Total stations: <strong>{coverageData.totalStations.toLocaleString()}</strong>
-                {' · '}Indexable: <strong>{coverageData.indexableStations.toLocaleString()}</strong>
+                {' · '}Without an explicit noindex flag: <strong>{coverageData.indexableStations.toLocaleString()}</strong>
               </div>
             )}
 
@@ -1949,6 +1951,8 @@ export default function Stations() {
               <div className="flex items-center justify-center py-8 text-gray-500">
                 <RefreshCw className="w-5 h-5 animate-spin mr-2" /> Computing coverage…
               </div>
+            ) : coverageError ? (
+              <p role="alert" className="py-6 text-sm text-destructive">Coverage could not be loaded. This is not a zero count. Retry to get current database totals; no content was changed.</p>
             ) : coverageData ? (
               <div className="max-h-[50vh] overflow-y-auto">
                 <table className="w-full text-sm">
@@ -1957,7 +1961,7 @@ export default function Stations() {
                       <th className="py-1.5 pr-2">Lang</th>
                       <th className="py-1.5 pr-2 text-right">Full</th>
                       <th className="py-1.5 pr-2 text-right">Meta</th>
-                      <th className="py-1.5 pr-2 text-right">Missing</th>
+                      <th className="py-1.5 pr-2 text-right">Incomplete</th>
                       <th className="py-1.5 pl-2 text-right">%</th>
                     </tr>
                   </thead>
@@ -1967,9 +1971,9 @@ export default function Stations() {
                         <td className="py-1.5 pr-2 font-mono uppercase">{l.language}</td>
                         <td className="py-1.5 pr-2 text-right">{l.withFull.toLocaleString()}</td>
                         <td className="py-1.5 pr-2 text-right">{l.withMeta.toLocaleString()}</td>
-                        <td className="py-1.5 pr-2 text-right text-amber-600">{l.missingFull.toLocaleString()}</td>
-                        <td className={`py-1.5 pl-2 text-right font-semibold ${l.pctFull >= 95 ? 'text-green-600' : l.pctFull >= 70 ? 'text-amber-600' : 'text-red-600'}`}>
-                          {l.pctFull}%
+                        <td className="py-1.5 pr-2 text-right text-amber-600">{(l.missingEither ?? l.missingFull).toLocaleString()}</td>
+                        <td className={`py-1.5 pl-2 text-right font-semibold ${(l.pctComplete ?? l.pctFull) >= 95 ? 'text-green-600' : (l.pctComplete ?? l.pctFull) >= 70 ? 'text-amber-600' : 'text-red-600'}`}>
+                          {l.pctComplete ?? l.pctFull}%
                         </td>
                       </tr>
                     ))}

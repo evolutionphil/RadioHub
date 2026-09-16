@@ -104,7 +104,7 @@ export async function pgSitemapStationBatch(ids: readonly string[]): Promise<any
   if (ids.length === 0) return [];
   return (await getPostgresPool().query(`SELECT id AS _id,slug,name,url,homepage,tags_raw AS tags,bitrate,
     country,country_code AS "countryCode",language,language_codes AS "languageCodes",descriptions,
-    no_index AS "noIndex",last_check_ok AS "lastCheckOk",last_check_time AS "lastCheckTime",
+    no_index AS "noIndex",redirect_to_slug AS "redirectToSlug",last_check_ok AS "lastCheckOk",last_check_time AS "lastCheckTime",
     source->>'lastCheckOkTime' AS "lastCheckOkTime",updated_at AS "updatedAt",logo_assets AS "logoAssets",favicon
     FROM stations WHERE id=ANY($1::text[])`, [ids])).rows;
 }

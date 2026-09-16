@@ -6,13 +6,21 @@ const previousKey = process.env.OPENAI_API_KEY;
 process.env.OPENAI_API_KEY = 'unit-test-key-no-external-requests';
 let responses: Array<string | Error> = [];
 let requests = 0;
+let requestDelay = 0;
+let activeRequests = 0;
+let peakRequests = 0;
 const messages: string[] = [];
 mock.module('openai', {
   defaultExport: class {
-    chat = { completions: { create: async () => {
+    chat = { completions: { create: async (options: any) => {
+      assert.equal(options.model, 'gpt-4o-mini');
       requests++;
       const response = responses.shift();
       assert.notEqual(response, undefined, 'all model responses must be supplied by the test; no network fallback');
+      activeRequests++;
+      peakRequests = Math.max(peakRequests, activeRequests);
+      if (requestDelay) await new Promise(resolve => setTimeout(resolve, requestDelay));
+      activeRequests--;
       if (response instanceof Error) throw response;
       return { choices: [{ message: { content: response } }] };
     } } };
@@ -120,4 +128,27 @@ test('one rejected target or model error does not discard valid partial translat
   const result = await translateDescription(sourceFull, sourceMeta, 'en', targetLanguages, 'Fixture Radio');
   assert.deepEqual([...result], [['de', { full: translatedFull, meta: translatedMeta }]]);
   assert.deepEqual(targetLanguages, before);
+});
+
+test('all-locale translation caps simultaneous gpt-4o-mini requests at two', async () => {
+  const targets = SITEMAP_PRIORITY_LANGUAGES.universal14.filter(language => language !== 'en');
+  responses = targets.map(() => `${translatedFull}===${translatedMeta}`);
+  requestDelay = 5;
+  peakRequests = 0;
+  try {
+    const result = await translateDescription(sourceFull, sourceMeta, 'en', targets, 'Fixture Radio');
+    assert.equal(result.size, targets.length);
+    assert.equal(peakRequests, 2);
+    assert.equal(activeRequests, 0);
+  } finally { requestDelay = 0; }
+});
+
+test('cancelling a translation run stops before the next pair of paid requests', async () => {
+  responses = Array.from({ length: 4 }, () => `${translatedFull}===${translatedMeta}`);
+  const before = requests;
+  await assert.rejects(translateDescription(sourceFull, sourceMeta, 'en', ['de', 'fr', 'it', 'es'], 'Fixture Radio', () => {
+    if (requests > before) throw new Error('Job cancelled');
+  }), /Job cancelled/);
+  assert.equal(requests - before, 2);
+  assert.equal(responses.length, 2);
 });

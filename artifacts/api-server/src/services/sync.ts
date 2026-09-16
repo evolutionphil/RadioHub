@@ -1,5 +1,6 @@
 import { pgCatalog, pgCreateSyncRun, pgSaveSyncRun, pgSyncLogs, pgSyncBlacklist } from '../data/postgres-catalog-store';
 import { buildSyncBlacklist } from '../utils/sync-blacklist';
+import { assessDuplicateGroup, DUPLICATE_POLICY_FIELDS } from '../utils/station-duplicate-policy';
 import { getPostgresPool, getPostgresCoordinationPool } from '../postgres-runtime';
 import axios from 'axios';
 import NodeCache from 'node-cache';
@@ -499,7 +500,8 @@ export class SyncService {
         // Frequency-prefix sibling lookup (batch, single query): collect every
         // candidate base slug for this batch and ask the DB which of them
         // actually exist as siblings. The frequency-prefix shape alone is not
-        // proof of duplication — only flag when a real sibling exists.
+        // proof of duplication. Require matching identity AND an actual shared
+        // stream endpoint; different broadcasters can share a slug stem.
         const freqCandidates = new Map<string, string>(); // stationuuid -> baseSlug
         const baseSlugSet = new Set<string>();
         for (const apiStation of existingStationsToUpdate) {
@@ -511,12 +513,12 @@ export class SyncService {
             baseSlugSet.add(base);
           }
         }
-        let existingBaseSlugs = new Set<string>();
+        let existingBaseStations = new Map<string, any>();
         let siblingLookupFailed = false;
         if (baseSlugSet.size > 0) {
           try {
-            const found = await pgCatalog().find({ slug: { $in: Array.from(baseSlugSet) } }, { fields: ['slug'] });
-            existingBaseSlugs = new Set(found.map((s: any) => s.slug));
+            const found = await pgCatalog().find({ slug: { $in: Array.from(baseSlugSet) } }, { fields: ['slug', ...DUPLICATE_POLICY_FIELDS] });
+            existingBaseStations = new Map(found.map((s: any) => [s.slug, s]));
           } catch (err) {
             siblingLookupFailed = true;
             logger.log(`⚠️ Frequency-prefix sibling lookup failed: ${(err as Error).message}`);
@@ -536,7 +538,8 @@ export class SyncService {
           }
           merged.slug ||= slugifyStationName(merged.name || '');
           const candidateBase = freqCandidates.get(apiStation.stationuuid);
-          const verdict = candidateBase && existingBaseSlugs.has(candidateBase)
+          const sibling = candidateBase ? existingBaseStations.get(candidateBase) : undefined;
+          const verdict = sibling && sibling._id !== merged._id && assessDuplicateGroup([merged, sibling]).eligible
             ? { isJunk: true, reason: `duplicate-of:${candidateBase}` }
             : evaluateJunkStation(merged);
           const policyPatch = automaticNoIndexPatch(merged, verdict);

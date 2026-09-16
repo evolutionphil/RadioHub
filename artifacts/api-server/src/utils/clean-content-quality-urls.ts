@@ -22,6 +22,7 @@ import { getPostgresPool, closePostgres } from '../postgres-runtime';
 import fs from 'fs/promises';
 import path from 'path';
 import { pgCatalog } from '../data/postgres-catalog-store';
+import { assessDuplicateGroup } from './station-duplicate-policy';
 import {
   slugifyStationName,
   evaluateJunkStation,
@@ -170,9 +171,8 @@ export async function runJunkCleanup(
     });
 
     // Sibling-aware duplicate detection: only mark `slug-N` records as junk
-    // when an actual sibling exists with the canonical base slug. Prevents
-    // legitimate stations whose names happen to end in numbers from being
-    // noindexed.
+    // when the sibling also has the same broadcaster identity and an actual
+    // shared stream. Slug collisions alone are not evidence of duplication.
     let dupeOfBase: string | null = null;
     const finalSlugForDupe = ops.slug ?? currentSlug;
     const dupeMatch = /^(.*)-(\d+)$/.exec(finalSlugForDupe || '');
@@ -185,7 +185,7 @@ export async function runJunkCleanup(
           slug: baseSlug,
           _id: { $ne: station._id },
         });
-        if (sibling) dupeOfBase = baseSlug;
+        if (sibling && assessDuplicateGroup([station, sibling]).eligible) dupeOfBase = baseSlug;
       }
     }
 
@@ -199,7 +199,7 @@ export async function runJunkCleanup(
           slug: freqBase,
           _id: { $ne: station._id },
         });
-        if (sibling) dupeOfBase = freqBase;
+        if (sibling && assessDuplicateGroup([station, sibling]).eligible) dupeOfBase = freqBase;
       }
     }
 

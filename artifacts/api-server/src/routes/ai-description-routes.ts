@@ -1,15 +1,21 @@
 import type { Express } from "express";
 import { pgCatalog } from '../data/postgres-catalog-store';
-import { pgSaveDescriptionJob } from '../data/postgres-runtime-operations';
+import { pgSaveDescriptionJob, pgReadDescriptionJob } from '../data/postgres-runtime-operations';
+import { randomUUID } from 'node:crypto';
+import type pg from 'pg';
+import { SITEMAP_PRIORITY_LANGUAGES } from '@workspace/seo-shared/seo-config';
+import { getPostgresCoordinationPool } from '../postgres-runtime';
+import { fillMissingStationDescriptions } from '../services/fill-missing-station-descriptions';
+import { pgAdminDescriptionCoverage } from '../data/postgres-admin-catalog-store';
 import { logger } from "../utils/logger";
-import { stripPlaceholders, TV_STATION_PROJECTION } from "./shared-utils";
+import { stripPlaceholders } from "./shared-utils";
 import { performanceCache } from "../performance-cache";
 
 export async function registerAiDescriptionRoutes(app: Express, deps: any) {
   const { requireAdmin } = deps;
 
   // AI STATION DESCRIPTION GENERATION ENDPOINTS
-  const { generateStationDescription, detectStationLanguage, translateDescription } = await import('../services/ai-station-description');
+  const { generateStationDescription } = await import('../services/ai-station-description');
   
   // Cap per-job result arrays to prevent unbounded memory growth on long-running jobs
   // (e.g. 40k-station batches would otherwise keep every result object in memory forever).
@@ -45,7 +51,7 @@ export async function registerAiDescriptionRoutes(app: Express, deps: any) {
   setInterval(() => {
     const now = Date.now();
     for (const [jobId, job] of descriptionJobs) {
-      if ((job.status === 'completed' || job.status === 'failed' || job.status === 'cancelled') &&
+      if ((job.status === 'completed' || job.status === 'failed' || job.status === 'cancelled' || job.status === 'paused') &&
           job.completedAt && (now - job.completedAt.getTime()) > 30 * 60 * 1000) {
         descriptionJobs.delete(jobId);
       }
@@ -271,637 +277,138 @@ export async function registerAiDescriptionRoutes(app: Express, deps: any) {
     }
   });
 
-  // Find and fix stations with missing descriptions (English + ALL other languages)
-  app.post("/api/admin/stations/fix-missing-english", requireAdmin, async (req, res) => {
-    try {
-      const { limit, selectedStationIds, languages } = req.body;
-      
-      // Target languages - all 14 supported languages
-      const targetLanguages = languages || ['en', 'es', 'fr', 'de', 'pt', 'it', 'ru', 'ar', 'zh', 'tr', 'ja', 'ko', 'hi', 'he'];
-      
-      // Build query based on whether specific stations are selected
-      let query: any = {};
-      
-      if (selectedStationIds && selectedStationIds.length > 0) {
-        // If specific stations selected, only process those (check for missing English)
-        query = {
-          _id: { $in: selectedStationIds.map((id: string) => String(id)) },
-          $or: [
-            { 'descriptions.en': { $exists: false } },
-            { 'descriptions.en.full': { $exists: false } },
-            { 'descriptions.en.full': '' },
-            { 'descriptions.en.full': null },
-            { 'descriptions.en.meta': { $exists: false } },
-            { 'descriptions.en.meta': '' },
-            { 'descriptions.en.meta': null }
-          ]
-        };
-        logger.log(`🔍 Checking ${selectedStationIds.length} selected stations for missing descriptions`);
-      } else {
-        // Find all stations where:
-        // 1. descriptions exists (has some translations)
-        // 2. descriptions.en.full OR descriptions.en.meta is empty or doesn't exist
-        query = {
-          descriptions: { $exists: true },
-          $or: [
-            { 'descriptions.en': { $exists: false } },
-            { 'descriptions.en.full': { $exists: false } },
-            { 'descriptions.en.full': '' },
-            { 'descriptions.en.full': null },
-            { 'descriptions.en.meta': { $exists: false } },
-            { 'descriptions.en.meta': '' },
-            { 'descriptions.en.meta': null }
-          ]
-        };
-      }
-      
-      // Count matching stations
-      const totalStations = await pgCatalog().count(query);
-      const stationsToProcess = limit ? Math.min(limit, totalStations) : totalStations;
-      
-      logger.log(`🔍 Found ${totalStations} stations with missing English descriptions`);
-      
-      if (stationsToProcess === 0) {
-        return void res.json({
-          success: false,
-          message: 'No stations found with missing English full descriptions',
-          count: 0
-        });
-      }
-      
-      // Create job ID
-      const jobId = `fix-en-${Date.now()}`;
-      
-      // Initialize job tracking
-      descriptionJobs.set(jobId, {
-        jobId,
-        status: 'running',
-        total: stationsToProcess,
-        processed: 0,
-        successful: 0,
-        failed: 0,
-        skipped: 0,
-        currentStation: 'Loading stations...',
-        currentAction: 'idle',
-        currentLanguage: 'en',
-        targetLanguages: targetLanguages,
-        startedAt: new Date(),
-        successfulStations: [],
-        skippedStations: [],
-        failedStations: []
-      });
-      
-      // Send immediate response
-      res.json({
-        success: true,
-        message: `Started fixing descriptions for ${stationsToProcess} stations (${targetLanguages.length} languages)`,
-        jobId,
-        total: stationsToProcess
-      });
-      
-      // Process in background
-      setImmediate(async () => {
+  // Snapshot the selected work list before writes: missing-content filters shrink
+  // as stations finish, so offset pagination would silently skip records.
+  const startDescriptionJob = async (req: any, res: any, missingEnglishOnly = false) => {
+    let leader: pg.PoolClient | undefined;
+    let ownsFillLock = false;
+    let ownsJobLock = false;
+    let backgroundStarted = false;
+    let leadershipError: Error | undefined;
+    let jobId = '';
+    const onLeadershipError = (error: Error) => { leadershipError = error; };
+    const release = async () => {
+      if (!leader) return;
+      if (!leadershipError) {
         try {
-          logger.log(`🚀 Starting fix-missing-english job ${jobId} for ${stationsToProcess} stations with ${targetLanguages.length} languages`);
-          
-          const batchSize = 10;
-          let processed = 0;
-          let skip = 0;
-          let successful = 0;
-          let failed = 0;
-          let skipped = 0;
-          
-          while (processed < stationsToProcess) {
-            const currentLimit = limit ? Math.min(batchSize, stationsToProcess - processed) : batchSize;
-            const stations = await pgCatalog().find(query, { offset: skip, limit: currentLimit, fields: [...Object.keys(TV_STATION_PROJECTION),'descriptions','manualEditFields'] });
-            
-            if (stations.length === 0) break;
-            
-            for (const station of stations) {
-              try {
-                const job = descriptionJobs.get(jobId);
-                if (!job || job.status === 'paused') {
-                  logger.log(`⏸️ Job ${jobId} paused`);
-                  return;
-                }
-                
-                job.currentStation = station.name;
-                job.currentAction = 'analyzing';
-                descriptionJobs.set(jobId, job);
-                
-                const stationName = station.name;
-                const existingDescriptions = (station as any).descriptions || {};
-                const nativeLanguage = detectStationLanguage(station as any);
-                
-                // Find ALL missing languages
-                const missingLanguages: string[] = [];
-                const existingLanguages: string[] = [];
-                
-                if (station.descriptions && typeof station.descriptions === 'object') {
-                  for (const lang of targetLanguages) {
-                    const desc = (station.descriptions as any)[lang];
-                    if (!desc || !desc.full || desc.full === '') {
-                      missingLanguages.push(lang);
-                    } else {
-                      existingLanguages.push(lang);
-                    }
-                  }
-                } else {
-                  missingLanguages.push(...targetLanguages);
-                }
-                
-                if (missingLanguages.length === 0) {
-                  logger.log(`⏭️ Skipping "${stationName}" - all ${targetLanguages.length} languages exist`);
-                  skipped++;
-                  job.skipped = skipped;
-                  pushLimited(job.skippedStations, { name: stationName, reason: 'All languages exist' });
-                  processed++;
-                  job.processed = processed;
-                  descriptionJobs.set(jobId, job);
-                  continue;
-                }
-                
-                logger.log(`🔧 Fixing "${stationName}" - missing ${missingLanguages.length} languages: ${missingLanguages.join(', ')}`);
-                logger.log(`   ✅ Existing ${existingLanguages.length} languages: ${existingLanguages.join(', ')}`);
-                
-                // Find a valid source description (prefer native language, then any existing)
-                let sourceDescription: { full: string; meta: string } | null = null;
-                let sourceLanguage = nativeLanguage;
-                
-                // Check if native language exists
-                if (station.descriptions && (station.descriptions as any)[nativeLanguage]?.full) {
-                  sourceDescription = (station.descriptions as any)[nativeLanguage];
-                  sourceLanguage = nativeLanguage;
-                } else if (station.descriptions) {
-                  // Find any existing language as source
-                  for (const lang of existingLanguages) {
-                    if ((station.descriptions as any)[lang]?.full) {
-                      sourceDescription = (station.descriptions as any)[lang];
-                      sourceLanguage = lang;
-                      break;
-                    }
-                  }
-                }
-                
-                // If no source exists, generate native language first
-                if (!sourceDescription) {
-                  job.currentAction = 'generating';
-                  job.currentLanguage = nativeLanguage;
-                  descriptionJobs.set(jobId, job);
-                  
-                  logger.log(`   🔄 Generating ${nativeLanguage.toUpperCase()} (native) for "${stationName}"`);
-                  
-                  const result = await generateStationDescription(station as any, nativeLanguage);
-                  
-                  if (!result.success || !result.fullDescription) {
-                    logger.log(`❌ Failed to generate native description for "${stationName}"`);
-                    failed++;
-                    job.failed = failed;
-                    pushLimited(job.failedStations, { name: stationName, error: 'Native generation failed' });
-                    processed++;
-                    job.processed = processed;
-                    descriptionJobs.set(jobId, job);
-                    continue;
-                  }
-                  
-                  sourceDescription = { full: result.fullDescription, meta: result.metaDescription || '' };
-                  sourceLanguage = nativeLanguage;
-                  
-                  // Save native language
-                  await pgCatalog().update({ _id: station._id }, { $set: { [`descriptions.${nativeLanguage}`]: sourceDescription } });
-                  
-                  // Remove native from missing list if it was there
-                  const nativeIndex = missingLanguages.indexOf(nativeLanguage);
-                  if (nativeIndex > -1) {
-                    missingLanguages.splice(nativeIndex, 1);
-                  }
-                  
-                  logger.log(`   ✅ Generated ${nativeLanguage.toUpperCase()} for "${stationName}"`);
-                }
-                
-                // Now translate to all missing languages
-                if (missingLanguages.length > 0 && sourceDescription) {
-                  job.currentAction = 'translating';
-                  job.currentLanguage = missingLanguages.join(', ');
-                  descriptionJobs.set(jobId, job);
-                  
-                  logger.log(`   🌍 Translating to ${missingLanguages.length} languages: ${missingLanguages.join(', ')}`);
-                  
-                  const translations = await translateDescription(
-                    sourceDescription.full,
-                    sourceDescription.meta,
-                    sourceLanguage,
-                    missingLanguages,
-                    stationName
-                  );
-                  
-                  job.currentAction = 'saving';
-                  descriptionJobs.set(jobId, job);
-                  
-                  // Save all translations
-                  for (const [lang, translation] of translations) {
-                    await pgCatalog().update({ _id: station._id }, { $set: { [`descriptions.${lang}`]: translation } });
-                  }
-                  
-                  const failedLanguages = missingLanguages.filter(lang => !translations.has(lang));
-                  if (failedLanguages.length > 0) {
-                    failed++;
-                    job.failed = failed;
-                    const error = `Translation failed for languages: ${failedLanguages.join(', ')}`;
-                    pushLimited(job.failedStations, { name: stationName, error });
-                    logger.warn(`⚠️ "${stationName}" — saved ${translations.size} translations; ${error}`);
-                  } else {
-                    successful++;
-                    job.successful = successful;
-                    pushLimited(job.successfulStations, { name: stationName, languages: Array.from(translations.keys()) });
-                    logger.log(`✅ "${stationName}" — added all ${translations.size} missing translations`);
-                  }
-                } else {
-                  successful++;
-                  job.successful = successful;
-                  pushLimited(job.successfulStations, { name: stationName, languages: [nativeLanguage] });
-                }
-                
-                processed++;
-                job.processed = processed;
-                descriptionJobs.set(jobId, job);
-                
-              } catch (stationError: any) {
-                logger.error(`❌ Error fixing "${station.name}":`, stationError.message);
-                failed++;
-                const job = descriptionJobs.get(jobId);
-                if (job) {
-                  job.failed = failed;
-                  pushLimited(job.failedStations, { name: station.name, error: stationError.message });
-                  job.processed = ++processed;
-                  descriptionJobs.set(jobId, job);
-                }
-              }
-              
-              // Small delay between stations
-              await new Promise(resolve => setTimeout(resolve, 1000));
-            }
-            
-            skip += batchSize;
-          }
-          
-          const job = descriptionJobs.get(jobId);
-          if (job) {
-            job.status = 'completed';
-            job.completedAt = new Date();
-            job.processed = processed;
-            job.successful = successful;
-            job.failed = failed;
-            job.skipped = skipped;
-            descriptionJobs.set(jobId, job);
-          }
-          
-          logger.log(`✅ Fix-missing-english job ${jobId} completed! Processed: ${processed}, Successful: ${successful}, Failed: ${failed}, Skipped: ${skipped}`);
-          
-        } catch (error: any) {
-          logger.error(`❌ Fix-missing-english job ${jobId} failed:`, error);
-          const job = descriptionJobs.get(jobId);
-          if (job) {
-            job.status = 'failed';
-            job.completedAt = new Date();
-            job.error = error.message;
-            descriptionJobs.set(jobId, job);
-          }
-        }
-      });
-      
-    } catch (error: any) {
-      logger.error('Error starting fix-missing-english:', error);
-      res.status(500).json({ error: error.message || 'Failed to start fix job' });
-    }
-  });
-
-  // Bulk generate descriptions
-  app.post("/api/admin/stations/generate-bulk-descriptions", requireAdmin, async (req, res) => {
-    try {
-      const {
-        limit,
-        skip: initialSkip = 0,
-        languages,
-        filterByCountry,
-        skipExisting = true,
-        selectedStationIds
-      } = req.body;
-
-      const jobId = `bulk-desc-${Date.now()}`;
-
-      const hasExplicitSelection = !!(selectedStationIds && selectedStationIds.length > 0);
-      let query: any = {};
-
-      if (hasExplicitSelection) {
-        query = {
-          _id: { $in: selectedStationIds.map((id: string) => String(id)) }
-        };
-      } else if (filterByCountry) {
-        query = { countryCode: filterByCountry };
+          if (ownsJobLock) await leader.query('SELECT pg_advisory_unlock(hashtext($1))', [`radiohub-description-job:${jobId}`]);
+          if (ownsFillLock) await leader.query("SELECT pg_advisory_unlock(hashtext('radiohub-description-fill'))");
+        } catch (error) { leadershipError = error as Error; }
       }
+      leader.removeListener('error', onLeadershipError);
+      leader.release(Boolean(leadershipError));
+    };
+    try {
+      const { limit, skip = 0, languages, filterByCountry, selectedStationIds } = req.body;
+      if ((limit !== undefined && (!Number.isSafeInteger(limit) || limit < 1)) ||
+          !Number.isSafeInteger(skip) || skip < 0 ||
+          (selectedStationIds !== undefined && (!Array.isArray(selectedStationIds) || selectedStationIds.some((id: unknown) => typeof id !== 'string' || !id))) ||
+          (languages !== undefined && (!Array.isArray(languages) || !languages.length || languages.some((language: any) => !SITEMAP_PRIORITY_LANGUAGES.universal14.includes(language))))) {
+        return void res.status(400).json({ error: 'Use positive integer limits, nonnegative skip, station IDs and supported translation languages.' });
+      }
+      const targetLanguages: string[] = [...new Set<string>(languages || SITEMAP_PRIORITY_LANGUAGES.universal14)];
+      const hasSelection = Boolean(selectedStationIds?.length);
+      const query: any = hasSelection ? { _id: { $in: selectedStationIds } } : filterByCountry ? { countryCode: filterByCountry } : {};
+      if (missingEnglishOnly) query.$or = ['full', 'meta'].map(field => ({
+        [`descriptions.en.${field}`]: { $not: { $regex: '[^[:space:]]' } },
+      }));
+      const effectiveLimit = limit ?? (hasSelection ? selectedStationIds.length : 10);
+      const workList = await pgCatalog().find(query, { fields: ['_id'], offset: skip, limit: effectiveLimit });
+      const stationIds = workList.map(station => station._id);
+      if (!stationIds.length) return void res.json({ success: false, total: 0, message: 'No matching stations need processing.' });
 
-      const totalStations = await pgCatalog().count(query);
-      // When the admin explicitly selects stations, the selection IS the work
-      // list. The previous `limit = 10` destructuring default silently
-      // truncated any selection to 10 (the Bulk AI dialog sends no limit —
-      // `limit: undefined` is dropped by JSON.stringify), so a 479-station
-      // selection processed 10 and stopped. An explicit numeric limit still
-      // wins when provided; the safety default of 10 now applies only to
-      // unselected whole-catalog / country-filter runs, where an unbounded
-      // job could burn the OpenAI budget by accident.
-      const effectiveLimit = (typeof limit === 'number' && limit > 0)
-        ? limit
-        : (hasExplicitSelection ? totalStations : 10);
-      const stationsToProcess = Math.min(effectiveLimit, totalStations - initialSkip);
-      
-      descriptionJobs.set(jobId, {
-        jobId,
-        status: 'running',
-        total: stationsToProcess,
-        processed: 0,
-        successful: 0,
-        failed: 0,
-        skipped: 0,
-        currentStation: 'Initializing...',
-        currentAction: 'idle',
-        targetLanguages: languages || ['en'],
-        startedAt: new Date(),
-        successfulStations: [],
-        skippedStations: [],
-        failedStations: []
+      jobId = `bulk-desc-${randomUUID()}`;
+      leader = await getPostgresCoordinationPool().connect();
+      leader.on('error', onLeadershipError);
+      ownsFillLock = (await leader.query("SELECT pg_try_advisory_lock(hashtext('radiohub-description-fill')) AS acquired")).rows[0].acquired;
+      if (!ownsFillLock) return void res.status(409).json({ error: 'A description fill job is already running. Wait for it to finish before starting another.' });
+      ownsJobLock = (await leader.query('SELECT pg_try_advisory_lock(hashtext($1)) AS acquired', [`radiohub-description-job:${jobId}`])).rows[0].acquired;
+      if (!ownsJobLock) throw new Error('Could not acquire description job leadership');
+      const job: NonNullable<ReturnType<typeof descriptionJobs.get>> = {
+        jobId, status: 'running', total: stationIds.length, processed: 0, successful: 0, failed: 0, skipped: 0,
+        currentStation: 'Initializing...', currentAction: 'idle', targetLanguages, startedAt: new Date(),
+        successfulStations: [], skippedStations: [], failedStations: [],
+      };
+      const checkpoint = () => pgSaveDescriptionJob(jobId, job.total, {
+        status: job.status, filterByCountry: filterByCountry || null, processedStations: job.processed,
+        successCount: job.successful, failedCount: job.failed, skippedCount: job.skipped,
+        lastProcessedStationId: job.lastProcessedStationId, lastProcessedSkip: job.processed + skip,
+        errorMessage: job.error || null,
       });
-      
-      res.json({
-        success: true,
-        jobId,
-        total: stationsToProcess
-      });
-      
+      await checkpoint();
+      descriptionJobs.set(jobId, job);
+      backgroundStarted = true;
+      res.json({ success: true, jobId, total: job.total, model: 'gpt-4o-mini', maxConcurrentTranslations: 2 });
       setImmediate(async () => {
+        const deadline = Date.now() + 5 * 60 * 60 * 1000;
+        const assertActive = () => {
+          if (leadershipError) throw new Error('Description job leadership lost', { cause: leadershipError });
+          if (job.status !== 'running') throw new Error(`Description job ${job.status}`);
+          if (Date.now() > deadline) throw new Error('Description job reached its five-hour limit; rerun missing-only to continue');
+        };
         try {
-          const batchSize = 5;
-          let processed = 0;
-          let successful = 0;
-          let failed = 0;
-          let skipped = 0;
-          let skip = initialSkip;
-          
-          while (processed < stationsToProcess) {
-            const currentLimit = Math.min(batchSize, stationsToProcess - processed);
-            const stations = await pgCatalog().find(query, { offset: skip, limit: currentLimit });
-            
-            if (stations.length === 0) break;
-            
-            for (const station of stations) {
+          for (const stationId of stationIds) {
+            assertActive();
+            const station = await pgCatalog().findOne({ _id: stationId });
+            if (!station) {
+              job.failed++;
+              pushLimited(job.failedStations, { name: String(stationId), error: 'Station no longer exists' });
+            } else {
+              job.currentStation = station.name;
+              job.currentAction = 'analyzing';
               try {
-                const job = descriptionJobs.get(jobId);
-                if (!job || job.status === 'cancelled' || job.status === 'paused') return;
-                
-                job.currentStation = station.name;
-                descriptionJobs.set(jobId, job);
-
-                // Country-based language detection
-                const targetLanguage = detectStationLanguage(station as any);
-                const targetLanguages = languages && languages.length > 0 ? languages : ['en', 'es', 'fr', 'de', 'pt', 'it', 'ru', 'ar', 'zh', 'tr', 'ja', 'ko', 'hi', 'he'];
-                
-                const existingLanguages = (station.descriptions && typeof station.descriptions === 'object') ? Object.keys(station.descriptions).filter((lang: string) => {
-                  const desc = (station.descriptions as any)[lang];
-                  if (typeof desc === 'object' && desc) {
-                    const full = desc.full || '';
-                    const meta = desc.meta || '';
-                    return full.trim().length > 10 || meta.trim().length > 10;
-                  }
-                  return false;
-                }) : [];
-                
-                const missingLanguages = targetLanguages.filter((lang: string) => !existingLanguages.includes(lang));
-                
-                if (station.descriptions && typeof station.descriptions === 'object' && existingLanguages.length > 0 && missingLanguages.length > 0) {
-                  let sourceLang = targetLanguage;
-                  const nativeDesc = (station.descriptions as any)[targetLanguage];
-                  const hasValidNative = nativeDesc && 
-                    typeof nativeDesc === 'object' && 
-                    nativeDesc.full?.trim().length > 50;
-                  
-                  if (!hasValidNative) {
-                    sourceLang = existingLanguages.find(lang => {
-                      const desc = (station.descriptions as any)[lang];
-                      if (typeof desc === 'object' && desc) {
-                        return desc.full?.trim().length > 50;
-                      }
-                      return false;
-                    }) || existingLanguages[0];
-                  }
-                  
-                  const sourceDesc = (station.descriptions as any)[sourceLang];
-                  
-                  if (sourceDesc && sourceDesc.full && sourceDesc.meta) {
-                    job.currentAction = 'translating';
-                    job.currentLanguage = missingLanguages.join(', ');
-                    descriptionJobs.set(jobId, job);
-                    
-                    try {
-                      const translations = await translateDescription(sourceDesc.full, sourceDesc.meta, sourceLang, missingLanguages, station.name);
-                      
-                      job.currentAction = 'saving';
-                      descriptionJobs.set(jobId, job);
-                      
-                      for (const [lang, translation] of translations) {
-                        const cleanedTranslation = {
-                          full: stripPlaceholders(translation.full),
-                          meta: stripPlaceholders(translation.meta)
-                        };
-                        
-                        await pgCatalog().update({ _id: station._id }, { $set: { [`descriptions.${lang}`]: cleanedTranslation } });
-                      }
-                      
-                      const failedLanguages = missingLanguages.filter((lang: string) => !translations.has(lang));
-                      if (failedLanguages.length > 0) {
-                        failed++;
-                        pushLimited(job.failedStations, { name: station.name, error: `Translation failed for languages: ${failedLanguages.join(', ')}` });
-                      } else {
-                        successful++;
-                        pushLimited(job.successfulStations, { name: station.name, languages: Array.from(translations.keys()) });
-                      }
-                    } catch (translationError: any) {
-                      failed++;
-                      pushLimited(job.failedStations, { name: station.name, error: translationError.message });
-                    }
-                    
-                    processed++;
-                    job.processed = processed;
-                    job.successful = successful;
-                    job.failed = failed;
-                    descriptionJobs.set(jobId, job);
-                    continue;
-                  }
-                }
-                
-                if (station.descriptions && existingLanguages.length > 0 && missingLanguages.length === 0) {
-                  skipped++;
-                  processed++;
-                  job.processed = processed;
-                  job.skipped = skipped;
-                  pushLimited(job.skippedStations, { name: station.name, reason: `Already has all target languages` });
-                  descriptionJobs.set(jobId, job);
-                  continue;
-                }
-                
-                if (filterByCountry && skipExisting && station.descriptions && typeof station.descriptions === 'object' && (station.descriptions as any)[targetLanguage]) {
-                  skipped++;
-                  processed++;
-                  job.processed = processed;
-                  job.skipped = skipped;
-                  pushLimited(job.skippedStations, { name: station.name, reason: `Already has ${targetLanguage} description` });
-                  descriptionJobs.set(jobId, job);
-                  continue;
-                }
-                
-                if (station.aiDescriptionSkipped) {
-                  skipped++;
-                  processed++;
-                  job.processed = processed;
-                  job.skipped = skipped;
-                  pushLimited(job.skippedStations, { name: station.name, reason: 'Previously checked - no OpenAI info available' });
-                  descriptionJobs.set(jobId, job);
-                  continue;
-                }
-                
-                const result = await generateStationDescription(station as any, targetLanguage);
-                
-                if (result.success && result.fullDescription && result.metaDescription) {
-                  const cleanedFull = stripPlaceholders(result.fullDescription);
-                  const cleanedMeta = stripPlaceholders(result.metaDescription);
-                  
-                  await pgCatalog().update({ _id: station._id }, {
-                      $set: { 
-                        [`descriptions.${result.language}`]: {
-                          full: cleanedFull,
-                          meta: cleanedMeta
-                        }
-                      } 
-                    });
-                  
-                  let translationTargets = targetLanguages.filter((lang: string) => lang !== result.language);
-                  const existingLangs = (station.descriptions && typeof station.descriptions === 'object') ? Object.keys(station.descriptions).filter((lang: string) => {
-                    const desc = (station.descriptions as any)[lang];
-                    if (!desc) return false;
-                    if (typeof desc === 'object') {
-                      return desc.full?.trim().length > 50;
-                    }
-                    return false;
-                  }) : [];
-                  const missingLangs = translationTargets.filter((lang: string) => !existingLangs.includes(lang));
-                  
-                  if (missingLangs.length > 0) {
-                    job.currentAction = 'translating';
-                    job.currentLanguage = missingLangs.join(', ');
-                    descriptionJobs.set(jobId, job);
-                    
-                    const translations = await translateDescription(cleanedFull, cleanedMeta, result.language, missingLangs, station.name);
-                    
-                    job.currentAction = 'saving';
-                    descriptionJobs.set(jobId, job);
-                    
-                    for (const [lang, translation] of translations) {
-                      const cleanedTranslation = {
-                        full: stripPlaceholders(translation.full),
-                        meta: stripPlaceholders(translation.meta)
-                      };
-                      
-                      await pgCatalog().update({ _id: station._id }, { $set: { [`descriptions.${lang}`]: cleanedTranslation } });
-                    }
-                    const failedLanguages = missingLangs.filter((lang: string) => !translations.has(lang));
-                    if (failedLanguages.length > 0) {
-                      failed++;
-                      pushLimited(job.failedStations, { name: station.name, error: `Translation failed for languages: ${failedLanguages.join(', ')}` });
-                    } else {
-                      successful++;
-                      pushLimited(job.successfulStations, { name: station.name, languages: [result.language, ...translations.keys()] });
-                    }
-                  } else {
-                    successful++;
-                    pushLimited(job.successfulStations, { name: station.name, languages: [result.language] });
-                  }
+                const outcome = await fillMissingStationDescriptions(station, targetLanguages, (action, currentLanguages) => {
+                  job.currentAction = action;
+                  job.currentLanguage = currentLanguages.join(', ');
+                }, assertActive);
+                if (outcome.skipped) {
+                  job.skipped++;
+                  pushLimited(job.skippedStations, { name: station.name, reason: 'Already complete, manually protected, or previously skipped' });
                 } else {
-                  failed++;
-                }
-                
-                processed++;
-                job.processed = processed;
-                job.successful = successful;
-                job.failed = failed;
-                job.skipped = skipped;
-                job.lastProcessedStationId = station._id?.toString();
-                job.lastProcessedSkip = skip;
-                job.updatedAt = new Date();
-                descriptionJobs.set(jobId, job);
-                
-                if (processed % 5 === 0) {
-                  await pgSaveDescriptionJob(jobId,totalStations,
-                    {
-                      processedStations: processed,
-                      successCount: successful,
-                      failedCount: failed,
-                      skippedCount: skipped,
-                      lastProcessedStationId: station._id?.toString(),
-                      lastProcessedSkip: skip,
-                      updatedAt: new Date()
-                    }
-                  );
+                  job.successful++;
+                  pushLimited(job.successfulStations, { name: station.name, languages: outcome.languages });
                 }
               } catch (error: any) {
-                failed++;
-                processed++;
-                const job = descriptionJobs.get(jobId);
-                if (job) {
-                  job.failed = failed;
-                  job.processed = processed;
-                  pushLimited(job.failedStations, { name: station.name, error: error.message || 'Description processing failed' });
-                  descriptionJobs.set(jobId, job);
-                }
+                // Cancellation/leadership loss stops the run; it cannot turn into a completed job.
+                assertActive();
+                job.failed++;
+                pushLimited(job.failedStations, { name: station.name, error: error.message || 'Description processing failed' });
               }
             }
-            skip += batchSize;
+            job.processed++;
+            job.lastProcessedStationId = String(stationId);
+            job.updatedAt = new Date();
+            await checkpoint();
           }
-          
-          const job = descriptionJobs.get(jobId);
-          if (job) {
-            job.status = 'completed';
-            job.completedAt = new Date();
-            descriptionJobs.set(jobId, job);
-          }
-          
-          await pgSaveDescriptionJob(jobId,totalStations,
-            {
-              status: 'completed',
-              processedStations: processed,
-              successCount: successful,
-              failedCount: failed,
-              skippedCount: skipped,
-              updatedAt: new Date()
-            }
-          );
+          assertActive();
+          job.status = 'completed';
+          job.completedAt = new Date();
+          job.currentAction = 'idle';
+          await checkpoint();
         } catch (error: any) {
-          const job = descriptionJobs.get(jobId);
-          if (job) {
+          if (job.status === 'running') {
             job.status = 'failed';
             job.completedAt = new Date();
-            job.error = error.message;
-            descriptionJobs.set(jobId, job);
+            job.error = error.message || 'Description processing interrupted';
           }
+          await checkpoint().catch(checkpointError => logger.error('Could not persist description job failure:', checkpointError));
+        } finally {
+          await release();
         }
       });
     } catch (error: any) {
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: error.message || 'Could not start description job' });
+    } finally {
+      if (!backgroundStarted) await release();
     }
-  });
+  };
+  app.post("/api/admin/stations/fix-missing-english", requireAdmin, (req, res) => startDescriptionJob(req, res, true));
+  app.post("/api/admin/stations/generate-bulk-descriptions", requireAdmin, (req, res) => startDescriptionJob(req, res));
 
   // Get AI description generation job status
   app.get("/api/admin/stations/description-job-status/:jobId", requireAdmin, async (req, res) => {
     const jobId = req.params.jobId;
-    const job = descriptionJobs.get(jobId);
+    const job = descriptionJobs.get(jobId) || await pgReadDescriptionJob(jobId);
     
     if (!job) {
       return void res.status(404).json({ error: 'Job not found' });
@@ -932,40 +439,17 @@ export async function registerAiDescriptionRoutes(app: Express, deps: any) {
   // Answers "do all stations actually have full+meta descriptions in each of
   // the 14 universal languages?" with real numbers instead of guesses. For
   // each language reports how many stations have a non-empty `full` and `meta`.
-  // Cached 5 min — these are 14 countDocuments scans over ~43K docs.
+  // Cached 5 min; all supported locales share one PostgreSQL aggregate scan.
   app.get("/api/admin/stations/description-coverage", requireAdmin, async (_req, res) => {
     const CACHE_KEY = 'admin:description-coverage';
     const cached = performanceCache.getQuick(CACHE_KEY);
     if (cached) return void res.json(cached);
 
-    const UNIVERSAL_14 = ['en', 'es', 'fr', 'de', 'pt', 'it', 'ru', 'ar', 'zh', 'tr', 'ja', 'ko', 'hi', 'he'];
-
     try {
-      const totalStations = await pgCatalog().count({});
-      const indexableStations = await pgCatalog().count({ noIndex: { $ne: true } });
-
-      const perLanguage = await Promise.all(
-        UNIVERSAL_14.map(async (lang) => {
-          // A language counts as "covered" only when BOTH full and meta are
-          // present and non-empty (mirrors the SSR render gate at
-          // seo-renderer.ts which only emits the rich body when full exists).
-          const withFull = await pgCatalog().count({
-            [`descriptions.${lang}.full`]: { $exists: true, $nin: [null, ''] },
-          });
-          const withMeta = await pgCatalog().count({
-            [`descriptions.${lang}.meta`]: { $exists: true, $nin: [null, ''] },
-          });
-          const pct = totalStations > 0 ? Math.round((withFull / totalStations) * 1000) / 10 : 0;
-          return { language: lang, withFull, withMeta, missingFull: totalStations - withFull, pctFull: pct };
-        }),
-      );
-
-      const payload = {
-        totalStations,
-        indexableStations,
-        languages: perLanguage,
-        generatedAt: new Date().toISOString(),
-      };
+      const coverage = await pgAdminDescriptionCoverage();
+      const payload = { ...coverage, languages: coverage.languages.map(language => ({
+        ...language, complete: language.withComplete, missingEither: language.missingComplete,
+      })), generatedAt: new Date().toISOString() };
 
       performanceCache.setQuick(CACHE_KEY, payload, 300);
       res.json(payload);
@@ -984,10 +468,14 @@ export async function registerAiDescriptionRoutes(app: Express, deps: any) {
       return void res.status(404).json({ error: 'Job not found' });
     }
     
+    if (job.status !== 'running') return void res.status(409).json({ error: 'Only running jobs can be paused' });
     job.status = 'paused';
+    job.completedAt = new Date();
+    job.error = 'Processing paused. Rerun the same selection to continue; completed fields are preserved.';
     descriptionJobs.set(jobId, job);
+    await pgSaveDescriptionJob(jobId, job.total, { status: job.status, errorMessage: job.error });
     
-    res.json({ success: true, message: 'Job paused' });
+    res.json({ success: true, message: job.error });
   });
 
   // Cancel AI description generation job
@@ -999,9 +487,11 @@ export async function registerAiDescriptionRoutes(app: Express, deps: any) {
       return void res.status(404).json({ error: 'Job not found' });
     }
 
+    if (!['running', 'paused'].includes(job.status)) return void res.status(409).json({ error: 'Only active jobs can be cancelled' });
     job.status = 'cancelled';
     job.completedAt = new Date();
     descriptionJobs.set(jobId, job);
+    await pgSaveDescriptionJob(jobId, job.total, { status: job.status });
 
     res.json({
       success: true,
