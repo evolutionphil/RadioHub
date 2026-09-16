@@ -148,7 +148,8 @@ test('explicit apply locks before rereading all peers, rechecks selected evidenc
   const update = queries.findIndex(sql => sql.startsWith('UPDATE stations'));
   assert.ok(lock >= 0 && selected > lock && identity > selected && update > identity);
   assert.match(queries[lock], /SHARE ROW EXCLUSIVE MODE NOWAIT/);
-  assert.match(queries[update], /noIndexRecoveryJournal/); assert.match(queries[update], /sourceNoIndexPresent/);
+  assert.match(queries[update], /no_index_recovery_journal=/); assert.match(queries[update], /sourceNoIndexPresent/);
+  assert.doesNotMatch(queries[update], /noIndexRecoveryJournal/);
   assert.match(queries[update], /'automaticNoIndex',s.source->'automaticNoIndex'/);
   assert.doesNotMatch(queries[update], /(?:descriptions|name|slug|url|redirect_to_slug)\s*=/);
   assert.equal(queries.at(-1), 'COMMIT');

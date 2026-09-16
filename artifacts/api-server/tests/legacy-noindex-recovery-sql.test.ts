@@ -2,9 +2,11 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { EventEmitter } from 'node:events';
 import { pathToFileURL } from 'node:url';
+import { readFile } from 'node:fs/promises';
 import { LegacyNoindexRecoveryStore } from '../src/data/postgres-legacy-noindex-recovery';
 import { AUDIT_LANGUAGES } from '../src/seo/station-indexability-audit';
 import { pgAdminDescriptionCoverage } from '../src/data/postgres-admin-catalog-store';
+import { catalogShape } from '../src/data/postgres-catalog-store';
 
 /** Optional real PostgreSQL-engine SQL validation without a production
  * connection. PGlite checks SQL/transaction semantics, not network locking. */
@@ -19,12 +21,16 @@ test('PostgreSQL engine executes recovery SQL, preserves all content and journal
         manual_edit_fields jsonb,source jsonb,last_check_ok boolean,last_check_time timestamptz,
         descriptions jsonb,updated_at timestamptz DEFAULT now()
       )`);
+      await db.exec(await readFile(new URL('../../../lib/db/migrations/0034_private_noindex_recovery_journal.sql', import.meta.url), 'utf8'));
       const descriptions = Object.fromEntries(AUDIT_LANGUAGES.map(language => [language, { full: `Full article ${language}`, meta: `Summary ${language}` }]));
-      const source = { originalImport: { preserved: true }, noIndex: true, noIndexRecoveryJournal: { previous: { preserved: true } } };
+      const source = { originalImport: { preserved: true }, noIndex: true };
+      const existingJournal = { previous: { preserved: true } };
       await db.query(`INSERT INTO stations(id,station_uuid,name,slug,country,country_code,url,no_index,manual_edit_fields,
         source,last_check_ok,last_check_time,descriptions) VALUES
         ('station-a','00000000-0000-4000-8000-000000000001','Example Radio','example-radio','Germany','DE',
         'https://stream.example.invalid/live',true,'{}',$1,true,now()-interval '1 minute',$2)`, [source, descriptions]);
+      assert.equal((await db.query('SELECT no_index_recovery_journal FROM stations')).rows[0].no_index_recovery_journal, null);
+      await db.query('UPDATE stations SET no_index_recovery_journal=$1', [existingJournal]);
       const clients: any[] = [];
       const pool = { connect: async () => {
         const client = Object.assign(new EventEmitter(), {
@@ -55,11 +61,16 @@ test('PostgreSQL engine executes recovery SQL, preserves all content and journal
       const after = (await db.query('SELECT * FROM stations')).rows[0];
       assert.equal(after.no_index, false); assert.equal(after.source.noIndex, false);
       assert.deepEqual(after.source.originalImport, source.originalImport);
-      assert.deepEqual(after.source.noIndexRecoveryJournal.previous, source.noIndexRecoveryJournal.previous);
-      const journal = after.source.noIndexRecoveryJournal[preview.previewId];
+      assert.deepEqual(after.source, { ...source, noIndex: false }, 'public source contains no recovery evidence');
+      assert.deepEqual(after.no_index_recovery_journal.previous, existingJournal.previous);
+      const journal = after.no_index_recovery_journal[preview.previewId];
       assert.deepEqual(journal.before, { noIndex: true, sourceNoIndexPresent: true, sourceNoIndex: true, automaticNoIndex: null });
       assert.equal(journal.actor, 'sql-fixture-admin'); assert.equal(journal.evidence.completeLanguageCount, 14);
-      for (const field of Object.keys(before).filter(field => !['no_index', 'source', 'updated_at'].includes(field))) {
+      const publicStation = catalogShape(after);
+      assert.equal(Object.hasOwn(publicStation, 'no_index_recovery_journal'), false);
+      assert.equal(Object.hasOwn(publicStation, 'noIndexRecoveryJournal'), false);
+      assert.doesNotMatch(JSON.stringify(publicStation), /sql-fixture-admin|explicit-selected-legacy-noindex-recovery/);
+      for (const field of Object.keys(before).filter(field => !['no_index', 'source', 'updated_at', 'no_index_recovery_journal'].includes(field))) {
         assert.deepEqual(after[field], before[field], `${field} must be preserved`);
       }
 
@@ -68,9 +79,9 @@ test('PostgreSQL engine executes recovery SQL, preserves all content and journal
       const stale = await store.preview();
       await db.query(`UPDATE stations SET descriptions=jsonb_set(descriptions,'{en,full}','"Edited retained article"'::jsonb)`);
       await assert.rejects(store.apply({ previewId: stale.previewId, stationIds: ['station-a'] }), { code: 'RECOVERY_STALE' });
-      const retained = (await db.query('SELECT no_index,source,descriptions FROM stations')).rows[0];
+      const retained = (await db.query('SELECT no_index,source,descriptions,no_index_recovery_journal FROM stations')).rows[0];
       assert.equal(retained.no_index, true); assert.equal(retained.descriptions.en.full, 'Edited retained article');
-      assert.equal(Object.keys(retained.source.noIndexRecoveryJournal).length, 2);
+      assert.equal(Object.keys(retained.no_index_recovery_journal).length, 2);
 
       // Null/nonstring/whitespace descriptions never satisfy the SQL count.
       await db.query(`UPDATE stations SET descriptions=jsonb_set(descriptions,'{de,meta}','"   "'::jsonb)`);

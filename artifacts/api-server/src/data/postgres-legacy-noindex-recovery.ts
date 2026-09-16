@@ -17,7 +17,7 @@ const stationProjection = `${identityProjection},s.no_index AS "noIndex",
   s.source->'automaticNoIndex' AS "automaticNoIndex",s.last_check_ok AS "lastCheckOk",
   s.last_check_time AS "lastCheckTime",s.source->'lastCheckOkTime' AS "lastCheckOkTime",s.xmin::text AS "rowVersion",
   (jsonb_typeof(s.source)='object') AS "sourceIsObject",
-  (NOT (s.source ? 'noIndexRecoveryJournal') OR jsonb_typeof(s.source->'noIndexRecoveryJournal')='object') AS "journalIsObject",
+  (s.no_index_recovery_journal IS NULL OR jsonb_typeof(s.no_index_recovery_journal)='object') AS "journalIsObject",
   (SELECT count(*)::integer FROM jsonb_each(CASE WHEN jsonb_typeof(s.descriptions)='object' THEN s.descriptions ELSE '{}'::jsonb END) d
     WHERE d.key IN (${AUDIT_LANGUAGES.map(language => `'${language}'`).join(',')})
       AND ${descriptionTextSql("d.value->'full'")} AND ${descriptionTextSql("d.value->'meta'")}) AS "completeLanguageCount"`;
@@ -186,12 +186,12 @@ export class LegacyNoindexRecoveryStore {
         candidates.push(decision.candidate);
       }
       const result = await query(`UPDATE stations s SET no_index=false,
-        source=jsonb_set(s.source || jsonb_build_object('noIndex',false),'{noIndexRecoveryJournal}',
-          COALESCE(s.source->'noIndexRecoveryJournal','{}'::jsonb) || jsonb_build_object($2::text,jsonb_build_object(
+        source=s.source || jsonb_build_object('noIndex',false),
+        no_index_recovery_journal=COALESCE(s.no_index_recovery_journal,'{}'::jsonb) || jsonb_build_object($2::text,jsonb_build_object(
             'version',1,'action','explicit-selected-legacy-noindex-recovery','recoveredAt',$3::text,'actor',$4::text,
             'before',jsonb_build_object('noIndex',s.no_index,'sourceNoIndexPresent',s.source ? 'noIndex',
               'sourceNoIndex',s.source->'noIndex','automaticNoIndex',s.source->'automaticNoIndex'),
-            'after',jsonb_build_object('noIndex',false),'evidence',evidence.value))),
+            'after',jsonb_build_object('noIndex',false),'evidence',evidence.value)),
         updated_at=transaction_timestamp()
         FROM jsonb_array_elements($5::jsonb) evidence(value)
         WHERE s.id=ANY($1::text[]) AND s.id=evidence.value->>'id' AND s.no_index=true
