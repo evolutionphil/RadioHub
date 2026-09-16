@@ -9,7 +9,7 @@ import { SEO_LANGUAGES, ACTIVE_SITEMAP_LANGUAGES } from "@workspace/seo-shared/s
 // out of the footer chunk until the user clicks the action.
 const AddYourStationModal = lazy(() => import("@/components/modals/AddYourStationModal"));
 import { Globe } from "lucide-react";
-import AdSenseUnit from "@/components/ads/AdSenseUnit";
+import AdSenseUnit from "@/components/ads/DeferredAdSenseUnit";
 import { getAdSensePageType } from '@/lib/adsense-runtime';
 import { AD_SLOTS, usesInlineMobileCatalogAd } from '@/lib/advertising-placements';
 import PrivacySettingsButton from "@/components/ads/PrivacySettingsButton";

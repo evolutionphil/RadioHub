@@ -16,7 +16,7 @@ import { PublicProfileAvatar } from "@/components/ui/public-profile-avatar";
 const AddYourStationModal = lazy(() => import("@/components/modals/AddYourStationModal"));
 const MobileNavigation = lazy(() => import('./mobile-navigation'));
 import { useTranslation } from "@/hooks/useTranslation";
-import { getProfileNavCopy } from '@/lib/chat-copy';
+import { getProfileNavCopy } from '@/lib/profile-nav-copy';
 import { logoutAccount } from '@/lib/logout';
 import { toast } from '@/hooks/use-toast';
 import { useSeoRouting } from "@/hooks/useSeoRouting";

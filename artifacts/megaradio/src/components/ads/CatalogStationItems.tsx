@@ -1,6 +1,6 @@
 import { Fragment, type Key, type ReactNode } from 'react';
 import { useLocation, useSearch } from 'wouter';
-import AdSenseUnit from './AdSenseUnit';
+import AdSenseUnit from './DeferredAdSenseUnit';
 import { AD_SLOTS, CATALOG_AD_AFTER, CATALOG_AD_MIN_STATIONS, usesInlineMobileCatalogAd } from '@/lib/advertising-placements';
 import { availableStations } from '@/utils/station-availability';
 

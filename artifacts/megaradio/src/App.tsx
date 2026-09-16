@@ -115,7 +115,8 @@ import { BreadcrumbOverrideProvider, RouteBreadcrumbs } from "@/components/Route
 import { useSeoRouting } from "@/hooks/useSeoRouting";
 import { TranslationProvider, useTranslation } from "@/hooks/useTranslation";
 import { FavoriteStateProvider } from "@/hooks/useFavoriteState";
-import { SEO_LANGUAGES, COUNTRY_TO_LANGUAGE, COUNTRY_TO_CODE, getLanguageForCountry } from "@workspace/seo-shared/seo-config";
+import { COUNTRY_TO_CODE } from "@workspace/seo-shared/seo-config";
+import { getSeoRouteCandidates } from '@/lib/seo-route-candidates';
 
 import { URL_TRANSLATIONS } from "@workspace/seo-shared/url-translations";
 
@@ -650,8 +651,11 @@ function ApplicationsWrapper() {
   );
 }
 
-const SeoMainRouter = React.memo(() => {
-  const { cleanPath, currentLanguage } = useSeoRouting();
+export const SeoMainRouter = React.memo(() => {
+  const [location] = useLocation();
+  // JSX is constructed before Switch picks a match. Building every country's
+  // translated routes here allocated thousands of elements on each navigation.
+  const { languages, countries } = getSeoRouteCandidates(location);
   
   return (
     <Switch>
@@ -686,7 +690,7 @@ const SeoMainRouter = React.memo(() => {
       <Route path="/regions/:regionSlug/:countrySlug/:citySlug?/stations" component={PlayerWrapper} />
 
       {/* Language-specific routes - ALL enabled languages */}
-      {SEO_LANGUAGES.filter(lang => lang.enabled && lang.code !== 'en').map(langConfig => (
+      {languages.map(langConfig => (
         <React.Fragment key={`${langConfig.code}-routes`}>
           <Route path={`/${langConfig.code}`} component={PlayerWrapper} />
           <Route path={`/${langConfig.code}/genres`} component={PlayerWrapper} />
@@ -865,10 +869,7 @@ const SeoMainRouter = React.memo(() => {
       ))}
 
       {/* Country code routes that map to supported languages */}
-      {Object.entries(COUNTRY_TO_LANGUAGE).map(([countryCode, langCode]) => {
-        const targetLang = SEO_LANGUAGES.find(lang => lang.code === langCode && lang.enabled);
-        if (!targetLang || countryCode === langCode) return null; // Skip if no mapping or same as language code
-        
+      {countries.map(([countryCode, langCode]) => {
         // Get translations for this country's language
         const translations = URL_TRANSLATIONS[langCode] || {};
         

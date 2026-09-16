@@ -3,7 +3,8 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { availableChatHeight, useChatViewport } from '../src/hooks/use-chat-viewport';
-import { getChatCopy, getProfileNavCopy } from '../src/lib/chat-copy';
+import { getChatCopy } from '../src/lib/chat-copy';
+import { getProfileNavCopy } from '../src/lib/profile-nav-copy';
 import MessagesPage from '../src/pages/messages';
 
 const A = 'aaaaaaaaaaaaaaaaaaaaaaaa', B = 'bbbbbbbbbbbbbbbbbbbbbbbb';

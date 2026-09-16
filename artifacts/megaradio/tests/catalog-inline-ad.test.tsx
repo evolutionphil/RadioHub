@@ -5,7 +5,7 @@ import { ACTIVE_SITEMAP_LANGUAGES } from '@workspace/seo-shared/seo-config';
 import { translateUrl } from '@workspace/seo-shared/url-translations';
 import { usesInlineMobileCatalogAd, AD_SLOTS } from '../src/lib/advertising-placements';
 
-vi.mock('@/components/ads/AdSenseUnit', () => ({ default: (p: any) => <aside data-testid="inline-ad" data-slot={p.adSlot} className={p.className} /> }));
+vi.mock('@/components/ads/DeferredAdSenseUnit', () => ({ default: (p: any) => <aside data-testid="inline-ad" data-slot={p.adSlot} className={p.className} /> }));
 import CatalogStationItems from '../src/components/ads/CatalogStationItems';
 afterEach(cleanup);
 

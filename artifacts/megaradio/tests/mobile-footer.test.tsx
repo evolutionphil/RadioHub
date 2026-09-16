@@ -21,7 +21,7 @@ vi.mock('@tanstack/react-query', () => ({ useQuery: () => ({ data: [
   { _id: 'inactive', platform: 'facebook', url: 'https://facebook.com/megaradio', isActive: false },
 ] }) }));
 vi.mock('../src/lib/adsense-runtime', () => ({ getAdSensePageType: () => state.pageType }));
-vi.mock('../src/components/ads/AdSenseUnit', () => ({ default: () => <div data-testid="footer-ad" /> }));
+vi.mock('../src/components/ads/DeferredAdSenseUnit', () => ({ default: () => <div data-testid="footer-ad" /> }));
 vi.mock('../src/components/ads/PrivacySettingsButton', () => ({ default: ({ language }: { language: string }) => <button>Privacy {language}</button> }));
 vi.mock('../src/components/modals/AddYourStationModal', () => ({ default: ({ onClose }: { onClose: () => void }) => <div role="dialog"><button onClick={onClose}>Close station modal</button></div> }));
 

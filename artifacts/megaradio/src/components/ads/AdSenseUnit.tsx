@@ -3,7 +3,7 @@ import { useLocation, useSearch } from 'wouter';
 import { usePremiumStatus } from '@/hooks/usePremiumStatus';
 import { ADSENSE_CLIENT, ensureAdSenseScript, getAdvertisementLabel, isAdSensePage } from '@/lib/adsense-runtime';
 
-interface AdSenseUnitProps {
+export interface AdSenseUnitProps {
   adSlot?: string;
   adFormat?: 'auto' | 'fluid' | 'rectangle' | 'vertical' | 'horizontal';
   fullWidthResponsive?: boolean;

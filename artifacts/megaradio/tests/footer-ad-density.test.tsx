@@ -9,7 +9,7 @@ vi.mock('@/hooks/useTranslation', () => ({ useTranslation: () => ({ t: (_key: st
 vi.mock('@/hooks/useGlobalPlayer', () => ({ useGlobalPlayer: () => ({ currentStation: null }) }));
 vi.mock('@/hooks/useSeoRouting', () => ({ useSeoRouting: () => ({ getLocalizedUrl: (path: string) => `/de${path}`, currentLanguage: 'de', changeLanguage: vi.fn() }) }));
 vi.mock('@tanstack/react-query', () => ({ useQuery: () => ({ data: [] }) }));
-vi.mock('@/components/ads/AdSenseUnit', () => ({ default: ({ adSlot }: { adSlot: string }) => <div data-testid="footer-ad" data-slot={adSlot} /> }));
+vi.mock('@/components/ads/DeferredAdSenseUnit', () => ({ default: ({ adSlot }: { adSlot: string }) => <div data-testid="footer-ad" data-slot={adSlot} /> }));
 import Footer from '../src/components/layout/footer';
 
 afterEach(cleanup);

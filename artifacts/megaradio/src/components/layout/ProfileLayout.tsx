@@ -8,7 +8,7 @@ import { useSeoRouting } from "@/hooks/useSeoRouting";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from '@/lib/queryClient';
 import { useTranslation } from '@/hooks/useTranslation';
-import { getProfileNavCopy } from '@/lib/chat-copy';
+import { getProfileNavCopy } from '@/lib/profile-nav-copy';
 
 function NavLink({ href, children, isActive }: { href: string; children: React.ReactNode; isActive: boolean }) {
   const [, navigate] = useLocation();
