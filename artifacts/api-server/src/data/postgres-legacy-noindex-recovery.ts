@@ -11,6 +11,8 @@ const MAX_SNAPSHOTS = 8;
 const BATCH_SIZE = 500;
 export const RECOVERY_APPLY_DEADLINE_MS = 5000;
 export const RECOVERY_PREVIEW_DEADLINE_MS = 60_000;
+const RECEIPT_DEADLINE_MS = 2000;
+const CACHE_RESPONSE_DEADLINE_MS = 1000;
 const identityProjection = `s.id,s.name,s.slug,s.slug_aliases AS "slugAliases",s.country,s.country_code AS "countryCode",s.url,s.url_resolved AS "urlResolved",s.station_uuid AS stationuuid`;
 const stationProjection = `${identityProjection},s.no_index AS "noIndex",
   s.redirect_to_slug AS "redirectToSlug",s.manual_edit_fields AS "manualEditFields",
@@ -36,11 +38,11 @@ export interface RecoveryPreview {
  * has a hard five-second connection deadline, including rollback on timeout;
  * it never holds the catalog writer lock through an HTTP response. */
 async function withTransaction<T>(pool: RecoveryPool, write: boolean, signal: AbortSignal | undefined,
-  work: (query: RecoveryQuery, now: number) => Promise<T>): Promise<T> {
+  work: (query: RecoveryQuery, now: number) => Promise<T>, coordinate = true): Promise<T> {
   signal?.throwIfAborted();
   const client = await pool.connect();
-  let released = false, connectionLost = false, interrupted: Error | undefined;
-  const release = (discard: boolean) => { if (!released) { released = true; client.release(discard); } };
+  let released = false, discarded = false, connectionLost = false, committed = false, interrupted: Error | undefined;
+  const release = (discard: boolean) => { if (!released) { released = true; discarded = discard; client.release(discard); } };
   const abort = () => {
     interrupted ||= failure('RECOVERY_INTERRUPTED', 'Recovery operation interrupted');
     // Destroying a checked-out client terminates any active query and rolls
@@ -61,7 +63,10 @@ async function withTransaction<T>(pool: RecoveryPool, write: boolean, signal: Ab
     // omit query_timeout, so retain it in a structurally compatible variable.
     const config = { text: sql, values: parameters, query_timeout: Math.max(1, expiresAt - Date.now()) };
     const result = await client.query(config);
-    if (interrupted) throw interrupted;
+    // PostgreSQL's COMMIT command acknowledgement is authoritative even if a
+    // socket/deadline event arrived alongside it. Never turn a known commit
+    // into a failed mutation merely because its connection was then closed.
+    if (interrupted && !(sql === 'COMMIT' && result.command === 'COMMIT')) throw interrupted;
     return result;
   };
   try {
@@ -74,11 +79,14 @@ async function withTransaction<T>(pool: RecoveryPool, write: boolean, signal: Ab
       // while allowing ordinary SELECTs, and fails immediately if writers run.
       await query('LOCK TABLE stations IN SHARE ROW EXCLUSIVE MODE NOWAIT');
     }
-    const lock = await query("SELECT pg_try_advisory_xact_lock(hashtext('station-legacy-noindex-recovery')) AS acquired");
-    if (!lock.rows[0]?.acquired) throw failure('RECOVERY_BUSY', 'Another recovery operation is running');
+    if (coordinate) {
+      const lock = await query("SELECT pg_try_advisory_xact_lock(hashtext('station-legacy-noindex-recovery')) AS acquired");
+      if (!lock.rows[0]?.acquired) throw failure('RECOVERY_BUSY', 'Another recovery operation is running');
+    }
     const timestamp = await query('SELECT transaction_timestamp() AS at');
     const result = await work(query, new Date(timestamp.rows[0].at).getTime());
     await query('COMMIT');
+    committed = true;
     return result;
   } catch (error: any) {
     if (!released && !connectionLost) {
@@ -91,10 +99,11 @@ async function withTransaction<T>(pool: RecoveryPool, write: boolean, signal: Ab
     clearTimeout(deadline);
     signal?.removeEventListener('abort', abort);
     try { release(connectionLost || Boolean(interrupted)); }
+    catch (error) { if (!committed) throw error; }
     finally {
       // A destroyed socket can emit a final asynchronous error after release.
       // Its listener remains attached only to that discarded client.
-      if (!connectionLost && !interrupted) client.removeListener('error', lost);
+      if (!discarded) client.removeListener('error', lost);
       client.removeListener('end', lost);
     }
   }
@@ -173,7 +182,10 @@ export class LegacyNoindexRecoveryStore {
     // reusing evidence. Every later batch needs a fresh catalog preview.
     this.snapshots.delete(input.previewId);
     let restoredSlugs: string[] = [];
-    const result = await withTransaction(this.pool(), true, input.signal, async (query, now) => {
+    let mutationSubmitted = false;
+    let result: { restored: number; restoredIds: string[]; skipped: number; skippedReasons: never[] };
+    try {
+      result = await withTransaction(this.pool(), true, input.signal, async (query, now) => {
       const selected = await query(`SELECT ${stationProjection} FROM stations s WHERE s.id=ANY($1::text[]) ORDER BY s.id FOR UPDATE`, [input.stationIds]);
       if (selected.rows.length !== input.stationIds.length) throw failure('RECOVERY_STALE', 'A selected station changed; run preview again');
       const index = await readIdentityIndex(query, true);
@@ -185,6 +197,7 @@ export class LegacyNoindexRecoveryStore {
         }
         candidates.push(decision.candidate);
       }
+      mutationSubmitted = true;
       const result = await query(`UPDATE stations s SET no_index=false,
         source=s.source || jsonb_build_object('noIndex',false),
         no_index_recovery_journal=COALESCE(s.no_index_recovery_journal,'{}'::jsonb) || jsonb_build_object($2::text,jsonb_build_object(
@@ -200,11 +213,44 @@ export class LegacyNoindexRecoveryStore {
       if (result.rows.length !== input.stationIds.length) throw failure('RECOVERY_STALE', 'Recovery selection changed; run preview again');
       restoredSlugs = candidates.map(candidate => candidate.slug);
       return { restored: result.rows.length, restoredIds: result.rows.map(row => String(row.id)), skipped: 0, skippedReasons: [] };
-    });
+      });
+    } catch (error) {
+      // Losing COMMIT's acknowledgement does not prove rollback. Read only
+      // this operation's durable private receipts, never retry its mutation.
+      const receipt = mutationSubmitted ? await this.committedReceipt(input.previewId, input.stationIds) : null;
+      if (!receipt) throw error;
+      restoredSlugs = receipt.map(row => row.slug);
+      result = { restored: receipt.length, restoredIds: receipt.map(row => row.id), skipped: 0, skippedReasons: [] };
+    }
     // The database transaction is already committed and the writer lock is
     // released. A cache failure must never masquerade as a failed recovery.
-    const cacheInvalidated = await this.invalidate(restoredSlugs).catch(() => false);
+    let cacheDeadline: ReturnType<typeof setTimeout> | undefined;
+    const cacheInvalidated = await Promise.race([
+      Promise.resolve().then(() => this.invalidate(restoredSlugs)).catch(() => false),
+      new Promise<boolean>(resolve => { cacheDeadline = setTimeout(() => resolve(false), CACHE_RESPONSE_DEADLINE_MS); }),
+    ]).finally(() => { if (cacheDeadline) clearTimeout(cacheDeadline); });
     return { ...result, cacheInvalidated };
+  }
+
+  private async committedReceipt(previewId: string, stationIds: string[]): Promise<Array<{ id: string; slug: string }> | null> {
+    const controller = new AbortController();
+    let deadline: ReturnType<typeof setTimeout> | undefined;
+    const read = withTransaction(this.pool(), false, controller.signal, async query => {
+      const rows = await query(`SELECT id,slug FROM stations
+        WHERE id=ANY($1::text[]) AND no_index=false
+          AND no_index_recovery_journal->$2::text->>'action'='explicit-selected-legacy-noindex-recovery'
+          AND no_index_recovery_journal->$2::text->'before'->>'noIndex'='true'
+          AND no_index_recovery_journal->$2::text->'after'->>'noIndex'='false'
+          AND no_index_recovery_journal->$2::text->'evidence'->>'id'=id`, [stationIds, previewId]);
+      return rows.rows.length === stationIds.length ? rows.rows as Array<{ id: string; slug: string }> : null;
+    }, false).catch(() => null);
+    try {
+      return await Promise.race([read, new Promise<null>(resolve => {
+        // Covers pool acquisition too; a late acquired client sees the abort
+        // and is discarded without running a query. No writer lock is held.
+        deadline = setTimeout(() => { controller.abort(); resolve(null); }, RECEIPT_DEADLINE_MS);
+      })]);
+    } finally { if (deadline) clearTimeout(deadline); }
   }
 }
 
@@ -214,7 +260,7 @@ async function invalidateRecoveryCaches(slugs: string[]): Promise<boolean> {
   ]);
   const results = await Promise.allSettled([
     Promise.resolve().then(() => { for (const slug of slugs) performanceCache.invalidateStationCache(slug); performanceCache.clearSeoCaches(); }),
-    ...['admin_stations:', 'stations', 'popular_stations', 'community_favorites', 'genres'].map(pattern =>
+    ...['admin_stations:', 'stations', 'station:detail:', 'popular_stations', 'community_favorites', 'genres'].map(pattern =>
       Promise.resolve().then(() => CacheManager.clearByPattern(pattern))),
     Promise.resolve().then(() => CacheManager.del('admin-station-filter-options:v1')),
   ]);

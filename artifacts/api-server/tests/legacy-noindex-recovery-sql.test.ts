@@ -32,13 +32,21 @@ test('PostgreSQL engine executes recovery SQL, preserves all content and journal
       assert.equal((await db.query('SELECT no_index_recovery_journal FROM stations')).rows[0].no_index_recovery_journal, null);
       await db.query('UPDATE stations SET no_index_recovery_journal=$1', [existingJournal]);
       const clients: any[] = [];
+      let loseCommitAcknowledgement = false, rejectBeforeCommit = false, mutationCount = 0;
       const pool = { connect: async () => {
         const client = Object.assign(new EventEmitter(), {
-          released: false,
+          released: false, wrote: false,
           release() { this.released = true; },
           async query(config: string | { text: string; values?: any[] }, parameters?: any[]) {
-            const result = await db.query(typeof config === 'string' ? config : config.text,
+            const sql = typeof config === 'string' ? config : config.text;
+            if (sql.startsWith('UPDATE stations')) { this.wrote = true; mutationCount++; }
+            if (sql === 'COMMIT' && this.wrote && rejectBeforeCommit) throw new Error('Commit not submitted');
+            const result = await db.query(sql,
               typeof config === 'string' ? parameters : config.values);
+            if (sql === 'COMMIT' && this.wrote && loseCommitAcknowledgement) {
+              loseCommitAcknowledgement = false;
+              throw new Error('COMMIT acknowledgement lost after server committed');
+            }
             return { ...result, rowCount: result.affectedRows ?? result.rows.length };
           },
         }); clients.push(client); return client;
@@ -89,6 +97,21 @@ test('PostgreSQL engine executes recovery SQL, preserves all content and journal
       assert.equal(incomplete.totalCandidates, 0); assert.equal(incomplete.reasonCounts['incomplete-descriptions'], 1);
       const missingCoverage = await pgAdminDescriptionCoverage(coveragePool);
       assert.equal(missingCoverage.languages.find(locale => locale.language === 'de')?.missingComplete, 1);
+
+      await db.query('UPDATE stations SET descriptions=$1', [descriptions]);
+      const retry = await store.preview(); loseCommitAcknowledgement = true;
+      const recovered = await store.apply({ previewId: retry.previewId, stationIds: ['station-a'] });
+      assert.equal(recovered.restored, 1, 'private receipt confirms a committed mutation after its acknowledgement was lost');
+      assert.equal(mutationCount, 2, 'receipt recovery must not resubmit UPDATE');
+      assert.equal((await db.query('SELECT no_index FROM stations')).rows[0].no_index, false);
+
+      await db.query("UPDATE stations SET no_index=true,source=source || '{\"noIndex\":true}'::jsonb");
+      const notCommitted = await store.preview(); rejectBeforeCommit = true;
+      await assert.rejects(store.apply({ previewId: notCommitted.previewId, stationIds: ['station-a'] }), /Commit not submitted/);
+      const rolledBack = (await db.query('SELECT no_index,no_index_recovery_journal FROM stations')).rows[0];
+      assert.equal(rolledBack.no_index, true);
+      assert.equal(Object.hasOwn(rolledBack.no_index_recovery_journal, notCommitted.previewId), false,
+        'a rolled back operation cannot claim success using another operation\'s receipt');
       assert.ok(clients.every(client => client.released));
     } finally { await db.close(); }
   });

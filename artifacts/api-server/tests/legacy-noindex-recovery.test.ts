@@ -84,13 +84,13 @@ test('stream identity retains actual path/query/protocol, rejects credentials an
   for (const input of ['', 'http:stream.example.invalid', 'ftp://stream.example.invalid', 'https://user:secret@stream.example.invalid']) assert.equal(recoveryEndpoint(input), null);
 });
 
-function fixture(initial = [station()]) {
+function fixture(initial = [station()], invalidate: (slugs: string[]) => Promise<boolean> = async () => true) {
   let rows = initial, identitiesFetched = false, candidatesFetched = false;
   const queries: string[] = [], values: any[][] = [], clients: any[] = [];
-  let lockFailure = false, simulatedError = false;
+  let lockFailure = false, simulatedError = false, commitAckError = false;
   const pool = { connect: async () => {
     const client = Object.assign(new EventEmitter(), {
-      released: false, discarded: false,
+      released: false, discarded: false, wrote: false,
       release(discard: boolean) { this.released = true; this.discarded = discard; },
       async query(input: any, params?: any[]) {
         const sql = typeof input === 'string' ? input : input.text;
@@ -110,13 +110,18 @@ function fixture(initial = [station()]) {
         }
         if (sql.startsWith('SELECT') && sql.includes('FROM stations s WHERE')) return { rows: structuredClone(rows.filter(row => parameters[0].includes(row.id))) };
         if (sql.startsWith('SELECT') && sql.includes('FROM stations s')) return { rows: structuredClone(rows) };
-        if (sql.startsWith('UPDATE stations')) return { rows: rows.filter(row => parameters[0].includes(row.id)).map(row => ({ id: row.id })) };
+        if (sql.startsWith('UPDATE stations')) { client.wrote = true; return { rows: rows.filter(row => parameters[0].includes(row.id)).map(row => ({ id: row.id })) }; }
+        if (sql === 'COMMIT') {
+          if (client.wrote && commitAckError) client.emit('error', new Error('Socket ended alongside COMMIT acknowledgement'));
+          return { rows: [], command: 'COMMIT' };
+        }
         return { rows: [] };
       },
     });
     clients.push(client); return client as any;
   } };
-  return { store: new LegacyNoindexRecoveryStore(() => pool as any, async () => true), queries, values, clients,
+  return { store: new LegacyNoindexRecoveryStore(() => pool as any, invalidate), queries, values, clients,
+    failAlongsideCommitAck: () => { commitAckError = true; },
     setRows: (next: RecoveryStation[]) => { rows = next; }, busy: () => { lockFailure = true; }, failConnection: () => { simulatedError = true; } };
 }
 
@@ -192,4 +197,25 @@ test('candidate cap bounds server snapshots and only returned candidates can be 
   const f = fixture(rows), report = await f.store.preview();
   assert.equal(report.totalCandidates, 105); assert.equal(report.candidates.length, 100);
   await assert.rejects(f.store.apply({ previewId: report.previewId, stationIds: ['s-104'] }), { code: 'RECOVERY_INVALID' });
+});
+
+test('an acknowledged COMMIT stays successful when the socket emits an error alongside its result', async () => {
+  const f = fixture(), preview = await f.store.preview(); f.failAlongsideCommitAck();
+  const result = await f.store.apply({ previewId: preview.previewId, stationIds: ['station-a'] });
+  assert.equal(result.restored, 1); assert.equal(f.queries.at(-1), 'COMMIT');
+  assert.equal(f.clients.at(-1).discarded, true);
+  assert.equal(f.queries.filter(sql => sql.startsWith('UPDATE stations')).length, 1);
+  assert.equal(f.queries.some(sql => sql.includes("->>'action'")), false, 'acknowledgement needs no receipt recheck');
+});
+
+test('postcommit cache rejection or a stuck cache never loses the successful mutation response', async () => {
+  for (const invalidate of [() => { throw new Error('Synchronous cache failure'); },
+    async () => { throw new Error('Redis unavailable'); }, () => new Promise<boolean>(() => {})]) {
+    const f = fixture([station()], invalidate), preview = await f.store.preview();
+    const startedAt = Date.now();
+    const result = await f.store.apply({ previewId: preview.previewId, stationIds: ['station-a'] });
+    assert.equal(result.restored, 1); assert.equal(result.cacheInvalidated, false);
+    assert.ok(Date.now() - startedAt < 2000, 'cache response wait is bounded independently of database safety deadline');
+    assert.equal(f.queries.at(-1), 'COMMIT'); assert.ok(f.clients.every(client => client.released));
+  }
 });

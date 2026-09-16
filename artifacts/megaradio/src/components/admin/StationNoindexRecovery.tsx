@@ -22,6 +22,7 @@ export function StationNoindexRecovery() {
   const [preview, setPreview] = useState<RecoveryPreview | null>(null);
   const [selected, setSelected] = useState<string[]>([]);
   const [expired, setExpired] = useState(false);
+  const [confirming, setConfirming] = useState(false);
   const [result, setResult] = useState<RecoveryResult | null>(null);
   const scan = useMutation<RecoveryPreview, Error>({
     mutationFn: async () => (await apiRequest('POST', '/api/admin/seo-noindex-recovery/preview', { body: {} })).json(),
@@ -38,6 +39,9 @@ export function StationNoindexRecovery() {
     onSuccess: data => { setResult(data); setSelected([]); setExpired(true); },
     onError: () => { setExpired(true); setSelected([]); },
   });
+  useEffect(() => {
+    setConfirming(false);
+  }, [selected, preview, expired]);
   useEffect(() => {
     if (!preview) return;
     const timeout = setTimeout(() => { setExpired(true); setSelected([]); }, Math.max(0, Date.parse(preview.expiresAt) - Date.now()));
@@ -94,11 +98,16 @@ export function StationNoindexRecovery() {
             </table>
           </div>
           <div className="flex flex-wrap items-center gap-3 border-t pt-4">
-            <Button disabled={busy || expired || !selected.length} onClick={() => {
-              if (window.confirm(`${selected.length} radyonun noindex işareti kaldırılacak. İçerik ve URL değişmez; eski karar geri alınabilir kayıtta korunur. Onaylıyor musunuz?`)) apply.mutate();
-            }}>{apply.isPending ? 'Kontrol edilip onarılıyor…' : `Seçilen ${selected.length} radyoyu onar`}</Button>
+            <Button disabled={busy || expired || !selected.length || confirming} onClick={() => setConfirming(true)}>{apply.isPending ? 'Kontrol edilip onarılıyor…' : `Seçilen ${selected.length} radyoyu onar`}</Button>
             <p className="max-w-xl text-xs text-slate-500">Uygulama sırasında kimlik ve korumalar tekrar kontrol edilir. Radyo güncellemeleri için en fazla 5 saniyelik kilit kullanılır; sayfa okumaları devam eder. Çakışmada işlem durur.</p>
           </div>
+          {confirming && !expired && !busy && <section role="group" aria-label="Seçili radyo onarımını onayla" className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
+            <p>{selected.length} radyonun noindex işareti kaldırılacak. İçerik ve URL değişmez; eski kararın kaydı korunur.</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Button onClick={() => { setConfirming(false); apply.mutate(); }}>Onarımı uygula</Button>
+              <Button variant="outline" onClick={() => setConfirming(false)}>Vazgeç</Button>
+            </div>
+          </section>}
         </>}
       </>}
     </CardContent>
