@@ -177,6 +177,26 @@ test('a retained duplicate target read outage stays retryable instead of becomin
 });
 
 for (const language of ACTIVE_SITEMAP_LANGUAGES) {
+  test(`${language}: reviewed Eurodance duplicate redirects without publishing a second indexable document`, async () => {
+    const source = {
+      ...station, _id: '68a8c48bbd66579311ab4546', name: 'Radio Eurodance Classic',
+      slug: 'radio-eurodance-classic', country: 'Belgium', noIndex: true,
+      url: 'http://listen.shoutcast.com/radioeurodanceclassic',
+      urlResolved: 'http:quincy.torontocast.com:2380/stream',
+      redirectToSlug: 'radio-eurodance-classic-pure-and-addictive',
+    };
+    exactLookupFixtures = new Map([['slug:radio-eurodance-classic', source]]);
+    const detail = URL_TRANSLATIONS[language]?.station || 'station';
+    const result = await renderer.renderStaticPage(`/${language}/${detail}/${source.slug}`, 'https://themegaradio.com');
+    assert.equal(decodeURI(result.pageData?.redirectTo || ''), `/${language}/${detail}/${source.redirectToSlug}`);
+    assert.equal(result.pageData?.station, undefined);
+    assert.equal(result.pageData?.stationIsJunk, undefined);
+    assert.equal(source.noIndex, true, 'the duplicate stays excluded in storage');
+    assert.equal(stationReads, 1, 'the recorded canonical redirect needs no discovery scan');
+  });
+}
+
+for (const language of ACTIVE_SITEMAP_LANGUAGES) {
   test(`${language}: merged IDs redirect once to the localized surviving station`, async () => {
     missing = true;
     mergedAlias = { ...station, noIndex: false };

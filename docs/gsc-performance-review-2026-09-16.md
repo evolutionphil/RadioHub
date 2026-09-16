@@ -55,3 +55,58 @@ Confirm deployment and repeat public media, font, alias and PageSpeed checks. Re
 - Second batch verification: 140 integrated backend tests and TypeScript passed; actual SQL and rollback passed 37 isolated PostgreSQL/PGlite tests. Cross-replica advisory locking uses the established migration runner; the isolated single-connection tests do not claim to test contention.
 
 References: [Google page indexing report](https://support.google.com/webmasters/answer/7440203?hl=en), [localized versions](https://developers.google.com/search/docs/specialty/international/localized-versions).
+
+## Follow-up: full noindex export and reviewed production repairs
+
+The full 416-URL noindex export was subsequently checked over public HTTP with
+bounded concurrency: 405 final 200 and 11 legitimate/unresolved gone 410, no
+5xx. Nineteen URLs still carried noindex and mapped to nine station slugs.
+Restoration was not based solely on the presence of generated descriptions:
+the public catalog and authenticated admin search were reviewed for duplicate
+brand, call-sign, country and stream identities.
+
+The following seven real primary records were deliberately saved through the
+existing admin editor with `noIndex=false`. The main agent verified the exact
+IDs, `manualEditFields.noIndex=true` ownership, and 14-language descriptions in
+the public API after saving. This is an editorial indexing decision; their
+stream-health/list-visibility controls are independent and were not overridden.
+
+| Station | Preserved ID | Review/repair |
+| --- | --- | --- |
+| Radio Wey | `6a0791c7bef34beb9148d249` | Real hospital/community station. Its official stream is UK-only; a foreign probe failure is not evidence that its information page should be excluded. |
+| KSOR 90.1 Jefferson Public Radio | `68a8c478bd66579311ab17f5` | Corrected both stream URL fields to the official Classics & News URL `https://stream.zeno.fm/e0czcdic3wiuv`, replacing the outdated wrong-service `/jpr-news` address. |
+| RADYO FENOMEN 2010 LAR | `68a8c495bd66579311ab5da5` | Selected the non-bitrate primary; excluded bitrate variants were not restored or merged. |
+| Jalisco Radio Ciudad Guzmán / XHCGJ-FM | `6a07917abef34beb9148c3cf` | Distinct Ciudad Guzmán identity/feed, not the other Guadalajara/general Jalisco feeds. |
+| Echoes.gr NetRadio – Thessaloniki | `68a8c46cbd66579311aaf834` | Selected this primary; admin confirmed other Echoes variants remain noindex. |
+| Principe Joinville | `68a8c485bd66579311ab3548` | Reviewed real station identity; no competing same-station result found. |
+| WNOB 93.7 BOB FM Chesapeake | `68a8c4a3bd66579311ab806f` | Reviewed call-sign/city identity and official broadcaster. |
+
+KSOR's [official stream list](https://www.ijpr.org/stream-urls-media-players)
+publishes the replacement URL. A bounded check returned 200 `audio/mpeg` with
+`icy-name: JPR Classics_News`; the signed CDN redirect was not persisted.
+Radio Wey's [official listening instructions](https://radiowey.org/listen/listen-live/)
+explicitly describe the UK restriction.
+
+Two important exclusions were deliberately preserved:
+
+- `cai-tiao-ce-shi-1` (`68a8c4a9bd66579311ab91d1`) is a color-bar test listing,
+  not a verified radio information page. Generic junk heuristics did not catch
+  it and generated translations alone would falsely qualify it. Keep noindex.
+- Belgian `radio-eurodance-classic` (`68a8c48bbd66579311ab4546`) is a historical
+  duplicate of an already indexable Canadian record. Its noindex and malformed
+  old source stream remain unchanged. Separate immutable migration 0033 provides
+  only an audited redirect to the verified existing target; see
+  [the exact scope and rollback](audits/2026-09-16-eurodance-duplicate-redirect.md).
+
+Migration 0033 and its documented rollback passed **41/41 isolated PostgreSQL
+(PGlite) tests**: exact identity/ownership guards, third-listing preservation,
+idempotence, transaction rollback, and compare-and-set refusal after a later
+edit. The related localized SSR regression suite passed **142 tests**. These
+are pre-publication checks, not a claim that 0033 has already run in production.
+
+The main agent's later GSC **All submitted pages** view showed noindex count
+**0**. That scoped result does not mean all previously known excluded URLs must
+be restored. In the same scope, 194,343 discovered-not-indexed and 1,222
+crawled-not-indexed URLs remained; these are Google's asynchronous indexing
+decisions, not proof of a failed request. Two Google-chosen-canonical examples
+were still undergoing individual review at this checkpoint.

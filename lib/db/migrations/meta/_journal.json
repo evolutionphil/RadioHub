@@ -225,6 +225,13 @@
       "when": 1791154800000,
       "tag": "0032_verified_station_duplicate_redirects",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1791241200000,
+      "tag": "0033_verified_eurodance_duplicate_redirect",
+      "breakpoints": true
     }
   ]
 }
