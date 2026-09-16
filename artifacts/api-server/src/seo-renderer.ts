@@ -2,13 +2,13 @@ import { generateSeoTags, getLanguageFromPath, DEFAULT_LANGUAGE, generateLanguag
 import { buildDirectoryIndexSeo } from '@workspace/seo-shared/directory-index-seo';
 import { getStationImageAlt } from '@workspace/seo-shared/station-image-alt';
 import { getStationBroadcastLanguages, getSchemaCountry, generateOrganizationSchema, generateWebSiteSchema, generateDeveloperOrganizationSchema } from '@workspace/seo-shared/structured-data';
-import { getStationPageCopy, getStationStreamUnavailableNotice } from '@workspace/seo-shared/station-page-copy';
+import { getStationPageCopy, getStationRelatedHeading, getStationStreamUnavailableNotice } from '@workspace/seo-shared/station-page-copy';
 import { withPublicStationDeadline } from './utils/public-station-deadline';
 import { pgSeoCatalog } from './data/postgres-seo-read-store';
 import { pgStoredGenreBySlug } from './data/postgres-taxonomy-store';
 import { pgSeoMetadata } from './data/postgres-content-store';
 import { pgLocalization } from './data/postgres-localization-store';
-import { getCachedPublicGenres } from './services/public-genre-navigation';
+import { getHomeGenreNavigation } from './services/home-genre-navigation';
 import { AZ_INDEX_KEYS, azDisplayLabel, azSlugBounds, matchAzIndexPath } from './seo/az-station-index';
 import { isMissingSeoCatalogPage, isSeoCatalogPath, parseSeoCatalogPage, seoCatalogPageLinks } from './seo/catalog-pagination';
 import { regionRouteExistence } from './seo/region-route-existence';
@@ -1202,22 +1202,9 @@ export class SeoRenderer {
         if (error?.name === 'AbortError' || signal?.aborted) throw error;
       }
       })(), (async () => {
-      // Use the same native membership counts and whitelist as the public
-      // browser, not the legacy per-station JSON/tag aggregate. Optional
-      // enrichment must not consume the full 10s page-render budget.
-      try {
-        const genres = await withSignal(getCachedPublicGenres(), signal);
-        additionalData.topGenres = [...genres]
-          .sort((a, b) => b.stationCount - a.stationCount || a.slug.localeCompare(b.slug))
-          .slice(0, 24).map(g => ({
-          slug: g.slug,
-          name: g.name,
-          count: g.total_stations || g.stationCount || 0,
-        }));
-      } catch (error: any) {
-        if (error?.name === 'AbortError' || signal?.aborted) throw error;
-        // Keep the existing localized genre links when this optional read fails.
-      }
+      // Optional names/links refresh independently of first paint. The API and
+      // all actual station lists retain their strict health-aware 60s caches.
+      additionalData.topGenres = getHomeGenreNavigation();
       })()]);
     }
     
@@ -2629,11 +2616,9 @@ export class SeoRenderer {
                   }
                   if (xl.sameCountry?.length) {
                     const localizedCountry = xl.countryName
-                      ? this.escapeHtml(getLocalizedCountryName(xl.countryName, language))
+                      ? getLocalizedCountryName(xl.countryName, language)
                       : '';
-                    const heading = localizedCountry
-                      ? `${this.escapeHtml(getLocalizedText('similar_in_country', 'More radio stations from'))} ${localizedCountry}`
-                      : this.escapeHtml(getLocalizedText('similar_stations', 'Similar stations'));
+                    const heading = this.escapeHtml(getStationRelatedHeading(language, 'country', localizedCountry, translations));
                     sections.push(`
                 <section class="related-stations related-stations--country">
                   <h2>${heading}</h2>
@@ -2655,11 +2640,9 @@ export class SeoRenderer {
                   }
                   if (xl.sameCity?.length) {
                     const cityLabel = xl.cityName
-                      ? this.escapeHtml(String(xl.cityName))
+                      ? String(xl.cityName)
                       : '';
-                    const heading = cityLabel
-                      ? `${this.escapeHtml(getLocalizedText('stations_in_city', 'Radio stations in'))} ${cityLabel}`
-                      : this.escapeHtml(getLocalizedText('nearby_stations', 'Nearby stations'));
+                    const heading = this.escapeHtml(getStationRelatedHeading(language, 'city', cityLabel, translations));
                     sections.push(`
                 <section class="related-stations related-stations--city">
                   <h2>${heading}</h2>

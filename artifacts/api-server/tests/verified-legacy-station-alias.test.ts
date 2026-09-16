@@ -82,3 +82,26 @@ test('missing verified targets and unverified URLs remain missing without catalo
   assert.equal(await getStationByIdentifier('kpissfm-1'), null);
   assert.deepEqual(reads, ['kpissfm-1']);
 });
+
+for (const reversed of [false, true]) {
+  for (const noIndex of [false, true]) {
+    test(`a real canonical identity beats another record's stale alias (reversed=${reversed}, noIndex=${noIndex})`, async () => {
+      const current = {
+        slug: 'smooth-1', slugAliases: ['smooth-3'], name: 'smooth', noIndex,
+        country: 'The Russian Federation', url: 'http://jfm1.hostingradio.ru:14536/sjstream.mp3',
+        redirectToSlug: 'radio-jazz-smooth',
+      };
+      const staleOwner = {
+        slug: 'smooth', slugAliases: ['smooth-1', 'smooth-uganda'], name: 'Smooth',
+        noIndex: false, country: 'Uganda', url: 'http://media-the.musicradio.com/SmoothLondonMP3',
+      };
+      slugRows = reversed ? [current, staleOwner] : [staleOwner, current];
+      await loadSlugExistence();
+      assert.equal(hasStationSlug('smooth-1'), true);
+      assert.equal(getCanonicalStationSlug('smooth-1'), null, 'defer the exact record to SSR and its own redirect');
+      assert.equal(getCanonicalStationSlug('SMOOTH-1'), null, 'case normalization preserves exact identity');
+      assert.equal(getCanonicalStationSlug('smooth-uganda'), 'smooth', 'unrelated legitimate aliases still work');
+      assert.equal(getCanonicalStationSlug('smooth-3'), noIndex ? null : 'smooth-1');
+    });
+  }
+}

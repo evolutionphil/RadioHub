@@ -56,6 +56,19 @@ Confirm deployment and repeat public media, font, alias and PageSpeed checks. Re
 
 References: [Google page indexing report](https://support.google.com/webmasters/answer/7440203?hl=en), [localized versions](https://developers.google.com/search/docs/specialty/international/localized-versions).
 
+## Final follow-up, 17 September
+
+- The seven additional reviewed records passed all 98 live language checks (200, no noindex, normalized self-canonical). Together with the earlier four, eleven deliberate indexing repairs retain the original records and all 14 descriptions. KSOR's playback URL now matches its [official Classics & News stream](https://www.ijpr.org/stream-urls-media-players).
+- Migrations 0032 and 0033 deployed successfully: public record reads confirm all four retained duplicate redirects. Eurodance's excluded historical source redirects to the existing official-stream listing, rather than being made a second indexable page.
+- Live redirect testing exposed a separate identity collision: another station's historical `smooth-1` alias beat the real Russian `smooth-1` record, sending visitors to an unrelated Uganda station. The derived slug cache now gives real canonical identities precedence, independently of catalog order or noindex status. Stored aliases are preserved. The old edge 301 has a 300-second cache lifetime; final deployment needs live rechecking after expiry.
+- The native genre aggregate alone did not eliminate every cold-home delay: measured expired-cache requests were 1,007 ms and 5,637 ms, versus 203/140 ms immediate repeats. The final home-only change never awaits optional taxonomy I/O. It refreshes up to 24 names/links in the background, retains them for at most 120 seconds including source age, and then uses existing localized fallback links. No station IDs/counts or health visibility are retained; strict API freshness is unchanged. Required page data can still affect origin latency.
+- Fixed untranslated station related-country/city headings using the existing shared station-copy module, with all 14 locale fallbacks and safely escaped localized overrides. Content, links and visual structure are unchanged.
+- Combined final backend regression run: **186 passed, zero failed/skipped**. Shared declarations rebuilt and API TypeScript passed. Earlier full frontend/build and isolated SQL verification remain recorded above.
+- Sitemap rebuild completed in production: **48,706 station URLs per language, 14 languages, 98 unique child sitemaps**. Index XML and EN/DE/TR main XML return 200 with correct XML MIME types. Sample EN station chunks 1/3/5 have uncompressed lengths 31,821,643 / 32,374,895 / 28,739,887 bytes, under the 50 MB limit. This checks representative chunks, not every XML body.
+- Google live-tested `/de/sender/radio-blacklight`: **URL available to Google, page indexable, one valid breadcrumb item**. The subsequent indexing request was accepted into Google's priority crawl queue.
+- All-submitted-URLs GSC view reports **zero noindex** URLs. The two reported different-canonical examples (`80s-christmas`, `shirley-spinoza`) and EN counterparts currently have indexable 200 responses, self-canonicals, reciprocal language URLs and genuinely localized content/schema. The global canonical validation is already running and was not restarted.
+- Known-all-URLs reports still include intentional exclusions and retired URLs. Do not claim every 404/noindex exclusion is an error or restart a knowingly unresolved whole-category validation. The 5xx validation is started; remaining Google selection/validation outcomes are asynchronous, not guaranteed by these code changes.
+
 ## Follow-up: full noindex export and reviewed production repairs
 
 The full 416-URL noindex export was subsequently checked over public HTTP with

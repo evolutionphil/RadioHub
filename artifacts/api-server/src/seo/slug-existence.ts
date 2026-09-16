@@ -196,6 +196,18 @@ export async function loadSlugExistence(): Promise<void> {
       }
     }
 
+    // A real slug can also survive in a different record's old slugAliases.
+    // Exact identity must win, just as it does in PostgreSQL/SSR lookups; e.g.
+    // Russian smooth-1 must not redirect to the unrelated Uganda smooth row.
+    // Prune only the derived cache after ALL rows are read (order-independent).
+    // Do not delete stored aliases or add any database work to the hot path.
+    for (const doc of stationDocs as StationLite[]) {
+      if (!doc.slug) continue;
+      const canonical = doc.slug.toLowerCase();
+      if (nextAliasMap.get(canonical)?.junk) junkAliasCount--;
+      nextAliasMap.delete(canonical);
+    }
+
     const nextGenres = new Set<string>();
     for (const doc of genreDocs as Array<{ slug?: string }>) {
       if (doc.slug) nextGenres.add(doc.slug.toLowerCase());

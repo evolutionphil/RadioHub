@@ -41,6 +41,51 @@ const STREAM_UNAVAILABLE: Record<string, string> = {
   he: 'השידור של תחנה זו אינו זמין זמנית. יש לנסות שוב מאוחר יותר.',
 };
 
+// Country/city headings need templates, not English prefixes: several locales
+// put the location before the noun. Keep these beside the other station copy.
+const RELATED_HEADINGS: Record<string, readonly [string, string, string, string]> = {
+  en: ['More radio stations from {location}', 'Radio stations in {location}', 'Similar stations', 'Nearby stations'],
+  es: ['Más emisoras de radio de {location}', 'Emisoras de radio en {location}', 'Emisoras similares', 'Emisoras cercanas'],
+  fr: ['Autres stations de radio : {location}', 'Stations de radio à {location}', 'Stations similaires', 'Stations à proximité'],
+  de: ['Weitere Radiosender aus {location}', 'Radiosender in {location}', 'Ähnliche Sender', 'Sender in der Nähe'],
+  pt: ['Mais estações de rádio de {location}', 'Estações de rádio em {location}', 'Estações semelhantes', 'Estações próximas'],
+  it: ['Altre stazioni radio: {location}', 'Stazioni radio a {location}', 'Stazioni simili', 'Stazioni nelle vicinanze'],
+  ru: ['Другие радиостанции: {location}', 'Радиостанции в городе {location}', 'Похожие радиостанции', 'Радиостанции поблизости'],
+  ar: ['المزيد من محطات الراديو من {location}', 'محطات الراديو في {location}', 'محطات مشابهة', 'محطات قريبة'],
+  zh: ['{location}的更多广播电台', '{location}的广播电台', '类似电台', '附近的电台'],
+  tr: ['{location} ülkesindeki diğer radyo istasyonları', '{location} şehrindeki radyo istasyonları', 'Benzer istasyonlar', 'Yakındaki istasyonlar'],
+  ja: ['{location}のその他のラジオ局', '{location}のラジオ局', '類似のラジオ局', '近くのラジオ局'],
+  ko: ['{location}의 다른 라디오 방송국', '{location}의 라디오 방송국', '비슷한 방송국', '주변 방송국'],
+  hi: ['{location} के अन्य रेडियो स्टेशन', '{location} के रेडियो स्टेशन', 'मिलते-जुलते स्टेशन', 'आस-पास के स्टेशन'],
+  he: ['תחנות רדיו נוספות מ{location}', 'תחנות רדיו ב{location}', 'תחנות דומות', 'תחנות בקרבת מקום'],
+};
+
+/** Returns plain text; callers must escape the completed heading for HTML. */
+export function getStationRelatedHeading(
+  language: string,
+  kind: 'country' | 'city',
+  location: string,
+  translations: Record<string, string> = {},
+): string {
+  const locale = language.trim().toLowerCase().split(/[-_]/)[0];
+  const index = (kind === 'country' ? 0 : 1) + (location ? 0 : 2);
+  const key = location
+    ? (kind === 'country' ? 'similar_in_country' : 'stations_in_city')
+    : (kind === 'country' ? 'similar_stations' : 'nearby_stations');
+  const override = translations[key]?.trim();
+  const englishSeed = RELATED_HEADINGS.en[index].replace(' {location}', '');
+  const localizedOverride = override && override !== key
+    && (locale === 'en' || (override.toLowerCase() !== englishSeed.toLowerCase()
+      && override.toLowerCase() !== RELATED_HEADINGS.en[index].toLowerCase()));
+  if (localizedOverride) {
+    // Existing database values are prefixes; also allow grammatical templates.
+    return override.includes('{location}')
+      ? override.replaceAll('{location}', () => location)
+      : `${override}${location ? ` ${location}` : ''}`;
+  }
+  return (RELATED_HEADINGS[locale] || RELATED_HEADINGS.en)[index].replace('{location}', () => location);
+}
+
 /** Identical public copy for server-rendered pages and the interactive player. */
 export function getStationStreamUnavailableNotice(language: string): string {
   return STREAM_UNAVAILABLE[language.trim().toLowerCase().split(/[-_]/)[0]] || STREAM_UNAVAILABLE.en;
