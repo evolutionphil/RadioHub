@@ -27,7 +27,10 @@ mock.module('../src/data/postgres-seo-read-store', { namedExports: { pgSeoCatalo
   findOne: async (query: any) => {
     stationReads++;
     if (databaseFails) throw new Error('temporary PostgreSQL read outage');
-    if (exactLookupFixtures) return exactLookupFixtures.get(query.slug ? `slug:${query.slug}` : `alias:${query.slugAliases}`) ?? null;
+    if (exactLookupFixtures) {
+      const value = exactLookupFixtures.get(query.slug ? `slug:${query.slug}` : `alias:${query.slugAliases}`);
+      return typeof value === 'function' ? value() : value ?? null;
+    }
     return missing ? null : { ...station, ...stationOverrides, noIndex };
   },
   find: async () => [], count: async () => 0, groupCount: async () => [],
@@ -96,6 +99,81 @@ test('a current exact alias takes precedence over a verified historical spelling
   ]);
   const result = await renderer.renderStaticPage('/de/sender/kpissfm-2', 'https://themegaradio.com');
   assert.equal(result.pageData?.redirectTo, '/de/sender/explicit-current-owner');
+});
+
+for (const language of ACTIVE_SITEMAP_LANGUAGES) {
+  for (const [alias, sourceSlug, targetSlug] of [
+    ['rdi-gaga', 'radio-gaga-1', 'radio-gaga'],
+    ['rdio_fm-1', 'radio-fm-4', 'sro4-radio-fm'],
+    ['smooth-3', 'smooth-1', 'radio-jazz-smooth'],
+  ]) {
+    test(`${language}: retained duplicate alias ${alias} redirects directly to its indexable final target`, async () => {
+      exactLookupFixtures = new Map([
+        [`alias:${alias}`, { ...station, slug: sourceSlug, noIndex: true, redirectToSlug: targetSlug }],
+        [`slug:${targetSlug}`, { ...station, slug: targetSlug, noIndex: false }],
+      ]);
+      const detail = URL_TRANSLATIONS[language]?.station || 'station';
+      const result = await renderer.renderStaticPage(`/${language}/${detail}/${alias}`, 'https://themegaradio.com');
+      assert.equal(decodeURI(result.pageData?.redirectTo || ''), `/${language}/${detail}/${targetSlug}`);
+      assert.equal(result.pageData?.stationIsJunk, undefined);
+      assert.equal(stationReads, 3, 'exact miss, persisted alias, and one final-target read only');
+    });
+  }
+}
+
+for (const [reason, targetSlug, target] of [
+  ['missing', 'canonical-fm', null],
+  ['noindex', 'canonical-fm', { ...station, slug: 'canonical-fm', noIndex: true }],
+  ['junk', 'canonical-fm', { ...station, slug: 'canonical-fm', noIndex: false, url: '' }],
+  ['numeric', '12345', { ...station, slug: '12345', noIndex: false }],
+  ['self', 'duplicate-fm', { ...station, slug: 'duplicate-fm', noIndex: false }],
+  ['input alias', 'old-fm', { ...station, slug: 'old-fm', noIndex: false }],
+  ['redirect cycle', 'canonical-fm', { ...station, slug: 'canonical-fm', noIndex: false, redirectToSlug: 'duplicate-fm' }],
+  ['redirect chain', 'canonical-fm', { ...station, slug: 'canonical-fm', noIndex: false, redirectToSlug: 'third-fm' }],
+] as const) {
+  test(`retained duplicate alias does not redirect to a ${reason} target`, async () => {
+    exactLookupFixtures = new Map([
+      ['alias:old-fm', { ...station, slug: 'duplicate-fm', noIndex: true, redirectToSlug: targetSlug }],
+      [`slug:${targetSlug}`, target],
+    ]);
+    // For a target equal to the input alias, keep the initial exact lookup a miss
+    // and return that target only for the subsequent canonical-target read.
+    if (targetSlug === 'old-fm') {
+      let reads = 0;
+      exactLookupFixtures.set('slug:old-fm', () => ++reads === 1 ? null : target);
+    }
+    const result = await renderer.renderStaticPage('/ar/mahta/old-fm', 'https://themegaradio.com');
+    assert.equal(result.pageData?.redirectTo, undefined);
+    assert.equal(result.pageData?.stationIsJunk, true);
+  });
+}
+
+test('an exact current station wins over a historical duplicate alias with a redirect', async () => {
+  exactLookupFixtures = new Map([
+    ['slug:current-fm', { ...station, slug: 'current-fm', noIndex: false }],
+    ['alias:current-fm', { ...station, slug: 'duplicate-fm', noIndex: true, redirectToSlug: 'canonical-fm' }],
+    ['slug:canonical-fm', { ...station, slug: 'canonical-fm', noIndex: false }],
+  ]);
+  const result = await renderer.renderStaticPage('/en/station/current-fm', 'https://themegaradio.com');
+  assert.equal(result.pageData?.redirectTo, undefined);
+  assert.equal(result.pageData?.station.slug, 'current-fm');
+  assert.equal(stationReads, 1);
+});
+
+test('a retained duplicate target read outage stays retryable instead of becoming cached 410', async () => {
+  exactLookupFixtures = new Map([
+    ['alias:old-fm', { ...station, slug: 'duplicate-fm', noIndex: true, redirectToSlug: 'canonical-fm' }],
+    ['slug:canonical-fm', () => { throw new Error('temporary target read outage'); }],
+  ]);
+  const path = '/en/station/old-fm';
+  const failed = await renderer.renderStaticPage(path, 'https://themegaradio.com');
+  assert.equal(failed.pageData?.stationDbError, true);
+  assert.equal(failed.pageData?.stationIsJunk, false);
+  assert.equal(failed.pageData?.redirectTo, undefined);
+  assert.equal(pageCache.has(path), false);
+  exactLookupFixtures.set('slug:canonical-fm', { ...station, slug: 'canonical-fm', noIndex: false });
+  const recovered = await renderer.renderStaticPage(path, 'https://themegaradio.com');
+  assert.equal(recovered.pageData?.redirectTo, '/en/station/canonical-fm');
 });
 
 for (const language of ACTIVE_SITEMAP_LANGUAGES) {

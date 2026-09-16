@@ -8,7 +8,7 @@ import { pgSeoCatalog } from './data/postgres-seo-read-store';
 import { pgStoredGenreBySlug } from './data/postgres-taxonomy-store';
 import { pgSeoMetadata } from './data/postgres-content-store';
 import { pgLocalization } from './data/postgres-localization-store';
-import { PrecomputedGenresService } from './services/precomputed-genres';
+import { getCachedPublicGenres } from './services/public-genre-navigation';
 import { AZ_INDEX_KEYS, azDisplayLabel, azSlugBounds, matchAzIndexPath } from './seo/az-station-index';
 import { isMissingSeoCatalogPage, isSeoCatalogPath, parseSeoCatalogPage, seoCatalogPageLinks } from './seo/catalog-pagination';
 import { regionRouteExistence } from './seo/region-route-existence';
@@ -476,6 +476,22 @@ export class SeoRenderer {
               );
             }
             if (aliasMatch && aliasMatch.slug && aliasMatch.slug !== stationSlug) {
+              const { isJunkStation, isNumericOnlySlug, canRenderLegacyOfflineInformation } = await import('./seo/junk-station-rules');
+              // A retained duplicate can own historical aliases and an explicit
+              // redirect. Resolve that single hop before its noindex gate, but
+              // never promote a missing/excluded target or follow redirect chains.
+              let aliasRedirectRejected = false;
+              if (aliasMatch.redirectToSlug) {
+                const target = await withSignal(pgSeoCatalog().findOne({ slug: aliasMatch.redirectToSlug }), signal);
+                if (target && target.slug === aliasMatch.redirectToSlug
+                    && target.slug !== aliasMatch.slug && target.slug !== stationSlug
+                    && target.noIndex === false && !target.redirectToSlug
+                    && !isNumericOnlySlug(target.slug) && !isJunkStation(target)) {
+                  aliasMatch = target;
+                } else {
+                  aliasRedirectRejected = true;
+                }
+              }
               // JUNK GATE (Architect P1, Apr 2026): If the canonical target is
               // itself a junk station (noIndex:true or matches isJunkStation
               // heuristics), DO NOT 301 to it — that would tell Google "this
@@ -484,9 +500,9 @@ export class SeoRenderer {
               // the HTTP layer in index.ts/index-web.ts serves 410 Gone for
               // the original alias URL too. Same gate the main station branch
               // uses (line ~503) to keep alias and canonical paths consistent.
-              const { isJunkStation, canRenderLegacyOfflineInformation } = await import('./seo/junk-station-rules');
               const aliasTargetIsJunk =
-                isJunkStation(aliasMatch) || (aliasMatch.noIndex === true && !canRenderLegacyOfflineInformation(aliasMatch));
+                aliasRedirectRejected || isJunkStation(aliasMatch)
+                || (aliasMatch.noIndex === true && !canRenderLegacyOfflineInformation(aliasMatch));
               if (aliasTargetIsJunk) {
                 // CRITICAL: Do NOT set notFound:true — the HTTP-layer junk
                 // handler in both index.ts:1068 and index-web.ts:719 gates on
@@ -1186,16 +1202,22 @@ export class SeoRenderer {
         if (error?.name === 'AbortError' || signal?.aborted) throw error;
       }
       })(), (async () => {
-      // Inject top genres so Googlebot sees real genre content in SSR HTML
-      // Uses the precomputed cache (no live DB hit on cache hit).
+      // Use the same native membership counts and whitelist as the public
+      // browser, not the legacy per-station JSON/tag aggregate. Optional
+      // enrichment must not consume the full 10s page-render budget.
       try {
-        const genresData = await PrecomputedGenresService.getGenres('global');
-        additionalData.topGenres = genresData.genres.slice(0, 24).map(g => ({
+        const genres = await withSignal(getCachedPublicGenres(), signal);
+        additionalData.topGenres = [...genres]
+          .sort((a, b) => b.stationCount - a.stationCount || a.slug.localeCompare(b.slug))
+          .slice(0, 24).map(g => ({
           slug: g.slug,
           name: g.name,
           count: g.total_stations || g.stationCount || 0,
         }));
-      } catch (_) { /* non-blocking — falls back to hardcoded genre list below */ }
+      } catch (error: any) {
+        if (error?.name === 'AbortError' || signal?.aborted) throw error;
+        // Keep the existing localized genre links when this optional read fails.
+      }
       })()]);
     }
     

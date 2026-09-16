@@ -1,0 +1,196 @@
+{
+  "source": "GSC noindex CSV export, report updated 2026-09-14",
+  "checkedAt": "2026-09-16",
+  "concurrency": 2,
+  "notes": "Snapshot after four individually reviewed indexing repairs; preserves real remaining exclusions. HTTP redirect targets followed. This is not Google live-index status.",
+  "total": 416,
+  "byStatus": {
+    "200": 405,
+    "410": 11
+  },
+  "stillNoindex": [
+    {
+      "url": "/af/stasie/radyo-fenomen-2010-lar",
+      "status": 200,
+      "noindex": true,
+      "final": "/en/station/radyo-fenomen-2010-lar"
+    },
+    {
+      "url": "/af/station/radyo-fenomen-2010-lar",
+      "status": 200,
+      "noindex": true,
+      "final": "/en/station/radyo-fenomen-2010-lar"
+    },
+    {
+      "url": "/af/stasie/radio-wey",
+      "status": 200,
+      "noindex": true,
+      "final": "/en/station/radio-wey"
+    },
+    {
+      "url": "/af/station/radio-wey",
+      "status": 200,
+      "noindex": true,
+      "final": "/en/station/radio-wey"
+    },
+    {
+      "url": "/no/stasjon/jalisco-radio-fm-ciudad-guzman-107-1-fm-xhcgj-fm-gobierno-del-estado-de-jalisco-ciudad-guzman-jc",
+      "status": 200,
+      "noindex": true,
+      "final": "/en/station/jalisco-radio-fm-ciudad-guzman-107-1-fm-xhcgj-fm-gobierno-del-estado-de-jalisco-ciudad-guzman-jc"
+    },
+    {
+      "url": "/af/stasie/ksor-90-1-jefferson-public-radio-ashland-or",
+      "status": 200,
+      "noindex": true,
+      "final": "/en/station/ksor-90-1-jefferson-public-radio-ashland-or"
+    },
+    {
+      "url": "/af/stasie/ksor-901-jefferson-public-radio-ashland-or",
+      "status": 200,
+      "noindex": true,
+      "final": "/en/station/ksor-90-1-jefferson-public-radio-ashland-or"
+    },
+    {
+      "url": "/af/station/ksor-901-jefferson-public-radio-ashland-or",
+      "status": 200,
+      "noindex": true,
+      "final": "/en/station/ksor-90-1-jefferson-public-radio-ashland-or"
+    },
+    {
+      "url": "/af/stasie/echoes-gr-netradio-thessaloniki",
+      "status": 200,
+      "noindex": true,
+      "final": "/en/station/echoes-gr-netradio-thessaloniki"
+    },
+    {
+      "url": "/af/stasie/echoesgr-netradio-thessaloniki",
+      "status": 200,
+      "noindex": true,
+      "final": "/en/station/echoes-gr-netradio-thessaloniki"
+    },
+    {
+      "url": "/af/station/echoesgr-netradio-thessaloniki",
+      "status": 200,
+      "noindex": true,
+      "final": "/en/station/echoes-gr-netradio-thessaloniki"
+    },
+    {
+      "url": "/af/stasie/principe-joinville",
+      "status": 200,
+      "noindex": true,
+      "final": "/en/station/principe-joinville"
+    },
+    {
+      "url": "/af/station/principe-joinville",
+      "status": 200,
+      "noindex": true,
+      "final": "/en/station/principe-joinville"
+    },
+    {
+      "url": "/bg/stantsiya/wnob-93-7-bob-fm-chesapeake-va",
+      "status": 200,
+      "noindex": true,
+      "final": "/en/station/wnob-93-7-bob-fm-chesapeake-va"
+    },
+    {
+      "url": "/bg/stantsiya/wnob-937-bob-fm-chesapeake-va",
+      "status": 200,
+      "noindex": true,
+      "final": "/en/station/wnob-93-7-bob-fm-chesapeake-va"
+    },
+    {
+      "url": "/bg/station/wnob-937-bob-fm-chesapeake-va",
+      "status": 200,
+      "noindex": true,
+      "final": "/en/station/wnob-93-7-bob-fm-chesapeake-va"
+    },
+    {
+      "url": "/am/ጣቢያ/radio-eurodance-classic",
+      "status": 200,
+      "noindex": true,
+      "final": "/en/station/radio-eurodance-classic"
+    },
+    {
+      "url": "/am/station/radio-eurodance-classic",
+      "status": 200,
+      "noindex": true,
+      "final": "/en/station/radio-eurodance-classic"
+    },
+    {
+      "url": "/hu/radios/cai-tiao-ce-shi-1",
+      "status": 200,
+      "noindex": true,
+      "final": "/en/station/cai-tiao-ce-shi-1"
+    }
+  ],
+  "errors": [],
+  "other": [
+    {
+      "url": "/no/stasjon/jalisco-radio-fm-ciudad-guzmn-1071-fm-xhcgj-fm-gobierno-del-estado-de-jalisco-ciudad-guzmn-jc-1",
+      "status": 410,
+      "noindex": true,
+      "final": "/en/station/jalisco-radio-fm-ciudad-guzmn-1071-fm-xhcgj-fm-gobierno-del-estado-de-jalisco-ciudad-guzmn-jc-1"
+    },
+    {
+      "url": "/no/station/jalisco-radio-fm-ciudad-guzmn-1071-fm-xhcgj-fm-gobierno-del-estado-de-jalisco-ciudad-guzmn-jc-1",
+      "status": 410,
+      "noindex": true,
+      "final": "/en/station/jalisco-radio-fm-ciudad-guzmn-1071-fm-xhcgj-fm-gobierno-del-estado-de-jalisco-ciudad-guzmn-jc-1"
+    },
+    {
+      "url": "/ar/mahta/cnr-15-1",
+      "status": 410,
+      "noindex": true,
+      "final": "/ar/mahta/cnr-15-1"
+    },
+    {
+      "url": "/ar/station/cnr-15-1",
+      "status": 410,
+      "noindex": true,
+      "final": "/ar/mahta/cnr-15-1"
+    },
+    {
+      "url": "/sy/station/cnr-15-1",
+      "status": 410,
+      "noindex": true,
+      "final": "/ar/mahta/cnr-15-1"
+    },
+    {
+      "url": "/am/ጣቢያ/rdio-mundi-993-fm",
+      "status": 410,
+      "noindex": true,
+      "final": "/en/station/rdio-mundi-993-fm"
+    },
+    {
+      "url": "/am/station/rdio-mundi-993-fm",
+      "status": 410,
+      "noindex": true,
+      "final": "/en/station/rdio-mundi-993-fm"
+    },
+    {
+      "url": "/da/station/salsa-927-fm-1",
+      "status": 410,
+      "noindex": true,
+      "final": "/en/station/salsa-927-fm-1"
+    },
+    {
+      "url": "/si/station/salsa-927-fm-1",
+      "status": 410,
+      "noindex": true,
+      "final": "/en/station/salsa-927-fm-1"
+    },
+    {
+      "url": "/sl/postaja/salsa-927-fm-1",
+      "status": 410,
+      "noindex": true,
+      "final": "/en/station/salsa-927-fm-1"
+    },
+    {
+      "url": "/sl/station/salsa-927-fm-1",
+      "status": 410,
+      "noindex": true,
+      "final": "/en/station/salsa-927-fm-1"
+    }
+  ]
+}

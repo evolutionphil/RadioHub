@@ -1,6 +1,4 @@
 import type { Express } from "express";
-import { createHash } from 'node:crypto';
-import { getMergedWhitelist } from '../seo/genre-whitelist-store';
 import { pgRecommendationProfile, pgRecentSessionListening } from '../data/postgres-recommendation-store';
 import { SAFE_GENRE_SLUG_RE } from '../seo/genre-slug';
 import { pgCatalog } from '../data/postgres-catalog-store';
@@ -9,16 +7,12 @@ import { CacheKeys } from '../cache';
 import { publicStationCache as CacheManager } from '../public-station-cache';
 import { publicStationResponseCache } from '../middleware/public-station-cache';
 import { PrecomputedGenresService } from '../services/precomputed-genres';
+import { getCachedPublicGenres, publicGenreWhitelistVersion } from '../services/public-genre-navigation';
 import { resolveToDbName, getAllCountryInfoFromDb } from '../utils/normalize-country';
 import { tvValidateParams, tvSlimGenre } from './shared-utils';
 import { logger } from '../utils/logger';
 import { listStationsFromPostgres } from '../data/station-read-store';
 import { pgCountryCounts, pgDiscoverableGenres, pgGenreBySlug, pgPublicGenres, pgStoredGenreBySlug, pgCreateGenre, pgUpdateGenre, pgDeleteGenre } from '../data/postgres-taxonomy-store';
-
-// Keep cached navigation aligned with admin whitelist edits without shortening
-// the existing taxonomy TTL or invalidating it on an unchanged periodic refresh.
-const publicGenreWhitelistVersion = () => 'navigation-v2:' + createHash('sha256')
-  .update([...getMergedWhitelist()].sort().join('\0')).digest('hex').slice(0, 16);
 
 export function registerGenresCountriesRoutes(app: Express, deps: any) {
   app.use(['/api/genres','/api/countries'], publicStationResponseCache);
@@ -288,9 +282,7 @@ export function registerGenresCountriesRoutes(app: Express, deps: any) {
         const resolvedCountry = identifier === 'global' ? undefined : (resolveToDbName(identifier) || identifier);
         // Share the native country aggregate across pages/searches and concurrent
         // visitors. Whitelist edits immediately select a different cache entry.
-        const genreCacheKey = `genres:precomputed:native-v1:${resolvedCountry || 'global'}:whitelist-${publicGenreWhitelistVersion()}`;
-        let genres = await CacheManager.getOrSetSingleFlight(genreCacheKey,
-          () => pgPublicGenres(resolvedCountry, true), { ttl: 60 });
+        let genres = await getCachedPublicGenres(resolvedCountry);
         genres = [...genres];
         if (search) genres = genres.filter((genre: any) => genre.name?.toLowerCase().includes(search) || genre.slug?.toLowerCase().includes(search));
         genres.sort((a, b) => b.stationCount - a.stationCount || a.slug.localeCompare(b.slug));

@@ -13,6 +13,11 @@ mock.module('../src/postgres-runtime', { namedExports: { getPostgresPool: () => 
   lastCountry = params[0];
   reads++;
   assert.ok(sql.startsWith('SELECT'), 'Only a read query is allowed');
+  if (sql.includes('FROM station_genres')) {
+    assert.match(sql, /JOIN stations s ON s\.id=sg\.station_id/);
+    assert.match(sql, /s\.is_list_visible IS TRUE OR COALESCE\(s\.visibility_expires_at<=now\(\),false\)/);
+    assert.doesNotMatch(sql, /s\.source|tags_raw|LATERAL/, 'Native membership must not decode per-station legacy JSON/tags');
+  }
   return { rows: sql.includes('WHERE is_discoverable=true') ? rows.filter(r => r.is_discoverable) : rows };
 } }) } });
 mock.module('../src/seo/genre-whitelist-store', { namedExports: { getMergedWhitelist: () => allowed, getMergedAliases: () => new Map() } });
@@ -28,6 +33,7 @@ mock.module('../src/services/recommendation-engine', { namedExports: { Recommend
 mock.module('../src/services/precomputed-genres', { namedExports: { PrecomputedGenresService: {} } });
 mock.module('../src/routes/shared-utils', { namedExports: { tvSlimGenre: (value: unknown) => value, tvValidateParams: () => ({ page: 1, limit: 9 }) } });
 const taxonomy = await import('../src/data/postgres-taxonomy-store');
+const { getCachedPublicGenres } = await import('../src/services/public-genre-navigation');
 const { registerGenresCountriesRoutes } = await import('../src/routes/genres-countries-routes');
 let server: Server, base: string;
 before(async () => {
@@ -106,4 +112,29 @@ it('reuses the native aggregate across pagination/search while separating countr
   allowed.delete('rock');
   const changed = await get('/api/genres/precomputed?country=Austria');
   assert.equal(reads, 3); assert.ok(!changed.data.some((r: any) => r.slug === 'rock'));
+});
+it('shares the native home SSR read with the API without mutating its cached order or count shape', async () => {
+  const native = await getCachedPublicGenres();
+  const initialOrder = native.map(genre => genre.slug);
+  assert.equal(reads, 1);
+  const response = await get('/api/genres/precomputed?countryName=global&limit=24');
+  assert.equal(reads, 1, 'The HTTP route reuses the SSR cache key and loader');
+  assert.deepEqual(response.data.map((genre: any) => genre.slug), ['jazz', 'custom-genre', 'rock', 'pop']);
+  assert.deepEqual(native.map(genre => genre.slug), initialOrder);
+  assert.ok(response.data.every((genre: any) => genre.stationCount === genre.total_stations));
+});
+it('expires native genre visibility after 60 seconds without extending the deadline for API readers', async () => {
+  let now = 1_000_000;
+  const clock = mock.method(Date, 'now', () => now);
+  try {
+    await getCachedPublicGenres();
+    now += 55_000;
+    await get('/api/genres/precomputed?countryName=global');
+    assert.equal(reads, 1);
+    rows = rows.filter(genre => genre.slug !== 'rock');
+    now += 5_001;
+    const fresh = await getCachedPublicGenres();
+    assert.equal(reads, 2);
+    assert.ok(!fresh.some(genre => genre.slug === 'rock'), 'A new health-aware native read replaces expired membership');
+  } finally { clock.mock.restore(); }
 });

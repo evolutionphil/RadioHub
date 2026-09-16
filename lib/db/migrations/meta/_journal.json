@@ -218,6 +218,13 @@
       "when": 1791068400000,
       "tag": "0031_station_duplicate_jobs",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1791154800000,
+      "tag": "0032_verified_station_duplicate_redirects",
+      "breakpoints": true
     }
   ]
 }
