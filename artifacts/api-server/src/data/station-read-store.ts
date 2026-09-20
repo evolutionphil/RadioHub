@@ -1,6 +1,6 @@
 import { getPostgresPool } from "../postgres-runtime";
 import { stationVisibilityFields } from '../utils/station-visibility';
-import { verifiedLegacyStationAlias } from '../seo/verified-legacy-station-alias';
+import { matchesVerifiedLegacyStationTarget, verifiedLegacyStationAlias } from '../seo/verified-legacy-station-alias';
 
 export type StationReadMode = "postgres";
 export const stationReadMode: StationReadMode = "postgres";
@@ -47,7 +47,7 @@ function fromPostgres(row: Record<string, any> | undefined): any | null {
   };
 }
 
-async function postgresStation(identifier: string): Promise<any | null> {
+async function postgresStation(identifier: string, allowHistoricalRepair = true): Promise<any | null> {
   const result = await getPostgresPool().query(
     // OR-ing the unindexed alias array with slug/id makes every direct hit
     // scan the complete catalog. Retain precedence in one snapshot, but only
@@ -65,8 +65,11 @@ async function postgresStation(identifier: string): Promise<any | null> {
     [identifier],
   );
   if (result.rows[0]) return fromPostgres(result.rows[0]);
-  const repairedAlias = verifiedLegacyStationAlias(identifier);
-  return repairedAlias ? postgresStation(repairedAlias) : null;
+  const repairedAlias = allowHistoricalRepair && verifiedLegacyStationAlias(identifier);
+  if (!repairedAlias) return null;
+  // One fallback only: an allowlist mistake must never recurse or form a cycle.
+  const target = await postgresStation(repairedAlias, false);
+  return target && matchesVerifiedLegacyStationTarget(identifier, target._id, target.redirectToSlug) ? target : null;
 }
 
 export async function getPopularStationsFromPostgres(options: {

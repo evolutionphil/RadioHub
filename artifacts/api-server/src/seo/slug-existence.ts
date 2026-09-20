@@ -41,7 +41,7 @@ import {
 import { PrecomputedCitiesService } from '../services/precomputed-cities';
 import { logger } from '../utils/logger';
 import { isJunkStation } from './junk-station-rules';
-import { verifiedLegacyStationAlias } from './verified-legacy-station-alias';
+import { matchesVerifiedLegacyStationTarget, verifiedLegacyStationAliases } from './verified-legacy-station-alias';
 
 /**
  * Mirrors the `generateSlug()` used in PrecomputedCitiesService and the
@@ -75,7 +75,7 @@ let citySlugsByCountry: Map<string, Set<string>> = new Map();
 // target is junk — those URLs must serve 410 Gone via the SSR alias
 // branch, not 301. Without this gate the middleware would silently
 // reverse the SSR's deindex strategy. All slugs lowercased.
-interface AliasInfo { canonical: string; junk: boolean; }
+interface AliasInfo { canonical: string; junk: boolean; stationId?: unknown; redirectToSlug?: string; }
 let stationAliasToCanonical: Map<string, AliasInfo> = new Map();
 let ready = false;
 
@@ -84,9 +84,7 @@ export function isSlugExistenceReady(): boolean {
 }
 
 export function hasStationSlug(slug: string): boolean {
-  if (stationSlugs.has(slug)) return true;
-  const repairedAlias = verifiedLegacyStationAlias(slug);
-  return repairedAlias !== null && stationSlugs.has(repairedAlias);
+  return stationSlugs.has(slug);
 }
 
 /**
@@ -103,10 +101,7 @@ export function hasStationSlug(slug: string): boolean {
 export function getCanonicalStationSlug(aliasSlug: string): string | null {
   if (!aliasSlug) return null;
   const lower = aliasSlug.toLowerCase();
-  // A current exact slug/alias always wins over a historical repair. Only
-  // known aliases carry the target's junk bit, so never guess a destination.
-  const lookup = stationSlugs.has(lower) ? lower : (verifiedLegacyStationAlias(lower) || lower);
-  const info = stationAliasToCanonical.get(lookup);
+  const info = stationAliasToCanonical.get(lower);
   if (!info) return null;
   if (info.canonical === aliasSlug.toLowerCase()) return null;
   if (info.junk) return null;
@@ -160,8 +155,12 @@ export async function loadSlugExistence(): Promise<void> {
 
     const nextStations = new Set<string>();
     const nextAliasMap = new Map<string, AliasInfo>();
+    const repairTargets = new Set(verifiedLegacyStationAliases.map(([, target]) => target));
+    const nextRepairTargets = new Map<string, AliasInfo>();
     let junkAliasCount = 0;
     type StationLite = {
+      _id?: unknown;
+      redirectToSlug?: string;
       slug?: string;
       slugAliases?: string[];
       noIndex?: boolean;
@@ -174,10 +173,12 @@ export async function loadSlugExistence(): Promise<void> {
     for (const doc of stationDocs as StationLite[]) {
       const canonical = doc.slug ? doc.slug.toLowerCase() : '';
       if (canonical) nextStations.add(canonical);
+      const isJunk = doc.noIndex === true || isJunkStation(doc);
+      const info = { canonical, junk: isJunk, stationId: doc._id, redirectToSlug: doc.redirectToSlug };
+      if (repairTargets.has(canonical)) nextRepairTargets.set(canonical, info);
       if (Array.isArray(doc.slugAliases) && canonical) {
         // Compute junk ONCE per station, not per alias — same canonical
         // target is shared across all of its aliases.
-        const isJunk = doc.noIndex === true || isJunkStation(doc);
         for (const a of doc.slugAliases) {
           if (!a) continue;
           const aliasLower = a.toLowerCase();
@@ -185,7 +186,7 @@ export async function loadSlugExistence(): Promise<void> {
           // Only store entries where the alias actually differs from the
           // canonical — saves memory and short-circuits the no-op case.
           if (aliasLower !== canonical) {
-            nextAliasMap.set(aliasLower, { canonical, junk: isJunk });
+            nextAliasMap.set(aliasLower, info);
             if (isJunk) junkAliasCount++;
           }
         }
@@ -206,6 +207,21 @@ export async function loadSlugExistence(): Promise<void> {
       const canonical = doc.slug.toLowerCase();
       if (nextAliasMap.get(canonical)?.junk) junkAliasCount--;
       nextAliasMap.delete(canonical);
+    }
+
+    // Resolve the finite historical allowlist only at refresh time. Real current
+    // slugs/aliases win; canonical targets and persisted alias targets share the
+    // same ID and junk guards. Snapshot targets before adding repairs so these
+    // cannot chain, recurse, or create a destination for a missing catalog row.
+    const repairs = verifiedLegacyStationAliases.map(([legacy, target]) => ({
+      legacy, info: nextRepairTargets.get(target) || nextAliasMap.get(target),
+    }));
+    for (const { legacy, info } of repairs) {
+      if (nextStations.has(legacy) || !info || info.canonical === legacy
+          || !matchesVerifiedLegacyStationTarget(legacy, info.stationId, info.redirectToSlug)) continue;
+      nextStations.add(legacy);
+      nextAliasMap.set(legacy, info);
+      if (info.junk) junkAliasCount++;
     }
 
     const nextGenres = new Set<string>();

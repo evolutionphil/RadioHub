@@ -101,6 +101,64 @@ test('a current exact alias takes precedence over a verified historical spelling
   assert.equal(result.pageData?.redirectTo, '/de/sender/explicit-current-owner');
 });
 
+for (const [legacy, canonical, id] of [
+  ['radio-onda-rossa-1', 'onda-rossa', '68a8c482bd66579311ab2f5b'],
+  ['kiis-1065-sydney-1065-fm-mp3-1', 'kiis-106-5', '68a8c478bd66579311ab1477'],
+]) {
+  const target = { ...station, _id: id, slug: canonical, noIndex: false,
+    descriptions: Object.fromEntries(ACTIVE_SITEMAP_LANGUAGES.map(lang => [lang, { full: `Full ${lang}`, meta: `Meta ${lang}` }])) };
+  for (const language of ACTIVE_SITEMAP_LANGUAGES) {
+    test(`${language}: recovered ${legacy} redirects once to its pinned localized station`, async () => {
+      qualifiedLanguages = [...ACTIVE_SITEMAP_LANGUAGES];
+      exactLookupFixtures = new Map([[`slug:${canonical}`, target]]);
+      const detail = URL_TRANSLATIONS[language]?.station || 'station';
+      const result = await renderer.renderStaticPage(`/${language}/${detail}/${legacy}`, 'https://themegaradio.com');
+      assert.equal(decodeURI(result.pageData?.redirectTo || ''), `/${language}/${detail}/${canonical}`);
+      assert.equal(result.pageData?.stationIsJunk, undefined);
+      assert.equal(stationReads, 3, 'exact source, source alias and exact target only');
+      const finalPage = await renderer.renderStaticPage(`/${language}/${detail}/${canonical}`, 'https://themegaradio.com');
+      assert.equal(finalPage.pageData?.station?._id, id);
+      assert.equal(finalPage.pageData?.redirectTo, undefined, 'redirect destination remains stable');
+    });
+  }
+
+  for (const [reason, patch, excluded] of [
+    ['missing', null, false],
+    ['reassigned identity', { _id: 'unrelated-station' }, false],
+    ['noindex', { noIndex: true }, true],
+    ['offline noindex', { noIndex: true, lastCheckOk: false }, true],
+    ['junk', { url: '' }, true],
+    ['redirect cycle', { redirectToSlug: legacy }, false],
+    ['redirect chain', { redirectToSlug: 'unreviewed-destination' }, false],
+  ] as const) {
+    test(`${legacy}: SSR refuses a ${reason} destination`, async () => {
+      exactLookupFixtures = new Map(patch ? [[`slug:${canonical}`, { ...target, ...patch }]] : []);
+      const result = await renderer.renderStaticPage(`/en/station/${legacy}`, 'https://themegaradio.com');
+      assert.equal(result.pageData?.redirectTo, undefined);
+      if (excluded) assert.equal(result.pageData?.stationIsJunk, true);
+      else assert.equal(result.pageData?.notFound, true);
+      assert.ok(stationReads <= 4, 'lookup does not follow chains or scan candidates');
+    });
+  }
+
+  for (const kind of ['slug', 'alias', 'merged']) {
+    test(`${legacy}: SSR preserves the current ${kind} owner before a historical repair`, async () => {
+      const actual = { ...station, _id: 'current-owner', slug: kind === 'slug' ? legacy : 'actual-owner', noIndex: false };
+      exactLookupFixtures = new Map([[`slug:${canonical}`, target]]);
+      if (kind === 'merged') mergedAlias = actual;
+      else exactLookupFixtures.set(`${kind}:${legacy}`, actual);
+      const result = await renderer.renderStaticPage(`/en/station/${legacy}`, 'https://themegaradio.com');
+      if (kind === 'slug') {
+        assert.equal(result.pageData?.station?._id, 'current-owner');
+        assert.equal(result.pageData?.redirectTo, undefined);
+      } else {
+        assert.equal(result.pageData?.redirectTo, '/en/station/actual-owner');
+      }
+      assert.ok(stationReads <= 2, 'existing owner avoids the historical target read');
+    });
+  }
+}
+
 for (const language of ACTIVE_SITEMAP_LANGUAGES) {
   for (const [alias, sourceSlug, targetSlug] of [
     ['rdi-gaga', 'radio-gaga-1', 'radio-gaga'],

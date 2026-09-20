@@ -12,7 +12,7 @@ import { getHomeGenreNavigation } from './services/home-genre-navigation';
 import { AZ_INDEX_KEYS, azDisplayLabel, azSlugBounds, matchAzIndexPath } from './seo/az-station-index';
 import { isMissingSeoCatalogPage, isSeoCatalogPath, parseSeoCatalogPage, seoCatalogPageLinks } from './seo/catalog-pagination';
 import { regionRouteExistence } from './seo/region-route-existence';
-import { verifiedLegacyStationAlias } from './seo/verified-legacy-station-alias';
+import { matchesVerifiedLegacyStationTarget, verifiedLegacyStationAlias } from './seo/verified-legacy-station-alias';
 
 // The renderer only needs this small subset of the normalized catalog shape.
 interface LeanStationCard {
@@ -464,7 +464,7 @@ export class SeoRenderer {
               pgSeoCatalog().findMergedAlias(stationSlug).then(match => match ?? pgSeoCatalog().findOne({ slugAliases: stationSlug })),
               signal,
             );
-            // Only repair two verified historical spellings after every exact
+            // Only repair reviewed historical spellings after every exact
             // identity lookup missed. Keep the normal junk/canonical gates below.
             const repairedAlias = !aliasMatch && verifiedLegacyStationAlias(stationSlug);
             if (repairedAlias) {
@@ -474,6 +474,9 @@ export class SeoRenderer {
                     ?? pgSeoCatalog().findOne({ slugAliases: repairedAlias }))),
                 signal,
               );
+              if (aliasMatch && !matchesVerifiedLegacyStationTarget(stationSlug, aliasMatch._id, aliasMatch.redirectToSlug)) {
+                aliasMatch = null;
+              }
             }
             if (aliasMatch && aliasMatch.slug && aliasMatch.slug !== stationSlug) {
               const { isJunkStation, isNumericOnlySlug, canRenderLegacyOfflineInformation } = await import('./seo/junk-station-rules');
@@ -502,6 +505,7 @@ export class SeoRenderer {
               // uses (line ~503) to keep alias and canonical paths consistent.
               const aliasTargetIsJunk =
                 aliasRedirectRejected || isJunkStation(aliasMatch)
+                || (!!repairedAlias && aliasMatch.noIndex === true)
                 || (aliasMatch.noIndex === true && !canRenderLegacyOfflineInformation(aliasMatch));
               if (aliasTargetIsJunk) {
                 // CRITICAL: Do NOT set notFound:true — the HTTP-layer junk

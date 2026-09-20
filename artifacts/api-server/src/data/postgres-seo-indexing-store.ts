@@ -91,7 +91,7 @@ export async function pgRetireManifests(languages:string[]):Promise<number>{
 }
 export async function pgSeoGenres(ids?:readonly unknown[]):Promise<any[]>{return(await getPostgresPool().query("SELECT id AS _id,slug,station_count AS \"stationCount\",updated_at AS \"updatedAt\" FROM genres WHERE slug IS NOT NULL AND slug<>'' AND ($1::text[] IS NULL OR id=ANY($1)) ORDER BY station_count DESC,id",[ids?ids.map(String):null])).rows;}
 export async function pgStationSlugRows():Promise<any[]> {
-  return (await getPostgresPool().query(`SELECT slug,slug_aliases AS "slugAliases",no_index AS "noIndex",name,url,
+  return (await getPostgresPool().query(`SELECT id AS _id,slug,slug_aliases AS "slugAliases",redirect_to_slug AS "redirectToSlug",no_index AS "noIndex",name,url,
     last_check_ok AS "lastCheckOk",last_check_time AS "lastCheckTime",source->>'lastCheckOkTime' AS "lastCheckOkTime"
     FROM stations WHERE slug IS NOT NULL ORDER BY id`)).rows;
 }

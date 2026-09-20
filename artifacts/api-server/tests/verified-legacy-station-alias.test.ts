@@ -27,13 +27,88 @@ beforeEach(async () => {
   await loadSlugExistence();
 });
 
-test('only the two catalog-verified historical spellings are eligible', () => {
+test('only individually reviewed historical spellings are eligible', () => {
   assert.equal(verifiedLegacyStationAlias('kpissfm-2'), 'kpiss-fm-2');
   assert.equal(verifiedLegacyStationAlias('flashbassfm-1'), 'flashbass-fm-1');
-  for (const slug of ['kpissfm-1', 'kpiss-fm-2', 'randomfm-1', '-2173', '__proto__', 'constructor']) {
+  assert.equal(verifiedLegacyStationAlias('radio-onda-rossa-1'), 'onda-rossa');
+  assert.equal(verifiedLegacyStationAlias('kiis-1065-sydney-1065-fm-mp3-1'), 'kiis-106-5');
+  for (const slug of ['kpissfm-1', 'kpiss-fm-2', 'randomfm-1', '-2173', '__proto__', 'constructor',
+    'radio-onda-rossa-3', 'kiis-1065-sydney-1065-fm-mp3-2']) {
     assert.equal(verifiedLegacyStationAlias(slug), null, slug);
   }
 });
+
+for (const [legacy, canonical, id] of [
+  ['radio-onda-rossa-1', 'onda-rossa', '68a8c482bd66579311ab2f5b'],
+  ['kiis-1065-sydney-1065-fm-mp3-1', 'kiis-106-5', '68a8c478bd66579311ab1477'],
+]) {
+  const target = { id, slug: canonical, name: 'Verified Radio', no_index: false,
+    url: 'https://stream.example.invalid/live', slug_aliases: [] };
+  const cacheTarget = { _id: id, slug: canonical, name: target.name, noIndex: false,
+    url: target.url, slugAliases: [] };
+
+  test(`${legacy}: direct canonical identity resolves through public reads and the redirect cache`, async () => {
+    rows.set(canonical, target);
+    slugRows = [cacheTarget];
+    await loadSlugExistence();
+    const station = await getStationByIdentifier(legacy);
+    assert.equal(station?._id, id);
+    assert.equal(station?.slug, canonical);
+    assert.deepEqual(reads, [legacy, canonical], 'one bounded fallback, no name/country search');
+    assert.equal(hasStationSlug(legacy), true);
+    assert.equal(getCanonicalStationSlug(legacy), canonical);
+    assert.equal(getCanonicalStationSlug(legacy.toUpperCase()), canonical);
+    assert.equal(getCanonicalStationSlug(canonical), null, 'canonical destination is stable');
+  });
+
+  for (const reason of ['missing', 'reassigned', 'redirect-cycle', 'redirect-chain']) {
+    test(`${legacy}: ${reason} target cannot acquire a historical identity`, async () => {
+      if (reason !== 'missing') {
+        const redirect = reason.startsWith('redirect') ? (reason === 'redirect-cycle' ? legacy : 'another-station') : undefined;
+        rows.set(canonical, { ...target, id: reason === 'reassigned' ? 'unrelated-owner' : id, redirect_to_slug: redirect });
+        slugRows = [{ ...cacheTarget, _id: reason === 'reassigned' ? 'unrelated-owner' : id, redirectToSlug: redirect }];
+      }
+      await loadSlugExistence();
+      assert.equal(await getStationByIdentifier(legacy), null);
+      assert.deepEqual(reads, [legacy, canonical]);
+      assert.equal(hasStationSlug(legacy), false);
+      assert.equal(getCanonicalStationSlug(legacy), null);
+    });
+  }
+
+  for (const reason of ['noindex', 'junk']) {
+    test(`${legacy}: ${reason} target remains excluded without changing public data`, async () => {
+      const noIndex = reason === 'noindex';
+      const url = reason === 'junk' ? '' : target.url;
+      rows.set(canonical, { ...target, no_index: noIndex, url });
+      slugRows = [{ ...cacheTarget, noIndex, url }];
+      await loadSlugExistence();
+      const station = await getStationByIdentifier(legacy);
+      assert.equal(station?._id, id);
+      assert.equal(station?.noIndex, noIndex);
+      assert.equal(station?.url, url);
+      assert.equal(hasStationSlug(legacy), true, 'SSR must apply its normal exclusion response');
+      assert.equal(getCanonicalStationSlug(legacy), null, 'middleware must never promote an excluded target');
+    });
+  }
+
+  for (const exactSlug of [legacy, 'current-alias-owner']) {
+    test(`${legacy}: existing ${exactSlug === legacy ? 'slug' : 'alias'} owner wins over the repair`, async () => {
+      rows.set(legacy, { id: 'current-owner', slug: exactSlug, no_index: true });
+      rows.set(canonical, target);
+      slugRows = [cacheTarget, { ...cacheTarget, _id: 'current-owner', slug: exactSlug,
+        slugAliases: exactSlug === legacy ? [] : [legacy], noIndex: true }];
+      await loadSlugExistence();
+      assert.equal((await getStationByIdentifier(legacy))?._id, 'current-owner');
+      assert.deepEqual(reads, [legacy]);
+      assert.equal(hasStationSlug(legacy), true);
+      assert.equal(getCanonicalStationSlug(legacy), null, 'an excluded actual owner cannot be bypassed');
+      slugRows[1].noIndex = false;
+      await loadSlugExistence();
+      assert.equal(getCanonicalStationSlug(legacy), exactSlug === legacy ? null : exactSlug);
+    });
+  }
+}
 
 for (const [legacy, alias, canonical] of [
   ['kpissfm-2', 'kpiss-fm-2', 'kpiss-fm'],
