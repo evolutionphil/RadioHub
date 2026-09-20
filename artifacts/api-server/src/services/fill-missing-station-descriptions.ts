@@ -81,6 +81,9 @@ export async function fillMissingStationDescriptions(
   }
   if (missing.length) {
     const source = descriptions[sourceLanguage];
+    // Capture an already-complete pivot before the first translation request.
+    // A target returned in that request must not create a chain of paid retries.
+    const englishPivot = hasCompleteDescription(descriptions.en) ? descriptions.en : undefined;
     assertActive();
     onAction('translating', missing);
     const translations = await translateDescription(source.full,
@@ -90,7 +93,23 @@ export async function fillMissingStationDescriptions(
       const translated = translations.get(language);
       if (translated) await save(language, translated);
     }
-    const failed = missing.filter(language => !hasCompleteDescription(descriptions[language]));
+    let failed = missing.filter(language => !hasCompleteDescription(descriptions[language]));
+    const pivotTargets = failed.filter(language => language !== 'en');
+    const comparable = (value: string) => value.normalize('NFC').replace(/\s+/gu, ' ').trim().toLowerCase();
+    if (sourceLanguage !== 'en' && englishPivot && pivotTargets.length &&
+        comparable(englishPivot.full) !== comparable(source.full)) {
+      // One alternate-source attempt only. The same translator keeps its output
+      // validation/concurrency limit; saves retain original compare-and-set guards.
+      assertActive();
+      onAction('translating', pivotTargets);
+      const retried = await translateDescription(englishPivot.full, englishPivot.meta,
+        'en', pivotTargets, station.name, assertActive);
+      for (const language of pivotTargets) {
+        const translated = retried.get(language);
+        if (translated) await save(language, translated);
+      }
+      failed = failed.filter(language => !hasCompleteDescription(descriptions[language]));
+    }
     if (failed.length) throw new Error(`Translation failed for languages: ${failed.join(', ')}`);
   }
   return { skipped: false, languages: written };
