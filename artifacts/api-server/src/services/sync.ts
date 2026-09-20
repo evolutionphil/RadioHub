@@ -2,12 +2,13 @@ import { pgCatalog, pgCreateSyncRun, pgSaveSyncRun, pgSyncLogs, pgSyncBlacklist 
 import { buildSyncBlacklist } from '../utils/sync-blacklist';
 import { assessDuplicateGroup, DUPLICATE_POLICY_FIELDS } from '../utils/station-duplicate-policy';
 import { getPostgresPool, getPostgresCoordinationPool } from '../postgres-runtime';
-import axios from 'axios';
 import NodeCache from 'node-cache';
 import { radioBrowserHealthDate } from '../utils/provider-health-freshness';
 import { ImageManager } from './image-manager';
 import { logoProcessor } from './logo-processor';
 import { logger } from '../utils/logger';
+import { fetchWithMirrorFallback, RadioBrowserRequestCancelledError } from './radio-browser-request';
+export { fetchWithMirrorFallback } from './radio-browser-request';
 import {
   evaluateJunkStation,
   slugifyStationName,
@@ -24,74 +25,6 @@ function invalidProviderFields(station: any): string[] {
   return REQUIRED_PROVIDER_FIELDS.filter(field =>
     typeof station?.[field] !== 'string' || !station[field].trim(),
   );
-}
-
-// INCIDENT 2026-05-16 — radio-browser sync exploded with AxiosError 502
-// because we only ever tried `de1.api.radio-browser.info`. The
-// radio-browser project runs ~6 mirrors; when one is down we now
-// transparently fall through to the next instead of skipping the
-// nightly sync entirely. Order matters — most-reliable first.
-const RADIO_BROWSER_MIRRORS = [
-  'de2.api.radio-browser.info',
-  'fr1.api.radio-browser.info',
-  'nl1.api.radio-browser.info',
-  'at1.api.radio-browser.info',
-  'uk1.api.radio-browser.info',
-  'de1.api.radio-browser.info',
-];
-
-function isRetryableMirrorError(err: any): boolean {
-  const status = err?.response?.status;
-  if (typeof status === 'number' && status >= 500) return true;
-  const code = err?.code;
-  return (
-    code === 'ECONNREFUSED' ||
-    code === 'ECONNRESET' ||
-    code === 'ETIMEDOUT' ||
-    code === 'ENOTFOUND' ||
-    code === 'EAI_AGAIN' ||
-    code === 'ERR_BAD_RESPONSE'
-  );
-}
-
-/**
- * Try the same radio-browser request against each mirror until one
- * succeeds. `pathBuilder(host)` returns the full URL to hit; we try
- * mirrors in order and only fall through on 5xx / network errors —
- * 4xx (e.g. 404 byuuid) is returned verbatim so callers handle it.
- */
-export async function fetchWithMirrorFallback<T = any>(
-  pathBuilder: (host: string) => string,
-  options: import('axios').AxiosRequestConfig = {},
-  context: string = 'radio-browser',
-): Promise<{ data: T; mirror: string }> {
-  let lastErr: any;
-  for (const mirror of RADIO_BROWSER_MIRRORS) {
-    const url = pathBuilder(mirror);
-    try {
-      logger.log(`🔄 [${context}] trying mirror=${mirror}`);
-      const resp = await axios.get<T>(url, options);
-      return { data: resp.data, mirror };
-    } catch (err: any) {
-      lastErr = err;
-      if (!isRetryableMirrorError(err)) {
-        // 4xx etc. — caller's problem, don't burn through other mirrors.
-        throw err;
-      }
-      logger.warn(
-        `⚠️ [${context}] mirror=${mirror} failed (status=${err?.response?.status || 'n/a'} code=${err?.code || 'n/a'}), trying next…`,
-      );
-      const attempt = RADIO_BROWSER_MIRRORS.indexOf(mirror);
-      if (attempt < RADIO_BROWSER_MIRRORS.length - 1) {
-        const delayMs = Math.min(500 * 2 ** attempt, 4000);
-        await new Promise((resolve) => setTimeout(resolve, delayMs));
-      }
-    }
-  }
-  logger.error(
-    `❌ [${context}] all ${RADIO_BROWSER_MIRRORS.length} mirrors failed; last error: ${lastErr?.message || lastErr}`,
-  );
-  throw lastErr;
 }
 
 export class SyncService {
@@ -226,12 +159,7 @@ export class SyncService {
     } catch (error: any) {
       this.isRunning = false;
       const msg = error?.message || String(error);
-      const isNetTimeout = /timed out|ECONNRESET/i.test(msg);
-      if (isNetTimeout) {
-        logger.warn(`⚠️ Sync skipped (cluster cold, will retry next cycle): ${msg}`);
-      } else {
-        logger.error('💥 Sync failed:', error);
-      }
+      logger.error(`Sync failed (run=${this.activeRun?._id || 'not-created'} processed=${this.activeRun?.stationsProcessed || 0} code=${error?.code || 'unknown'}): ${msg}`);
       
       // Log the error
       if (this.activeRun) {
@@ -295,21 +223,25 @@ export class SyncService {
 
     for (let page = 0; page < MAX_PAGES; page++) {
       const offset = page * PAGE_SIZE;
-      // INCIDENT 2026-05-16 — go through fetchWithMirrorFallback so a
-      // single mirror's 502 no longer skips the whole nightly sync.
-      const { data, mirror } = await fetchWithMirrorFallback<any[]>(
-        (host) => `https://${host}/json/stations/search`,
-        {
-          // Per-mirror 30s budget (task #484): 6 mirrors × 30s = 3min hard
-          // ceiling for one page — fast enough that a single dead mirror
-          // doesn't stall the nightly sync, generous enough for a 5000-row
-          // JSON page over a slow upstream.
-          timeout: 30000,
-          headers: { 'User-Agent': 'RadioApp/1.0' },
-          params: { limit: PAGE_SIZE, offset, hidebroken: false },
-        },
-        `sync:fetchAllStations p${page + 1}`,
-      );
+      let response: { data: any[]; mirror: string };
+      try {
+        response = await fetchWithMirrorFallback<any[]>(
+          (host) => `https://${host}/json/stations/search`,
+          {
+            // Discovery and bounded retry rounds preserve this exact offset.
+            // The helper caps each request at 30s and all attempts at 3 minutes.
+            timeout: 30000,
+            headers: { 'User-Agent': 'RadioApp/1.0' },
+            params: { limit: PAGE_SIZE, offset, hidebroken: false },
+          },
+          `sync:fetchAllStations p${page + 1}`,
+          { shouldStop: () => this.isStopRequested(), retryTransientFailures: true },
+        );
+      } catch (error) {
+        if (error instanceof RadioBrowserRequestCancelledError) return;
+        throw error;
+      }
+      const { data, mirror } = response;
       const rows: any[] = Array.isArray(data) ? data : [];
       if (page === 0) {
         // Explicit cron:nightly trace line — surfaces the chosen mirror in

@@ -1,0 +1,191 @@
+{
+  "run": {
+    "observedAt": "2026-09-20T21:08:11.242Z",
+    "id": "5623c4d94d6140e45f2100f0",
+    "status": "failed",
+    "startedAt": "2026-09-20T20:52:03.506Z",
+    "completedAt": "2026-09-20T21:07:17.920Z",
+    "processed": 50000,
+    "skipped": 7644,
+    "invalid": 2,
+    "error": "read ECONNRESET"
+  },
+  "observations": [
+    {
+      "observedAt": "2026-09-20T20:52:28.652Z",
+      "id": "5623c4d94d6140e45f2100f0",
+      "status": "running",
+      "startedAt": "2026-09-20T20:52:03.506Z",
+      "completedAt": null,
+      "processed": 1500,
+      "skipped": 323,
+      "invalid": 2,
+      "error": null
+    },
+    {
+      "observedAt": "2026-09-20T20:53:31.227Z",
+      "id": "5623c4d94d6140e45f2100f0",
+      "status": "running",
+      "startedAt": "2026-09-20T20:52:03.506Z",
+      "completedAt": null,
+      "processed": 5000,
+      "skipped": 956,
+      "invalid": 2,
+      "error": null
+    },
+    {
+      "observedAt": "2026-09-20T20:54:34.730Z",
+      "id": "5623c4d94d6140e45f2100f0",
+      "status": "running",
+      "startedAt": "2026-09-20T20:52:03.506Z",
+      "completedAt": null,
+      "processed": 9200,
+      "skipped": 1739,
+      "invalid": 2,
+      "error": null
+    },
+    {
+      "observedAt": "2026-09-20T20:55:37.341Z",
+      "id": "5623c4d94d6140e45f2100f0",
+      "status": "running",
+      "startedAt": "2026-09-20T20:52:03.506Z",
+      "completedAt": null,
+      "processed": 12700,
+      "skipped": 2189,
+      "invalid": 2,
+      "error": null
+    },
+    {
+      "observedAt": "2026-09-20T20:56:40.962Z",
+      "id": "5623c4d94d6140e45f2100f0",
+      "status": "running",
+      "startedAt": "2026-09-20T20:52:03.506Z",
+      "completedAt": null,
+      "processed": 15000,
+      "skipped": 2496,
+      "invalid": 2,
+      "error": null
+    },
+    {
+      "observedAt": "2026-09-20T20:57:44.069Z",
+      "id": "5623c4d94d6140e45f2100f0",
+      "status": "running",
+      "startedAt": "2026-09-20T20:52:03.506Z",
+      "completedAt": null,
+      "processed": 18300,
+      "skipped": 2948,
+      "invalid": 2,
+      "error": null
+    },
+    {
+      "observedAt": "2026-09-20T20:58:46.647Z",
+      "id": "5623c4d94d6140e45f2100f0",
+      "status": "running",
+      "startedAt": "2026-09-20T20:52:03.506Z",
+      "completedAt": null,
+      "processed": 22100,
+      "skipped": 3580,
+      "invalid": 2,
+      "error": null
+    },
+    {
+      "observedAt": "2026-09-20T20:59:50.733Z",
+      "id": "5623c4d94d6140e45f2100f0",
+      "status": "running",
+      "startedAt": "2026-09-20T20:52:03.506Z",
+      "completedAt": null,
+      "processed": 25000,
+      "skipped": 4054,
+      "invalid": 2,
+      "error": null
+    },
+    {
+      "observedAt": "2026-09-20T21:00:53.261Z",
+      "id": "5623c4d94d6140e45f2100f0",
+      "status": "running",
+      "startedAt": "2026-09-20T20:52:03.506Z",
+      "completedAt": null,
+      "processed": 28300,
+      "skipped": 4419,
+      "invalid": 2,
+      "error": null
+    },
+    {
+      "observedAt": "2026-09-20T21:01:55.846Z",
+      "id": "5623c4d94d6140e45f2100f0",
+      "status": "running",
+      "startedAt": "2026-09-20T20:52:03.506Z",
+      "completedAt": null,
+      "processed": 32400,
+      "skipped": 5179,
+      "invalid": 2,
+      "error": null
+    },
+    {
+      "observedAt": "2026-09-20T21:02:58.439Z",
+      "id": "5623c4d94d6140e45f2100f0",
+      "status": "running",
+      "startedAt": "2026-09-20T20:52:03.506Z",
+      "completedAt": null,
+      "processed": 35900,
+      "skipped": 5612,
+      "invalid": 2,
+      "error": null
+    },
+    {
+      "observedAt": "2026-09-20T21:04:01.042Z",
+      "id": "5623c4d94d6140e45f2100f0",
+      "status": "running",
+      "startedAt": "2026-09-20T20:52:03.506Z",
+      "completedAt": null,
+      "processed": 39800,
+      "skipped": 6124,
+      "invalid": 2,
+      "error": null
+    },
+    {
+      "observedAt": "2026-09-20T21:05:03.622Z",
+      "id": "5623c4d94d6140e45f2100f0",
+      "status": "running",
+      "startedAt": "2026-09-20T20:52:03.506Z",
+      "completedAt": null,
+      "processed": 43300,
+      "skipped": 6607,
+      "invalid": 2,
+      "error": null
+    },
+    {
+      "observedAt": "2026-09-20T21:06:06.132Z",
+      "id": "5623c4d94d6140e45f2100f0",
+      "status": "running",
+      "startedAt": "2026-09-20T20:52:03.506Z",
+      "completedAt": null,
+      "processed": 46200,
+      "skipped": 6990,
+      "invalid": 2,
+      "error": null
+    },
+    {
+      "observedAt": "2026-09-20T21:07:08.672Z",
+      "id": "5623c4d94d6140e45f2100f0",
+      "status": "running",
+      "startedAt": "2026-09-20T20:52:03.506Z",
+      "completedAt": null,
+      "processed": 49800,
+      "skipped": 7613,
+      "invalid": 2,
+      "error": null
+    },
+    {
+      "observedAt": "2026-09-20T21:08:11.242Z",
+      "id": "5623c4d94d6140e45f2100f0",
+      "status": "failed",
+      "startedAt": "2026-09-20T20:52:03.506Z",
+      "completedAt": "2026-09-20T21:07:17.920Z",
+      "processed": 50000,
+      "skipped": 7644,
+      "invalid": 2,
+      "error": "read ECONNRESET"
+    }
+  ]
+}

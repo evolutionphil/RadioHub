@@ -1,5 +1,20 @@
 # Indexability follow-up — 20 September 2026
 
+## Completion follow-up (same evening)
+
+- Deployed commit `0f35e7c4867185c5ceb9a70d3e5f9d435beeb3e1` to main. Railway API and web both displayed **Active / Deployment successful**.
+- Repaired the two remaining historical station URLs using exact, reviewed mappings with pinned destination IDs. Official broadcaster identity/stream evidence is documented in `2026-09-20-historical-station-aliases.md`; the old numeric suffix mapping is a reviewed inference, not a recovered archive field. No generic suffix stripping, database merge or deletion was performed.
+- Regression checks: **248 tests passed**, API TypeScript check passed, production API build passed. Independent source review found no outstanding issue.
+- Live checks: **31/31 passed**, including both mappings in all 14 languages plus all three previously failed GSC 404 examples. Destinations returned 200, self-canonical URLs, no noindex, and 14 language alternatives. Evidence: `2026-09-20-historical-alias-live.json`. The verifier normalizes equivalent percent-encoded/non-ASCII URL forms.
+- Restarted the **404** validation after those live checks. GSC visibly reported **Validation Started, 20 September 2026; 676 pending, zero failed**. This is acceptance of a new validation, not a Google success/indexing guarantee.
+- Started one full provider-catalog synchronization at `2026-09-20T20:52:03.506Z`, persisted run ID `5623c4d94d6140e45f2100f0`. It failed after 50,000 processed rows at `21:07:17.920Z`; this is NOT counted as a completed import. The two malformed provider rows were safely skipped. Evidence is preserved in `2026-09-20-production-sync-result.json`.
+- Railway deployment logs identify the exact cause: provider page 11 failed with `ECONNRESET` on both de2/de1, while fr1/nl1/at1/uk1 failed DNS lookup (`ENOTFOUND`). There was no deployment/restart during the run. The old catch message incorrectly called this a cold database cluster; the failure was the upstream HTTP request.
+- Implemented official SRV-based server discovery, cached/coalesced and restricted to valid Radio Browser HTTPS hosts, with known working de1/de2 fallbacks. Catalog pages opt into up to three retry rounds, a 30-second request limit and a three-minute total page budget. Retries preserve the exact GET offset; database writes are not replayed. Cancellation/leadership checks bracket attempts. Interactive by-UUID calls do not inherit the longer retry rounds. Errors now identify the provider page/run/progress instead of claiming a cold database. [Official discovery guidance](https://api.radio-browser.info/).
+- API TypeScript validation and production build passed for the provider recovery patch. Targeted tests reproduce the exact page-11 reset and verify bounded exhaustion, deadline allocation, DNS filtering/cache, cancellation, and propagation of leadership errors. A new full production run must still be verified after deployment; a successful test/build is not a successful import.
+- The earlier estimate based on a failed run's 4,800 progress counter was discarded: old counters were page-local. Previous successful full runs processed about 64,700 rows in 18–23 minutes. No speculative concurrency/performance change was shipped.
+
+The sections below retain the earlier audit chronology. The two historical 404 follow-ups listed there are now repaired and submitted.
+
 ## Production changes verified
 
 - Resumed the deployed, explicit-selection legacy-noindex recovery. Starting catalog: 62,711 records, 12,849 stored noindex flags, 5,742 eligible candidates. Applied the 5,742 candidates in bounded batches; final recovery preview returned zero further eligible candidates and 7,107 stored noindex flags. The recovery does not alter stream health, playback visibility, descriptions, or station identities. Eligibility is a structural safety screen, not a human certification of every station's editorial quality.

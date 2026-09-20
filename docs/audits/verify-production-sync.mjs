@@ -30,7 +30,7 @@ while (Date.now() - started < 45 * 60_000) {
       previousProcessed = sample.processed;
     }
     if (sample.status !== 'running') {
-      await writeFile(new URL(`./${new Date().toISOString().slice(0, 10)}-production-sync-result.json`, import.meta.url),
+      await writeFile(new URL(`./${new Date().toISOString().slice(0, 10)}-production-sync-${runId}.json`, import.meta.url),
         JSON.stringify({ run: sample, observations }, null, 2) + '\n');
       if (sample.status !== 'completed' || !sample.completedAt || !(sample.processed > 0)) {
         throw new Error(`Run did not complete successfully: ${sample.status}`);

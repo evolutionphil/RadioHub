@@ -1,0 +1,1166 @@
+{
+  "checkedAt": "2026-09-20T20:54:07.829Z",
+  "count": 31,
+  "passed": 31,
+  "results": [
+    {
+      "input": "https://themegaradio.com/en/station/radio-onda-rossa-1",
+      "final": "https://themegaradio.com/en/station/onda-rossa",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/en/station/radio-onda-rossa-1",
+          "status": 301,
+          "location": "/en/station/onda-rossa"
+        },
+        {
+          "url": "https://themegaradio.com/en/station/onda-rossa",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "canonical": "https://themegaradio.com/en/station/onda-rossa",
+      "noindex": false,
+      "languages": [
+        "en",
+        "tr-TR",
+        "es",
+        "fr",
+        "de",
+        "ar",
+        "it-IT",
+        "pt",
+        "ru-RU",
+        "zh-Hans",
+        "ja-JP",
+        "ko-KR",
+        "hi-IN",
+        "he-IL"
+      ],
+      "pass": true,
+      "language": "en"
+    },
+    {
+      "input": "https://themegaradio.com/tr/istasyon/radio-onda-rossa-1",
+      "final": "https://themegaradio.com/tr/istasyon/onda-rossa",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/tr/istasyon/radio-onda-rossa-1",
+          "status": 301,
+          "location": "/tr/istasyon/onda-rossa"
+        },
+        {
+          "url": "https://themegaradio.com/tr/istasyon/onda-rossa",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "canonical": "https://themegaradio.com/tr/istasyon/onda-rossa",
+      "noindex": false,
+      "languages": [
+        "en",
+        "tr-TR",
+        "es",
+        "fr",
+        "de",
+        "ar",
+        "it-IT",
+        "pt",
+        "ru-RU",
+        "zh-Hans",
+        "ja-JP",
+        "ko-KR",
+        "hi-IN",
+        "he-IL"
+      ],
+      "pass": true,
+      "language": "tr-TR"
+    },
+    {
+      "input": "https://themegaradio.com/es/estacion/radio-onda-rossa-1",
+      "final": "https://themegaradio.com/es/estacion/onda-rossa",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/es/estacion/radio-onda-rossa-1",
+          "status": 301,
+          "location": "/es/estacion/onda-rossa"
+        },
+        {
+          "url": "https://themegaradio.com/es/estacion/onda-rossa",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "canonical": "https://themegaradio.com/es/estacion/onda-rossa",
+      "noindex": false,
+      "languages": [
+        "en",
+        "tr-TR",
+        "es",
+        "fr",
+        "de",
+        "ar",
+        "it-IT",
+        "pt",
+        "ru-RU",
+        "zh-Hans",
+        "ja-JP",
+        "ko-KR",
+        "hi-IN",
+        "he-IL"
+      ],
+      "pass": true,
+      "language": "es"
+    },
+    {
+      "input": "https://themegaradio.com/fr/station/radio-onda-rossa-1",
+      "final": "https://themegaradio.com/fr/station/onda-rossa",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/fr/station/radio-onda-rossa-1",
+          "status": 301,
+          "location": "/fr/station/onda-rossa"
+        },
+        {
+          "url": "https://themegaradio.com/fr/station/onda-rossa",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "canonical": "https://themegaradio.com/fr/station/onda-rossa",
+      "noindex": false,
+      "languages": [
+        "en",
+        "tr-TR",
+        "es",
+        "fr",
+        "de",
+        "ar",
+        "it-IT",
+        "pt",
+        "ru-RU",
+        "zh-Hans",
+        "ja-JP",
+        "ko-KR",
+        "hi-IN",
+        "he-IL"
+      ],
+      "pass": true,
+      "language": "fr"
+    },
+    {
+      "input": "https://themegaradio.com/de/sender/radio-onda-rossa-1",
+      "final": "https://themegaradio.com/de/sender/onda-rossa",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/de/sender/radio-onda-rossa-1",
+          "status": 301,
+          "location": "/de/sender/onda-rossa"
+        },
+        {
+          "url": "https://themegaradio.com/de/sender/onda-rossa",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "canonical": "https://themegaradio.com/de/sender/onda-rossa",
+      "noindex": false,
+      "languages": [
+        "en",
+        "tr-TR",
+        "es",
+        "fr",
+        "de",
+        "ar",
+        "it-IT",
+        "pt",
+        "ru-RU",
+        "zh-Hans",
+        "ja-JP",
+        "ko-KR",
+        "hi-IN",
+        "he-IL"
+      ],
+      "pass": true,
+      "language": "de"
+    },
+    {
+      "input": "https://themegaradio.com/ar/mahta/radio-onda-rossa-1",
+      "final": "https://themegaradio.com/ar/mahta/onda-rossa",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ar/mahta/radio-onda-rossa-1",
+          "status": 301,
+          "location": "/ar/mahta/onda-rossa"
+        },
+        {
+          "url": "https://themegaradio.com/ar/mahta/onda-rossa",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "canonical": "https://themegaradio.com/ar/mahta/onda-rossa",
+      "noindex": false,
+      "languages": [
+        "en",
+        "tr-TR",
+        "es",
+        "fr",
+        "de",
+        "ar",
+        "it-IT",
+        "pt",
+        "ru-RU",
+        "zh-Hans",
+        "ja-JP",
+        "ko-KR",
+        "hi-IN",
+        "he-IL"
+      ],
+      "pass": true,
+      "language": "ar"
+    },
+    {
+      "input": "https://themegaradio.com/it/stazione/radio-onda-rossa-1",
+      "final": "https://themegaradio.com/it/stazione/onda-rossa",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/it/stazione/radio-onda-rossa-1",
+          "status": 301,
+          "location": "/it/stazione/onda-rossa"
+        },
+        {
+          "url": "https://themegaradio.com/it/stazione/onda-rossa",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "canonical": "https://themegaradio.com/it/stazione/onda-rossa",
+      "noindex": false,
+      "languages": [
+        "en",
+        "tr-TR",
+        "es",
+        "fr",
+        "de",
+        "ar",
+        "it-IT",
+        "pt",
+        "ru-RU",
+        "zh-Hans",
+        "ja-JP",
+        "ko-KR",
+        "hi-IN",
+        "he-IL"
+      ],
+      "pass": true,
+      "language": "it-IT"
+    },
+    {
+      "input": "https://themegaradio.com/pt/estacao/radio-onda-rossa-1",
+      "final": "https://themegaradio.com/pt/estacao/onda-rossa",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/pt/estacao/radio-onda-rossa-1",
+          "status": 301,
+          "location": "/pt/estacao/onda-rossa"
+        },
+        {
+          "url": "https://themegaradio.com/pt/estacao/onda-rossa",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "canonical": "https://themegaradio.com/pt/estacao/onda-rossa",
+      "noindex": false,
+      "languages": [
+        "en",
+        "tr-TR",
+        "es",
+        "fr",
+        "de",
+        "ar",
+        "it-IT",
+        "pt",
+        "ru-RU",
+        "zh-Hans",
+        "ja-JP",
+        "ko-KR",
+        "hi-IN",
+        "he-IL"
+      ],
+      "pass": true,
+      "language": "pt"
+    },
+    {
+      "input": "https://themegaradio.com/ru/stantsiya/radio-onda-rossa-1",
+      "final": "https://themegaradio.com/ru/stantsiya/onda-rossa",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ru/stantsiya/radio-onda-rossa-1",
+          "status": 301,
+          "location": "/ru/stantsiya/onda-rossa"
+        },
+        {
+          "url": "https://themegaradio.com/ru/stantsiya/onda-rossa",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "canonical": "https://themegaradio.com/ru/stantsiya/onda-rossa",
+      "noindex": false,
+      "languages": [
+        "en",
+        "tr-TR",
+        "es",
+        "fr",
+        "de",
+        "ar",
+        "it-IT",
+        "pt",
+        "ru-RU",
+        "zh-Hans",
+        "ja-JP",
+        "ko-KR",
+        "hi-IN",
+        "he-IL"
+      ],
+      "pass": true,
+      "language": "ru-RU"
+    },
+    {
+      "input": "https://themegaradio.com/zh/%E7%94%B5%E5%8F%B0/radio-onda-rossa-1",
+      "final": "https://themegaradio.com/zh/%E7%94%B5%E5%8F%B0/onda-rossa",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/zh/%E7%94%B5%E5%8F%B0/radio-onda-rossa-1",
+          "status": 301,
+          "location": "/zh/%E7%94%B5%E5%8F%B0/onda-rossa"
+        },
+        {
+          "url": "https://themegaradio.com/zh/%E7%94%B5%E5%8F%B0/onda-rossa",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "canonical": "https://themegaradio.com/zh/%E7%94%B5%E5%8F%B0/onda-rossa",
+      "noindex": false,
+      "languages": [
+        "en",
+        "tr-TR",
+        "es",
+        "fr",
+        "de",
+        "ar",
+        "it-IT",
+        "pt",
+        "ru-RU",
+        "zh-Hans",
+        "ja-JP",
+        "ko-KR",
+        "hi-IN",
+        "he-IL"
+      ],
+      "pass": true,
+      "language": "zh-Hans"
+    },
+    {
+      "input": "https://themegaradio.com/ja/%E3%82%B9%E3%83%86%E3%83%BC%E3%82%B7%E3%83%A7%E3%83%B3/radio-onda-rossa-1",
+      "final": "https://themegaradio.com/ja/%E3%82%B9%E3%83%86%E3%83%BC%E3%82%B7%E3%83%A7%E3%83%B3/onda-rossa",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ja/%E3%82%B9%E3%83%86%E3%83%BC%E3%82%B7%E3%83%A7%E3%83%B3/radio-onda-rossa-1",
+          "status": 301,
+          "location": "/ja/%E3%82%B9%E3%83%86%E3%83%BC%E3%82%B7%E3%83%A7%E3%83%B3/onda-rossa"
+        },
+        {
+          "url": "https://themegaradio.com/ja/%E3%82%B9%E3%83%86%E3%83%BC%E3%82%B7%E3%83%A7%E3%83%B3/onda-rossa",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "canonical": "https://themegaradio.com/ja/%E3%82%B9%E3%83%86%E3%83%BC%E3%82%B7%E3%83%A7%E3%83%B3/onda-rossa",
+      "noindex": false,
+      "languages": [
+        "en",
+        "tr-TR",
+        "es",
+        "fr",
+        "de",
+        "ar",
+        "it-IT",
+        "pt",
+        "ru-RU",
+        "zh-Hans",
+        "ja-JP",
+        "ko-KR",
+        "hi-IN",
+        "he-IL"
+      ],
+      "pass": true,
+      "language": "ja-JP"
+    },
+    {
+      "input": "https://themegaradio.com/ko/%EC%8A%A4%ED%85%8C%EC%9D%B4%EC%85%98/radio-onda-rossa-1",
+      "final": "https://themegaradio.com/ko/%EC%8A%A4%ED%85%8C%EC%9D%B4%EC%85%98/onda-rossa",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ko/%EC%8A%A4%ED%85%8C%EC%9D%B4%EC%85%98/radio-onda-rossa-1",
+          "status": 301,
+          "location": "/ko/%EC%8A%A4%ED%85%8C%EC%9D%B4%EC%85%98/onda-rossa"
+        },
+        {
+          "url": "https://themegaradio.com/ko/%EC%8A%A4%ED%85%8C%EC%9D%B4%EC%85%98/onda-rossa",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "canonical": "https://themegaradio.com/ko/%EC%8A%A4%ED%85%8C%EC%9D%B4%EC%85%98/onda-rossa",
+      "noindex": false,
+      "languages": [
+        "en",
+        "tr-TR",
+        "es",
+        "fr",
+        "de",
+        "ar",
+        "it-IT",
+        "pt",
+        "ru-RU",
+        "zh-Hans",
+        "ja-JP",
+        "ko-KR",
+        "hi-IN",
+        "he-IL"
+      ],
+      "pass": true,
+      "language": "ko-KR"
+    },
+    {
+      "input": "https://themegaradio.com/hi/station/radio-onda-rossa-1",
+      "final": "https://themegaradio.com/hi/station/onda-rossa",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/hi/station/radio-onda-rossa-1",
+          "status": 301,
+          "location": "/hi/station/onda-rossa"
+        },
+        {
+          "url": "https://themegaradio.com/hi/station/onda-rossa",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "canonical": "https://themegaradio.com/hi/station/onda-rossa",
+      "noindex": false,
+      "languages": [
+        "en",
+        "tr-TR",
+        "es",
+        "fr",
+        "de",
+        "ar",
+        "it-IT",
+        "pt",
+        "ru-RU",
+        "zh-Hans",
+        "ja-JP",
+        "ko-KR",
+        "hi-IN",
+        "he-IL"
+      ],
+      "pass": true,
+      "language": "hi-IN"
+    },
+    {
+      "input": "https://themegaradio.com/he/tachana/radio-onda-rossa-1",
+      "final": "https://themegaradio.com/he/tachana/onda-rossa",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/he/tachana/radio-onda-rossa-1",
+          "status": 301,
+          "location": "/he/tachana/onda-rossa"
+        },
+        {
+          "url": "https://themegaradio.com/he/tachana/onda-rossa",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "canonical": "https://themegaradio.com/he/tachana/onda-rossa",
+      "noindex": false,
+      "languages": [
+        "en",
+        "tr-TR",
+        "es",
+        "fr",
+        "de",
+        "ar",
+        "it-IT",
+        "pt",
+        "ru-RU",
+        "zh-Hans",
+        "ja-JP",
+        "ko-KR",
+        "hi-IN",
+        "he-IL"
+      ],
+      "pass": true,
+      "language": "he-IL"
+    },
+    {
+      "input": "https://themegaradio.com/en/station/kiis-1065-sydney-1065-fm-mp3-1",
+      "final": "https://themegaradio.com/en/station/kiis-106-5",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/en/station/kiis-1065-sydney-1065-fm-mp3-1",
+          "status": 301,
+          "location": "/en/station/kiis-106-5"
+        },
+        {
+          "url": "https://themegaradio.com/en/station/kiis-106-5",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "canonical": "https://themegaradio.com/en/station/kiis-106-5",
+      "noindex": false,
+      "languages": [
+        "en",
+        "tr-TR",
+        "es",
+        "fr",
+        "de",
+        "ar",
+        "it-IT",
+        "pt",
+        "ru-RU",
+        "zh-Hans",
+        "ja-JP",
+        "ko-KR",
+        "hi-IN",
+        "he-IL"
+      ],
+      "pass": true,
+      "language": "en"
+    },
+    {
+      "input": "https://themegaradio.com/tr/istasyon/kiis-1065-sydney-1065-fm-mp3-1",
+      "final": "https://themegaradio.com/tr/istasyon/kiis-106-5",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/tr/istasyon/kiis-1065-sydney-1065-fm-mp3-1",
+          "status": 301,
+          "location": "/tr/istasyon/kiis-106-5"
+        },
+        {
+          "url": "https://themegaradio.com/tr/istasyon/kiis-106-5",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "canonical": "https://themegaradio.com/tr/istasyon/kiis-106-5",
+      "noindex": false,
+      "languages": [
+        "en",
+        "tr-TR",
+        "es",
+        "fr",
+        "de",
+        "ar",
+        "it-IT",
+        "pt",
+        "ru-RU",
+        "zh-Hans",
+        "ja-JP",
+        "ko-KR",
+        "hi-IN",
+        "he-IL"
+      ],
+      "pass": true,
+      "language": "tr-TR"
+    },
+    {
+      "input": "https://themegaradio.com/es/estacion/kiis-1065-sydney-1065-fm-mp3-1",
+      "final": "https://themegaradio.com/es/estacion/kiis-106-5",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/es/estacion/kiis-1065-sydney-1065-fm-mp3-1",
+          "status": 301,
+          "location": "/es/estacion/kiis-106-5"
+        },
+        {
+          "url": "https://themegaradio.com/es/estacion/kiis-106-5",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "canonical": "https://themegaradio.com/es/estacion/kiis-106-5",
+      "noindex": false,
+      "languages": [
+        "en",
+        "tr-TR",
+        "es",
+        "fr",
+        "de",
+        "ar",
+        "it-IT",
+        "pt",
+        "ru-RU",
+        "zh-Hans",
+        "ja-JP",
+        "ko-KR",
+        "hi-IN",
+        "he-IL"
+      ],
+      "pass": true,
+      "language": "es"
+    },
+    {
+      "input": "https://themegaradio.com/fr/station/kiis-1065-sydney-1065-fm-mp3-1",
+      "final": "https://themegaradio.com/fr/station/kiis-106-5",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/fr/station/kiis-1065-sydney-1065-fm-mp3-1",
+          "status": 301,
+          "location": "/fr/station/kiis-106-5"
+        },
+        {
+          "url": "https://themegaradio.com/fr/station/kiis-106-5",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "canonical": "https://themegaradio.com/fr/station/kiis-106-5",
+      "noindex": false,
+      "languages": [
+        "en",
+        "tr-TR",
+        "es",
+        "fr",
+        "de",
+        "ar",
+        "it-IT",
+        "pt",
+        "ru-RU",
+        "zh-Hans",
+        "ja-JP",
+        "ko-KR",
+        "hi-IN",
+        "he-IL"
+      ],
+      "pass": true,
+      "language": "fr"
+    },
+    {
+      "input": "https://themegaradio.com/de/sender/kiis-1065-sydney-1065-fm-mp3-1",
+      "final": "https://themegaradio.com/de/sender/kiis-106-5",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/de/sender/kiis-1065-sydney-1065-fm-mp3-1",
+          "status": 301,
+          "location": "/de/sender/kiis-106-5"
+        },
+        {
+          "url": "https://themegaradio.com/de/sender/kiis-106-5",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "canonical": "https://themegaradio.com/de/sender/kiis-106-5",
+      "noindex": false,
+      "languages": [
+        "en",
+        "tr-TR",
+        "es",
+        "fr",
+        "de",
+        "ar",
+        "it-IT",
+        "pt",
+        "ru-RU",
+        "zh-Hans",
+        "ja-JP",
+        "ko-KR",
+        "hi-IN",
+        "he-IL"
+      ],
+      "pass": true,
+      "language": "de"
+    },
+    {
+      "input": "https://themegaradio.com/ar/mahta/kiis-1065-sydney-1065-fm-mp3-1",
+      "final": "https://themegaradio.com/ar/mahta/kiis-106-5",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ar/mahta/kiis-1065-sydney-1065-fm-mp3-1",
+          "status": 301,
+          "location": "/ar/mahta/kiis-106-5"
+        },
+        {
+          "url": "https://themegaradio.com/ar/mahta/kiis-106-5",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "canonical": "https://themegaradio.com/ar/mahta/kiis-106-5",
+      "noindex": false,
+      "languages": [
+        "en",
+        "tr-TR",
+        "es",
+        "fr",
+        "de",
+        "ar",
+        "it-IT",
+        "pt",
+        "ru-RU",
+        "zh-Hans",
+        "ja-JP",
+        "ko-KR",
+        "hi-IN",
+        "he-IL"
+      ],
+      "pass": true,
+      "language": "ar"
+    },
+    {
+      "input": "https://themegaradio.com/it/stazione/kiis-1065-sydney-1065-fm-mp3-1",
+      "final": "https://themegaradio.com/it/stazione/kiis-106-5",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/it/stazione/kiis-1065-sydney-1065-fm-mp3-1",
+          "status": 301,
+          "location": "/it/stazione/kiis-106-5"
+        },
+        {
+          "url": "https://themegaradio.com/it/stazione/kiis-106-5",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "canonical": "https://themegaradio.com/it/stazione/kiis-106-5",
+      "noindex": false,
+      "languages": [
+        "en",
+        "tr-TR",
+        "es",
+        "fr",
+        "de",
+        "ar",
+        "it-IT",
+        "pt",
+        "ru-RU",
+        "zh-Hans",
+        "ja-JP",
+        "ko-KR",
+        "hi-IN",
+        "he-IL"
+      ],
+      "pass": true,
+      "language": "it-IT"
+    },
+    {
+      "input": "https://themegaradio.com/pt/estacao/kiis-1065-sydney-1065-fm-mp3-1",
+      "final": "https://themegaradio.com/pt/estacao/kiis-106-5",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/pt/estacao/kiis-1065-sydney-1065-fm-mp3-1",
+          "status": 301,
+          "location": "/pt/estacao/kiis-106-5"
+        },
+        {
+          "url": "https://themegaradio.com/pt/estacao/kiis-106-5",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "canonical": "https://themegaradio.com/pt/estacao/kiis-106-5",
+      "noindex": false,
+      "languages": [
+        "en",
+        "tr-TR",
+        "es",
+        "fr",
+        "de",
+        "ar",
+        "it-IT",
+        "pt",
+        "ru-RU",
+        "zh-Hans",
+        "ja-JP",
+        "ko-KR",
+        "hi-IN",
+        "he-IL"
+      ],
+      "pass": true,
+      "language": "pt"
+    },
+    {
+      "input": "https://themegaradio.com/ru/stantsiya/kiis-1065-sydney-1065-fm-mp3-1",
+      "final": "https://themegaradio.com/ru/stantsiya/kiis-106-5",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ru/stantsiya/kiis-1065-sydney-1065-fm-mp3-1",
+          "status": 301,
+          "location": "/ru/stantsiya/kiis-106-5"
+        },
+        {
+          "url": "https://themegaradio.com/ru/stantsiya/kiis-106-5",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "canonical": "https://themegaradio.com/ru/stantsiya/kiis-106-5",
+      "noindex": false,
+      "languages": [
+        "en",
+        "tr-TR",
+        "es",
+        "fr",
+        "de",
+        "ar",
+        "it-IT",
+        "pt",
+        "ru-RU",
+        "zh-Hans",
+        "ja-JP",
+        "ko-KR",
+        "hi-IN",
+        "he-IL"
+      ],
+      "pass": true,
+      "language": "ru-RU"
+    },
+    {
+      "input": "https://themegaradio.com/zh/%E7%94%B5%E5%8F%B0/kiis-1065-sydney-1065-fm-mp3-1",
+      "final": "https://themegaradio.com/zh/%E7%94%B5%E5%8F%B0/kiis-106-5",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/zh/%E7%94%B5%E5%8F%B0/kiis-1065-sydney-1065-fm-mp3-1",
+          "status": 301,
+          "location": "/zh/%E7%94%B5%E5%8F%B0/kiis-106-5"
+        },
+        {
+          "url": "https://themegaradio.com/zh/%E7%94%B5%E5%8F%B0/kiis-106-5",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "canonical": "https://themegaradio.com/zh/%E7%94%B5%E5%8F%B0/kiis-106-5",
+      "noindex": false,
+      "languages": [
+        "en",
+        "tr-TR",
+        "es",
+        "fr",
+        "de",
+        "ar",
+        "it-IT",
+        "pt",
+        "ru-RU",
+        "zh-Hans",
+        "ja-JP",
+        "ko-KR",
+        "hi-IN",
+        "he-IL"
+      ],
+      "pass": true,
+      "language": "zh-Hans"
+    },
+    {
+      "input": "https://themegaradio.com/ja/%E3%82%B9%E3%83%86%E3%83%BC%E3%82%B7%E3%83%A7%E3%83%B3/kiis-1065-sydney-1065-fm-mp3-1",
+      "final": "https://themegaradio.com/ja/%E3%82%B9%E3%83%86%E3%83%BC%E3%82%B7%E3%83%A7%E3%83%B3/kiis-106-5",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ja/%E3%82%B9%E3%83%86%E3%83%BC%E3%82%B7%E3%83%A7%E3%83%B3/kiis-1065-sydney-1065-fm-mp3-1",
+          "status": 301,
+          "location": "/ja/%E3%82%B9%E3%83%86%E3%83%BC%E3%82%B7%E3%83%A7%E3%83%B3/kiis-106-5"
+        },
+        {
+          "url": "https://themegaradio.com/ja/%E3%82%B9%E3%83%86%E3%83%BC%E3%82%B7%E3%83%A7%E3%83%B3/kiis-106-5",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "canonical": "https://themegaradio.com/ja/%E3%82%B9%E3%83%86%E3%83%BC%E3%82%B7%E3%83%A7%E3%83%B3/kiis-106-5",
+      "noindex": false,
+      "languages": [
+        "en",
+        "tr-TR",
+        "es",
+        "fr",
+        "de",
+        "ar",
+        "it-IT",
+        "pt",
+        "ru-RU",
+        "zh-Hans",
+        "ja-JP",
+        "ko-KR",
+        "hi-IN",
+        "he-IL"
+      ],
+      "pass": true,
+      "language": "ja-JP"
+    },
+    {
+      "input": "https://themegaradio.com/ko/%EC%8A%A4%ED%85%8C%EC%9D%B4%EC%85%98/kiis-1065-sydney-1065-fm-mp3-1",
+      "final": "https://themegaradio.com/ko/%EC%8A%A4%ED%85%8C%EC%9D%B4%EC%85%98/kiis-106-5",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ko/%EC%8A%A4%ED%85%8C%EC%9D%B4%EC%85%98/kiis-1065-sydney-1065-fm-mp3-1",
+          "status": 301,
+          "location": "/ko/%EC%8A%A4%ED%85%8C%EC%9D%B4%EC%85%98/kiis-106-5"
+        },
+        {
+          "url": "https://themegaradio.com/ko/%EC%8A%A4%ED%85%8C%EC%9D%B4%EC%85%98/kiis-106-5",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "canonical": "https://themegaradio.com/ko/%EC%8A%A4%ED%85%8C%EC%9D%B4%EC%85%98/kiis-106-5",
+      "noindex": false,
+      "languages": [
+        "en",
+        "tr-TR",
+        "es",
+        "fr",
+        "de",
+        "ar",
+        "it-IT",
+        "pt",
+        "ru-RU",
+        "zh-Hans",
+        "ja-JP",
+        "ko-KR",
+        "hi-IN",
+        "he-IL"
+      ],
+      "pass": true,
+      "language": "ko-KR"
+    },
+    {
+      "input": "https://themegaradio.com/hi/station/kiis-1065-sydney-1065-fm-mp3-1",
+      "final": "https://themegaradio.com/hi/station/kiis-106-5",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/hi/station/kiis-1065-sydney-1065-fm-mp3-1",
+          "status": 301,
+          "location": "/hi/station/kiis-106-5"
+        },
+        {
+          "url": "https://themegaradio.com/hi/station/kiis-106-5",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "canonical": "https://themegaradio.com/hi/station/kiis-106-5",
+      "noindex": false,
+      "languages": [
+        "en",
+        "tr-TR",
+        "es",
+        "fr",
+        "de",
+        "ar",
+        "it-IT",
+        "pt",
+        "ru-RU",
+        "zh-Hans",
+        "ja-JP",
+        "ko-KR",
+        "hi-IN",
+        "he-IL"
+      ],
+      "pass": true,
+      "language": "hi-IN"
+    },
+    {
+      "input": "https://themegaradio.com/he/tachana/kiis-1065-sydney-1065-fm-mp3-1",
+      "final": "https://themegaradio.com/he/tachana/kiis-106-5",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/he/tachana/kiis-1065-sydney-1065-fm-mp3-1",
+          "status": 301,
+          "location": "/he/tachana/kiis-106-5"
+        },
+        {
+          "url": "https://themegaradio.com/he/tachana/kiis-106-5",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "canonical": "https://themegaradio.com/he/tachana/kiis-106-5",
+      "noindex": false,
+      "languages": [
+        "en",
+        "tr-TR",
+        "es",
+        "fr",
+        "de",
+        "ar",
+        "it-IT",
+        "pt",
+        "ru-RU",
+        "zh-Hans",
+        "ja-JP",
+        "ko-KR",
+        "hi-IN",
+        "he-IL"
+      ],
+      "pass": true,
+      "language": "he-IL"
+    },
+    {
+      "input": "https://themegaradio.com/af/station/radio-onda-rossa-1",
+      "final": "https://themegaradio.com/en/station/onda-rossa",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/af/station/radio-onda-rossa-1",
+          "status": 301,
+          "location": "/af/stasie/onda-rossa"
+        },
+        {
+          "url": "https://themegaradio.com/af/stasie/onda-rossa",
+          "status": 301,
+          "location": "/en/station/onda-rossa"
+        },
+        {
+          "url": "https://themegaradio.com/en/station/onda-rossa",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "canonical": "https://themegaradio.com/en/station/onda-rossa",
+      "noindex": false,
+      "languages": [
+        "en",
+        "tr-TR",
+        "es",
+        "fr",
+        "de",
+        "ar",
+        "it-IT",
+        "pt",
+        "ru-RU",
+        "zh-Hans",
+        "ja-JP",
+        "ko-KR",
+        "hi-IN",
+        "he-IL"
+      ],
+      "pass": true
+    },
+    {
+      "input": "https://themegaradio.com/ch/station/kiis-1065-sydney-1065-fm-mp3-1",
+      "final": "https://themegaradio.com/de/sender/kiis-106-5",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ch/station/kiis-1065-sydney-1065-fm-mp3-1",
+          "status": 301,
+          "location": "/de/station/kiis-1065-sydney-1065-fm-mp3-1"
+        },
+        {
+          "url": "https://themegaradio.com/de/station/kiis-1065-sydney-1065-fm-mp3-1",
+          "status": 301,
+          "location": "/de/sender/kiis-106-5"
+        },
+        {
+          "url": "https://themegaradio.com/de/sender/kiis-106-5",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "canonical": "https://themegaradio.com/de/sender/kiis-106-5",
+      "noindex": false,
+      "languages": [
+        "en",
+        "tr-TR",
+        "es",
+        "fr",
+        "de",
+        "ar",
+        "it-IT",
+        "pt",
+        "ru-RU",
+        "zh-Hans",
+        "ja-JP",
+        "ko-KR",
+        "hi-IN",
+        "he-IL"
+      ],
+      "pass": true
+    },
+    {
+      "input": "https://themegaradio.com/ly/station/kiss-981",
+      "final": "https://themegaradio.com/ar/mahta/kiss-98-1",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ly/station/kiss-981",
+          "status": 301,
+          "location": "/ar/station/kiss-981"
+        },
+        {
+          "url": "https://themegaradio.com/ar/station/kiss-981",
+          "status": 301,
+          "location": "/ar/mahta/kiss-98-1"
+        },
+        {
+          "url": "https://themegaradio.com/ar/mahta/kiss-98-1",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "canonical": "https://themegaradio.com/ar/mahta/kiss-98-1",
+      "noindex": false,
+      "languages": [
+        "en",
+        "tr-TR",
+        "es",
+        "fr",
+        "de",
+        "ar",
+        "it-IT",
+        "pt",
+        "ru-RU",
+        "zh-Hans",
+        "ja-JP",
+        "ko-KR",
+        "hi-IN",
+        "he-IL"
+      ],
+      "pass": true
+    }
+  ]
+}

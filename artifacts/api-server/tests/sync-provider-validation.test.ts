@@ -6,6 +6,9 @@ let SyncService: any;
 let providerPages: unknown[][], existing: any[], inserted: any[], updated: any[], savedRuns: any[], warnings: string[];
 let failure: 'find' | 'insert' | 'update' | null;
 let writeAttempts: number, queryAttempts: number, leaderReleased: boolean;
+let cancelRequested = false;
+let afterProviderResponse: (() => void) | undefined;
+let leader: EventEmitter;
 const fixtureError = Object.assign(new Error('Fixture database unavailable'), { code: '08006' });
 const provider = (extra: Record<string, any> = {}) => ({
   stationuuid: 'new-radio', name: 'Radio Sunrise', url: 'https://example.invalid/live',
@@ -40,6 +43,10 @@ const catalog = {
 };
 
 before(async () => {
+  mock.module('node:dns/promises', { namedExports: { Resolver: class {
+    async resolveSrv() { return [{ name: 'de1.api.radio-browser.info', port: 443 }]; }
+    cancel() {}
+  } } });
   mock.module('../src/data/postgres-catalog-store', { namedExports: {
     pgCatalog: () => catalog,
     pgCreateSyncRun: async () => ({ _id: 'sync-fixture', status: 'running' }),
@@ -47,12 +54,16 @@ before(async () => {
     pgSyncLogs: async () => [], pgSyncBlacklist: async () => [],
   } });
   mock.module('../src/postgres-runtime', { namedExports: {
-    getPostgresPool: () => ({ query: async () => ({ rowCount: 1, rows: [{ status: 'running', cancel_requested: false }] }) }),
-    getPostgresCoordinationPool: () => ({ connect: async () => Object.assign(new EventEmitter(), {
+    getPostgresPool: () => ({ query: async () => ({ rowCount: 1, rows: [{ status: 'running', cancel_requested: cancelRequested }] }) }),
+    getPostgresCoordinationPool: () => ({ connect: async () => leader = Object.assign(new EventEmitter(), {
       query: async () => ({ rows: [{ acquired: true }] }), release: () => { leaderReleased = true; },
     }) }),
   } });
-  mock.module('axios', { defaultExport: { get: async () => ({ data: providerPages.shift() || [] }) } });
+  mock.module('axios', { defaultExport: { get: async () => {
+    const data = providerPages.shift() || [];
+    afterProviderResponse?.();
+    return { data };
+  } } });
   mock.module('../src/services/image-manager', { namedExports: { ImageManager: class {} } });
   mock.module('../src/services/logo-processor', { namedExports: { logoProcessor: {} } });
   mock.module('../src/services/indexnow', { namedExports: { IndexNowService: { submitStationUrls: async () => {} } } });
@@ -65,6 +76,7 @@ before(async () => {
 beforeEach(() => {
   providerPages = []; existing = []; inserted = []; updated = []; savedRuns = []; warnings = [];
   failure = null; writeAttempts = 0; queryAttempts = 0; leaderReleased = false;
+  cancelRequested = false; afterProviderResponse = undefined;
 });
 after(async () => {
   // Let queued, non-blocking sync follow-ups import their mocked dependency
@@ -193,3 +205,23 @@ for (const operation of ['find', 'insert', 'update'] as const) {
     assert.equal(leaderReleased, true);
   });
 }
+
+test('cancellation during a provider fetch records stopped without applying the fetched page', async () => {
+  providerPages = [[provider()]];
+  afterProviderResponse = () => { cancelRequested = true; };
+  assert.equal((await service().startSync()).success, false);
+  assert.equal(savedRuns.at(-1).status, 'stopped');
+  assert.equal(savedRuns.at(-1).stationsProcessed, 0);
+  assert.equal(writeAttempts, 0);
+  assert.equal(leaderReleased, true);
+});
+
+test('leadership lost during provider fetch fails closed before any station write', async () => {
+  providerPages = [[provider()]];
+  afterProviderResponse = () => { leader.emit('error', new Error('connection lost')); };
+  assert.equal((await service().startSync()).success, false);
+  assert.equal(savedRuns.at(-1).status, 'failed');
+  assert.equal(savedRuns.at(-1).error, 'PostgreSQL sync leadership lost');
+  assert.equal(writeAttempts, 0);
+  assert.equal(leaderReleased, true);
+});
