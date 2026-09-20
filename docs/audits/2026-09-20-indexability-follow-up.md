@@ -4,6 +4,8 @@
 
 This checkpoint supersedes the pending/retry statements in the chronological notes below. Current-task summary: [Admin description repair](2026-09-21-admin-description-repair.md).
 
+- Follow-up for the initially timed-out manual sitemap HTTP response: added a **55-second deadline only after admin authentication** on that operation, preserving normal 30-second requests and the existing 60-second web proxy. **37/37 related tests**, including real delayed HTTP through the proxy, plus API typecheck/build passed. Deployment response verification follows; the underlying earlier rebuild is already verified complete.
+
 - Main commit `a75b91523354603a07c266d1a45899b6bfa485cb` was pushed and Railway API/web each showed Active / Deployment successful; stream and PostgreSQL remained Online.
 - Final bounded retry `bulk-desc-51a809bc-93c5-449d-bd4f-b2abb39fdac2` completed **2/2 stations, zero failures**, at `2026-09-20T22:56:15.514Z`. All **84 eligible new stations** now have a slug and non-empty full/meta content in all 14 languages. The excluded test relay remains protected. Two inherited source-text defects were subsequently corrected editorially in all 14 languages with 56 compare-and-set field updates; reviewed copy is preserved in `2026-09-21-two-station-reviewed-descriptions.json`.
 - Read all **1,087** remaining results in the catalog's Missing languages filter: all carry stored noindex flags; no indexable record in that filter remains. This is a field-completeness check, not factual/editorial certification of all 62,796 records and not a claim that every historical noindex decision has been manually reviewed.

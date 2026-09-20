@@ -396,9 +396,10 @@ app.use((req, res, next) => {
 
 app.use((req, res, next) => {
   if (/\.(js|css|png|jpg|jpeg|gif|webp|svg|ico|woff|woff2|map|json)$/i.test(req.path)) return next();
+  const requestStartedAt = Date.now();
   req.setTimeout(30000, () => {
     if (!res.headersSent) {
-      console.error(`⏰ Request timeout (30s): ${req.method} ${req.path}`);
+      console.error(`⏰ Request timeout after ${Date.now() - requestStartedAt}ms (socket limit ${req.socket.timeout}ms): ${req.method} ${req.path}`);
       // 503 + Retry-After: tells Googlebot to back off and retry rather than
       // logging a 504 in GSC's "Server error (5xx)" bucket.
       res.setHeader('Retry-After', '120');

@@ -28,7 +28,7 @@
 
 Measurements are individual live requests, not a guaranteed maximum. Field completeness does not certify every historical sentence's language or accuracy. Arbitrary wrong Latin-language text, mixed-language fragments and unsupported factual claims still require editorial review; two known source-text cases were reviewed and corrected in all languages during this work.
 
-The manual synchronous sitemap-rebuild request returned a Railway 502 timeout after the underlying rebuild completed. The operation was not duplicated. Fresh database manifests and served EN/DE/TR chunk-6 XML confirmed the new membership, correct XML MIME and image tags. This timeout is not presented as fixed by the new bulk feature; its publication runs within the background job instead.
+The manual synchronous sitemap-rebuild request initially returned a Railway 502 timeout after the underlying rebuild completed. The operation was not blindly duplicated. Fresh database manifests and served EN/DE/TR chunk-6 XML confirmed the new membership, correct XML MIME and image tags. Follow-up source inspection found the ordinary 30-second API socket limit. A narrowly scoped fix gives only the authenticated manual rebuild a finite 55-second deadline, below the existing web proxy's 60 seconds; public/ordinary requests retain their original deadline. The bulk feature publishes within its background job instead. Real HTTP/proxy regression tests cover the extended deadline, unauthorized requests and unchanged ordinary limits; **37/37 related tests, API typecheck and production build passed**. Production response verification follows this release.
 
 ## Release and safety boundary
 

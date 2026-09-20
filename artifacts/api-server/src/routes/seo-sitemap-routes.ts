@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import { pgReportStationDebugLog, pgListStationDebugLogs } from '../data/postgres-station-debug-store';
 import { pgActiveManifests, pgSeoGenres, pgTouchSitemapStations, pgSitemapStationDiagnostics, pgSitemapStationBatch, SITEMAP_STATION_READ_BATCH_SIZE } from '../data/postgres-seo-indexing-store';
 import { markSeoTemporarilyUnavailable } from '../seo/temporary-unavailable';
+import { manualSitemapRebuildTimeout } from '../middleware/manual-sitemap-rebuild-timeout';
 import { logger } from "../utils/logger";
 import { SeoRenderer, buildLocalizedUrl } from "../seo-renderer";
 import { SITEMAP_CONFIG, ACTIVE_SITEMAP_LANGUAGES, REQUIRED_STATION_SEO_KEYS, hasCompleteSeoTranslations, SEO_LANGUAGES, LOCALIZED_LOGO_WORD, LOCALIZED_RADIO_STATION_WORD, normalizeSeoTitleTags } from '@workspace/seo-shared/seo-config';
@@ -495,7 +496,7 @@ export async function registerSeoSitemapRoutes(app: Express, deps: any, options?
   // bulk station imports/deletions when you need the published sitemap to
   // refresh before the next 6-hour scheduled refresh — including the top-30
   // country list embedded in /sitemap-main-{lang}.xml.
-  app.post("/api/admin/sitemap/rebuild", requireAdmin, async (_req, res) => {
+  app.post("/api/admin/sitemap/rebuild", requireAdmin, manualSitemapRebuildTimeout, async (_req, res) => {
     try {
       // FRESHNESS FIX (2026-05-09): full cache-invalidation chain BEFORE the
       // rebuild. Without this, buildAllSitemapManifests({ force: true }) reads

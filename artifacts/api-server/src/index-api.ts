@@ -356,9 +356,10 @@ app.use((req, res, next) => {
     return next();
   }
 
+  const requestStartedAt = Date.now();
   req.setTimeout(30000, () => {
     if (!res.headersSent) {
-      console.error(`⏰ Request timeout (30s): ${req.method} ${req.path}`);
+      console.error(`⏰ Request timeout after ${Date.now() - requestStartedAt}ms (socket limit ${req.socket.timeout}ms): ${req.method} ${req.path}`);
       res.status(504).send('Gateway Timeout');
     }
   });
