@@ -180,6 +180,93 @@ test('English generation and fallback prompts are consistent, metadata-bound and
   assert.deepEqual(station, original, 'local normalization never renames the catalog station');
 });
 
+test('concise CJK generation succeeds unchanged in primary and fallback without extra model calls', async () => {
+  const station = { name: '来宾综合广播 ', country: 'China', countryCode: 'CN', state: '广西', tags: 'full service', bitrate: 128, codec: 'MP3' };
+  const original = structuredClone(station);
+  const content: Record<string, { full: string; meta: string }> = {
+    zh: {
+      full: '来宾综合广播是一家位于中国广西的广播电台。资料列出的类型为综合广播，并提供 MP3 格式的在线音频流，码率为 128 kbps。',
+      meta: '来宾综合广播位于中国广西，提供综合广播及 128 kbps MP3 在线音频流。',
+    },
+    ja: {
+      full: '来宾综合广播は中国の広西にあるラジオ局です。登録情報では総合放送とされ、128 kbps の MP3 音声ストリームが案内されています。',
+      meta: '来宾综合广播：中国・広西の総合放送。音声は MP3、128 kbps。',
+    },
+    ko: {
+      full: '来宾综合广播는 중국 광시의 라디오 방송국입니다. 제공된 정보에는 종합 방송과 128 kbps MP3 오디오 스트림이 기재되어 있습니다.',
+      meta: '来宾综合广播는 중국 광시의 종합 방송으로 MP3 스트림을 제공합니다.',
+    },
+  };
+  for (const [language, { full, meta }] of Object.entries(content)) {
+    assert.ok(full.length >= 50 && full.length < 100, `${language} full exercises the compact range`);
+    assert.ok(meta.length >= 20 && meta.length < 50, `${language} meta exercises the compact range`);
+    for (const fallback of [false, true]) {
+      const offset = requests;
+      responses = fallback ? ['NO_INFO_AVAILABLE', `${full}===${meta}`] : [`${full}===${meta}`];
+      const result = await generateStationDescription(station, language);
+      assert.deepEqual(result, { success: true, fullDescription: full, metaDescription: meta, language, usedFallback: fallback });
+      assert.equal(requests - offset, fallback ? 2 : 1);
+      assert.equal(responses.length, 0);
+    }
+    responses = [`${full.slice(0, 50)}===${meta.slice(0, 20)}`];
+    assert.equal((await generateStationDescription(station, language)).success, true, `${language} accepts the exact compact boundary`);
+    responses = ['NO_INFO_AVAILABLE', `${full.slice(0, 50)}===${meta.slice(0, 20)}`];
+    assert.equal((await generateStationDescription(station, language)).success, true, `${language} fallback shares the exact compact boundary`);
+  }
+  assert.deepEqual(station, original);
+});
+
+test('CJK bounds still reject short, missing or NO_INFO content after both attempts', async () => {
+  const station = { name: '来宾综合广播', country: 'China', countryCode: 'CN' };
+  const full = '来宾综合广播是一家位于中国广西的广播电台。资料列出的类型为综合广播，并提供 MP3 格式的在线音频流，码率为 128 kbps。';
+  const meta = '来宾综合广播位于中国广西，提供综合广播及 128 kbps MP3 在线音频流。';
+  for (const language of ['zh', 'ja', 'ko']) {
+    for (const response of [`${full.slice(0, 49)}===${meta}`, `${full}===${meta.slice(0, 19)}`, `${full}===`, full, `NO_INFO_AVAILABLE ${full}===${meta}`]) {
+      const offset = requests;
+      responses = [response, response];
+      const result = await generateStationDescription(station, language);
+      assert.equal(result.success, false);
+      assert.equal(result.error, 'Both primary and fallback AI generation failed');
+      assert.equal(requests - offset, 2);
+    }
+  }
+});
+
+test('non-CJK generation retains the existing primary and fallback length floors', async () => {
+  const station = { name: 'Fixture Radio', country: 'Germany', countryCode: 'DE' };
+  const full = 'Fixture Radio is a radio station whose supplied profile lists music and a location in Germany. Its listed stream uses the MP3 audio format.';
+  const meta = 'Fixture Radio is a German radio station with an MP3 audio stream.';
+  for (const language of ['en', 'de', 'tr', 'zh-CN', 'ZH']) {
+    responses = [`${full.slice(0, 99)}===${meta}`, `${full}===${meta}`];
+    assert.equal((await generateStationDescription(station, language)).usedFallback, true);
+    responses = [`${full.slice(0, 100)}===${meta}`];
+    assert.equal((await generateStationDescription(station, language)).usedFallback, false);
+    for (const fallback of [`${full.slice(0, 100)}===${meta}`, `${full}===${meta.slice(0, 49)}`]) {
+      responses = ['NO_INFO_AVAILABLE', fallback];
+      assert.equal((await generateStationDescription(station, language)).success, false);
+    }
+  }
+});
+
+test('compact generation rejects long or repeated identity-only content and template markers', async () => {
+  const name = '城市国际文化音乐综合广播电台'.repeat(4);
+  const station = { name, country: 'China', countryCode: 'CN' };
+  const template = '[FULL DESCRIPTION - write one concise paragraph using the supplied metadata]';
+  const templateWithoutDash = '[FULL DESCRIPTION write one concise paragraph using the supplied radio metadata]';
+  const templateMeta = '[SEO META - summarize the supplied metadata here]';
+  for (const language of ['zh', 'ja', 'ko']) {
+    for (const response of [`${name}===${name}`, `${name} ${name} Mega Radio===${name} Mega Radio`, `${template}===${templateMeta}`, `${templateWithoutDash}===${templateMeta}`]) {
+      responses = [response, response];
+      assert.equal((await generateStationDescription(station, language)).success, false);
+    }
+    for (const name of ['Radio', 'Mega']) {
+      const brandOnly = 'Mega Radio '.repeat(6);
+      responses = [`${brandOnly}===${brandOnly}`, `${brandOnly}===${brandOnly}`];
+      assert.equal((await generateStationDescription({ ...station, name }, language)).success, false);
+    }
+  }
+});
+
 test('trailing catalog whitespace does not duplicate a station name before Turkish possessives', async () => {
   const name = 'Froggy100.3 ';
   const full = 'Froggy100.3’ün Amerika Birleşik Devletleri kaynaklı yayınında country müzik etiketleri yer alır.';

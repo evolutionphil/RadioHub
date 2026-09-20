@@ -19,7 +19,7 @@ const assertActive = () => { checks++; if (cancelled) throw new Error('Job cance
 
 test('publishing rebuilds first, clears XML caches and purges actual language/chunk URLs in batches of thirty', async () => {
   await publishDescriptionRepairs(assertActive);
-  assert.deepEqual(cleared, ['sitemap:', 'precomputed_']);
+  assert.deepEqual(cleared, ['admin_stations:', 'sitemap:', 'precomputed_']);
   assert.deepEqual(batches.map(batch => batch.length), [30, 16]);
   assert.equal(new Set(batches.flat()).size, 46);
   assert.ok(batches.flat().some(url => url.endsWith('/sitemap-stations-de-20.xml')));
@@ -33,7 +33,7 @@ test('failed or busy rebuild never reports successful publishing or purges stale
 test('failed edge purge is observable after the manifest and runtime XML refresh', async () => {
   purgeSuccess = false;
   await assert.rejects(publishDescriptionRepairs(assertActive), /edge purge failure/);
-  assert.deepEqual(cleared, ['sitemap:', 'precomputed_']); assert.equal(batches.length, 1);
+  assert.deepEqual(cleared, ['admin_stations:', 'sitemap:', 'precomputed_']); assert.equal(batches.length, 1);
 });
 test('missing manifest or cancellation cannot claim a fully published result', async () => {
   manifestMissing = true;

@@ -103,6 +103,19 @@ export async function generateStationDescription(
   const language = targetLanguage || detectStationLanguage(station);
   const languageName = LANGUAGE_NAMES[language] || 'English';
   const stationName = station.name.trim();
+  // Compact CJK prose can express the supplied facts below the legacy
+  // 100-character floor. Match translation's 50/20 bounds without padding.
+  const isCompactLanguage = ['zh', 'ja', 'ko'].includes(language);
+  const minFullLength = isCompactLanguage ? 50 : 100;
+  const hasCompactProse = (value: string, part: 'full' | 'meta') => {
+    // A long/repeated station name or a template marker is not factual prose.
+    // Inspect a comparison copy so accepted Unicode output stays unchanged.
+    let prose = cleanTranslationPart(value, part).normalize('NFC').toLowerCase();
+    for (const name of [stationName, 'Mega Radio', 'MegaRadio'].filter(Boolean).sort((a, b) => b.length - a.length)) {
+      prose = prose.split(name.normalize('NFC').toLowerCase()).join('');
+    }
+    return /\p{Letter}/u.test(prose);
+  };
   
   try {
     const openai = getOpenAIClient();
@@ -156,15 +169,15 @@ Return exactly two plain-text parts: the full description first, then a line con
     });
     
     const aiResponse = (completion.choices[0]?.message?.content || "").trim();
+    const rawDescriptionParts = aiResponse.split('===');
     
     let fullDescription = '';
     let metaDescription = '';
     
     // Parse full description and meta from response
-    if (aiResponse.includes('===')) {
-      const parts = aiResponse.split('===');
-      fullDescription = parts[0].trim();
-      metaDescription = parts[1].trim();
+    if (rawDescriptionParts.length > 1) {
+      fullDescription = rawDescriptionParts[0].trim();
+      metaDescription = rawDescriptionParts[1].trim();
       
       // CLEANUP: Remove brackets from parsed text (template artifacts in ALL languages)
       // Remove leading/trailing brackets
@@ -211,7 +224,9 @@ Return exactly two plain-text parts: the full description first, then a line con
     }
     
     // Check if AI has no specific information - generate engaging fallback
-    if (aiResponse.includes("NO_INFO_AVAILABLE") || fullDescription.length < 100) {
+    if (aiResponse.includes("NO_INFO_AVAILABLE") || fullDescription.length < minFullLength ||
+        (isCompactLanguage && (metaDescription.length < 20 ||
+          !hasCompactProse(rawDescriptionParts[0], 'full') || !hasCompactProse(rawDescriptionParts[1] || '', 'meta')))) {
       // Log the raw OpenAI response for debugging
       logger.log(`ℹ️ AI: No specific info for "${station.name}" - generating fallback description`);
       logger.log(`📝 Raw OpenAI response for "${station.name}": "${aiResponse.substring(0, 100)}${aiResponse.length > 100 ? '...' : ''}"`);
@@ -259,7 +274,10 @@ Return exactly two plain-text parts: the full description first, then a line con
           fallbackMeta = parts[1].trim();
         }
         
-        if (fallbackFull && fallbackFull.length > 100 && fallbackMeta && fallbackMeta.length >= 50) {
+        if (!fallbackResponse.includes('NO_INFO_AVAILABLE') && fallbackFull &&
+            (isCompactLanguage ? fallbackFull.length >= minFullLength : fallbackFull.length > 100) &&
+            fallbackMeta && fallbackMeta.length >= (isCompactLanguage ? 20 : 50) &&
+            (!isCompactLanguage || (hasCompactProse(fallbackFull, 'full') && hasCompactProse(fallbackMeta, 'meta')))) {
           logger.log(`✅ AI: Fallback generated ${fallbackFull.length} chars full + ${fallbackMeta.length} chars meta for "${station.name}"`);
           logger.log(`   Fallback FULL: ${fallbackFull.substring(0, 100)}...`);
           logger.log(`   Fallback META: ${fallbackMeta}`);

@@ -9,6 +9,7 @@ export async function publishDescriptionRepairs(assertActive: () => void): Promi
   const result = await buildAllSitemapManifests({ force: true });
   if (!result.built) throw new Error('Sitemap refresh was unavailable or already running');
   assertActive();
+  await CacheManager.clearByPattern('admin_stations:');
   await CacheManager.clearByPattern('sitemap:');
   await CacheManager.clearByPattern('precomputed_');
   const base = (process.env.PUBLIC_BASE_URL || 'https://themegaradio.com').replace(/\/$/, '');
