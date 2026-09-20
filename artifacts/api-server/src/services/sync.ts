@@ -19,6 +19,13 @@ import {
 // Cache for sync status
 const syncCache = new NodeCache({ stdTTL: 300 });
 
+const REQUIRED_PROVIDER_FIELDS = ['stationuuid', 'name', 'url'] as const;
+function invalidProviderFields(station: any): string[] {
+  return REQUIRED_PROVIDER_FIELDS.filter(field =>
+    typeof station?.[field] !== 'string' || !station[field].trim(),
+  );
+}
+
 // INCIDENT 2026-05-16 — radio-browser sync exploded with AxiosError 502
 // because we only ever tried `de1.api.radio-browser.info`. The
 // radio-browser project runs ~6 mirrors; when one is down we now
@@ -139,7 +146,7 @@ export class SyncService {
       // is fetched — peak heap stays around one page (~10 MB) instead of the full
       // catalog (~200+ MB) which was causing Railway OOM restarts.
       logger.log('📡 Fetching + syncing stations from Radio Browser API (streaming)...');
-      const result = { processed: 0, inserted: 0, updated: 0, skipped: 0, blacklisted: 0, autoFlagged: 0 };
+      const result = { processed: 0, inserted: 0, updated: 0, skipped: 0, invalid: 0, blacklisted: 0, autoFlagged: 0 };
       let totalFetched = 0;
       for await (const pageStations of this.fetchStationPages()) {
         if (await this.isStopRequested()) break;
@@ -149,6 +156,7 @@ export class SyncService {
         result.inserted    += pageResult.inserted;
         result.updated     += pageResult.updated;
         result.skipped     += pageResult.skipped;
+        result.invalid     += pageResult.invalid;
         result.blacklisted += pageResult.blacklisted;
         result.autoFlagged += pageResult.autoFlagged;
       }
@@ -164,6 +172,7 @@ export class SyncService {
       syncLog.stationsAdded = result.inserted;
       syncLog.stationsUpdated = result.updated;
       syncLog.stationsSkipped = result.skipped + result.blacklisted;
+      syncLog.stationsInvalid = result.invalid;
       syncLog.stationsAutoFlagged = result.autoFlagged;
       syncLog.completedAt = new Date();
       await pgSaveSyncRun(syncLog);
@@ -211,7 +220,7 @@ export class SyncService {
 
       return { 
         success: syncLog.status === 'completed',
-        message: `Incremental sync ${syncLog.status}: ➕${result.inserted} new, 🔄${result.updated} updated, ⚫${result.blacklisted} blacklisted | Total: ${totalInDb} stations`
+        message: `Incremental sync ${syncLog.status}: ➕${result.inserted} new, 🔄${result.updated} updated, ⚫${result.blacklisted} blacklisted, ⚠️${result.invalid} invalid skipped | Total: ${totalInDb} stations`
       };
 
     } catch (error: any) {
@@ -315,13 +324,11 @@ export class SyncService {
       // page boundaries when the underlying sort key isn't strictly unique).
       const pageStations: any[] = [];
       for (const station of rows) {
-        if (
-          station?.stationuuid &&
-          station?.name &&
-          typeof station.name === 'string' &&
-          station.name.trim() !== '' &&
-          !seen.has(station.stationuuid)
-        ) {
+        // Invalid rows reach the batch validator so skips are counted and
+        // audited. They must not hide a later valid row with the same UUID.
+        if (invalidProviderFields(station).length > 0) {
+          pageStations.push(station);
+        } else if (!seen.has(station.stationuuid)) {
           seen.add(station.stationuuid);
           pageStations.push(station);
         }
@@ -364,7 +371,7 @@ export class SyncService {
     syncLog: any,
     blacklistedUuids: Set<string>,
     blacklistedUrls: Set<string>
-  ): Promise<{ processed: number; inserted: number; updated: number; skipped: number; blacklisted: number; autoFlagged: number }> {
+  ): Promise<{ processed: number; inserted: number; updated: number; skipped: number; invalid: number; blacklisted: number; autoFlagged: number }> {
     // INCIDENT 2026-05-15: 1000-doc batches were tripping `socketTimeoutMS=15s`
     // on M10 during peak ingest (60K stations). 300-doc batches are well under
     // the timeout budget and let the per-batch retry helper recover from a
@@ -374,15 +381,54 @@ export class SyncService {
     let inserted = 0;
     let updated = 0;
     let skipped = 0;
+    let invalid = 0;
     let blacklisted = 0;
     let autoFlagged = 0;
+    const priorProcessed = syncLog.stationsProcessed || 0;
+    const priorSkipped = syncLog.stationsSkipped || 0;
+    const priorInvalid = syncLog.stationsInvalid || 0;
+    const saveProgress = async (batchNumber: number) => {
+      // Counters span all provider pages, including batches containing only
+      // rejected rows. Audit progress is best-effort; catalogue writes are not.
+      syncLog.stationsProcessed = priorProcessed + processed;
+      syncLog.stationsSkipped = priorSkipped + skipped + blacklisted;
+      syncLog.stationsInvalid = priorInvalid + invalid;
+      try {
+        await this.withPostgresRetry(`syncLog.progress.batch${batchNumber}`, () => pgSaveSyncRun(syncLog), 2);
+      } catch (err: any) {
+        logger.warn(`⚠️ syncLog progress write failed (non-fatal): ${err?.message?.slice(0, 100) || err}`);
+      }
+    };
 
     for (let i = 0; i < apiStations.length; i += batchSize) {
       if (await this.isStopRequested()) break;
       const batch = apiStations.slice(i, i + batchSize);
+      const invalidBeforeBatch = invalid;
+      const invalidFieldsInBatch: Record<string, number> = {};
       
-      // Filter out blacklisted stations and stations with URLs as names
+      // Validate untrusted provider rows before any catalogue query/write.
+      // One incomplete row must not roll back otherwise valid batch inserts.
       const nonBlacklistedBatch = batch.filter(station => {
+        const invalidFields = invalidProviderFields(station);
+        if (invalidFields.length > 0) {
+          invalid++;
+          skipped++;
+          syncLog.stationsInvalid = priorInvalid + invalid;
+          syncLog.stationsInvalidReasons ||= {};
+          syncLog.stationsInvalidSamples ||= [];
+          for (const field of invalidFields) {
+            invalidFieldsInBatch[field] = (invalidFieldsInBatch[field] || 0) + 1;
+            syncLog.stationsInvalidReasons[field] = (syncLog.stationsInvalidReasons[field] || 0) + 1;
+          }
+          // Bound diagnostic storage and never copy provider URLs/full rows.
+          if (syncLog.stationsInvalidSamples.length < 10) {
+            syncLog.stationsInvalidSamples.push({
+              stationuuid: typeof station?.stationuuid === 'string' ? station.stationuuid.slice(0, 100) : null,
+              fields: invalidFields,
+            });
+          }
+          return false;
+        }
         // Check blacklist
         const isBlacklisted = blacklistedUuids.has(station.stationuuid) || blacklistedUrls.has(station.url);
         if (isBlacklisted) {
@@ -400,9 +446,17 @@ export class SyncService {
         return true;
       });
 
+      // Keep rejected-row counters together even if a real catalogue failure
+      // aborts the valid writes in this batch and the run is saved as failed.
+      syncLog.stationsSkipped = priorSkipped + skipped + blacklisted;
+      if (invalid > invalidBeforeBatch) {
+        logger.warn(`⚠️ Sync ${syncLog._id} batch ${Math.ceil((i + 1) / batchSize)}: skipped ${invalid - invalidBeforeBatch} invalid provider rows (required fields: ${JSON.stringify(invalidFieldsInBatch)})`);
+      }
+
       if (nonBlacklistedBatch.length === 0) {
         processed += batch.length;
-        logger.log(`⚫ Batch ${Math.ceil((i + 1) / batchSize)}: All ${batch.length} stations blacklisted, skipped`);
+        await saveProgress(Math.ceil((i + 1) / batchSize));
+        logger.log(`⚫ Batch ${Math.ceil((i + 1) / batchSize)}: All ${batch.length} stations skipped`);
         continue;
       }
 
@@ -587,25 +641,12 @@ export class SyncService {
 
       processed += batch.length;
 
-      // Update sync log progress (best-effort: a transient blip on the
-      // progress write must NOT abort the whole 60K-station sync).
-      syncLog.stationsProcessed = processed;
-      try {
-        await this.withPostgresRetry(
-          `syncLog.progress.batch${Math.ceil((i + 1) / batchSize)}`,
-          () => pgSaveSyncRun(syncLog),
-          2, // tighter retry — progress write is non-critical
-        );
-      } catch (err: any) {
-        logger.warn(
-          `⚠️ syncLog progress write failed (non-fatal): ${err?.message?.slice(0, 100) || err}`,
-        );
-      }
+      await saveProgress(Math.ceil((i + 1) / batchSize));
       
       logger.log(`📈 Progress: ${processed}/${apiStations.length} processed (${Math.round(processed/apiStations.length*100)}%) | ➕${inserted} 🔄${updated} ⚫${blacklisted} 🚯${autoFlagged}`);
     }
 
-    return { processed, inserted, updated, skipped, blacklisted, autoFlagged };
+    return { processed, inserted, updated, skipped, invalid, blacklisted, autoFlagged };
   }
 
   /**

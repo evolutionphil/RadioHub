@@ -80,3 +80,43 @@ test('direct station details and notices are cached at most60s without changing 
   assert.ok(performanceCache.getSeoHtml(url)?.includes('Real information'));
   performanceCache.invalidateStationCache('health-deadline');
 });
+
+test('a retained noindex information page expires within 60s after recovery in another process without renewing its HTML deadline', t => {
+  let now = Date.now();
+  t.mock.method(Date, 'now', () => now);
+  const cache = performanceCache as any;
+  const url = '/en/station/offline-noindex-recovery';
+  const pageKey = `page:${SEO_CACHE_NAMESPACE}:${url}`;
+  const htmlKey = `seo:${SEO_CACHE_NAMESPACE}:bot:${url}`;
+  const before = {
+    seoTags: { noIndex: true },
+    pageData: { pageType: 'station', station: { noIndex: true, lastCheckOk: false, isListVisible: false } },
+  };
+  performanceCache.setPageData(url, before);
+  performanceCache.setSeoHtml(url, '<meta name="robots" content="noindex, follow">');
+  const deadline = cache.pageDataCache.getTtl(pageKey);
+  assert.ok(deadline <= now + 60_000);
+
+  // The API process commits a repair, while this web process still has its
+  // old page. A late cache hit or HTML render must not restart the 60s window.
+  now += 45_000;
+  assert.equal(performanceCache.getPageData(url), before);
+  assert.match(performanceCache.getSeoHtml(url)!, /noindex/);
+  performanceCache.setSeoHtml(url, '<meta name="robots" content="noindex, follow">');
+  assert.ok(cache.seoHtmlCache.getTtl(htmlKey) <= deadline);
+
+  now = deadline + 1;
+  assert.equal(performanceCache.getPageData(url), null);
+  assert.equal(performanceCache.getSeoHtml(url), null);
+  const after = {
+    seoTags: { noIndex: false },
+    pageData: { pageType: 'station', station: { ...before.pageData.station, noIndex: false } },
+  };
+  performanceCache.setPageData(url, after);
+  performanceCache.setSeoHtml(url, '<meta name="robots" content="index, follow">');
+  assert.equal(performanceCache.getPageData(url).seoTags.noIndex, false);
+  assert.equal(performanceCache.getSeoHtml(url), '<meta name="robots" content="index, follow">');
+  assert.equal(performanceCache.getPageData(url).pageData.station.lastCheckOk, false);
+  assert.equal(performanceCache.getPageData(url).pageData.station.isListVisible, false);
+  performanceCache.invalidateStationCache('offline-noindex-recovery');
+});
