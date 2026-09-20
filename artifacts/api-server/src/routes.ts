@@ -5,7 +5,10 @@ import crypto from 'crypto';
 import { getPostgresPool, getPostgresHealth } from './postgres-runtime';
 import { pgCatalog } from './data/postgres-catalog-store';
 import { pgCountryCounts, pgDiscoverableGenres, pgGenres } from './data/postgres-taxonomy-store';
-import { pgTrackVisitor, pgPruneVisitors, pgRecordListening } from './data/postgres-runtime-operations';
+import { pgPruneVisitors, pgRecordListening } from './data/postgres-runtime-operations';
+import { pgTrackQualifiedVisitor, pgPruneQualifiedVisitors } from './data/postgres-visitor-metrics';
+import { createUniqueVisitorTrackingMiddleware } from './middleware/unique-visitor-tracking';
+import { registerVisitorMetricsRoutes } from './routes/visitor-metrics-routes';
 import { pgDeleteOldAppLogs } from './data/postgres-content-store';
 import passport from './auth/passport-config';
 import { pgLocalization } from './data/postgres-localization-store';
@@ -225,37 +228,13 @@ export async function registerRoutes(app: Express, options?: RegisterRoutesOptio
   app.use(passport.initialize());
   app.use(passport.session());
 
-  // === VISITOR TRACKING ===
-  // Skip on non-DB hot paths (stream/image proxy, health, sitemap/robots) and
-  // when MongoDB is not connected — otherwise every stream request queues a
-  // write into a disconnected Mongoose buffer and inflates memory.
-  const VISITOR_SKIP_PREFIXES = [
-    '/api/stream', '/api/image-proxy', '/api/og-image',
-    '/health', '/healthz', '/api/health',
-    '/sitemap', '/robots.txt'
-  ];
-  app.use((req, _res, next) => {
-    if (!((req.path.startsWith('/api/') || req.path === '/' || !req.path.includes('.')))) return next();
-    if (VISITOR_SKIP_PREFIXES.some(p => req.path.startsWith(p))) return next();
-    // VISITOR-COUNT FIX (2026-07-05): req.ip behind Cloudflare → Railway →
-    // web-proxy → api is the LAST proxy hop (trust proxy is 1, the chain is
-    // 3+), so every real visitor upserted the SAME VisitorSession row and
-    // the dashboard showed 1 active / 1 today / 1 week forever while
-    // Cloudflare reported 30k+ uniques. Cloudflare stamps the true client
-    // address in CF-Connecting-IP on every request and intermediate proxies
-    // pass headers through — prefer it, then the first X-Forwarded-For
-    // entry, then req.ip as the last resort.
-    const ipAddress =
-      (req.headers['cf-connecting-ip'] as string | undefined)?.trim() ||
-      (req.headers['x-forwarded-for'] as string | undefined)?.split(',')[0]?.trim() ||
-      req.ip || req.connection.remoteAddress || 'unknown';
-    void pgTrackVisitor(ipAddress,req.get('user-agent')).catch(error => logger.warn('Visitor metric write failed',error.message));
-    next();
-  });
+  // Qualified, normalized unique IPs only. Tracking never blocks a response;
+  // old unfiltered request/IP records are retained but not reused as people.
+  app.use(createUniqueVisitorTrackingMiddleware(pgTrackQualifiedVisitor));
 
   // All database indexes are versioned SQL migrations; no startup DDL.
   setInterval(() => {
-    void Promise.all([pgPruneVisitors(),pgDeleteOldAppLogs(new Date(Date.now()-30*86400000))])
+    void Promise.all([pgPruneVisitors(),pgPruneQualifiedVisitors(),pgDeleteOldAppLogs(new Date(Date.now()-30*86400000))])
       .catch(error=>logger.warn('PostgreSQL visitor/application-log retention failed',error.message));
   },60*60*1000).unref();
 
@@ -797,6 +776,7 @@ export async function registerRoutes(app: Express, options?: RegisterRoutesOptio
 
   // === REGISTER ALL ROUTE MODULES ===
   registerCacheDashboardRoutes(app, deps);
+  registerVisitorMetricsRoutes(app, requireAdmin);
   registerAdminAuthRoutes(app, deps);
   registerSlugRoutes(app, deps);
   await registerAiDescriptionRoutes(app, deps);

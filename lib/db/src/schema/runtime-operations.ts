@@ -1,5 +1,11 @@
 import { sql } from 'drizzle-orm';
-import { bigint,check,index,integer,jsonb,pgTable,text,timestamp } from 'drizzle-orm/pg-core';
+import { bigint,check,index,inet,integer,jsonb,pgTable,text,timestamp } from 'drizzle-orm/pg-core';
+export const qualifiedVisitorPresence = pgTable('qualified_visitor_presence', {
+  ipAddress: inet('ip_address').primaryKey(),
+  firstSeenAt: timestamp('first_seen_at', { withTimezone: true }).notNull().defaultNow(),
+  lastSeenAt: timestamp('last_seen_at', { withTimezone: true }).notNull().defaultNow(),
+}, table => [index('qualified_visitor_presence_last_seen_idx').on(table.lastSeenAt),
+  check('qualified_visitor_presence_ip_address_check', sql`masklen(${table.ipAddress})=CASE family(${table.ipAddress}) WHEN 4 THEN 32 ELSE 128 END`)]);
 export const visitorSessions = pgTable('visitor_sessions',{
   id:text('id').primaryKey(),ipAddress:text('ip_address').notNull().unique(),userAgent:text('user_agent'),
   lastActiveDate:timestamp('last_active_date',{withTimezone:true}).notNull().defaultNow(),

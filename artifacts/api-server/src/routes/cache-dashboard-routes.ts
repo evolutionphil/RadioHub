@@ -91,7 +91,7 @@ export function registerCacheDashboardRoutes(app: Express, deps: any) {
   // DASHBOARD STATS API
   app.get("/api/dashboard/stats", async (req, res) => {
     try {
-      const CACHE_KEY = "dashboard:stats:v1";
+      const CACHE_KEY = "dashboard:stats:v2-qualified-visitors";
       const cached = await CacheManager.get(CACHE_KEY);
       if (cached) return void res.json(cached);
 

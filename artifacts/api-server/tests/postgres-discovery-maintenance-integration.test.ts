@@ -211,6 +211,7 @@ describe(
     });
     it("reports actual PostgreSQL health, traffic, content and synchronization status", async () => {
       await pool.query(`INSERT INTO visitor_sessions(id,ip_address,last_active_date) VALUES ('visitor','127.0.0.1',now());
+      INSERT INTO qualified_visitor_presence(ip_address) VALUES ('203.0.113.25');
       INSERT INTO feedback(id,type,subject,message) VALUES ('feedback','bug','Subject','Message');
       INSERT INTO catalog_sync_runs(id,sync_type,status,completed_at) VALUES ('sync','incremental','completed',now())`);
       const response = await request("/api/dashboard/stats");

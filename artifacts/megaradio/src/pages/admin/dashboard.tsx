@@ -46,9 +46,6 @@ interface DashboardStats {
   faviconPercentage: number;
   stationsWithDesc: number;
   descriptionPercentage: number;
-  activeVisitors: number;
-  todayVisitors: number;
-  weekVisitors: number;
   topCountries: Array<{ name: string; count: number }>;
   topGenres: Array<{ name: string; count: number }>;
   codecDistribution: Array<{ name: string; count: number }>;
@@ -66,6 +63,33 @@ interface DashboardStats {
   };
   recentSyncDate?: string | null;
 }
+
+interface VisitorMetrics {
+  activeVisitors: number;
+  todayVisitors: number;
+  weekVisitors: number;
+  computedAt: string;
+  collectionStartedAt: string;
+  activeWindowMinutes: 30;
+  timezone: 'Europe/Berlin';
+  identity: 'unique-ip';
+  source: 'qualified-http-requests';
+  retentionDays: 30;
+}
+
+function isVisitorMetrics(value: unknown): value is VisitorMetrics {
+  if (!value || typeof value !== 'object') return false;
+  const data = value as Record<string, unknown>;
+  return ['activeVisitors', 'todayVisitors', 'weekVisitors'].every(key =>
+    typeof data[key] === 'number' && Number.isSafeInteger(data[key]) && (data[key] as number) >= 0) &&
+    ['computedAt', 'collectionStartedAt'].every(key => typeof data[key] === 'string' && Number.isFinite(Date.parse(data[key] as string))) &&
+    data.activeWindowMinutes === 30 && data.timezone === 'Europe/Berlin' && data.identity === 'unique-ip' &&
+    data.source === 'qualified-http-requests' && data.retentionDays === 30;
+}
+
+const visitorTimestamp = (value: string) => new Intl.DateTimeFormat(undefined, {
+  timeZone: 'Europe/Berlin', dateStyle: 'medium', timeStyle: 'medium',
+}).format(new Date(value));
 
 type HealthLevel = 'good' | 'degraded' | 'issue' | 'unknown';
 function deriveOverallHealth(h: DashboardStats['health'], syncFailed: boolean): HealthLevel {
@@ -87,6 +111,26 @@ export default function AdminDashboard() {
     refetchOnWindowFocus: false,
   });
   const { data: stats, isLoading, isError, refetch, dataUpdatedAt } = statsQuery;
+
+  const visitorQuery = useQuery<VisitorMetrics>({
+    queryKey: ['/api/admin/visitor-metrics'],
+    queryFn: async ({ signal }) => {
+      const response = await apiFetch('/api/admin/visitor-metrics', { signal });
+      if (!response.ok) throw new Error('Unique-IP metrics are unavailable');
+      const payload: unknown = await response.json();
+      if (!isVisitorMetrics(payload)) throw new Error('Unique-IP metrics returned incomplete data');
+      return payload;
+    },
+    staleTime: 30_000,
+    retry: false,
+    refetchInterval: query => query.state.error ? false : 30_000,
+    refetchIntervalInBackground: false,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
+  });
+  // A failed refresh must not present cached/legacy numbers as current counts.
+  const visitors = !visitorQuery.isError && isVisitorMetrics(visitorQuery.data) ? visitorQuery.data : undefined;
+  const visitorUnavailable = visitorQuery.isError || (!visitorQuery.isPending && !visitors);
 
   const languagesQuery = useQuery({
     queryKey: ["/api/admin/translation-languages"],
@@ -144,7 +188,7 @@ export default function AdminDashboard() {
     refetchOnWindowFocus: false,
   });
   const { data: backfillRunsData } = historyQuery;
-  const dashboardQueries = [statsQuery, languagesQuery, autoFlaggedQuery, backfillQuery, historyQuery];
+  const dashboardQueries = [statsQuery, visitorQuery, languagesQuery, autoFlaggedQuery, backfillQuery, historyQuery];
   const refreshing = dashboardQueries.some(query => query.isFetching);
   const unavailablePanels = [
     languagesQuery.isError && 'language configuration',
@@ -153,7 +197,7 @@ export default function AdminDashboard() {
     historyQuery.isError && 'activity history',
   ].filter(Boolean);
   const refreshDashboard = () => Promise.all([
-    ['/api/dashboard/stats'], ['/api/admin/translation-languages'],
+    ['/api/dashboard/stats'], ['/api/admin/visitor-metrics'], ['/api/admin/translation-languages'],
     ['/api/admin/sync/auto-flagged-report'], ['/api/admin/maintenance/scheduled-backfill/status'],
     ['/api/admin/maintenance/scheduled-backfill/runs', 'trend'],
   ].map(queryKey => queryClient.invalidateQueries({ queryKey })));
@@ -323,7 +367,7 @@ export default function AdminDashboard() {
             Manage your radio station platform
           </p>
           {dataUpdatedAt > 0 && <p className="mt-1 text-xs text-muted-foreground">
-            Last checked {new Date(dataUpdatedAt).toLocaleTimeString()} · statistics may be cached for up to five minutes
+            Last checked {new Date(dataUpdatedAt).toLocaleTimeString()} · catalogue statistics may be cached for up to five minutes
           </p>}
         </div>
         <div className="flex flex-wrap items-center gap-3">
@@ -386,12 +430,28 @@ export default function AdminDashboard() {
       </section>
 
       {/* Statistics Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-        <StatCard label="Active Users (Now)" value={stats?.activeVisitors || 0} icon={Users} accent="green" />
-        <StatCard label="Visitors Today" value={stats?.todayVisitors || 0} icon={Activity} accent="blue" />
-        <StatCard label="Visitors This Week" value={stats?.weekVisitors || 0} icon={TrendingUp} accent="purple" />
-        <StatCard label="Registered Users" value={stats?.totalUsers || 0} icon={Users} accent="indigo" />
-      </div>
+      <section aria-label="Visitor and account metrics" className="space-y-3">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+          <StatCard label="Active unique IPs" value={visitors?.activeVisitors.toLocaleString() ?? '—'} caption="Last 30 minutes" icon={Users} accent="green" />
+          <StatCard label="Unique IPs today" value={visitors?.todayVisitors.toLocaleString() ?? '—'} caption="Today · Europe/Berlin" icon={Activity} accent="blue" />
+          <StatCard label="Unique IPs · last 7 days" value={visitors?.weekVisitors.toLocaleString() ?? '—'} caption="Last 7 days" icon={TrendingUp} accent="purple" />
+          <StatCard label="Registered accounts" value={stats?.totalUsers || 0} caption="All account records" icon={Users} accent="indigo" />
+        </div>
+        {visitorUnavailable ? <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+          <span>Unique-IP metrics are unavailable. Automatic polling is paused; no legacy counts are shown.</span>
+          <Button variant="outline" size="sm" disabled={visitorQuery.isFetching} onClick={() => void visitorQuery.refetch()}>
+            {visitorQuery.isFetching ? 'Retrying visitor metrics…' : 'Retry visitor metrics'}
+          </Button>
+        </div> : visitorQuery.isPending ? <p role="status" className="text-xs text-muted-foreground">Loading unique-IP metrics…</p> : null}
+        <div className="space-y-1 text-xs leading-relaxed text-muted-foreground">
+          <p>Source: qualified HTTP requests · unique IPs · Europe/Berlin · 30-day retention. Refreshes every 30 seconds while this page is visible.</p>
+          {visitors ? <p>
+            Computed <time dateTime={visitors.computedAt}>{visitorTimestamp(visitors.computedAt)}</time>{' · '}
+            Collection started <time dateTime={visitors.collectionStartedAt}>{visitorTimestamp(visitors.collectionStartedAt)}</time> (Europe/Berlin).
+          </p> : <p>Computed — · Collection started —</p>}
+          <p>This is a new clean series, without historical backfill. People sharing an IP count as one; these are not verified human counts. Known bots and admin traffic are excluded. Registered accounts include all account records, not verified people.</p>
+        </div>
+      </section>
 
       {/* Secondary Stats Row */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">

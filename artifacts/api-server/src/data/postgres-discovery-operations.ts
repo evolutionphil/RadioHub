@@ -112,9 +112,9 @@ export async function pgDashboardTotals(): Promise<any> {
     count(*) FILTER(WHERE descriptions ? 'en')::int "stationsWithDesc",
     (SELECT count(*)::int FROM users) "userCount",
     (SELECT count(*)::int FROM users WHERE coalesce((source->>'lastActiveDate')::timestamptz,last_login_at)>=now()-interval '7 days') "activeRegisteredUsers",
-    (SELECT count(*)::int FROM visitor_sessions WHERE last_active_date>=now()-interval '30 minutes') "activeVisitors",
-    (SELECT count(*)::int FROM visitor_sessions WHERE last_active_date>=date_trunc('day',now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC') "todayVisitors",
-    (SELECT count(*)::int FROM visitor_sessions WHERE last_active_date>=now()-interval '7 days') "weekVisitors"
+    (SELECT count(*)::int FROM qualified_visitor_presence WHERE last_seen_at>=now()-interval '30 minutes') "activeVisitors",
+    (SELECT count(*)::int FROM qualified_visitor_presence WHERE last_seen_at>=date_trunc('day',now() AT TIME ZONE 'Europe/Berlin') AT TIME ZONE 'Europe/Berlin') "todayVisitors",
+    (SELECT count(*)::int FROM qualified_visitor_presence WHERE last_seen_at>=now()-interval '7 days') "weekVisitors"
     FROM stations`)
   ).rows[0];
   return result;
