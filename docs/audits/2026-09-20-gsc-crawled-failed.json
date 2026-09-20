@@ -1,0 +1,1022 @@
+{
+  "checkedAt": "2026-09-20T20:11:57.371Z",
+  "sourceHash": 2422712712,
+  "concurrency": 2,
+  "summary": {
+    "count": 44,
+    "status": {
+      "200": 44
+    },
+    "noindex": 0,
+    "errors": 0
+  },
+  "rows": [
+    {
+      "url": "https://themegaradio.com/am/station/tigre-947-fm",
+      "final": "https://themegaradio.com/en/station/tigre-94-7-fm",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/am/station/tigre-947-fm",
+          "status": 301,
+          "location": "/am/%E1%8C%A3%E1%89%A2%E1%8B%AB/tigre-94-7-fm"
+        },
+        {
+          "url": "https://themegaradio.com/am/%E1%8C%A3%E1%89%A2%E1%8B%AB/tigre-94-7-fm",
+          "status": 301,
+          "location": "/en/station/tigre-94-7-fm"
+        },
+        {
+          "url": "https://themegaradio.com/en/station/tigre-94-7-fm",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/en/station/tigre-94-7-fm"
+    },
+    {
+      "url": "https://themegaradio.com/en/station/tigre-94-7-fm",
+      "final": "https://themegaradio.com/en/station/tigre-94-7-fm",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/en/station/tigre-94-7-fm",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/en/station/tigre-94-7-fm"
+    },
+    {
+      "url": "https://themegaradio.com/am/ጣቢያ/tigre-94-7-fm",
+      "final": "https://themegaradio.com/en/station/tigre-94-7-fm",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/am/ጣቢያ/tigre-94-7-fm",
+          "status": 301,
+          "location": "/en/station/tigre-94-7-fm"
+        },
+        {
+          "url": "https://themegaradio.com/en/station/tigre-94-7-fm",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/en/station/tigre-94-7-fm"
+    },
+    {
+      "url": "https://themegaradio.com/ar/mahta/wor-fm-croosover-bogota",
+      "final": "https://themegaradio.com/ar/mahta/wor-fm-croosover-bogota",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ar/mahta/wor-fm-croosover-bogota",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/ar/mahta/wor-fm-croosover-bogota"
+    },
+    {
+      "url": "https://themegaradio.com/ar/station/wor-fm-croosover-bogota",
+      "final": "https://themegaradio.com/ar/mahta/wor-fm-croosover-bogota",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ar/station/wor-fm-croosover-bogota",
+          "status": 301,
+          "location": "/ar/mahta/wor-fm-croosover-bogota"
+        },
+        {
+          "url": "https://themegaradio.com/ar/mahta/wor-fm-croosover-bogota",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/ar/mahta/wor-fm-croosover-bogota"
+    },
+    {
+      "url": "https://themegaradio.com/tr/turler/pop",
+      "final": "https://themegaradio.com/tr/turler/pop",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/tr/turler/pop",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/tr/turler/pop"
+    },
+    {
+      "url": "https://themegaradio.com/ar/mahta/exclusively-the-kinks",
+      "final": "https://themegaradio.com/ar/mahta/exclusively-the-kinks",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ar/mahta/exclusively-the-kinks",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/ar/mahta/exclusively-the-kinks"
+    },
+    {
+      "url": "https://themegaradio.com/ar/mahta/bigfm-deutschrap-rasiert",
+      "final": "https://themegaradio.com/ar/mahta/bigfm-deutschrap-rasiert",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ar/mahta/bigfm-deutschrap-rasiert",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/ar/mahta/bigfm-deutschrap-rasiert"
+    },
+    {
+      "url": "https://themegaradio.com/ar/station/bigfm-deutschrap-rasiert",
+      "final": "https://themegaradio.com/ar/mahta/bigfm-deutschrap-rasiert",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ar/station/bigfm-deutschrap-rasiert",
+          "status": 301,
+          "location": "/ar/mahta/bigfm-deutschrap-rasiert"
+        },
+        {
+          "url": "https://themegaradio.com/ar/mahta/bigfm-deutschrap-rasiert",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/ar/mahta/bigfm-deutschrap-rasiert"
+    },
+    {
+      "url": "https://themegaradio.com/af/station/radio-quran-6",
+      "final": "https://themegaradio.com/en/station/radio-quran",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/af/station/radio-quran-6",
+          "status": 301,
+          "location": "/af/stasie/radio-quran"
+        },
+        {
+          "url": "https://themegaradio.com/af/stasie/radio-quran",
+          "status": 301,
+          "location": "/en/station/radio-quran"
+        },
+        {
+          "url": "https://themegaradio.com/en/station/radio-quran",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/en/station/radio-quran"
+    },
+    {
+      "url": "https://themegaradio.com/ar/station/kradio",
+      "final": "https://themegaradio.com/ar/mahta/kradio-ruo-wang-san-dian-tai",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ar/station/kradio",
+          "status": 301,
+          "location": "/ar/mahta/kradio-ruo-wang-san-dian-tai"
+        },
+        {
+          "url": "https://themegaradio.com/ar/mahta/kradio-ruo-wang-san-dian-tai",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/ar/mahta/kradio-ruo-wang-san-dian-tai"
+    },
+    {
+      "url": "https://themegaradio.com/lb/station/kradio",
+      "final": "https://themegaradio.com/ar/mahta/kradio-ruo-wang-san-dian-tai",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/lb/station/kradio",
+          "status": 301,
+          "location": "/ar/station/kradio"
+        },
+        {
+          "url": "https://themegaradio.com/ar/station/kradio",
+          "status": 301,
+          "location": "/ar/mahta/kradio-ruo-wang-san-dian-tai"
+        },
+        {
+          "url": "https://themegaradio.com/ar/mahta/kradio-ruo-wang-san-dian-tai",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/ar/mahta/kradio-ruo-wang-san-dian-tai"
+    },
+    {
+      "url": "https://themegaradio.com/ar/mahta/kradio-ruo-wang-san-dian-tai",
+      "final": "https://themegaradio.com/ar/mahta/kradio-ruo-wang-san-dian-tai",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ar/mahta/kradio-ruo-wang-san-dian-tai",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/ar/mahta/kradio-ruo-wang-san-dian-tai"
+    },
+    {
+      "url": "https://themegaradio.com/af/station/superhitradio",
+      "final": "https://themegaradio.com/en/station/superhitradio",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/af/station/superhitradio",
+          "status": 301,
+          "location": "/af/stasie/superhitradio"
+        },
+        {
+          "url": "https://themegaradio.com/af/stasie/superhitradio",
+          "status": 301,
+          "location": "/en/station/superhitradio"
+        },
+        {
+          "url": "https://themegaradio.com/en/station/superhitradio",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/en/station/superhitradio"
+    },
+    {
+      "url": "https://themegaradio.com/en/station/radio-jamesen-show",
+      "final": "https://themegaradio.com/en/station/radio-jamesen-show",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/en/station/radio-jamesen-show",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/en/station/radio-jamesen-show"
+    },
+    {
+      "url": "https://themegaradio.com/am/station/radio-jamesen-show-1",
+      "final": "https://themegaradio.com/en/station/radio-jamesen-show",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/am/station/radio-jamesen-show-1",
+          "status": 301,
+          "location": "/am/%E1%8C%A3%E1%89%A2%E1%8B%AB/radio-jamesen-show"
+        },
+        {
+          "url": "https://themegaradio.com/am/%E1%8C%A3%E1%89%A2%E1%8B%AB/radio-jamesen-show",
+          "status": 301,
+          "location": "/en/station/radio-jamesen-show"
+        },
+        {
+          "url": "https://themegaradio.com/en/station/radio-jamesen-show",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/en/station/radio-jamesen-show"
+    },
+    {
+      "url": "https://themegaradio.com/am/ጣቢያ/radio-jamesen-show",
+      "final": "https://themegaradio.com/en/station/radio-jamesen-show",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/am/ጣቢያ/radio-jamesen-show",
+          "status": 301,
+          "location": "/en/station/radio-jamesen-show"
+        },
+        {
+          "url": "https://themegaradio.com/en/station/radio-jamesen-show",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/en/station/radio-jamesen-show"
+    },
+    {
+      "url": "https://themegaradio.com/bg/station/exclusively-reba-mcentire",
+      "final": "https://themegaradio.com/en/station/exclusively-reba-mcentire",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/bg/station/exclusively-reba-mcentire",
+          "status": 301,
+          "location": "/bg/stantsiya/exclusively-reba-mcentire"
+        },
+        {
+          "url": "https://themegaradio.com/bg/stantsiya/exclusively-reba-mcentire",
+          "status": 301,
+          "location": "/en/station/exclusively-reba-mcentire"
+        },
+        {
+          "url": "https://themegaradio.com/en/station/exclusively-reba-mcentire",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/en/station/exclusively-reba-mcentire"
+    },
+    {
+      "url": "https://themegaradio.com/en/station/exclusively-reba-mcentire",
+      "final": "https://themegaradio.com/en/station/exclusively-reba-mcentire",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/en/station/exclusively-reba-mcentire",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/en/station/exclusively-reba-mcentire"
+    },
+    {
+      "url": "https://themegaradio.com/bg/stantsiya/exclusively-reba-mcentire",
+      "final": "https://themegaradio.com/en/station/exclusively-reba-mcentire",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/bg/stantsiya/exclusively-reba-mcentire",
+          "status": 301,
+          "location": "/en/station/exclusively-reba-mcentire"
+        },
+        {
+          "url": "https://themegaradio.com/en/station/exclusively-reba-mcentire",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/en/station/exclusively-reba-mcentire"
+    },
+    {
+      "url": "https://themegaradio.com/am/station/oldiewelle-niederbayern",
+      "final": "https://themegaradio.com/en/station/oldiewelle-niederbayern",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/am/station/oldiewelle-niederbayern",
+          "status": 301,
+          "location": "/am/%E1%8C%A3%E1%89%A2%E1%8B%AB/oldiewelle-niederbayern"
+        },
+        {
+          "url": "https://themegaradio.com/am/%E1%8C%A3%E1%89%A2%E1%8B%AB/oldiewelle-niederbayern",
+          "status": 301,
+          "location": "/en/station/oldiewelle-niederbayern"
+        },
+        {
+          "url": "https://themegaradio.com/en/station/oldiewelle-niederbayern",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/en/station/oldiewelle-niederbayern"
+    },
+    {
+      "url": "https://themegaradio.com/bn/station/105-4",
+      "final": "https://themegaradio.com/en/station/lang-fang-xi-qu-guang-bo-fei-yang-105",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/bn/station/105-4",
+          "status": 301,
+          "location": "/bn/%E0%A6%B8%E0%A7%8D%E0%A6%9F%E0%A7%87%E0%A6%B6%E0%A6%A8/lang-fang-xi-qu-guang-bo-fei-yang-105"
+        },
+        {
+          "url": "https://themegaradio.com/bn/%E0%A6%B8%E0%A7%8D%E0%A6%9F%E0%A7%87%E0%A6%B6%E0%A6%A8/lang-fang-xi-qu-guang-bo-fei-yang-105",
+          "status": 301,
+          "location": "/en/station/lang-fang-xi-qu-guang-bo-fei-yang-105"
+        },
+        {
+          "url": "https://themegaradio.com/en/station/lang-fang-xi-qu-guang-bo-fei-yang-105",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/en/station/lang-fang-xi-qu-guang-bo-fei-yang-105"
+    },
+    {
+      "url": "https://themegaradio.com/ar/station/-969",
+      "final": "https://themegaradio.com/ar/mahta/qi-jiang-zong-he-guang-bo",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ar/station/-969",
+          "status": 301,
+          "location": "/ar/mahta/qi-jiang-zong-he-guang-bo"
+        },
+        {
+          "url": "https://themegaradio.com/ar/mahta/qi-jiang-zong-he-guang-bo",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/ar/mahta/qi-jiang-zong-he-guang-bo"
+    },
+    {
+      "url": "https://themegaradio.com/ar/mahta/electrodanceworld-radio",
+      "final": "https://themegaradio.com/ar/mahta/electrodanceworld-radio",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ar/mahta/electrodanceworld-radio",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/ar/mahta/electrodanceworld-radio"
+    },
+    {
+      "url": "https://themegaradio.com/ar/station/electrodanceworld-radio",
+      "final": "https://themegaradio.com/ar/mahta/electrodanceworld-radio",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ar/station/electrodanceworld-radio",
+          "status": 301,
+          "location": "/ar/mahta/electrodanceworld-radio"
+        },
+        {
+          "url": "https://themegaradio.com/ar/mahta/electrodanceworld-radio",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/ar/mahta/electrodanceworld-radio"
+    },
+    {
+      "url": "https://themegaradio.com/af/station/1003-fm-1",
+      "final": "https://themegaradio.com/en/station/radio-rossii-stupino-100-3-fm",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/af/station/1003-fm-1",
+          "status": 301,
+          "location": "/af/stasie/radio-rossii-stupino-100-3-fm"
+        },
+        {
+          "url": "https://themegaradio.com/af/stasie/radio-rossii-stupino-100-3-fm",
+          "status": 301,
+          "location": "/en/station/radio-rossii-stupino-100-3-fm"
+        },
+        {
+          "url": "https://themegaradio.com/en/station/radio-rossii-stupino-100-3-fm",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/en/station/radio-rossii-stupino-100-3-fm"
+    },
+    {
+      "url": "https://themegaradio.com/am/station/diversia-radio-activa",
+      "final": "https://themegaradio.com/en/station/diversia-radio-activa",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/am/station/diversia-radio-activa",
+          "status": 301,
+          "location": "/am/%E1%8C%A3%E1%89%A2%E1%8B%AB/diversia-radio-activa"
+        },
+        {
+          "url": "https://themegaradio.com/am/%E1%8C%A3%E1%89%A2%E1%8B%AB/diversia-radio-activa",
+          "status": 301,
+          "location": "/en/station/diversia-radio-activa"
+        },
+        {
+          "url": "https://themegaradio.com/en/station/diversia-radio-activa",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/en/station/diversia-radio-activa"
+    },
+    {
+      "url": "https://themegaradio.com/af/stasie/radio-rossii-stupino-100-3-fm",
+      "final": "https://themegaradio.com/en/station/radio-rossii-stupino-100-3-fm",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/af/stasie/radio-rossii-stupino-100-3-fm",
+          "status": 301,
+          "location": "/en/station/radio-rossii-stupino-100-3-fm"
+        },
+        {
+          "url": "https://themegaradio.com/en/station/radio-rossii-stupino-100-3-fm",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/en/station/radio-rossii-stupino-100-3-fm"
+    },
+    {
+      "url": "https://themegaradio.com/en/station/radio-rossii-stupino-100-3-fm",
+      "final": "https://themegaradio.com/en/station/radio-rossii-stupino-100-3-fm",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/en/station/radio-rossii-stupino-100-3-fm",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/en/station/radio-rossii-stupino-100-3-fm"
+    },
+    {
+      "url": "https://themegaradio.com/it/stazione/power-hit-radio",
+      "final": "https://themegaradio.com/it/stazione/power-hit-radio",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/it/stazione/power-hit-radio",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/it/stazione/power-hit-radio"
+    },
+    {
+      "url": "https://themegaradio.com/am/station/radio-padania-libera",
+      "final": "https://themegaradio.com/en/station/radio-padania-libera",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/am/station/radio-padania-libera",
+          "status": 301,
+          "location": "/am/%E1%8C%A3%E1%89%A2%E1%8B%AB/radio-padania-libera"
+        },
+        {
+          "url": "https://themegaradio.com/am/%E1%8C%A3%E1%89%A2%E1%8B%AB/radio-padania-libera",
+          "status": 301,
+          "location": "/en/station/radio-padania-libera"
+        },
+        {
+          "url": "https://themegaradio.com/en/station/radio-padania-libera",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/en/station/radio-padania-libera"
+    },
+    {
+      "url": "https://themegaradio.com/en/station/flashbass-fm",
+      "final": "https://themegaradio.com/en/station/flashbass-fm",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/en/station/flashbass-fm",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/en/station/flashbass-fm"
+    },
+    {
+      "url": "https://themegaradio.com/am/station/flashbassfm-1",
+      "final": "https://themegaradio.com/en/station/flashbass-fm",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/am/station/flashbassfm-1",
+          "status": 301,
+          "location": "/am/%E1%8C%A3%E1%89%A2%E1%8B%AB/flashbass-fm"
+        },
+        {
+          "url": "https://themegaradio.com/am/%E1%8C%A3%E1%89%A2%E1%8B%AB/flashbass-fm",
+          "status": 301,
+          "location": "/en/station/flashbass-fm"
+        },
+        {
+          "url": "https://themegaradio.com/en/station/flashbass-fm",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/en/station/flashbass-fm"
+    },
+    {
+      "url": "https://themegaradio.com/tr",
+      "final": "https://themegaradio.com/tr",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/tr",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/tr"
+    },
+    {
+      "url": "https://themegaradio.com/am/station/ilovehardstyle",
+      "final": "https://themegaradio.com/en/station/ilovehardstyle",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/am/station/ilovehardstyle",
+          "status": 301,
+          "location": "/am/%E1%8C%A3%E1%89%A2%E1%8B%AB/ilovehardstyle"
+        },
+        {
+          "url": "https://themegaradio.com/am/%E1%8C%A3%E1%89%A2%E1%8B%AB/ilovehardstyle",
+          "status": 301,
+          "location": "/en/station/ilovehardstyle"
+        },
+        {
+          "url": "https://themegaradio.com/en/station/ilovehardstyle",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/en/station/ilovehardstyle"
+    },
+    {
+      "url": "https://themegaradio.com/af/station/ofoforo-radio",
+      "final": "https://themegaradio.com/en/station/ofoforo-radio",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/af/station/ofoforo-radio",
+          "status": 301,
+          "location": "/af/stasie/ofoforo-radio"
+        },
+        {
+          "url": "https://themegaradio.com/af/stasie/ofoforo-radio",
+          "status": 301,
+          "location": "/en/station/ofoforo-radio"
+        },
+        {
+          "url": "https://themegaradio.com/en/station/ofoforo-radio",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/en/station/ofoforo-radio"
+    },
+    {
+      "url": "https://themegaradio.com/ar/mahta/jazz-fm-104-6",
+      "final": "https://themegaradio.com/ar/mahta/jazz-fm-104-6",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ar/mahta/jazz-fm-104-6",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/ar/mahta/jazz-fm-104-6"
+    },
+    {
+      "url": "https://themegaradio.com/ar/station/jazz-fm-1046",
+      "final": "https://themegaradio.com/ar/mahta/jazz-fm-104-6",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ar/station/jazz-fm-1046",
+          "status": 301,
+          "location": "/ar/mahta/jazz-fm-104-6"
+        },
+        {
+          "url": "https://themegaradio.com/ar/mahta/jazz-fm-104-6",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/ar/mahta/jazz-fm-104-6"
+    },
+    {
+      "url": "https://themegaradio.com/ye/station/jazz-fm-1046",
+      "final": "https://themegaradio.com/ar/mahta/jazz-fm-104-6",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ye/station/jazz-fm-1046",
+          "status": 301,
+          "location": "/ar/station/jazz-fm-1046"
+        },
+        {
+          "url": "https://themegaradio.com/ar/station/jazz-fm-1046",
+          "status": 301,
+          "location": "/ar/mahta/jazz-fm-104-6"
+        },
+        {
+          "url": "https://themegaradio.com/ar/mahta/jazz-fm-104-6",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/ar/mahta/jazz-fm-104-6"
+    },
+    {
+      "url": "https://themegaradio.com/en/station/fussball-bundesliga-2-spiel-1",
+      "final": "https://themegaradio.com/en/station/fussball-bundesliga-2-spiel-1",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/en/station/fussball-bundesliga-2-spiel-1",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/en/station/fussball-bundesliga-2-spiel-1"
+    },
+    {
+      "url": "https://themegaradio.com/it/stazione/mix-radio",
+      "final": "https://themegaradio.com/it/stazione/mix-radio",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/it/stazione/mix-radio",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/it/stazione/mix-radio"
+    },
+    {
+      "url": "https://themegaradio.com/es/estacion/deep-link-radio-soulful-link-radio",
+      "final": "https://themegaradio.com/es/estacion/deep-link-radio-soulful-link-radio",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/es/estacion/deep-link-radio-soulful-link-radio",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/es/estacion/deep-link-radio-soulful-link-radio"
+    },
+    {
+      "url": "https://themegaradio.com/es/station/deep-link-radio-soulful-link-radio-1",
+      "final": "https://themegaradio.com/es/estacion/deep-link-radio-soulful-link-radio",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/es/station/deep-link-radio-soulful-link-radio-1",
+          "status": 301,
+          "location": "/es/estacion/deep-link-radio-soulful-link-radio"
+        },
+        {
+          "url": "https://themegaradio.com/es/estacion/deep-link-radio-soulful-link-radio",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/es/estacion/deep-link-radio-soulful-link-radio"
+    },
+    {
+      "url": "https://themegaradio.com/af/station/rad-radio-the-rob-anybody-dawn-show",
+      "final": "https://themegaradio.com/en/station/rad-radio-the-rob-anybody-dawn-show",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/af/station/rad-radio-the-rob-anybody-dawn-show",
+          "status": 301,
+          "location": "/af/stasie/rad-radio-the-rob-anybody-dawn-show"
+        },
+        {
+          "url": "https://themegaradio.com/af/stasie/rad-radio-the-rob-anybody-dawn-show",
+          "status": 301,
+          "location": "/en/station/rad-radio-the-rob-anybody-dawn-show"
+        },
+        {
+          "url": "https://themegaradio.com/en/station/rad-radio-the-rob-anybody-dawn-show",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/en/station/rad-radio-the-rob-anybody-dawn-show"
+    }
+  ]
+}

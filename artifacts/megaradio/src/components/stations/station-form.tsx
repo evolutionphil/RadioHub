@@ -10,7 +10,7 @@ import { Switch } from "@/components/ui/switch";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
 import { Upload, Star, Globe, Loader2, Zap, Check, AlertCircle, Radio, Sparkles, Languages } from "lucide-react";
@@ -62,6 +62,7 @@ interface StationData {
   isFeatured?: boolean;
   showInGlobalPopular?: boolean;
   noIndex?: boolean;
+  redirectToSlug?: string | null;
   descriptions?: Record<string, any>;
 }
 
@@ -101,6 +102,11 @@ function StationFormSession({
   isLoading = false,
 }: StationFormProps) {
   const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [redirectTargetDraft, setRedirectTargetDraft] = useState<string | null>(null);
+  const [redirectError, setRedirectError] = useState<string | null>(null);
+  const redirectRequest = useRef(false);
+  const redirectInputId = React.useId();
   const [isUploadingFavicon, setIsUploadingFavicon] = useState(false);
   const [isAnalyzingStream, setIsAnalyzingStream] = useState(false);
   const [streamAnalysis, setStreamAnalysis] = useState<any>(null);
@@ -155,7 +161,7 @@ function StationFormSession({
     defaultValues: getDefaultValues(station),
   });
 
-  const { data: freshStation, isFetching: isLoadingStation, isError: stationLoadFailed, refetch: reloadStation } = useQuery({
+  const { data: freshStation, isFetching: isLoadingStation, isFetchedAfterMount: hasLoadedStation, isError: stationLoadFailed, refetch: reloadStation } = useQuery({
     queryKey: ['/api/admin/stations', stationId || 'new'],
     queryFn: async ({ signal }) => {
       const data = await (await apiRequest('GET', `/api/admin/stations/${stationId}`, { signal })).json();
@@ -165,6 +171,31 @@ function StationFormSession({
     enabled: !!stationId && open,
     staleTime: 0,
     refetchOnMount: 'always',
+  });
+
+  const redirectMutation = useMutation({
+    mutationFn: (body: { targetSlug: string | null; expectedRedirectToSlug: string | null }) =>
+      apiRequest('PUT', `/api/admin/stations/${stationId}/redirect`, { body }),
+    retry: false,
+    onError: (error: Error) => {
+      if (!mounted.current) return;
+      setRedirectError(error.message || 'The redirect could not be confirmed. Review the current target before retrying.');
+    },
+    onSettled: async (_data, error, body) => {
+      // Reload after both success and failure: a conflict or lost response
+      // can mean the saved redirect differs from the value we last observed.
+      try {
+        await queryClient.invalidateQueries({ queryKey: ['/api/admin/stations'] });
+      } finally {
+        redirectRequest.current = false;
+      }
+      if (!mounted.current || error) return;
+      setRedirectTargetDraft(null);
+      toast({
+        title: body.targetSlug ? 'Redirect saved' : 'Redirect cleared',
+        description: 'Station records, favorites, listening history, indexing settings and stream health were preserved.',
+      });
+    },
   });
 
   const generateAiMutation = useMutation({
@@ -278,8 +309,17 @@ function StationFormSession({
   const currentTags = (form.watch('tags') || '').split(',').map(t => t.trim()).filter(Boolean);
   const descriptions = baseline.current?.descriptions || {};
   const descriptionCount = Object.keys(descriptions).length;
-  const busy = isLoading || generateAiMutation.isPending || isUploadingFavicon;
+  const busy = isLoading || generateAiMutation.isPending || isUploadingFavicon || redirectMutation.isPending;
   const waitingForFreshStation = Boolean(stationId && !freshStation && isLoadingStation);
+  const currentRedirect = freshStation?.redirectToSlug || null;
+  const redirectTarget = redirectTargetDraft ?? currentRedirect ?? '';
+  const redirectReady = Boolean(stationId && freshStation && hasLoadedStation && !isLoadingStation && !stationLoadFailed);
+  const saveRedirect = (targetSlug: string | null) => {
+    if (!redirectReady || busy || redirectRequest.current) return;
+    redirectRequest.current = true;
+    setRedirectError(null);
+    redirectMutation.mutate({ targetSlug, expectedRedirectToSlug: currentRedirect });
+  };
 
   return (
     <Dialog open={open} onOpenChange={nextOpen => { if (!nextOpen && !busy) onClose(); }}>
@@ -687,6 +727,46 @@ function StationFormSession({
                     </FormItem>
                   )}
                 />
+
+                {stationId && <section className="space-y-3 rounded-lg border p-3" aria-labelledby={`${redirectInputId}-heading`}>
+                  <h4 id={`${redirectInputId}-heading`} className="text-sm font-medium">Duplicate redirect</h4>
+                  <p className="text-sm text-gray-600" aria-live="polite">
+                    Current canonical target: <span className="font-medium text-gray-900">{hasLoadedStation && freshStation ? currentRedirect || 'None' : 'Loading…'}</span>
+                  </p>
+                  <div className="space-y-2">
+                    <label htmlFor={redirectInputId} className="text-sm font-medium">Canonical station slug</label>
+                    <Input
+                      id={redirectInputId}
+                      value={redirectTarget}
+                      placeholder="canonical-station-slug"
+                      disabled={busy || !redirectReady}
+                      aria-describedby={`${redirectInputId}-help`}
+                      onChange={event => setRedirectTargetDraft(event.target.value)}
+                      onKeyDown={event => { if (event.key === 'Enter') event.preventDefault(); }}
+                    />
+                  </div>
+                  <p id={`${redirectInputId}-help`} className="text-sm text-gray-500">
+                    Send this duplicate's visitors to an existing indexable station with the same name and stream.
+                    The canonical station must have full and meta descriptions in all 14 supported station languages.
+                    Both station records, favorites and listening history are kept. Indexing settings and stream health stay unchanged.
+                    Clearing removes only the redirect from the saved record immediately; previously cached public redirects may persist for up to 5 minutes.
+                    Use the buttons below to save this separately.
+                  </p>
+                  {redirectError && <p role="alert" className="text-sm text-red-700">{redirectError}</p>}
+                  <div className="flex flex-wrap gap-2">
+                    <Button type="button" variant="outline" size="sm"
+                      disabled={busy || !redirectReady || !redirectTarget.trim() || redirectTarget.trim() === currentRedirect}
+                      onClick={() => saveRedirect(redirectTarget.trim())}>
+                      {redirectMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                      Save redirect
+                    </Button>
+                    <Button type="button" variant="outline" size="sm"
+                      disabled={busy || !redirectReady || !currentRedirect}
+                      onClick={() => saveRedirect(null)}>
+                      Clear redirect
+                    </Button>
+                  </div>
+                </section>}
               </TabsContent>
 
               {/* AI & Translations Tab */}

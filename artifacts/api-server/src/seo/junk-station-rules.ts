@@ -178,6 +178,12 @@ export function evaluateJunkStation(station: {
   if (!name) return { isJunk: true, reason: 'empty-name' };
   if (!station.url) return { isJunk: true, reason: 'empty-stream-url' };
 
+  // These exact names identify color-bar test signals. Do not treat Chinese
+  // names or the generic word 测试 (test) as evidence of a junk station.
+  if (/^彩条测试[0-9]*$/u.test(name.normalize('NFKC').trim())) {
+    return { isJunk: true, reason: 'test-feed:color-bar' };
+  }
+
   // A failed stream (even a prolonged outage) is not a content-quality verdict:
   // retain its rich localized detail page; public playback/lists gate health.
 

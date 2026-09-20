@@ -699,8 +699,25 @@ export const NATIVE_COUNTRY_NAMES: Record<string, Record<string, string>> = {
   }
 };
 
-// Helper function to get native country name for a given language
-export function getNativeCountryName(englishCountryName: string, language: string): string {
+const localizedCountryDisplayNames = new Map<string, Intl.DisplayNames>();
+
+// The provider's verbose country names do not always match our translation
+// keys. Prefer its validated ISO identity for generated localized display;
+// English source wording and name-only callers retain their existing fallback.
+export function getNativeCountryName(englishCountryName: string, language: string, countryCode?: unknown): string {
+  const code = typeof countryCode === 'string' ? countryCode.trim().toLowerCase() : '';
+  if (language !== 'en' && /^[a-z]{2}$/.test(code) && Object.hasOwn(CODE_TO_COUNTRY, code) &&
+      SEO_LANGUAGES.some(locale => locale.code === language)) {
+    try {
+      let names = localizedCountryDisplayNames.get(language);
+      if (!names) {
+        names = new Intl.DisplayNames([language], { type: 'region', fallback: 'none' });
+        localizedCountryDisplayNames.set(language, names);
+      }
+      const localized = names.of(code.toUpperCase());
+      if (localized && localized !== code.toUpperCase()) return localized;
+    } catch { /* Preserve the existing name fallback when Intl is unavailable. */ }
+  }
   if (!NATIVE_COUNTRY_NAMES[language]) {
     return englishCountryName; // Fallback to English if language not in mapping
   }
@@ -1470,7 +1487,7 @@ export function generateLocalizedStationTitle(station: any, language: string, tr
   const stationName = station.name;
   
   // Use native country name based on language
-  const nativeCountry = station.country ? getNativeCountryName(station.country, language) : null;
+  const nativeCountry = getNativeCountryName(station.country || '', language, station.countryCode) || null;
   
   // Use DB translation key 'seo_from' first, then hardcoded fallbacks per language
   const fromFallbacks: Record<string, string> = {
@@ -1566,10 +1583,10 @@ export function getLocalizedStationDescription(station: any, language: string, t
   
   let sentence1 = `${listenLive} ${station.name}`;
   
-  if (station.country) {
+  if (station.country || station.countryCode) {
     // Use native country name based on language instead of English country name
-    const nativeCountry = getNativeCountryName(station.country, language);
-    sentence1 += ` ${broadcastingFrom} ${nativeCountry}`;
+    const nativeCountry = getNativeCountryName(station.country || '', language, station.countryCode);
+    if (nativeCountry) sentence1 += ` ${broadcastingFrom} ${nativeCountry}`;
   }
   
   // Add language if available
@@ -1692,7 +1709,7 @@ export function getStationMetaDescription(station: any, language: string, transl
   // Adds genre tags + free streaming + multi-device language so even AI-less stations
   // produce a Bing-acceptable description length.
   const stationName = station.name;
-  const nativeCountry = station.country ? getNativeCountryName(station.country, language) : null;
+  const nativeCountry = getNativeCountryName(station.country || '', language, station.countryCode) || null;
   const listenLive = translations['listen_live'] || 'Listen live';
   const fromWord = translations['from'] || 'from';
   const onlineWord = translations['online'] || 'online';

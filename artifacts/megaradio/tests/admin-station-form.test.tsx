@@ -1,6 +1,7 @@
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 const mocks = vi.hoisted(() => ({ request: vi.fn(), analyze: vi.fn(), toast: vi.fn(), generate: vi.fn() }));
@@ -35,8 +36,9 @@ beforeEach(() => {
   mocks.analyze.mockResolvedValue({ success: false });
 });
 afterEach(() => vi.unstubAllGlobals());
-function mount(initial: any = station()) {
+function mount(initial: any = station(), cached?: any) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
+  if (cached) client.setQueryData(['/api/admin/stations', initial._id || initial.id], cached);
   const submit = vi.fn(), close = vi.fn();
   const ui = (current: any, open = true) => <QueryClientProvider client={client}>
     <StationForm station={current} open={open} onClose={close} onSubmit={submit} />
@@ -207,5 +209,116 @@ describe('admin station form session and save contracts', () => {
     expect(view.submit.mock.calls[0][0]).not.toHaveProperty('isActive');
     expect(view.submit.mock.calls[0][0]).not.toHaveProperty('noIndex');
     expect(mocks.request).not.toHaveBeenCalled();
+  });
+});
+
+describe('separate reversible station redirect controls', () => {
+  it('waits for fresh data even with a cached record, then saves only the explicit redirect and expected target', async () => {
+    const pending = deferred<any>();
+    let stored = { ...station(), redirectToSlug: 'fresh-target' };
+    let reads = 0;
+    mocks.request.mockImplementation(async (method, _url, options) => {
+      if (method === 'PUT') {
+        stored = { ...stored, redirectToSlug: options.body.targetSlug };
+        return {};
+      }
+      if (++reads === 1) return pending.promise;
+      return { json: async () => stored };
+    });
+    const view = mount({ ...station(), redirectToSlug: 'list-target' }, { ...station(), redirectToSlug: 'cached-target' });
+    expect(screen.getByLabelText('Canonical station slug')).toBeDisabled();
+    expect(screen.getByLabelText('Canonical station slug')).toHaveAccessibleDescription(expect.stringContaining('full and meta descriptions in all 14 supported station languages'));
+    expect(screen.getByLabelText('Canonical station slug')).toHaveAccessibleDescription(expect.stringContaining('previously cached public redirects may persist for up to 5 minutes'));
+    expect(screen.getByRole('button', { name: 'Clear redirect' })).toBeDisabled();
+    await act(async () => pending.resolve({ json: async () => stored }));
+    await waitFor(() => expect(screen.getByLabelText('Canonical station slug')).toBeEnabled());
+    expect(screen.getByLabelText('Canonical station slug')).toHaveValue('fresh-target');
+    fireEvent.change(screen.getByLabelText(/Station Name/), { target: { value: 'Unsaved name' } });
+    fireEvent.change(screen.getByLabelText('Canonical station slug'), { target: { value: '  canonical-radio  ' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save redirect' }));
+    await waitFor(() => expect(mocks.toast).toHaveBeenCalledWith(expect.objectContaining({ title: 'Redirect saved' })));
+    expect(mocks.request.mock.calls.filter(call => call[0] === 'PUT')).toEqual([
+      ['PUT', `/api/admin/stations/${a}/redirect`, { body: { targetSlug: 'canonical-radio', expectedRedirectToSlug: 'fresh-target' } }],
+    ]);
+    expect(view.submit).not.toHaveBeenCalled();
+    expect(reads).toBe(2);
+    expect(screen.getByLabelText('Canonical station slug')).toHaveValue('canonical-radio');
+    expect(screen.getByLabelText(/Station Name/)).toHaveValue('Unsaved name');
+    expect(view.client.getQueryData(['/api/admin/stations', a])).toMatchObject({ redirectToSlug: 'canonical-radio' });
+  });
+
+  it('never saves a redirect draft through Enter or the metadata submit button', async () => {
+    const user = userEvent.setup();
+    const view = mount(); await ready();
+    const input = screen.getByLabelText('Canonical station slug');
+    await user.type(input, 'canonical-radio{Enter}');
+    expect(view.submit).not.toHaveBeenCalled();
+    expect(mocks.request.mock.calls.some(call => call[0] === 'PUT')).toBe(false);
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+    await waitFor(() => expect(view.submit).toHaveBeenCalledWith({}));
+    expect(mocks.request.mock.calls.some(call => call[0] === 'PUT')).toBe(false);
+  });
+
+  it('clears the saved redirect explicitly without submitting the draft or indexing changes', async () => {
+    let stored: any = { ...station(), redirectToSlug: 'canonical-radio', noIndex: true, lastCheckOk: false };
+    mocks.request.mockImplementation(async (method, _url, options) => {
+      if (method === 'PUT') stored = { ...stored, redirectToSlug: options.body.targetSlug };
+      return { json: async () => stored };
+    });
+    const view = mount(stored); await ready();
+    fireEvent.change(screen.getByLabelText('Canonical station slug'), { target: { value: 'unsaved-other-target' } });
+    fireEvent.click(screen.getByRole('switch', { name: 'Allow search engine indexing' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Clear redirect' }));
+    await waitFor(() => expect(mocks.toast).toHaveBeenCalledWith(expect.objectContaining({ title: 'Redirect cleared' })));
+    expect(mocks.request.mock.calls.filter(call => call[0] === 'PUT')).toEqual([
+      ['PUT', `/api/admin/stations/${a}/redirect`, { body: { targetSlug: null, expectedRedirectToSlug: 'canonical-radio' } }],
+    ]);
+    expect(screen.getByLabelText('Canonical station slug')).toHaveValue('');
+    expect(screen.getByRole('button', { name: 'Clear redirect' })).toBeDisabled();
+    expect(screen.getByRole('switch', { name: 'Allow search engine indexing' })).toBeChecked();
+    expect(stored).toMatchObject({ noIndex: true, lastCheckOk: false });
+    expect(view.submit).not.toHaveBeenCalled();
+  });
+
+  it.each([400, 409, 503])('shows a %s error, reloads the saved target and preserves the draft without retrying the write', async status => {
+    let stored = { ...station(), redirectToSlug: 'old-target' };
+    mocks.request.mockImplementation(async method => {
+      if (method === 'PUT') {
+        stored = { ...stored, redirectToSlug: 'current-server-target' };
+        throw new Error(`${status}: Redirect not confirmed`);
+      }
+      return { json: async () => stored };
+    });
+    const view = mount(stored); await ready();
+    fireEvent.change(screen.getByLabelText('Canonical station slug'), { target: { value: 'wanted-target' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save redirect' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(`${status}: Redirect not confirmed`);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Save redirect' })).toBeEnabled());
+    expect(screen.getByText('current-server-target')).toBeInTheDocument();
+    expect(screen.getByLabelText('Canonical station slug')).toHaveValue('wanted-target');
+    expect(mocks.request.mock.calls.filter(call => call[0] === 'PUT')).toHaveLength(1);
+    expect(mocks.toast).not.toHaveBeenCalled();
+    expect(view.submit).not.toHaveBeenCalled();
+  });
+
+  it('prevents duplicate requests and ignores a late redirect completion after switching stations', async () => {
+    const pending = deferred<any>();
+    mocks.request.mockImplementation(async (method, url) => method === 'PUT'
+      ? pending.promise
+      : { json: async () => ({ ...station(url.split('/').pop()), redirectToSlug: null }) });
+    const view = mount(); await ready();
+    fireEvent.change(screen.getByLabelText('Canonical station slug'), { target: { value: 'canonical-radio' } });
+    const save = screen.getByRole('button', { name: 'Save redirect' });
+    fireEvent.click(save); fireEvent.click(save);
+    await waitFor(() => expect(mocks.request.mock.calls.filter(call => call[0] === 'PUT')).toHaveLength(1));
+    expect(mocks.request).toHaveBeenCalledWith('PUT', `/api/admin/stations/${a}/redirect`, {
+      body: { targetSlug: 'canonical-radio', expectedRedirectToSlug: null },
+    });
+    expect(screen.getByRole('button', { name: 'Save Changes' })).toBeDisabled();
+    view.show(station(b)); await ready();
+    await act(async () => pending.resolve({}));
+    expect(screen.getByLabelText('Canonical station slug')).toHaveValue('');
+    expect(screen.getByLabelText(/Station Name/)).toHaveValue('Station B');
+    expect(mocks.toast).not.toHaveBeenCalled();
   });
 });

@@ -16,6 +16,21 @@ function endpoint(value: unknown): string | null {
   } catch { return null; }
 }
 
+/** A reviewed redirect keeps both records intact, so conflicting country
+ * metadata can be retained. Require the same name AND exact primary endpoint;
+ * stale resolved URLs, host-only matches and fuzzy names are not evidence. */
+export function assessDuplicateRedirect(source: StationIdentity, target: StationIdentity): { eligible: boolean; reason: string } {
+  const name = normalizedText(source.name);
+  if (!name || name !== normalizedText(target.name)) {
+    return { eligible: false, reason: 'Station names must match exactly' };
+  }
+  const sourceEndpoint = endpoint(source.url), targetEndpoint = endpoint(target.url);
+  if (!sourceEndpoint || sourceEndpoint !== targetEndpoint) {
+    return { eligible: false, reason: 'Stations must share the exact primary HTTP stream endpoint' };
+  }
+  return { eligible: true, reason: 'Matching station name and exact primary HTTP stream endpoint' };
+}
+
 export function assessDuplicateGroup(docs: readonly StationIdentity[]): { eligible: boolean; reason: string } {
   const reject = (reason: string) => ({ eligible: false, reason });
   if (docs.length < 2) return reject('At least two current stations are required');

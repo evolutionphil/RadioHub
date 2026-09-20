@@ -49,5 +49,7 @@ await Promise.all([worker(), worker()]);
 const summary = { count: rows.length, status: {}, noindex: rows.filter(row => row.noindex).length, errors: rows.filter(row => row.error).length };
 for (const row of rows) summary.status[row.status ?? 'error'] = (summary.status[row.status ?? 'error'] || 0) + 1;
 const output = { checkedAt: new Date().toISOString(), sourceHash: hash, concurrency: 2, summary, rows };
-await writeFile(new URL('./2026-09-17-all-gsc-noindex.json', import.meta.url), JSON.stringify(output, null, 2) + '\n');
+const outputName = process.env.GSC_AUDIT_OUTPUT || `${new Date().toISOString().slice(0, 10)}-all-gsc-noindex.json`;
+if (!/^[a-z0-9-]+\.json$/i.test(outputName)) throw new Error('Invalid audit output filename');
+await writeFile(new URL(`./${outputName}`, import.meta.url), JSON.stringify(output, null, 2) + '\n');
 console.log(JSON.stringify({ phase: 'complete', summary, unresolved: rows.filter(row => row.noindex || row.status !== 200).map(({ url, final, status, noindex, error }) => ({ url, final, status, noindex, error })) }));

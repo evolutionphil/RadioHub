@@ -383,6 +383,7 @@ test('page-data and HTML emit identical bounded descriptions without shortening 
 });
 
 test('published admin descriptions keep priority and match HTML presentation limits without mutating overrides or titles', async () => {
+  stationOverrides = { country: 'The United States Of America', countryCode: 'US' };
   customMetadata = {
     title: 'An intentional full editorial title '.repeat(4),
     description: 'Admin-approved meta description & special programming. '.repeat(5),

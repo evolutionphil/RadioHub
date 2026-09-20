@@ -53,6 +53,16 @@ test('recovery requires provider identity and complete unique content, never jus
   for (const [patch, expected] of cases) assert.equal(assess(station(patch)).reason, expected, JSON.stringify(patch));
 });
 
+test('complete localized articles never qualify an exact color-bar test signal for noindex recovery', () => {
+  for (const name of ['彩条测试', '彩条测试1', ' \t彩条测试１\u3000']) {
+    const row = station({ name, slug: 'cai-tiao-ce-shi-1', country: 'China', countryCode: 'CN' });
+    const before = structuredClone(row);
+    assert.deepEqual(assess(row), { reason: 'junk:test-feed:color-bar' });
+    assert.deepEqual(row, before);
+  }
+  assert.equal(assess(station({ name: '北京新闻广播（测试）', country: 'China', countryCode: 'CN' })).reason, 'eligible');
+});
+
 test('offline, stale and unknown health qualify only through complete unique content and retain factual evidence', () => {
   const cases: Array<[Partial<RecoveryStation>, boolean | null, string | null]> = [
     [{ lastCheckOk: false, lastCheckOkTime: null }, false, null],
