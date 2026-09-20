@@ -8,6 +8,8 @@ import { providerHealthIsNewer, PROVIDER_HEALTH_FIELDS } from '../utils/provider
 import { stationVisibilityFields, stationVisibilitySql, stationAvailabilitySql } from '../utils/station-visibility';
 import { assessDuplicateGroup } from '../utils/station-duplicate-policy';
 import { preserveMergedStationMetadata } from '../utils/station-merge-preservation';
+import { allocateUniqueCatalogSlug } from './postgres-slug-store';
+import { automaticNoIndexPatch, evaluateJunkStation } from '../seo/junk-station-rules';
 
 export type CatalogDocument = Record<string, any>;
 export type CatalogFilter = Record<string, any>;
@@ -320,6 +322,12 @@ export class PostgresCatalogStore {
       await fenceProviderWrite(client, options.syncRunId);
       const saved: CatalogDocument[] = [];
       if (options.syncRunId) {
+        // Provider names do not carry a local URL identity. Allocate missing
+        // slugs atomically with each insert, under the same lock as maintenance.
+        // Existing rows and explicitly supplied slugs are never regenerated.
+        if (documents.some(doc => !doc.slug)) {
+          await client.query("SELECT pg_advisory_xact_lock(hashtextextended('admin-slug-assignment',0))");
+        }
         // A sync's initial blacklist snapshot is only an optimization. Serialize
         // this short insert transaction with live blacklist changes as well.
         // Station-table lock comes first, matching snapshot/restore lock order.
@@ -342,6 +350,13 @@ export class PostgresCatalogStore {
           OR (url=$2 AND NULLIF(source#>>'{mergeAudit,survivorId}','') IS NULL) LIMIT 1`,[doc.stationuuid,doc.url])).rowCount) continue;
         const duplicate = await client.query("SELECT id FROM stations WHERE station_uuid=$1 OR (name=$2 AND url=$3 AND COALESCE(country_code,'')=$4) LIMIT 1", [doc.stationuuid,doc.name,doc.url,doc.countryCode || ""]);
         if (duplicate.rowCount) continue;
+        if (options.syncRunId && !doc.slug) {
+          doc.slug = await allocateUniqueCatalogSlug(client, 'stations', doc._id, doc.name);
+          // Collision suffixes can affect codec/junk rules; assess the actual
+          // persisted URL without ever clearing an existing noindex decision.
+          const verdict = evaluateJunkStation(doc);
+          if (verdict.isJunk) Object.assign(doc, automaticNoIndexPatch(doc, verdict));
+        }
         saved.push(await this.persist(client,doc,true));
       }
       await client.query("COMMIT");

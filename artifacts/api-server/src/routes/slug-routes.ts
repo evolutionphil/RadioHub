@@ -11,6 +11,7 @@ import {
 } from "../data/postgres-maintenance-store";
 import CacheManager from "../cache";
 import { logger } from "../utils/logger";
+import { loadSlugExistence } from "../seo/slug-existence";
 export function registerSlugRoutes(app: Express, deps: any) {
   const { requireAdmin } = deps;
   if (!requireAdmin) throw new Error("slug-routes requires requireAdmin");
@@ -60,6 +61,7 @@ export function registerSlugRoutes(app: Express, deps: any) {
     setImmediate(() => {
       void runPgSlugGeneration(id, token, all, stationsOnly)
         .then(async () => {
+          await loadSlugExistence();
           for (const key of ["stations", "genres", "seo", "similar"])
             await CacheManager.clearByPattern(key);
         })
@@ -87,9 +89,13 @@ export function registerSlugRoutes(app: Express, deps: any) {
   app.post(
     "/api/admin/stations/generate-slugs",
     requireAdmin,
-    async (_req, res) => {
+    async (req, res) => {
       try {
-        const { job, token } = await pgStartSlugGeneration(true, true);
+        // Preserve the existing regenerate-all button, but allow callers to
+        // explicitly fill only missing station slugs without touching users,
+        // genres or any published station URL.
+        const all = req.body?.regenerateAll !== false;
+        const { job, token } = await pgStartSlugGeneration(all, true);
         res.json({
           success: true,
           message:
@@ -100,7 +106,7 @@ export function registerSlugRoutes(app: Express, deps: any) {
           totalStations: job.progress.total,
           jobId: job.jobId,
         });
-        background(job.jobId, token, true, true);
+        background(job.jobId, token, all, true);
       } catch (error: any) {
         res
           .status(error.code === "23505" ? 409 : 500)

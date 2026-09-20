@@ -1,0 +1,250 @@
+{
+  "run": {
+    "observedAt": "2026-09-20T21:44:31.367Z",
+    "id": "7b169af1d88f479bda812ccb",
+    "status": "completed",
+    "startedAt": "2026-09-20T21:23:11.487Z",
+    "completedAt": "2026-09-20T21:43:31.294Z",
+    "processed": 66030,
+    "added": 42,
+    "updated": 54061,
+    "skipped": 9713,
+    "invalid": 3,
+    "error": null
+  },
+  "observations": [
+    {
+      "observedAt": "2026-09-20T21:23:36.099Z",
+      "id": "7b169af1d88f479bda812ccb",
+      "status": "running",
+      "startedAt": "2026-09-20T21:23:11.487Z",
+      "completedAt": null,
+      "processed": 1500,
+      "skipped": 323,
+      "invalid": 2,
+      "error": null
+    },
+    {
+      "observedAt": "2026-09-20T21:24:38.640Z",
+      "id": "7b169af1d88f479bda812ccb",
+      "status": "running",
+      "startedAt": "2026-09-20T21:23:11.487Z",
+      "completedAt": null,
+      "processed": 5000,
+      "skipped": 956,
+      "invalid": 2,
+      "error": null
+    },
+    {
+      "observedAt": "2026-09-20T21:25:41.331Z",
+      "id": "7b169af1d88f479bda812ccb",
+      "status": "running",
+      "startedAt": "2026-09-20T21:23:11.487Z",
+      "completedAt": null,
+      "processed": 8600,
+      "skipped": 1640,
+      "invalid": 2,
+      "error": null
+    },
+    {
+      "observedAt": "2026-09-20T21:26:43.926Z",
+      "id": "7b169af1d88f479bda812ccb",
+      "status": "running",
+      "startedAt": "2026-09-20T21:23:11.487Z",
+      "completedAt": null,
+      "processed": 11500,
+      "skipped": 2089,
+      "invalid": 2,
+      "error": null
+    },
+    {
+      "observedAt": "2026-09-20T21:27:46.464Z",
+      "id": "7b169af1d88f479bda812ccb",
+      "status": "running",
+      "startedAt": "2026-09-20T21:23:11.487Z",
+      "completedAt": null,
+      "processed": 13900,
+      "skipped": 2326,
+      "invalid": 2,
+      "error": null
+    },
+    {
+      "observedAt": "2026-09-20T21:28:51.161Z",
+      "id": "7b169af1d88f479bda812ccb",
+      "status": "running",
+      "startedAt": "2026-09-20T21:23:11.487Z",
+      "completedAt": null,
+      "processed": 17100,
+      "skipped": 2801,
+      "invalid": 2,
+      "error": null
+    },
+    {
+      "observedAt": "2026-09-20T21:29:55.057Z",
+      "id": "7b169af1d88f479bda812ccb",
+      "status": "running",
+      "startedAt": "2026-09-20T21:23:11.487Z",
+      "completedAt": null,
+      "processed": 19500,
+      "skipped": 3165,
+      "invalid": 2,
+      "error": null
+    },
+    {
+      "observedAt": "2026-09-20T21:30:57.584Z",
+      "id": "7b169af1d88f479bda812ccb",
+      "status": "running",
+      "startedAt": "2026-09-20T21:23:11.487Z",
+      "completedAt": null,
+      "processed": 23600,
+      "skipped": 3789,
+      "invalid": 2,
+      "error": null
+    },
+    {
+      "observedAt": "2026-09-20T21:32:00.141Z",
+      "id": "7b169af1d88f479bda812ccb",
+      "status": "running",
+      "startedAt": "2026-09-20T21:23:11.487Z",
+      "completedAt": null,
+      "processed": 26500,
+      "skipped": 4230,
+      "invalid": 2,
+      "error": null
+    },
+    {
+      "observedAt": "2026-09-20T21:33:02.690Z",
+      "id": "7b169af1d88f479bda812ccb",
+      "status": "running",
+      "startedAt": "2026-09-20T21:23:11.487Z",
+      "completedAt": null,
+      "processed": 30000,
+      "skipped": 4753,
+      "invalid": 2,
+      "error": null
+    },
+    {
+      "observedAt": "2026-09-20T21:34:05.224Z",
+      "id": "7b169af1d88f479bda812ccb",
+      "status": "running",
+      "startedAt": "2026-09-20T21:23:11.487Z",
+      "completedAt": null,
+      "processed": 33900,
+      "skipped": 5311,
+      "invalid": 2,
+      "error": null
+    },
+    {
+      "observedAt": "2026-09-20T21:35:07.823Z",
+      "id": "7b169af1d88f479bda812ccb",
+      "status": "running",
+      "startedAt": "2026-09-20T21:23:11.487Z",
+      "completedAt": null,
+      "processed": 37400,
+      "skipped": 5825,
+      "invalid": 2,
+      "error": null
+    },
+    {
+      "observedAt": "2026-09-20T21:36:10.434Z",
+      "id": "7b169af1d88f479bda812ccb",
+      "status": "running",
+      "startedAt": "2026-09-20T21:23:11.487Z",
+      "completedAt": null,
+      "processed": 41200,
+      "skipped": 6324,
+      "invalid": 2,
+      "error": null
+    },
+    {
+      "observedAt": "2026-09-20T21:37:13.097Z",
+      "id": "7b169af1d88f479bda812ccb",
+      "status": "running",
+      "startedAt": "2026-09-20T21:23:11.487Z",
+      "completedAt": null,
+      "processed": 44200,
+      "skipped": 6732,
+      "invalid": 2,
+      "error": null
+    },
+    {
+      "observedAt": "2026-09-20T21:38:15.617Z",
+      "id": "7b169af1d88f479bda812ccb",
+      "status": "running",
+      "startedAt": "2026-09-20T21:23:11.487Z",
+      "completedAt": null,
+      "processed": 47400,
+      "skipped": 7177,
+      "invalid": 2,
+      "error": null
+    },
+    {
+      "observedAt": "2026-09-20T21:39:18.175Z",
+      "id": "7b169af1d88f479bda812ccb",
+      "status": "running",
+      "startedAt": "2026-09-20T21:23:11.487Z",
+      "completedAt": null,
+      "processed": 51500,
+      "skipped": 7883,
+      "invalid": 2,
+      "error": null
+    },
+    {
+      "observedAt": "2026-09-20T21:40:21.036Z",
+      "id": "7b169af1d88f479bda812ccb",
+      "status": "running",
+      "startedAt": "2026-09-20T21:23:11.487Z",
+      "completedAt": null,
+      "processed": 55000,
+      "skipped": 8457,
+      "invalid": 2,
+      "error": null
+    },
+    {
+      "observedAt": "2026-09-20T21:41:23.614Z",
+      "id": "7b169af1d88f479bda812ccb",
+      "status": "running",
+      "startedAt": "2026-09-20T21:23:11.487Z",
+      "completedAt": null,
+      "processed": 58900,
+      "skipped": 9009,
+      "invalid": 2,
+      "error": null
+    },
+    {
+      "observedAt": "2026-09-20T21:42:26.151Z",
+      "id": "7b169af1d88f479bda812ccb",
+      "status": "running",
+      "startedAt": "2026-09-20T21:23:11.487Z",
+      "completedAt": null,
+      "processed": 62700,
+      "skipped": 9400,
+      "invalid": 3,
+      "error": null
+    },
+    {
+      "observedAt": "2026-09-20T21:43:28.719Z",
+      "id": "7b169af1d88f479bda812ccb",
+      "status": "running",
+      "startedAt": "2026-09-20T21:23:11.487Z",
+      "completedAt": null,
+      "processed": 65300,
+      "skipped": 9664,
+      "invalid": 3,
+      "error": null
+    },
+    {
+      "observedAt": "2026-09-20T21:44:31.367Z",
+      "id": "7b169af1d88f479bda812ccb",
+      "status": "completed",
+      "startedAt": "2026-09-20T21:23:11.487Z",
+      "completedAt": "2026-09-20T21:43:31.294Z",
+      "processed": 66030,
+      "added": 42,
+      "updated": 54061,
+      "skipped": 9713,
+      "invalid": 3,
+      "error": null
+    }
+  ]
+}

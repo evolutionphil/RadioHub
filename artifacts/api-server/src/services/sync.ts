@@ -130,6 +130,10 @@ export class SyncService {
       if (!cancelled && result.inserted > 0) {
         setImmediate(async () => {
           try {
+            // Newly persisted station URLs must pass the in-memory existence
+            // gate immediately, rather than wait for its six-hour refresh.
+            const { loadSlugExistence } = await import('../seo/slug-existence');
+            await loadSlugExistence();
             // Import IndexNowService (dynamic import to avoid circular dependency)
             const { IndexNowService } = await import('./indexnow');
             

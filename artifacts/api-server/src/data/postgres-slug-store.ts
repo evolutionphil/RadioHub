@@ -35,7 +35,9 @@ export async function pgSlugStatistics(): Promise<any> {
         : 0,
   };
 }
-async function uniqueSlug(
+// Callers must hold the admin-slug-assignment transaction lock until the
+// resulting slug is persisted, so inserts and maintenance share one allocator.
+export async function allocateUniqueCatalogSlug(
   client: pg.PoolClient,
   table: SlugTable,
   id: string,
@@ -75,7 +77,7 @@ async function assign(
         row.email?.split("@")[0] ||
         "user-" + row.id
       : row.name;
-  const slug = await uniqueSlug(client, table, row.id, name);
+  const slug = await allocateUniqueCatalogSlug(client, table, row.id, name);
   if (table === "stations") {
     const verdict = evaluateJunkStation({
       ...row.source,

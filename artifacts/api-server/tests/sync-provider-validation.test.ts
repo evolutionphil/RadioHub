@@ -67,6 +67,7 @@ before(async () => {
   mock.module('../src/services/image-manager', { namedExports: { ImageManager: class {} } });
   mock.module('../src/services/logo-processor', { namedExports: { logoProcessor: {} } });
   mock.module('../src/services/indexnow', { namedExports: { IndexNowService: { submitStationUrls: async () => {} } } });
+  mock.module('../src/seo/slug-existence', { namedExports: { loadSlugExistence: async () => {} } });
   mock.module('../src/utils/logger', { namedExports: { logger: {
     log() {}, error() {}, warn: (message: string) => { warnings.push(message); },
   } } });
@@ -83,6 +84,7 @@ after(async () => {
   // before restoring it; none may load a real external-service module.
   await new Promise<void>(resolve => setImmediate(resolve));
   await import('../src/services/indexnow');
+  await import('../src/seo/slug-existence');
   mock.restoreAll();
 });
 
