@@ -9,6 +9,7 @@ import { Plus, RefreshCw, Users, Merge, Check, X, ChevronDown, ChevronUp, Trash2
 import StationTable from "@/components/stations/station-table";
 import AdminStationPagination from '@/components/stations/admin-station-pagination';
 import AdminDuplicateMergePanel from '@/components/stations/admin-duplicate-merge-panel';
+import AdminDescriptionRepair from '@/components/stations/admin-description-repair';
 import StationForm from "@/components/stations/station-form";
 import { saveAdminStationEdit } from '@/lib/admin-station-description';
 import Filters from "@/components/stations/filters";
@@ -138,7 +139,7 @@ export default function Stations() {
     queryKey: showBlacklisted ? ['/api/admin/blacklisted-stations', finalFilters] : 
               showDuplicates ? ['/api/admin/stations/duplicates', finalFilters] : 
               ['/api/admin/stations', finalFilters],
-    queryFn: () => {
+    queryFn: ({ signal }) => {
       if (showBlacklisted) {
         // Fetching blacklisted stations with filters
         const params = new URLSearchParams();
@@ -147,7 +148,7 @@ export default function Stations() {
         if (finalFilters.limit) params.set('limit', finalFilters.limit.toString());
         
         const url = `/api/admin/blacklisted-stations${params.toString() ? '?' + params.toString() : ''}`;
-        return apiRequest('GET', url).then(res => res.json());
+        return apiRequest('GET', url, { signal }).then(res => res.json());
       } else if (showDuplicates) {
         // Fetching duplicate stations with filters
         // Pass filters as query parameters to the duplicates endpoint
@@ -158,10 +159,10 @@ export default function Stations() {
         if (finalFilters.genre) params.set('genre', finalFilters.genre);
         
         const url = `/api/admin/stations/duplicates${params.toString() ? '?' + params.toString() : ''}`;
-        return apiRequest('GET', url).then(res => res.json());
+        return apiRequest('GET', url, { signal }).then(res => res.json());
       } else {
         // Calling api.getAdminStations with filters
-        return api.getAdminStations(finalFilters);
+        return api.getAdminStations(finalFilters, signal);
       }
     },
     staleTime: 30_000,
@@ -1235,8 +1236,9 @@ export default function Stations() {
           </div>
           <details className="group rounded-lg border border-border bg-muted/20 p-3" data-testid="station-maintenance-tools">
             <summary className="cursor-pointer text-sm font-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4">Maintenance &amp; translation tools <span className="ml-1 font-normal text-muted-foreground">· optional bulk operations</span></summary>
-            <p className="mt-3 text-xs leading-relaxed text-muted-foreground">Select specific stations or a country before a bulk operation. AI generation may incur provider charges; selected filters do not necessarily limit every maintenance job.</p>
+            <p className="mt-3 text-xs leading-relaxed text-muted-foreground">Bulk AI repair checks the entire eligible catalogue in all 14 languages. Other bulk tools use their stated selection or country scope. AI generation may incur provider charges.</p>
             <div className="mt-3 flex flex-wrap items-center gap-2">
+              <AdminDescriptionRepair busy={bulkAiMutation.isPending || aiJobStatus?.status === 'running'} onStarted={jobId => { setBulkAiJobId(jobId); setShowAiDialog(true); }} />
               <NeverCheckedTagsBadge
                 onClick={() => {
                   setShowDuplicates(false);
@@ -2018,7 +2020,7 @@ export default function Stations() {
             </DialogTitle>
             <DialogDescription>
               {expiredJobId ? 'The saved job progress is no longer available.' : !bulkAiJobId ? 'Choose languages and review the scope before starting.' : aiJobStatus?.status === 'completed'
-                ? 'AI generation completed successfully!'
+                ? aiJobStatus.publishStatus === 'failed' ? 'Descriptions processed; sitemap refresh needs attention.' : aiJobStatus.failed > 0 ? `Processing finished with ${aiJobStatus.failed} failed station(s). Review the errors below.` : 'AI generation completed successfully!'
                 : aiJobStatus?.status === 'failed'
                 ? 'AI generation failed'
                 : 'Generating custom AI descriptions for your stations...'}
@@ -2187,12 +2189,16 @@ export default function Stations() {
                       setShowAiDialog(false);
                       setBulkAiJobId(null);
                       refetch(); // Refresh station list
+                      if (coverageData) refetchCoverage();
                     }}
                     className="w-full"
                   >
                     Done
                   </Button>
                 )}
+
+                {aiJobStatus.publishStatus === 'completed' && <p role="status" className="text-sm text-green-700">Sitemaps refreshed with the saved content.</p>}
+                {aiJobStatus.publishStatus === 'failed' && <p role="alert" className="rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">{aiJobStatus.error || 'Saved descriptions are retained. Retry the sitemap rebuild from SEO maintenance.'}</p>}
 
                 {aiJobStatus.status === 'failed' && (
                   <div className="text-sm text-red-600 p-3 bg-red-50 rounded">

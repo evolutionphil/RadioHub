@@ -55,6 +55,14 @@ test('live worker on another replica keeps running status', async () => {
   assert.equal(writes.length, 0);
 });
 
+test('interrupted global repair persists an unconfirmed publishing warning', async () => {
+  record.publish_status = 'pending';
+  const status = await pgReadDescriptionJob('fixture-job');
+  assert.equal(status.status, 'failed'); assert.equal(status.publishStatus, 'failed');
+  assert.match(status.error, /Sitemap refresh was not confirmed/);
+  assert.match(writes[0].sql, /publish_status/);
+});
+
 test('completion concurrent with lock acquisition is not misreported as interruption', async () => {
   completedDuringLock = true;
   const status = await pgReadDescriptionJob('fixture-job');

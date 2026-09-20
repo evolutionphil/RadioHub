@@ -24,6 +24,8 @@ test('PostgreSQL engine executes recovery SQL, preserves all content and journal
         visibility_expires_at timestamptz,availability_outcome text,availability_checked_at timestamptz
       )`);
       await db.exec(await readFile(new URL('../../../lib/db/migrations/0034_private_noindex_recovery_journal.sql', import.meta.url), 'utf8'));
+      await db.exec('CREATE TABLE bulk_description_jobs(id text PRIMARY KEY)');
+      await db.exec(await readFile(new URL('../../../lib/db/migrations/0035_station_description_summary.sql', import.meta.url), 'utf8'));
       const descriptions = Object.fromEntries(AUDIT_LANGUAGES.map(language => [language, { full: `Full article ${language}`, meta: `Summary ${language}` }]));
       const source = { originalImport: { preserved: true }, noIndex: true };
       const existingJournal = { previous: { preserved: true } };

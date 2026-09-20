@@ -138,6 +138,26 @@ describe('scannable, scoped filters and page navigation', () => {
 });
 
 describe('station management integration', () => {
+  it('does not call a completed repair fully successful when sitemap publishing failed', async () => {
+    localStorage.setItem('bulkAiJobId', 'bulk-desc-repair');
+    mocks.request.mockResolvedValue({ json: async () => ({ jobId: 'bulk-desc-repair', status: 'completed', total: 1, processed: 1, successful: 1, failed: 0, skipped: 0, publishStatus: 'failed', error: 'Descriptions saved; sitemap refresh needs retry from SEO maintenance.' }) });
+    wrapper(<Stations />);
+    expect(await screen.findByText('Descriptions processed; sitemap refresh needs attention.')).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent('sitemap refresh needs retry');
+    expect(screen.queryByText('AI generation completed successfully!')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Done' })).toBeEnabled();
+  });
+  it('cancels the previous list request when the filter changes', async () => {
+    mocks.stations.mockImplementation(() => new Promise(() => {}));
+    wrapper(<Stations />);
+    await waitFor(() => expect(mocks.stations).toHaveBeenCalledTimes(1));
+    const previousSignal = mocks.stations.mock.calls[0][1] as AbortSignal;
+    expect(previousSignal.aborted).toBe(false);
+    fireEvent.change(screen.getByLabelText('Countries'), { target: { value: 'Austria' } });
+    await waitFor(() => expect(mocks.stations).toHaveBeenCalledTimes(2));
+    expect(previousSignal.aborted).toBe(true);
+    expect(mocks.stations.mock.lastCall?.[0].country).toBe('Austria');
+  });
   it('collapses maintenance tools, keeps primary actions available and resets page on view changes', async () => {
     wrapper(<Stations />);
     await screen.findAllByText('Example Radio');

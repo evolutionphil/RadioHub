@@ -1,0 +1,713 @@
+{
+  "checkedAt": "2026-09-20T21:58:54.796Z",
+  "slugJob": {
+    "counts": {
+      "users": 0,
+      "genres": 0,
+      "stations": 85
+    },
+    "message": "Slug generation completed",
+    "progress": {
+      "total": 85,
+      "current": 85
+    },
+    "stationsOnly": true,
+    "regenerateAll": false,
+    "id": "slug-297b4cbc-0650-4a31-93b3-c0d6f8663c6d",
+    "jobId": "slug-297b4cbc-0650-4a31-93b3-c0d6f8663c6d",
+    "status": "completed",
+    "startedAt": "2026-09-20T21:57:56.606Z",
+    "updatedAt": "2026-09-20T21:57:59.256Z",
+    "completedAt": "2026-09-20T21:57:59.256Z"
+  },
+  "selectedStationIds": [
+    "e99be6b67cfa5fb361a0d58b",
+    "ba4ae67254bee0d0f1ed5ff4",
+    "4d42d923bef7edebad3c8c13",
+    "e092d95dfe9ddea23371f41b",
+    "3cfe2a6a52f6c1a1178c4c32",
+    "cd78086f4c94e8285858ed4d",
+    "ec78220d4e1746fe9ca07e3c",
+    "9e555775d3be4ad5e8fb7715",
+    "a38f0d0ad06cc53430f6025f",
+    "becd37dcd2ce0ef035a61bc1",
+    "08beac447d37149bd1bd3d8a",
+    "d8939b63c262358f6921f5f9",
+    "ec687d9d7f981fa1301bfb43",
+    "c5e6854c5faf2e6cc39661d1",
+    "3445b84b134d02bc1e030593",
+    "95d78381749f77c01c2799a0",
+    "05303a8ba7b0d033708b2065",
+    "6778edd98630bc19514011e0",
+    "aa02d8a2018d63ab20108f41",
+    "243e004776033ab32bf4f09b",
+    "c94f27934f63de3b566182b5",
+    "81db26d35dfd0767937724a6",
+    "5e19718b9a26f65257a53b03",
+    "cfd74da034b018975001a8f7",
+    "b0b5b504de4e5ca3312ed11b",
+    "a827db02c36d65ade197ed18",
+    "fdbe2ae84f8b9799858f090c",
+    "a7eea928ad0095c00f86b80a",
+    "5dd1edd5a45e286c609230df",
+    "9ea2bbb4e36bd098943fec36",
+    "460cd9b2b41db8f6b9c00aae",
+    "e87390ad509f9d4b539bc825",
+    "3c1615c5682e8347fbdce890",
+    "717283f6988c8cbe92ca24b8",
+    "8a4b59ab0facc1ab166a5140",
+    "16958d6cfd24328484b5dce0",
+    "a1be59b95df3a8cfbc438ffd",
+    "6f7c45c252947448223227cf",
+    "5917559ed0e343739deb8477",
+    "8f7e5a9626923d5f24c03282",
+    "3898b7e68475773b71decc9b",
+    "39f7fcbe01d5278a5fee7062",
+    "920fe565990799007e000a97",
+    "3ff9abc9ea2df6253835804a",
+    "b37c3f0c4d97c8a4d4c15ef3",
+    "13935b305329a05a1eb67472",
+    "3a289e8118b59a15b2d6554f",
+    "b6bdbe97c9d6474adc1fce5a",
+    "65886e1096f02522eda24e2a",
+    "784b17dd5ce4f6a14bae6340",
+    "bac6c2f78a2a5d4a88934433",
+    "badb8e3109f6e1b365d48ca1",
+    "4d0e5a80cc2cb69d3ef4707b",
+    "74a3331fda60479f7020d1ad",
+    "f514d7abe41a106c8bd17496",
+    "a957ed5dd94b55164c36bb3d",
+    "9c5273050333a7711d694c2d",
+    "3dd5ab5f142e2e32265ab54d",
+    "600c17cfb25728f7e3a5a453",
+    "3db2123c647a3e786273b699",
+    "a4543bd795b2f78e28eb5ce8",
+    "489c6af15de3ed7229a837fd",
+    "46ceac3b1da795bca55ef5a2",
+    "2c7d403d6bba60e1799a87ff",
+    "7341aa34f6a393dcbfe729f6",
+    "290249fb462d8c4dec1a1ac8",
+    "d70d18706db1f9654f1b7dbd",
+    "509e8188f90458342d1b7632",
+    "fd76436c5e8421e5150457f2",
+    "b5ed1cdb790675d30f61c6ff",
+    "09d81d13e9e6c8dc2cb630cf",
+    "38f650e8b7f9fa48abacdc72",
+    "2d93973afea05a6affae66c8",
+    "3d164c3b2dc83bbe719fdfed",
+    "63f9deb5eb81c62c6f7b0556",
+    "cf101df47abf9b6fa85a2632",
+    "333f118d5ec11a28aece5796",
+    "391b479d1822c66ca8af58be",
+    "d3e6ba9a302f777664bb06eb",
+    "cfe2f82d3973d94cfac101cd",
+    "0720c9ae8a88c1c816d7f2b6",
+    "e5e0485477143996dda66060",
+    "61f624c5cc55845cb0a6ecff",
+    "c4e965beadc54baefbb392bb"
+  ],
+  "excluded": [
+    {
+      "id": "9ab45feeb8d979f0fa8af5f1",
+      "name": "ZZTEST finite relay probe",
+      "reason": "Explicit finite relay test: test tag and /test-fin.mp3 stream. Record preserved; noIndex manually set."
+    }
+  ],
+  "stations": [
+    {
+      "id": "e99be6b67cfa5fb361a0d58b",
+      "name": "西江之声",
+      "slug": "xi-jiang-zhi-sheng",
+      "noIndex": false,
+      "initialDescriptionLocales": []
+    },
+    {
+      "id": "ba4ae67254bee0d0f1ed5ff4",
+      "name": "江西旅游广播",
+      "slug": "jiang-xi-lu-you-guang-bo-2",
+      "noIndex": false,
+      "initialDescriptionLocales": []
+    },
+    {
+      "id": "4d42d923bef7edebad3c8c13",
+      "name": "来宾综合广播",
+      "slug": "lai-bin-zong-he-guang-bo",
+      "noIndex": false,
+      "initialDescriptionLocales": []
+    },
+    {
+      "id": "e092d95dfe9ddea23371f41b",
+      "name": "四川财富生活频道",
+      "slug": "si-chuan-cai-fu-sheng-huo-pin-dao",
+      "noIndex": false,
+      "initialDescriptionLocales": []
+    },
+    {
+      "id": "3cfe2a6a52f6c1a1178c4c32",
+      "name": "ลูกทุ่งแม็กซาโก้https://thainetradio.com:8014",
+      "slug": "luukthungaemkchaaokhttps-thainetradio-com-8014",
+      "noIndex": false,
+      "initialDescriptionLocales": []
+    },
+    {
+      "id": "cd78086f4c94e8285858ed4d",
+      "name": "اذاعة القران الكريم من تونس",
+      "slug": "dhaa-lqrn-lkrym-mn-twns",
+      "noIndex": false,
+      "initialDescriptionLocales": []
+    },
+    {
+      "id": "ec78220d4e1746fe9ca07e3c",
+      "name": "Ретро FM Qazaqstan",
+      "slug": "retro-fm-qazaqstan",
+      "noIndex": false,
+      "initialDescriptionLocales": []
+    },
+    {
+      "id": "9e555775d3be4ad5e8fb7715",
+      "name": "Радио Фирн",
+      "slug": "radio-firn",
+      "noIndex": false,
+      "initialDescriptionLocales": []
+    },
+    {
+      "id": "a38f0d0ad06cc53430f6025f",
+      "name": "Отклик — стихи и отклики нейросети",
+      "slug": "otklik-stihi-i-otkliki-neyroseti",
+      "noIndex": false,
+      "initialDescriptionLocales": []
+    },
+    {
+      "id": "becd37dcd2ce0ef035a61bc1",
+      "name": "Народное радио",
+      "slug": "narodnoe-radio-2",
+      "noIndex": false,
+      "initialDescriptionLocales": []
+    },
+    {
+      "id": "08beac447d37149bd1bd3d8a",
+      "name": "Ω  Omega - Radio",
+      "slug": "o-omega-radio",
+      "noIndex": false,
+      "initialDescriptionLocales": []
+    },
+    {
+      "id": "d8939b63c262358f6921f5f9",
+      "name": "Λάμψη 96.7",
+      "slug": "lampsi-96-7",
+      "noIndex": false,
+      "initialDescriptionLocales": []
+    },
+    {
+      "id": "ec687d9d7f981fa1301bfb43",
+      "name": "Δημοτικό Ραδιόφωνο Ιωαννίνων 98.7",
+      "slug": "dimotiko-radiofono-ioanninon-98-7-1",
+      "noIndex": false,
+      "initialDescriptionLocales": []
+    },
+    {
+      "id": "9ab45feeb8d979f0fa8af5f1",
+      "name": "ZZTEST finite relay probe",
+      "slug": "zztest-finite-relay-probe",
+      "noIndex": true,
+      "initialDescriptionLocales": []
+    },
+    {
+      "id": "c5e6854c5faf2e6cc39661d1",
+      "name": "ZROCK",
+      "slug": "zrock",
+      "noIndex": false,
+      "initialDescriptionLocales": []
+    },
+    {
+      "id": "3445b84b134d02bc1e030593",
+      "name": "ZRadioHr",
+      "slug": "zradiohr",
+      "noIndex": false,
+      "initialDescriptionLocales": []
+    },
+    {
+      "id": "95d78381749f77c01c2799a0",
+      "name": "Zoo 90.8",
+      "slug": "zoo-90-8-2",
+      "noIndex": false,
+      "initialDescriptionLocales": []
+    },
+    {
+      "id": "05303a8ba7b0d033708b2065",
+      "name": "ZAppa Stream",
+      "slug": "zappa-stream",
+      "noIndex": false,
+      "initialDescriptionLocales": []
+    },
+    {
+      "id": "6778edd98630bc19514011e0",
+      "name": "Z-RadioHr",
+      "slug": "z-radiohr",
+      "noIndex": false,
+      "initialDescriptionLocales": []
+    },
+    {
+      "id": "aa02d8a2018d63ab20108f41",
+      "name": "YRB RADIO",
+      "slug": "yrb-radio",
+      "noIndex": false,
+      "initialDescriptionLocales": []
+    },
+    {
+      "id": "243e004776033ab32bf4f09b",
+      "name": "Y.M RADIO",
+      "slug": "y-m-radio",
+      "noIndex": false,
+      "initialDescriptionLocales": []
+    },
+    {
+      "id": "c94f27934f63de3b566182b5",
+      "name": "XtraFM Costa Brava",
+      "slug": "xtrafm-costa-brava",
+      "noIndex": false,
+      "initialDescriptionLocales": []
+    },
+    {
+      "id": "81db26d35dfd0767937724a6",
+      "name": "XGlite Radio FM Web Station",
+      "slug": "xglite-radio-fm-web-station",
+      "noIndex": false,
+      "initialDescriptionLocales": []
+    },
+    {
+      "id": "5e19718b9a26f65257a53b03",
+      "name": "XerosRadio Classics",
+      "slug": "xerosradio-classics",
+      "noIndex": false,
+      "initialDescriptionLocales": []
+    },
+    {
+      "id": "cfd74da034b018975001a8f7",
+      "name": "WVUA 90.7 The Capstone",
+      "slug": "wvua-90-7-the-capstone",
+      "noIndex": false,
+      "initialDescriptionLocales": []
+    },
+    {
+      "id": "b0b5b504de4e5ca3312ed11b",
+      "name": "WUZZ RADIO",
+      "slug": "wuzz-radio",
+      "noIndex": false,
+      "initialDescriptionLocales": []
+    },
+    {
+      "id": "a827db02c36d65ade197ed18",
+      "name": "WUAG",
+      "slug": "wuag",
+      "noIndex": false,
+      "initialDescriptionLocales": []
+    },
+    {
+      "id": "fdbe2ae84f8b9799858f090c",
+      "name": "WTCH 96.1",
+      "slug": "wtch-96-1",
+      "noIndex": false,
+      "initialDescriptionLocales": []
+    },
+    {
+      "id": "a7eea928ad0095c00f86b80a",
+      "name": "WSHF - THE BEE - 92.7FM HALEYVILLE",
+      "slug": "wshf-the-bee-92-7fm-haleyville",
+      "noIndex": false,
+      "initialDescriptionLocales": []
+    },
+    {
+      "id": "5dd1edd5a45e286c609230df",
+      "name": "WSBA",
+      "slug": "wsba",
+      "noIndex": false,
+      "initialDescriptionLocales": []
+    },
+    {
+      "id": "9ea2bbb4e36bd098943fec36",
+      "name": "WRVA",
+      "slug": "wrva-1",
+      "noIndex": false,
+      "initialDescriptionLocales": []
+    },
+    {
+      "id": "460cd9b2b41db8f6b9c00aae",
+      "name": "WRVA",
+      "slug": "wrva",
+      "noIndex": false,
+      "initialDescriptionLocales": []
+    },
+    {
+      "id": "e87390ad509f9d4b539bc825",
+      "name": "WREN-LP 97.9 The WREN",
+      "slug": "wren-lp-97-9-the-wren",
+      "noIndex": false,
+      "initialDescriptionLocales": []
+    },
+    {
+      "id": "3c1615c5682e8347fbdce890",
+      "name": "WRCJ",
+      "slug": "wrcj",
+      "noIndex": false,
+      "initialDescriptionLocales": []
+    },
+    {
+      "id": "717283f6988c8cbe92ca24b8",
+      "name": "WMRV 91.7",
+      "slug": "wmrv-91-7",
+      "noIndex": false,
+      "initialDescriptionLocales": []
+    },
+    {
+      "id": "8a4b59ab0facc1ab166a5140",
+      "name": "Watar Fm",
+      "slug": "watar-fm-1",
+      "noIndex": false,
+      "initialDescriptionLocales": []
+    },
+    {
+      "id": "16958d6cfd24328484b5dce0",
+      "name": "TBM06.FR",
+      "slug": "tbm06-fr",
+      "noIndex": false,
+      "initialDescriptionLocales": []
+    },
+    {
+      "id": "a1be59b95df3a8cfbc438ffd",
+      "name": "Szabadkai Magyar Rádió",
+      "slug": "szabadkai-magyar-radio-2",
+      "noIndex": false,
+      "initialDescriptionLocales": []
+    },
+    {
+      "id": "6f7c45c252947448223227cf",
+      "name": "Soundbar Nordheide",
+      "slug": "soundbar-nordheide-1",
+      "noIndex": false,
+      "initialDescriptionLocales": []
+    },
+    {
+      "id": "5917559ed0e343739deb8477",
+      "name": "Soundbar Nordheide",
+      "slug": "soundbar-nordheide",
+      "noIndex": false,
+      "initialDescriptionLocales": []
+    },
+    {
+      "id": "8f7e5a9626923d5f24c03282",
+      "name": "Semerkand Radyo",
+      "slug": "semerkand-radyo-1",
+      "noIndex": false,
+      "initialDescriptionLocales": []
+    },
+    {
+      "id": "3898b7e68475773b71decc9b",
+      "name": "RTL",
+      "slug": "rtl-1",
+      "noIndex": false,
+      "initialDescriptionLocales": []
+    },
+    {
+      "id": "39f7fcbe01d5278a5fee7062",
+      "name": "RequestRadio เพื่อชีวิต (Alt)",
+      "slug": "requestradio-ephuue-chiiwit-alt",
+      "noIndex": false,
+      "initialDescriptionLocales": []
+    },
+    {
+      "id": "920fe565990799007e000a97",
+      "name": "RequestRadio ลูกทุ่ง (Alt)",
+      "slug": "requestradio-luukthung-alt",
+      "noIndex": false,
+      "initialDescriptionLocales": []
+    },
+    {
+      "id": "3ff9abc9ea2df6253835804a",
+      "name": "RequestRadio String (Alt)",
+      "slug": "requestradio-string-alt",
+      "noIndex": false,
+      "initialDescriptionLocales": []
+    },
+    {
+      "id": "b37c3f0c4d97c8a4d4c15ef3",
+      "name": "RequestRadio Inter (Alt)",
+      "slug": "requestradio-inter-alt",
+      "noIndex": false,
+      "initialDescriptionLocales": []
+    },
+    {
+      "id": "13935b305329a05a1eb67472",
+      "name": "RadioSON",
+      "slug": "radioson",
+      "noIndex": false,
+      "initialDescriptionLocales": []
+    },
+    {
+      "id": "3a289e8118b59a15b2d6554f",
+      "name": "RadioLiveTV",
+      "slug": "radiolivetv",
+      "noIndex": false,
+      "initialDescriptionLocales": []
+    },
+    {
+      "id": "b6bdbe97c9d6474adc1fce5a",
+      "name": "Radio Zwickau",
+      "slug": "radio-zwickau-1",
+      "noIndex": false,
+      "initialDescriptionLocales": []
+    },
+    {
+      "id": "65886e1096f02522eda24e2a",
+      "name": "Radio Victor Music Perú",
+      "slug": "radio-victor-music-peru-1",
+      "noIndex": false,
+      "initialDescriptionLocales": []
+    },
+    {
+      "id": "784b17dd5ce4f6a14bae6340",
+      "name": "Radio Safira",
+      "slug": "radio-safira-2",
+      "noIndex": false,
+      "initialDescriptionLocales": []
+    },
+    {
+      "id": "bac6c2f78a2a5d4a88934433",
+      "name": "Radio Romantic Modern Talking - Blue Systems",
+      "slug": "radio-romantic-modern-talking-blue-systems",
+      "noIndex": false,
+      "initialDescriptionLocales": []
+    },
+    {
+      "id": "badb8e3109f6e1b365d48ca1",
+      "name": "Radio Pescara",
+      "slug": "radio-pescara",
+      "noIndex": false,
+      "initialDescriptionLocales": []
+    },
+    {
+      "id": "4d0e5a80cc2cb69d3ef4707b",
+      "name": "Radio Paloma Weihnachtsschlager",
+      "slug": "radio-paloma-weihnachtsschlager",
+      "noIndex": false,
+      "initialDescriptionLocales": []
+    },
+    {
+      "id": "74a3331fda60479f7020d1ad",
+      "name": "Radio Paloma Volksmusik",
+      "slug": "radio-paloma-volksmusik-1",
+      "noIndex": false,
+      "initialDescriptionLocales": []
+    },
+    {
+      "id": "f514d7abe41a106c8bd17496",
+      "name": "Radio Orbital ch",
+      "slug": "radio-orbital-ch",
+      "noIndex": false,
+      "initialDescriptionLocales": []
+    },
+    {
+      "id": "a957ed5dd94b55164c36bb3d",
+      "name": "Radio Hollywood",
+      "slug": "radio-hollywood",
+      "noIndex": false,
+      "initialDescriptionLocales": []
+    },
+    {
+      "id": "9c5273050333a7711d694c2d",
+      "name": "Radio Gryfice AI",
+      "slug": "radio-gryfice-ai",
+      "noIndex": false,
+      "initialDescriptionLocales": []
+    },
+    {
+      "id": "3dd5ab5f142e2e32265ab54d",
+      "name": "radio caldera.cl",
+      "slug": "radio-caldera-cl",
+      "noIndex": false,
+      "initialDescriptionLocales": []
+    },
+    {
+      "id": "600c17cfb25728f7e3a5a453",
+      "name": "Radio Calais Détroit",
+      "slug": "radio-calais-detroit",
+      "noIndex": false,
+      "initialDescriptionLocales": []
+    },
+    {
+      "id": "3db2123c647a3e786273b699",
+      "name": "Radio Abruzzo",
+      "slug": "radio-abruzzo",
+      "noIndex": false,
+      "initialDescriptionLocales": []
+    },
+    {
+      "id": "a4543bd795b2f78e28eb5ce8",
+      "name": "Radio 91.2",
+      "slug": "radio-91-2-4",
+      "noIndex": false,
+      "initialDescriptionLocales": []
+    },
+    {
+      "id": "489c6af15de3ed7229a837fd",
+      "name": "Radio 91,2",
+      "slug": "radio-91-2-3",
+      "noIndex": false,
+      "initialDescriptionLocales": []
+    },
+    {
+      "id": "46ceac3b1da795bca55ef5a2",
+      "name": "Radio 91,2",
+      "slug": "radio-91-2-2",
+      "noIndex": false,
+      "initialDescriptionLocales": []
+    },
+    {
+      "id": "2c7d403d6bba60e1799a87ff",
+      "name": "POP! 100.7",
+      "slug": "pop-100-7",
+      "noIndex": false,
+      "initialDescriptionLocales": []
+    },
+    {
+      "id": "7341aa34f6a393dcbfe729f6",
+      "name": "Pannon Rádió",
+      "slug": "pannon-radio-1",
+      "noIndex": false,
+      "initialDescriptionLocales": []
+    },
+    {
+      "id": "290249fb462d8c4dec1a1ac8",
+      "name": "Netzperlentaucher",
+      "slug": "netzperlentaucher",
+      "noIndex": false,
+      "initialDescriptionLocales": []
+    },
+    {
+      "id": "d70d18706db1f9654f1b7dbd",
+      "name": "Nehestrat FM ",
+      "slug": "nehestrat-fm",
+      "noIndex": false,
+      "initialDescriptionLocales": []
+    },
+    {
+      "id": "509e8188f90458342d1b7632",
+      "name": "Napoca Fm - Spirit of Cluj",
+      "slug": "napoca-fm-spirit-of-cluj",
+      "noIndex": false,
+      "initialDescriptionLocales": []
+    },
+    {
+      "id": "fd76436c5e8421e5150457f2",
+      "name": "Michigan Don Oldies",
+      "slug": "michigan-don-oldies",
+      "noIndex": false,
+      "initialDescriptionLocales": []
+    },
+    {
+      "id": "b5ed1cdb790675d30f61c6ff",
+      "name": "Hitradio skw",
+      "slug": "hitradio-skw",
+      "noIndex": false,
+      "initialDescriptionLocales": []
+    },
+    {
+      "id": "09d81d13e9e6c8dc2cb630cf",
+      "name": "Froggy 100.3 ",
+      "slug": "froggy-100-3",
+      "noIndex": false,
+      "initialDescriptionLocales": []
+    },
+    {
+      "id": "38f650e8b7f9fa48abacdc72",
+      "name": "Emisora Costa del Sol 93.1 FM",
+      "slug": "emisora-costa-del-sol-93-1-fm-1",
+      "noIndex": false,
+      "initialDescriptionLocales": []
+    },
+    {
+      "id": "2d93973afea05a6affae66c8",
+      "name": "Einslive",
+      "slug": "einslive",
+      "noIndex": false,
+      "initialDescriptionLocales": []
+    },
+    {
+      "id": "3d164c3b2dc83bbe719fdfed",
+      "name": "Caprice Radio avant garde jazz",
+      "slug": "caprice-radio-avant-garde-jazz",
+      "noIndex": false,
+      "initialDescriptionLocales": []
+    },
+    {
+      "id": "63f9deb5eb81c62c6f7b0556",
+      "name": "Çağrı FM Diyarbakır",
+      "slug": "cagri-fm-diyarbakir",
+      "noIndex": false,
+      "initialDescriptionLocales": []
+    },
+    {
+      "id": "cf101df47abf9b6fa85a2632",
+      "name": "Bannyradio ",
+      "slug": "bannyradio",
+      "noIndex": false,
+      "initialDescriptionLocales": []
+    },
+    {
+      "id": "333f118d5ec11a28aece5796",
+      "name": "Baku Jazz Radio",
+      "slug": "baku-jazz-radio",
+      "noIndex": false,
+      "initialDescriptionLocales": []
+    },
+    {
+      "id": "391b479d1822c66ca8af58be",
+      "name": "Babyradio Latinoamérica",
+      "slug": "babyradio-latinoamerica",
+      "noIndex": false,
+      "initialDescriptionLocales": []
+    },
+    {
+      "id": "d3e6ba9a302f777664bb06eb",
+      "name": "Babyradio España",
+      "slug": "babyradio-espana",
+      "noIndex": false,
+      "initialDescriptionLocales": []
+    },
+    {
+      "id": "cfe2f82d3973d94cfac101cd",
+      "name": "B1039",
+      "slug": "b1039",
+      "noIndex": false,
+      "initialDescriptionLocales": []
+    },
+    {
+      "id": "0720c9ae8a88c1c816d7f2b6",
+      "name": "Alma Mater",
+      "slug": "alma-mater-1",
+      "noIndex": false,
+      "initialDescriptionLocales": []
+    },
+    {
+      "id": "e5e0485477143996dda66060",
+      "name": "AI REVIVAL Radio",
+      "slug": "ai-revival-radio",
+      "noIndex": false,
+      "initialDescriptionLocales": []
+    },
+    {
+      "id": "61f624c5cc55845cb0a6ecff",
+      "name": "101.9 The Mix",
+      "slug": "101-9-the-mix-1",
+      "noIndex": false,
+      "initialDescriptionLocales": []
+    },
+    {
+      "id": "c4e965beadc54baefbb392bb",
+      "name": "101.9 The Mix",
+      "slug": "101-9-the-mix-2",
+      "noIndex": false,
+      "initialDescriptionLocales": []
+    }
+  ]
+}

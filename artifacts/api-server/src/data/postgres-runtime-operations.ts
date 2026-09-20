@@ -41,7 +41,7 @@ export async function pgSetAppState(key: string, value: Record<string, any>): Pr
 export async function pgSaveDescriptionJob(jobId: string, totalStations: number, patch: Record<string, any>): Promise<void> {
   const columns: Record<string,string> = {
     status:'status',filterByCountry:'filter_by_country',processedStations:'processed_stations',successCount:'success_count',failedCount:'failed_count',
-    skippedCount:'skipped_count',lastProcessedStationId:'last_processed_station_id',lastProcessedSkip:'last_processed_skip',errorMessage:'error_message',
+    skippedCount:'skipped_count',lastProcessedStationId:'last_processed_station_id',lastProcessedSkip:'last_processed_skip',errorMessage:'error_message',publishStatus:'publish_status',
   };
   const entries = Object.entries(patch).filter(([key])=>columns[key]);
   const values = [randomBytes(12).toString('hex'),jobId,totalStations,...entries.map(([,value])=>value)];
@@ -70,7 +70,12 @@ export async function pgReadDescriptionJob(jobId: string): Promise<any | null> {
           interrupted = true;
           record.status = 'failed';
           record.error_message = 'Description worker was interrupted. Rerun the same selection; completed fields are preserved and only missing content is filled.';
-          await pgSaveDescriptionJob(jobId, record.total_stations, { status: 'failed', errorMessage: record.error_message });
+          if (record.publish_status === 'pending') {
+            record.publish_status = 'failed';
+            record.error_message += ' Sitemap refresh was not confirmed; rebuild sitemaps after continuing the repair.';
+          }
+          await pgSaveDescriptionJob(jobId, record.total_stations, { status: 'failed', errorMessage: record.error_message,
+            ...(record.publish_status ? { publishStatus: record.publish_status } : {}) });
         }
       }
     } finally {
@@ -83,7 +88,7 @@ export async function pgReadDescriptionJob(jobId: string): Promise<any | null> {
     processed: record.processed_stations, successful: record.success_count,
     failed: record.failed_count, skipped: record.skipped_count,
     startedAt: record.created_at, updatedAt: record.updated_at,
-    error: record.error_message, interrupted, currentStation: '', currentAction: 'idle',
+    error: record.error_message, publishStatus: record.publish_status, interrupted, currentStation: '', currentAction: 'idle',
     targetLanguages: [], successfulStations: [], skippedStations: [], failedStations: [],
   };
 }

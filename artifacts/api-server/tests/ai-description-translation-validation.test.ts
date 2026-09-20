@@ -10,10 +10,12 @@ let requestDelay = 0;
 let activeRequests = 0;
 let peakRequests = 0;
 const messages: string[] = [];
+const modelRequests: any[] = [];
 mock.module('openai', {
   defaultExport: class {
     chat = { completions: { create: async (options: any) => {
       assert.equal(options.model, 'gpt-4o-mini');
+      modelRequests.push(structuredClone(options));
       requests++;
       const response = responses.shift();
       assert.notEqual(response, undefined, 'all model responses must be supplied by the test; no network fallback');
@@ -33,7 +35,7 @@ mock.module(new URL('../src/utils/logger.ts', import.meta.url).href, {
     error: (...args: unknown[]) => messages.push(args.join(' ')),
   } },
 });
-const { translateDescription } = await import('../src/services/ai-station-description');
+const { generateStationDescription, translateDescription } = await import('../src/services/ai-station-description');
 after(() => {
   if (previousKey === undefined) delete process.env.OPENAI_API_KEY;
   else process.env.OPENAI_API_KEY = previousKey;
@@ -151,4 +153,82 @@ test('cancelling a translation run stops before the next pair of paid requests',
   }), /Job cancelled/);
   assert.equal(requests - before, 2);
   assert.equal(responses.length, 2);
+});
+
+test('English generation and fallback prompts are consistent, metadata-bound and proportional', async () => {
+  const station = { _id: 'pilot', name: 'Froggy100.3 ', country: 'United States', countryCode: 'US', tags: 'country' };
+  const original = structuredClone(station);
+  const full = 'Froggy100.3 is a radio station in the United States with country music listed among its supplied genre tags. Its station profile identifies the broadcaster by this name.';
+  const meta = 'Froggy100.3 is a United States radio station with country music in its listed genres.';
+  for (const fallback of [false, true]) {
+    const offset = modelRequests.length;
+    responses = fallback ? ['NO_INFO_AVAILABLE', `${full}===${meta}`] : [`${full}===${meta}`];
+    const result = await generateStationDescription(station, 'en');
+    assert.equal(result.success, true);
+    assert.equal(result.usedFallback, fallback);
+    assert.equal(result.fullDescription, full);
+    assert.deepEqual(modelRequests.slice(offset).map(request => request.max_tokens), fallback ? [1000, 600] : [1000]);
+    for (const request of modelRequests.slice(offset)) {
+      const prompt = request.messages[0].content;
+      assert.match(prompt, /entirely in English/);
+      assert.match(prompt, /ONLY (?:the supplied station metadata|this supplied metadata)/);
+      assert.match(prompt, /no required word count/);
+      assert.match(prompt, /Do not (?:add facts from memory or )?invent schedules, presenters, request shows, local news/);
+      assert.doesNotMatch(prompt, /NEVER in English|not English|Do NOT use English|200-300|Froggy100\.3 "/);
+    }
+  }
+  assert.deepEqual(station, original, 'local normalization never renames the catalog station');
+});
+
+test('trailing catalog whitespace does not duplicate a station name before Turkish possessives', async () => {
+  const name = 'Froggy100.3 ';
+  const full = 'Froggy100.3’ün Amerika Birleşik Devletleri kaynaklı yayınında country müzik etiketleri yer alır.';
+  const meta = 'Froggy100.3’ün Amerika Birleşik Devletleri kaynaklı country müzik yayını.';
+  responses = [`${full}===${meta}`];
+  const result = await translateDescription("Froggy100.3's United States station profile lists country music among its genres.", 'Froggy100.3: country music from the United States.', 'en', ['tr'], name);
+  assert.deepEqual(result.get('tr'), { full, meta });
+  assert.equal(result.get('tr')?.full.split('Froggy100.3').length, 2);
+  const request = modelRequests.at(-1);
+  assert.equal(request.max_tokens, 1000);
+  assert.equal(request.temperature, 0.2);
+  assert.match(request.messages[0].content, /BOTH the full description and the meta description entirely in Turkish/);
+  assert.doesNotMatch(request.messages.map((message: any) => message.content).join('\n'), /Froggy100\.3 "/);
+});
+
+test('CJK station names keep their exact original script in translation and prompts', async () => {
+  const name = '城市之声';
+  const full = `${name}是电台资料中列出的名称，所属国家为中国，音乐标签包括流行音乐。这里的文字仅介绍已提供的电台信息，并保留原来的中文名称。`;
+  const meta = `${name}：来自中国的电台，资料中列出的音乐类型是流行音乐。`;
+  responses = [`${full}===${meta}`];
+  const result = await translateDescription(`${name} is a radio station from China whose supplied genre tags include pop music.`, `${name}: a Chinese radio station with pop music tags.`, 'en', ['zh'], `${name} `);
+  assert.deepEqual(result.get('zh'), { full, meta });
+  const [system, user] = modelRequests.at(-1).messages.map((message: any) => message.content);
+  assert.ok(system.includes(`"${name}"`));
+  assert.match(system, /original Unicode characters and original script/);
+  assert.match(user, /Both output parts must be entirely in Chinese except unchanged proper names/);
+  assert.doesNotMatch(system + user, /Latin alphabet|NOT .*Chinese characters|is\.\.\.|\[rest of translated/);
+});
+
+test('untranslated English meta opener uses the existing translated full excerpt', async () => {
+  responses = [`${translatedFull}===Tune in to Fixture Radio für Musik und lokale Nachrichten.`];
+  const result = await translateDescription(sourceFull, sourceMeta, 'en', ['de'], 'Fixture Radio');
+  assert.deepEqual(result.get('de'), { full: translatedFull, meta: translatedFull });
+});
+
+test('an English opener in both parts cannot survive through meta excerpt fallback', async () => {
+  responses = ['Tune in to Fixture Radio für ein abwechslungsreiches Musikprogramm aus der Region.===Tune in to Fixture Radio und höre Musik aus der Region.'];
+  const result = await translateDescription(sourceFull, sourceMeta, 'en', ['de'], 'Fixture Radio');
+  assert.equal(result.size, 0);
+});
+
+test('English targets and proper names containing the English opener are exempt', async () => {
+  const englishFull = 'Tune in to Fixture Radio for a varied selection of regional music and radio programming.';
+  const englishMeta = 'Tune in to Fixture Radio for music and regional programming.';
+  responses = [`${englishFull}===${englishMeta}`];
+  assert.deepEqual((await translateDescription(translatedFull, translatedMeta, 'de', ['en'], 'Fixture Radio')).get('en'), { full: englishFull, meta: englishMeta });
+  const name = 'Tune in to Radio';
+  const full = `${name} sendet ein abwechslungsreiches Musikprogramm für Hörerinnen und Hörer aus der Region.`;
+  const meta = `${name}: Musik und Radioprogramme aus der Region.`;
+  responses = [`${full}===${meta}`];
+  assert.deepEqual((await translateDescription(`${name} offers music programmes for regional listeners.`, `${name}: regional music programmes.`, 'en', ['de'], name)).get('de'), { full, meta });
 });

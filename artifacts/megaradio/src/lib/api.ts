@@ -56,7 +56,7 @@ export const api = {
     return response.json();
   },
 
-  getAdminStations: async (filters: StationFilters = {}) => {
+  getAdminStations: async (filters: StationFilters = {}, signal?: AbortSignal) => {
     const params = new URLSearchParams();
     Object.entries(filters).forEach(([key, value]) => {
       if (value !== undefined && value !== '') {
@@ -64,7 +64,7 @@ export const api = {
       }
     });
     
-    const response = await apiRequest('GET', `/api/admin/stations?${params.toString()}`);
+    const response = await apiRequest('GET', `/api/admin/stations?${params.toString()}`, { signal });
     return response.json();
   },
 

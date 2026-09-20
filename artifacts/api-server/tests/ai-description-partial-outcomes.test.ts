@@ -20,6 +20,9 @@ let generationCalls = 0;
 let activeJobId: string;
 let registeredRoutes: Map<string, any>;
 let strip: (value: unknown) => unknown = value => value;
+let repairIds: string[];
+let sitemapCalls = 0;
+let sitemapBuilt = true;
 
 const catalog = {
   count: async () => 1,
@@ -45,7 +48,10 @@ mock.module(new URL('../src/data/postgres-runtime-operations.ts', import.meta.ur
   pgSaveDescriptionJob: async (_jobId: string, _total: number, snapshot: any) => snapshots.push(snapshot),
   pgReadDescriptionJob: async () => null,
 } });
-mock.module(new URL('../src/data/postgres-admin-catalog-store.ts', import.meta.url).href, { namedExports: { pgAdminDescriptionCoverage: async () => ({}) } });
+mock.module(new URL('../src/data/postgres-admin-catalog-store.ts', import.meta.url).href, { namedExports: { pgAdminDescriptionCoverage: async () => ({}), pgDescriptionRepairStationIds: async () => repairIds } });
+mock.module(new URL('../src/services/publish-description-repairs.ts', import.meta.url).href, { namedExports: {
+  publishDescriptionRepairs: async () => { sitemapCalls++; if (!sitemapBuilt) throw new Error('Mock sitemap unavailable'); },
+} });
 mock.module(new URL('../src/postgres-runtime.ts', import.meta.url).href, { namedExports: {
   getPostgresCoordinationPool: () => ({ connect: async () => ({
     on: () => {}, removeListener: () => {}, release: () => {},
@@ -75,6 +81,7 @@ beforeEach(() => {
   fixture = { _id: 'fixture-station', name: 'Fixture Radio', slug: 'fixture-radio', descriptions: {}, manualEditFields: {} };
   persisted = {}; writes = []; snapshots = []; messages = []; backgrounds = []; sourceLanguage = 'en'; phase = 'partial'; manualEdit = false; translationCalls = 0; generationCalls = 0;
   strip = value => value;
+  repairIds = [fixture._id]; sitemapCalls = 0; sitemapBuilt = true;
   translate = async languages => new Map(languages.map(language => [language, description(language)]));
 });
 
@@ -85,7 +92,7 @@ async function runAdminJob(route: string, languages: string[]) {
   await registerAiDescriptionRoutes(app, { requireAdmin: () => {} });
   let response: any;
   const res: any = { json: (value: any) => { response = value; return res; }, status: (_status: number) => res };
-  await routes.get(`POST ${route}`)({ body: { selectedStationIds: [fixture._id], languages }, params: {} }, res);
+  await routes.get(`POST ${route}`)({ body: route.endsWith('/repair-description-gaps') ? {} : { selectedStationIds: [fixture._id], languages }, params: {} }, res);
   assert.equal(response.success, true);
   const jobId = response.jobId;
   activeJobId = jobId;
@@ -350,4 +357,114 @@ test('scheduled metadata repair never saves an ellipsis when cleanup removes all
   assert.equal(result.failed, 1);
   assert.deepEqual(persisted.fr, fixture.descriptions.fr);
   assert.equal(writes.length, 0);
+});
+
+const shortComplete = () => Object.fromEntries(SITEMAP_PRIORITY_LANGUAGES.universal14.map(language => [language, { full: `Short ${language}`, meta: `Meta ${language}` }]));
+const repairRoute = '/api/admin/stations/repair-description-gaps';
+
+test('global repair snapshots all server IDs, not the selected/default ten; complete stations make no AI calls', async () => {
+  fixture.noIndex = false;
+  fixture.descriptions = shortComplete();
+  persisted = structuredClone(fixture.descriptions);
+  repairIds = Array.from({length: 12}, (_, index) => `station-${index}`);
+  const job = await runAdminJob(repairRoute, []);
+  assert.equal(job.total, 12); assert.equal(job.processed, 12); assert.equal(job.skipped, 12);
+  assert.deepEqual(job.targetLanguages, [...SITEMAP_PRIORITY_LANGUAGES.universal14]);
+  assert.equal(translationCalls, 0); assert.equal(generationCalls, 0); assert.equal(writes.length, 0);
+  assert.equal(sitemapCalls, 0);
+  assert.equal(job.publishStatus, 'not-needed');
+});
+
+test('global repair fills metadata without AI and retains valid full text and locale extensions', async () => {
+  fixture.noIndex = false; fixture.descriptions = shortComplete();
+  fixture.descriptions.en = { ...description('en'), meta: '', reviewer: 'preserve' };
+  persisted = structuredClone(fixture.descriptions);
+  const job = await runAdminJob(repairRoute, []);
+  assert.equal(job.successful, 1); assert.equal(job.failed, 0); assert.equal(job.status, 'completed');
+  assert.equal(job.publishStatus, 'completed'); assert.equal(sitemapCalls, 1);
+  assert.equal(translationCalls, 0); assert.equal(generationCalls, 0);
+  assert.equal(persisted.en.full, fixture.descriptions.en.full); assert.equal((persisted.en as any).reviewer, 'preserve');
+  assert.equal(writes[0].filter.noIndex, false); assert.deepEqual(writes[0].filter.redirectToSlug, { $in: [null, ''] });
+  assert.equal(snapshots.at(-1).publishStatus, 'completed');
+});
+
+test('global script repair replaces only proven invalid field; populated localized meta survives', async () => {
+  fixture.noIndex = false; fixture.descriptions = shortComplete();
+  fixture.descriptions.en = description('en');
+  const arabic = 'تقدم هذه المحطة الموسيقى والبرامج للمستمعين في المنطقة يوميا';
+  fixture.descriptions.ar = { full: description('en').full, meta: arabic, reviewer: 'preserve' };
+  persisted = structuredClone(fixture.descriptions);
+  translate = async languages => { assert.deepEqual(languages, ['ar']); return new Map([['ar', { full: arabic.repeat(2), meta: 'unused generated meta' }]]); };
+  const job = await runAdminJob(repairRoute, []);
+  assert.equal(job.successful, 1); assert.equal(job.failed, 0); assert.equal(translationCalls, 1);
+  assert.equal(persisted.ar.full, arabic.repeat(2)); assert.equal(persisted.ar.meta, arabic);
+  assert.equal((persisted.ar as any).reviewer, 'preserve');
+  assert.deepEqual(writes[0].filter['descriptions.ar'], fixture.descriptions.ar, 'CAS uses original content, not cleared comparison copy');
+});
+
+test('global repair does not replace invalid stored content with another wrong-script response', async () => {
+  fixture.noIndex = false; fixture.descriptions = shortComplete();
+  fixture.descriptions.en = description('en'); fixture.descriptions.ar = description('en');
+  persisted = structuredClone(fixture.descriptions);
+  const job = await runAdminJob(repairRoute, []);
+  assert.equal(job.failed, 1); assert.match(job.failedStations[0].error, /invalid language evidence/);
+  assert.deepEqual(persisted.ar, fixture.descriptions.ar); assert.equal(writes.length, 0);
+});
+
+test('global repair skips newly excluded, redirected or manually protected stations before paying', async () => {
+  for (const excluded of [{noIndex: true}, {noIndex: false, redirectToSlug: 'canonical'}, {noIndex: false, manualEditFields: {descriptions: true}}]) {
+    Object.assign(fixture, excluded);
+    const job = await runAdminJob(repairRoute, []);
+    assert.equal(job.skipped, 1); assert.equal(job.failed, 0);
+  }
+  assert.equal(generationCalls, 0); assert.equal(translationCalls, 0); assert.equal(writes.length, 0);
+});
+
+test('global repair preserves Latin-language text without guessing and rejects selection/limit overrides', async () => {
+  fixture.noIndex = false; fixture.descriptions = shortComplete();
+  fixture.descriptions.en = description('en'); fixture.descriptions.de = description('en');
+  persisted = structuredClone(fixture.descriptions);
+  const job = await runAdminJob(repairRoute, []);
+  assert.equal(job.skipped, 1); assert.equal(writes.length, 0); assert.equal(translationCalls, 0);
+  for (const body of [{limit: 10}, {selectedStationIds: ['one']}, {languages: ['en']}, {filterByCountry: 'DE'}, []]) {
+    let status = 0;
+    const res: any = {status: (value: number) => {status = value; return res;}, json: () => res};
+    await registeredRoutes.get(`POST ${repairRoute}`)({body}, res);
+    assert.equal(status, 400);
+  }
+});
+
+test('global completed content remains successful with a durable sitemap retry warning', async () => {
+  fixture.noIndex = false; fixture.descriptions = shortComplete(); fixture.descriptions.en.meta = '';
+  persisted = structuredClone(fixture.descriptions); sitemapBuilt = false;
+  const job = await runAdminJob(repairRoute, []);
+  assert.equal(job.status, 'completed'); assert.equal(job.successful, 1); assert.equal(job.publishStatus, 'failed');
+  assert.match(job.error, /Descriptions saved.*sitemap refresh/);
+  assert.equal(snapshots.at(-1).publishStatus, 'failed'); assert.equal(snapshots.at(-1).errorMessage, job.error);
+});
+
+test('global repair publishes saved metadata even when every station later fails a different locale', async () => {
+  fixture.noIndex = false; fixture.descriptions = shortComplete();
+  fixture.descriptions.en = { ...description('en'), meta: '' }; delete fixture.descriptions.fr;
+  persisted = structuredClone(fixture.descriptions);
+  translate = async () => { throw new Error('Mock provider unavailable'); };
+  const job = await runAdminJob(repairRoute, []);
+  assert.equal(job.status, 'completed'); assert.equal(job.successful, 0); assert.equal(job.failed, 1);
+  assert.equal(sitemapCalls, 1); assert.equal(job.publishStatus, 'completed');
+  assert.ok(persisted.en.meta); assert.equal(persisted.fr, undefined);
+});
+
+test('global cancellation preserves earlier saves, makes no later writes, and reports sitemap retry', async () => {
+  fixture.noIndex = false; fixture.descriptions = shortComplete();
+  fixture.descriptions.en = { ...description('en'), meta: '' }; delete fixture.descriptions.fr;
+  persisted = structuredClone(fixture.descriptions);
+  translate = async languages => {
+    const res: any = {json: () => res, status: () => res};
+    await registeredRoutes.get('POST /api/admin/stations/description-job/:jobId/cancel')({params: {jobId: activeJobId}}, res);
+    return new Map(languages.map(language => [language, description(language)]));
+  };
+  const job = await runAdminJob(repairRoute, []);
+  assert.equal(job.status, 'cancelled'); assert.equal(job.publishStatus, 'failed');
+  assert.ok(persisted.en.meta); assert.equal(persisted.fr, undefined); assert.equal(writes.length, 1);
+  assert.match(job.error, /Saved fields are retained.*rebuild sitemaps/); assert.equal(sitemapCalls, 0);
 });

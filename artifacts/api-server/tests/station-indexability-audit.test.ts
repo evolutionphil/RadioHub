@@ -113,13 +113,11 @@ test('description coverage uses one aggregate and missing-language filters valid
   const row = { total: 3, indexable: 2, ...Object.fromEntries(AUDIT_LANGUAGES.flatMap(lang => [[`${lang}_full`, 2], [`${lang}_meta`, 1], [`${lang}_complete`, 1]])) };
   const result = await pgAdminDescriptionCoverage({ query: async (query: any) => { queries.push(query); return { rows: [row] }; } } as any);
   assert.equal(queries.length, 1); assert.equal(result.languages.length, 14);
-  assert.match(queries[0].text, /CROSS JOIN LATERAL jsonb_each/);
-  assert.doesNotMatch(queries[0].text, /s\.descriptions->'en'/);
-  assert.match(queries[0].text, /LEFT JOIN counts c ON TRUE/);
+  assert.match(queries[0].text, /JOIN station_description_summary/);
+  assert.doesNotMatch(queries[0].text, /s\.descriptions|jsonb_each/);
   assert.deepEqual(result.languages[0], { language: 'en', withFull: 2, withMeta: 1, withComplete: 1, missingFull: 1, missingMeta: 2, missingComplete: 2, pctFull: 66.7, pctComplete: 33.3 });
-  assert.match(adminDescriptionFilterSql('partial'), /d.value->'full'/);
-  assert.match(adminDescriptionFilterSql('partial'), /d.value->'meta'/);
-  assert.match(adminDescriptionFilterSql('partial'), /<14$/);
+  assert.match(adminDescriptionFilterSql('partial'), /d.full_mask & d.meta_mask/);
+  assert.match(adminDescriptionFilterSql('partial'), /<>16383$/);
   assert.doesNotMatch(adminDescriptionFilterSql('partial'), /jsonb_object_keys|BETWEEN 1/);
 });
 

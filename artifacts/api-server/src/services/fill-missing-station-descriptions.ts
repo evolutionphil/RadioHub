@@ -2,19 +2,30 @@ import { pgCatalog } from '../data/postgres-catalog-store';
 import { performanceCache } from '../performance-cache';
 import { generateStationDescription, detectStationLanguage, translateDescription } from './ai-station-description';
 import { fillMissingDescription, hasCompleteDescription, hasDescriptionText, metadataFromFull } from './station-description-content';
+import { findDescriptionLanguageIssues } from './station-description-validation';
 
 export async function fillMissingStationDescriptions(
   station: any,
   targetLanguages: string[],
   onAction: (action: 'generating' | 'translating' | 'saving', languages: string[]) => void,
   assertActive: () => void,
+  options: { repairInvalid?: boolean; onSaved?: (language: string) => void } = {},
 ): Promise<{ skipped: boolean; languages: string[] }> {
   if (station.manualEditFields?.descriptions === true) return { skipped: true, languages: [] };
+  if (options.repairInvalid && (station.noIndex !== false || station.redirectToSlug)) return { skipped: true, languages: [] };
   if (station.descriptions != null && (typeof station.descriptions !== 'object' || Array.isArray(station.descriptions))) {
     throw new Error('Malformed description collection; repair its structure before missing-only generation');
   }
   const descriptions = station.descriptions && typeof station.descriptions === 'object' && !Array.isArray(station.descriptions)
     ? structuredClone(station.descriptions) : {};
+  const expectedDescriptions = structuredClone(descriptions);
+  if (options.repairInvalid) {
+    // Country/native-language metadata is not proof of a stored source's
+    // language. Only conclusive script evidence authorizes stored replacement.
+    for (const issue of findDescriptionLanguageIssues(descriptions, targetLanguages, { stationName: station.name })) {
+      descriptions[issue.language][issue.field] = '';
+    }
+  }
   const written: string[] = [];
   const save = async (language: string, generated: { full: string; meta: string }) => {
     assertActive();
@@ -22,13 +33,19 @@ export async function fillMissingStationDescriptions(
     const existing = descriptions[language];
     const next = fillMissingDescription(existing, generated);
     if (!hasCompleteDescription(next)) throw new Error(`Incomplete generated description for ${language}`);
+    if (options.repairInvalid && findDescriptionLanguageIssues({ [language]: next }, [language], { stationName: station.name }).length) {
+      throw new Error(`Generated description has invalid language evidence: ${language}`);
+    }
     const result = await pgCatalog().update(
-      { _id: station._id, [`descriptions.${language}`]: existing ?? null, 'manualEditFields.descriptions': { $ne: true } },
+      { _id: station._id, [`descriptions.${language}`]: expectedDescriptions[language] ?? null, 'manualEditFields.descriptions': { $ne: true },
+        ...(options.repairInvalid ? { noIndex: false, redirectToSlug: { $in: [null, ''] } } : {}) },
       { $set: { [`descriptions.${language}`]: next } },
     );
     if (!result.modifiedCount) throw new Error(`Description changed concurrently or is protected: ${language}; rerun missing-only to recheck`);
     descriptions[language] = next;
+    expectedDescriptions[language] = next;
     written.push(language);
+    options.onSaved?.(language);
     if (station.slug) performanceCache.invalidateStationCache(station.slug);
     performanceCache.setQuick('admin:description-coverage', null, 1);
   };

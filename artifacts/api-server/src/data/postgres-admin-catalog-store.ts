@@ -1,31 +1,20 @@
 import { getPostgresPool } from '../postgres-runtime';
 import { catalogShape, compileCatalogFilter, type CatalogFilter } from './postgres-catalog-store';
 import { stationListVisibleSql, stationAvailabilityStatusSql } from '../utils/station-visibility';
-import { adminDescriptionFilterSql, descriptionTextSql } from './station-description-sql';
+import { adminDescriptionFilterSql } from './station-description-sql';
 import { SITEMAP_PRIORITY_LANGUAGES } from '@workspace/seo-shared/seo-config';
 
 /** All language totals share one catalog scan and database snapshot. */
 export async function pgAdminDescriptionCoverage(pool: Pick<ReturnType<typeof getPostgresPool>, 'query'> = getPostgresPool()) {
   const languages = SITEMAP_PRIORITY_LANGUAGES.universal14;
-  // Expand each station's TOASTed JSON only once, then aggregate by locale.
-  // Extracting all 42 counters directly from s.descriptions repeatedly detoasts
-  // large multilingual articles and can dominate this otherwise read-only scan.
-  const full = descriptionTextSql("d.value->'full'");
-  const meta = descriptionTextSql("d.value->'meta'");
-  const columns = languages.flatMap(language => {
-    return ['full', 'meta', 'complete'].map(field =>
-      `COALESCE(max(c.${field}) FILTER (WHERE c.language='${language}'),0)::int AS "${language}_${field}"`);
+  const columns = languages.flatMap((language, index) => {
+    const bit = 1 << index;
+    return [['full', 'd.full_mask'], ['meta', 'd.meta_mask'], ['complete', '(d.full_mask & d.meta_mask)']].map(([field, mask]) =>
+      `count(*) FILTER (WHERE (${mask} & ${bit})<>0)::int AS "${language}_${field}"`);
   });
-  const query = { text: `WITH counts AS (
-    SELECT d.key AS language,count(*) FILTER (WHERE ${full}) AS full,
-      count(*) FILTER (WHERE ${meta}) AS meta,count(*) FILTER (WHERE ${full} AND ${meta}) AS complete
-    FROM stations s CROSS JOIN LATERAL jsonb_each(
-      CASE WHEN jsonb_typeof(s.descriptions)='object' THEN s.descriptions ELSE '{}'::jsonb END) d
-    WHERE d.key IN (${languages.map(language => `'${language}'`).join(',')}) GROUP BY d.key
-  ), totals AS (SELECT count(*)::int AS total,
-    count(*) FILTER (WHERE no_index IS NOT TRUE)::int AS indexable FROM stations)
-    SELECT totals.total,totals.indexable,${columns.join(',')} FROM totals LEFT JOIN counts c ON TRUE
-    GROUP BY totals.total,totals.indexable`, query_timeout: 30_000 };
+  const query = { text: `SELECT count(*)::int AS total,
+    count(*) FILTER (WHERE s.no_index IS NOT TRUE)::int AS indexable,${columns.join(',')}
+    FROM stations s JOIN station_description_summary d ON d.station_id=s.id`, query_timeout: 30_000 };
   const row = (await pool.query(query)).rows[0];
   const totalStations = row.total as number;
   return { totalStations, indexableStations: row.indexable as number, languages: languages.map(language => {
@@ -37,6 +26,16 @@ export async function pgAdminDescriptionCoverage(pool: Pick<ReturnType<typeof ge
       pctFull: totalStations ? Math.round(withFull / totalStations * 1000) / 10 : 0,
       pctComplete: totalStations ? Math.round(withComplete / totalStations * 1000) / 10 : 0 };
   }) };
+}
+
+/** IDs only, one stable work list; completed writes cannot shift pagination. */
+export async function pgDescriptionRepairStationIds(pool: Pick<ReturnType<typeof getPostgresPool>, 'query'> = getPostgresPool()): Promise<string[]> {
+  const result = await pool.query(`SELECT s.id FROM station_description_summary d JOIN stations s ON s.id=d.station_id
+    WHERE ((d.full_mask & d.meta_mask)<>16383 OR d.language_check_needed)
+      AND s.no_index IS FALSE AND NULLIF(s.redirect_to_slug,'') IS NULL
+      AND s.manual_edit_fields->>'descriptions' IS DISTINCT FROM 'true'
+    ORDER BY s.id`);
+  return result.rows.map(row => row.id);
 }
 
 /** SQL groups retain the stable public station IDs used throughout the UI. */
@@ -67,6 +66,7 @@ export async function pgDuplicateCityGroups(): Promise<any[]> {
 export async function pgAdminCatalogPage(filter: CatalogFilter, options: { descriptionState?: string; healthStatus?: string; sortBy: string; direction: number; limit: number; offset: number }): Promise<{ stations: any[]; total: number }> {
   const { sql,values } = compileCatalogFilter(filter);
   const descriptionFilter = adminDescriptionFilterSql(options.descriptionState);
+  const from = `stations s${descriptionFilter === 'TRUE' ? '' : ' JOIN station_description_summary d ON d.station_id=s.id'}`;
   const availability = stationAvailabilityStatusSql('s');
   const healthFilters: Record<string,string> = {
     working: `(${availability})='working'`,
@@ -86,8 +86,8 @@ export async function pgAdminCatalogPage(filter: CatalogFilter, options: { descr
   const client = await getPostgresPool().connect();
   try {
     await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
-    const count = (await client.query(`SELECT count(*)::integer AS total FROM stations s WHERE ${sql} AND (${extra})`,values)).rows[0].total;
-    const rows = await client.query(`SELECT s.* FROM stations s WHERE ${sql} AND (${extra}) ORDER BY ${order} ${direction<0?'DESC':'ASC'} NULLS LAST,s.name,s.id LIMIT $${values.length+1} OFFSET $${values.length+2}`,[...values,options.limit,options.offset]);
+    const count = (await client.query(`SELECT count(*)::integer AS total FROM ${from} WHERE ${sql} AND (${extra})`,values)).rows[0].total;
+    const rows = await client.query(`SELECT s.* FROM ${from} WHERE ${sql} AND (${extra}) ORDER BY ${order} ${direction<0?'DESC':'ASC'} NULLS LAST,s.name,s.id LIMIT $${values.length+1} OFFSET $${values.length+2}`,[...values,options.limit,options.offset]);
     await client.query('COMMIT');
     return { total: count,stations: rows.rows.map(catalogShape) };
   } catch(error) { await client.query('ROLLBACK'); throw error; } finally { client.release(); }

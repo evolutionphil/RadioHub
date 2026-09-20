@@ -6,7 +6,7 @@ import type pg from 'pg';
 import { SITEMAP_PRIORITY_LANGUAGES } from '@workspace/seo-shared/seo-config';
 import { getPostgresCoordinationPool } from '../postgres-runtime';
 import { fillMissingStationDescriptions } from '../services/fill-missing-station-descriptions';
-import { pgAdminDescriptionCoverage } from '../data/postgres-admin-catalog-store';
+import { pgAdminDescriptionCoverage, pgDescriptionRepairStationIds } from '../data/postgres-admin-catalog-store';
 import { logger } from "../utils/logger";
 import { stripPlaceholders } from "./shared-utils";
 import { performanceCache } from "../performance-cache";
@@ -46,6 +46,7 @@ export async function registerAiDescriptionRoutes(app: Express, deps: any) {
     lastProcessedStationId?: string;
     lastProcessedSkip?: number;
     updatedAt?: Date;
+    publishStatus?: 'pending' | 'completed' | 'failed' | 'not-needed';
   }>();
 
   setInterval(() => {
@@ -279,7 +280,7 @@ export async function registerAiDescriptionRoutes(app: Express, deps: any) {
 
   // Snapshot the selected work list before writes: missing-content filters shrink
   // as stations finish, so offset pagination would silently skip records.
-  const startDescriptionJob = async (req: any, res: any, missingEnglishOnly = false) => {
+  const startDescriptionJob = async (req: any, res: any, missingEnglishOnly = false, repairAll = false) => {
     let leader: pg.PoolClient | undefined;
     let ownsFillLock = false;
     let ownsJobLock = false;
@@ -299,7 +300,11 @@ export async function registerAiDescriptionRoutes(app: Express, deps: any) {
       leader.release(Boolean(leadershipError));
     };
     try {
-      const { limit, skip = 0, languages, filterByCountry, selectedStationIds } = req.body;
+      const body = req.body ?? {};
+      if (repairAll && (Array.isArray(body) || typeof body !== 'object' || Object.keys(body).length)) {
+        return void res.status(400).json({ error: 'Global repair accepts an empty object only and always checks all 14 languages.' });
+      }
+      const { limit, skip = 0, languages, filterByCountry, selectedStationIds } = body;
       if ((limit !== undefined && (!Number.isSafeInteger(limit) || limit < 1)) ||
           !Number.isSafeInteger(skip) || skip < 0 ||
           (selectedStationIds !== undefined && (!Array.isArray(selectedStationIds) || selectedStationIds.some((id: unknown) => typeof id !== 'string' || !id))) ||
@@ -313,27 +318,28 @@ export async function registerAiDescriptionRoutes(app: Express, deps: any) {
         [`descriptions.en.${field}`]: { $not: { $regex: '[^[:space:]]' } },
       }));
       const effectiveLimit = limit ?? (hasSelection ? selectedStationIds.length : 10);
-      const workList = await pgCatalog().find(query, { fields: ['_id'], offset: skip, limit: effectiveLimit });
-      const stationIds = workList.map(station => station._id);
-      if (!stationIds.length) return void res.json({ success: false, total: 0, message: 'No matching stations need processing.' });
-
       jobId = `bulk-desc-${randomUUID()}`;
       leader = await getPostgresCoordinationPool().connect();
       leader.on('error', onLeadershipError);
       ownsFillLock = (await leader.query("SELECT pg_try_advisory_lock(hashtext('radiohub-description-fill')) AS acquired")).rows[0].acquired;
       if (!ownsFillLock) return void res.status(409).json({ error: 'A description fill job is already running. Wait for it to finish before starting another.' });
+      const stationIds = repairAll ? await pgDescriptionRepairStationIds()
+        : (await pgCatalog().find(query, { fields: ['_id'], offset: skip, limit: effectiveLimit })).map(station => station._id);
+      if (!stationIds.length) return void res.json({ success: false, total: 0, message: 'No matching stations need processing.' });
       ownsJobLock = (await leader.query('SELECT pg_try_advisory_lock(hashtext($1)) AS acquired', [`radiohub-description-job:${jobId}`])).rows[0].acquired;
       if (!ownsJobLock) throw new Error('Could not acquire description job leadership');
       const job: NonNullable<ReturnType<typeof descriptionJobs.get>> = {
         jobId, status: 'running', total: stationIds.length, processed: 0, successful: 0, failed: 0, skipped: 0,
         currentStation: 'Initializing...', currentAction: 'idle', targetLanguages, startedAt: new Date(),
         successfulStations: [], skippedStations: [], failedStations: [],
+        ...(repairAll ? { publishStatus: 'pending' as const } : {}),
       };
       const checkpoint = () => pgSaveDescriptionJob(jobId, job.total, {
         status: job.status, filterByCountry: filterByCountry || null, processedStations: job.processed,
         successCount: job.successful, failedCount: job.failed, skippedCount: job.skipped,
         lastProcessedStationId: job.lastProcessedStationId, lastProcessedSkip: job.processed + skip,
         errorMessage: job.error || null,
+        ...(repairAll ? { publishStatus: job.publishStatus } : {}),
       });
       await checkpoint();
       descriptionJobs.set(jobId, job);
@@ -341,6 +347,7 @@ export async function registerAiDescriptionRoutes(app: Express, deps: any) {
       res.json({ success: true, jobId, total: job.total, model: 'gpt-4o-mini', maxConcurrentTranslations: 2 });
       setImmediate(async () => {
         const deadline = Date.now() + 5 * 60 * 60 * 1000;
+        let savedAnyDescription = false;
         const assertActive = () => {
           if (leadershipError) throw new Error('Description job leadership lost', { cause: leadershipError });
           if (job.status !== 'running') throw new Error(`Description job ${job.status}`);
@@ -360,7 +367,7 @@ export async function registerAiDescriptionRoutes(app: Express, deps: any) {
                 const outcome = await fillMissingStationDescriptions(station, targetLanguages, (action, currentLanguages) => {
                   job.currentAction = action;
                   job.currentLanguage = currentLanguages.join(', ');
-                }, assertActive);
+                }, assertActive, { repairInvalid: repairAll, onSaved: () => { savedAnyDescription = true; } });
                 if (outcome.skipped) {
                   job.skipped++;
                   pushLimited(job.skippedStations, { name: station.name, reason: 'Already complete, manually protected, or previously skipped' });
@@ -381,6 +388,22 @@ export async function registerAiDescriptionRoutes(app: Express, deps: any) {
             await checkpoint();
           }
           assertActive();
+          if (repairAll && savedAnyDescription) {
+            job.currentStation = 'Refreshing sitemaps';
+            job.currentAction = 'saving';
+            try {
+              const { publishDescriptionRepairs } = await import('../services/publish-description-repairs');
+              await publishDescriptionRepairs(assertActive);
+              job.publishStatus = 'completed';
+            } catch (error) {
+              job.publishStatus = 'failed';
+              job.error = 'Descriptions saved; sitemap refresh needs retry from SEO maintenance.';
+              logger.error('Description repair sitemap refresh failed:', error);
+            }
+          } else if (repairAll) {
+            job.publishStatus = 'not-needed';
+          }
+          assertActive();
           job.status = 'completed';
           job.completedAt = new Date();
           job.currentAction = 'idle';
@@ -390,6 +413,10 @@ export async function registerAiDescriptionRoutes(app: Express, deps: any) {
             job.status = 'failed';
             job.completedAt = new Date();
             job.error = error.message || 'Description processing interrupted';
+          }
+          if (repairAll) {
+            job.publishStatus = savedAnyDescription ? 'failed' : 'not-needed';
+            if (savedAnyDescription) job.error = `${job.error || 'Description processing interrupted'}. Saved fields are retained; rebuild sitemaps from SEO maintenance.`;
           }
           await checkpoint().catch(checkpointError => logger.error('Could not persist description job failure:', checkpointError));
         } finally {
@@ -404,6 +431,7 @@ export async function registerAiDescriptionRoutes(app: Express, deps: any) {
   };
   app.post("/api/admin/stations/fix-missing-english", requireAdmin, (req, res) => startDescriptionJob(req, res, true));
   app.post("/api/admin/stations/generate-bulk-descriptions", requireAdmin, (req, res) => startDescriptionJob(req, res));
+  app.post("/api/admin/stations/repair-description-gaps", requireAdmin, (req, res) => startDescriptionJob(req, res, false, true));
 
   // Get AI description generation job status
   app.get("/api/admin/stations/description-job-status/:jobId", requireAdmin, async (req, res) => {
@@ -429,6 +457,7 @@ export async function registerAiDescriptionRoutes(app: Express, deps: any) {
       startedAt: job.startedAt,
       completedAt: job.completedAt,
       error: job.error,
+      publishStatus: job.publishStatus,
       successfulStations: job.successfulStations || [],
       skippedStations: job.skippedStations || [],
       failedStations: job.failedStations || []
