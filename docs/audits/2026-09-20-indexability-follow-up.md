@@ -1,5 +1,17 @@
 # Indexability follow-up — 20 September 2026
 
+## Final verified checkpoint — 21 September (Europe/Berlin)
+
+This checkpoint supersedes the pending/retry statements in the chronological notes below. Current-task summary: [Admin description repair](2026-09-21-admin-description-repair.md).
+
+- Main commit `a75b91523354603a07c266d1a45899b6bfa485cb` was pushed and Railway API/web each showed Active / Deployment successful; stream and PostgreSQL remained Online.
+- Final bounded retry `bulk-desc-51a809bc-93c5-449d-bd4f-b2abb39fdac2` completed **2/2 stations, zero failures**, at `2026-09-20T22:56:15.514Z`. All **84 eligible new stations** now have a slug and non-empty full/meta content in all 14 languages. The excluded test relay remains protected. Two inherited source-text defects were subsequently corrected editorially in all 14 languages with 56 compare-and-set field updates; reviewed copy is preserved in `2026-09-21-two-station-reviewed-descriptions.json`.
+- Read all **1,087** remaining results in the catalog's Missing languages filter: all carry stored noindex flags; no indexable record in that filter remains. This is a field-completeness check, not factual/editorial certification of all 62,796 records and not a claim that every historical noindex decision has been manually reviewed.
+- Final live timings, 25 rows/name ascending: missing languages **2,595 ms**, no descriptions **186 ms**, has descriptions **308 ms**. Before the summary-table change, missing languages took **13,761 ms**. Request samples include network/serialization; they are not an SLA.
+- Rebuilt all **42 manifests**, zero zombie languages; **55,664 station URLs per language** (+84 each), with all 14 supported languages retained. Manifest generation completed at `2026-09-20T23:01:02.210Z`. The synchronous rebuild HTTP request returned a Railway 502 timeout: it was **not blindly retried**. Fresh manifest stats and public EN/DE/TR station chunk 6 each independently confirmed the completed publication (5,664 URLs, both repaired stations present, image tags present). The manual HTTP response timeout remains a limitation; the new bulk-repair flow publishes as part of its background job.
+- The two repaired stations passed **28/28** live locale checks: 200, self-canonical, no noindex, nonempty meta, 14 alternates plus x-default. Together with the earlier reviewed pilot, **42/42** new-station locale samples passed. EN/DE/TR home pages, robots.txt and sitemap index returned 200. GSC validations remain Started, not Passed; no indexing guarantee is made.
+- Final independent API regression run: **89/89 passed**. Earlier frontend regression run: **43/43 passed**. Both typechecks and production builds passed before release.
+
 ## Completion follow-up (same evening)
 
 - CJK release `9b26777a38f48689011e4c76234fbbd9ad9c7ae6` deployed successfully to API and web. Retry `bulk-desc-b55571ee-3632-4629-86a8-8195e14ae1b0` completed the Chinese source-generation case in all 14 languages, but ES/DE and ES/HI remained missing on the other two stations. Railway warnings at `22:44:04Z`–`22:44:05Z` confirmed the model repeated the source full description; rejecting those outputs is correct and the guard was not weakened.
