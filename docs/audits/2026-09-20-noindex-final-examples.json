@@ -1,0 +1,349 @@
+{
+  "checkedAt": "2026-09-20T20:27:36.070Z",
+  "sourceHash": 792671252,
+  "concurrency": 2,
+  "summary": {
+    "count": 13,
+    "status": {
+      "200": 13
+    },
+    "noindex": 0,
+    "errors": 0
+  },
+  "rows": [
+    {
+      "url": "https://themegaradio.com/bn/স্টেশন/wlyn-1360-am",
+      "final": "https://themegaradio.com/en/station/wlyn-1360-am",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/bn/স্টেশন/wlyn-1360-am",
+          "status": 301,
+          "location": "/en/station/wlyn-1360-am"
+        },
+        {
+          "url": "https://themegaradio.com/en/station/wlyn-1360-am",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/en/station/wlyn-1360-am"
+    },
+    {
+      "url": "https://themegaradio.com/bn/station/wlyn-1360-am",
+      "final": "https://themegaradio.com/en/station/wlyn-1360-am",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/bn/station/wlyn-1360-am",
+          "status": 301,
+          "location": "/bn/%E0%A6%B8%E0%A7%8D%E0%A6%9F%E0%A7%87%E0%A6%B6%E0%A6%A8/wlyn-1360-am"
+        },
+        {
+          "url": "https://themegaradio.com/bn/%E0%A6%B8%E0%A7%8D%E0%A6%9F%E0%A7%87%E0%A6%B6%E0%A6%A8/wlyn-1360-am",
+          "status": 301,
+          "location": "/en/station/wlyn-1360-am"
+        },
+        {
+          "url": "https://themegaradio.com/en/station/wlyn-1360-am",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/en/station/wlyn-1360-am"
+    },
+    {
+      "url": "https://themegaradio.com/en/station/wlyn-1360-am",
+      "final": "https://themegaradio.com/en/station/wlyn-1360-am",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/en/station/wlyn-1360-am",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/en/station/wlyn-1360-am"
+    },
+    {
+      "url": "https://themegaradio.com/bd/station/faith-radio-network",
+      "final": "https://themegaradio.com/en/station/faith-radio-network",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/bd/station/faith-radio-network",
+          "status": 301,
+          "location": "/en/station/faith-radio-network"
+        },
+        {
+          "url": "https://themegaradio.com/en/station/faith-radio-network",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/en/station/faith-radio-network"
+    },
+    {
+      "url": "https://themegaradio.com/en/station/faith-radio-network",
+      "final": "https://themegaradio.com/en/station/faith-radio-network",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/en/station/faith-radio-network",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/en/station/faith-radio-network"
+    },
+    {
+      "url": "https://themegaradio.com/pt/estacao/faith-radio-network",
+      "final": "https://themegaradio.com/pt/estacao/faith-radio-network",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/pt/estacao/faith-radio-network",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/pt/estacao/faith-radio-network"
+    },
+    {
+      "url": "https://themegaradio.com/pt/station/faith-radio-network",
+      "final": "https://themegaradio.com/pt/estacao/faith-radio-network",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/pt/station/faith-radio-network",
+          "status": 301,
+          "location": "/pt/estacao/faith-radio-network"
+        },
+        {
+          "url": "https://themegaradio.com/pt/estacao/faith-radio-network",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/pt/estacao/faith-radio-network"
+    },
+    {
+      "url": "https://themegaradio.com/el/σταθμος/classical-kdfc-1",
+      "final": "https://themegaradio.com/en/station/classical-kdfc",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/el/σταθμος/classical-kdfc-1",
+          "status": 301,
+          "location": "/en/station/classical-kdfc-1"
+        },
+        {
+          "url": "https://themegaradio.com/en/station/classical-kdfc-1",
+          "status": 301,
+          "location": "/en/station/classical-kdfc"
+        },
+        {
+          "url": "https://themegaradio.com/en/station/classical-kdfc",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/en/station/classical-kdfc"
+    },
+    {
+      "url": "https://themegaradio.com/el/station/classical-kdfc-1",
+      "final": "https://themegaradio.com/en/station/classical-kdfc",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/el/station/classical-kdfc-1",
+          "status": 301,
+          "location": "/el/%CF%83%CF%84%CE%B1%CE%B8%CE%BC%CE%BF%CF%82/classical-kdfc-1"
+        },
+        {
+          "url": "https://themegaradio.com/el/%CF%83%CF%84%CE%B1%CE%B8%CE%BC%CE%BF%CF%82/classical-kdfc-1",
+          "status": 301,
+          "location": "/en/station/classical-kdfc-1"
+        },
+        {
+          "url": "https://themegaradio.com/en/station/classical-kdfc-1",
+          "status": 301,
+          "location": "/en/station/classical-kdfc"
+        },
+        {
+          "url": "https://themegaradio.com/en/station/classical-kdfc",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/en/station/classical-kdfc"
+    },
+    {
+      "url": "https://themegaradio.com/gr/station/classical-kdfc-1",
+      "final": "https://themegaradio.com/en/station/classical-kdfc",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/gr/station/classical-kdfc-1",
+          "status": 301,
+          "location": "/el/station/classical-kdfc-1"
+        },
+        {
+          "url": "https://themegaradio.com/el/station/classical-kdfc-1",
+          "status": 301,
+          "location": "/el/%CF%83%CF%84%CE%B1%CE%B8%CE%BC%CE%BF%CF%82/classical-kdfc-1"
+        },
+        {
+          "url": "https://themegaradio.com/el/%CF%83%CF%84%CE%B1%CE%B8%CE%BC%CE%BF%CF%82/classical-kdfc-1",
+          "status": 301,
+          "location": "/en/station/classical-kdfc-1"
+        },
+        {
+          "url": "https://themegaradio.com/en/station/classical-kdfc-1",
+          "status": 301,
+          "location": "/en/station/classical-kdfc"
+        },
+        {
+          "url": "https://themegaradio.com/en/station/classical-kdfc",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/en/station/classical-kdfc"
+    },
+    {
+      "url": "https://themegaradio.com/ar/mahta/classical-kdfc-1",
+      "final": "https://themegaradio.com/ar/mahta/classical-kdfc",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ar/mahta/classical-kdfc-1",
+          "status": 301,
+          "location": "/ar/mahta/classical-kdfc"
+        },
+        {
+          "url": "https://themegaradio.com/ar/mahta/classical-kdfc",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/ar/mahta/classical-kdfc"
+    },
+    {
+      "url": "https://themegaradio.com/ar/station/classical-kdfc-1",
+      "final": "https://themegaradio.com/ar/mahta/classical-kdfc",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ar/station/classical-kdfc-1",
+          "status": 301,
+          "location": "/ar/mahta/classical-kdfc-1"
+        },
+        {
+          "url": "https://themegaradio.com/ar/mahta/classical-kdfc-1",
+          "status": 301,
+          "location": "/ar/mahta/classical-kdfc"
+        },
+        {
+          "url": "https://themegaradio.com/ar/mahta/classical-kdfc",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/ar/mahta/classical-kdfc"
+    },
+    {
+      "url": "https://themegaradio.com/bh/station/classical-kdfc-1",
+      "final": "https://themegaradio.com/ar/mahta/classical-kdfc",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/bh/station/classical-kdfc-1",
+          "status": 301,
+          "location": "/ar/station/classical-kdfc-1"
+        },
+        {
+          "url": "https://themegaradio.com/ar/station/classical-kdfc-1",
+          "status": 301,
+          "location": "/ar/mahta/classical-kdfc-1"
+        },
+        {
+          "url": "https://themegaradio.com/ar/mahta/classical-kdfc-1",
+          "status": 301,
+          "location": "/ar/mahta/classical-kdfc"
+        },
+        {
+          "url": "https://themegaradio.com/ar/mahta/classical-kdfc",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/ar/mahta/classical-kdfc"
+    }
+  ]
+}
