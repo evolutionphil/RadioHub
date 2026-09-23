@@ -15,6 +15,7 @@ import { SEO_LANGUAGES } from '@workspace/seo-shared/seo-config';
 // station-public-routes.ts / genres-countries-routes.ts.
 import CacheManager, { CacheKeys } from '../cache';
 import { logAuthEvent } from '../auth/auth-event-logger';
+import { verifyMobileGoogleToken, verifyMobileAppleToken } from '../auth/mobile-social-verification';
 import { deleteUserAuthTokens, findActiveAuthToken, revokeAuthToken } from '../data/auth-token-store';
 import { newPublicUserId, pgCreateUser, pgDeleteUser, pgFindUserByEmail, pgFindUserById, pgFindUserByIdentity, pgFindUserByResetToken, pgResetUserPassword, pgListUsers, pgRecentUserActivity, pgUpdateUser, pgUserManagementDetail, pgUserManagementStats, pgUserSocialByEmail, pgUserFollowState, pgUserSlugExists, userStore, } from '../data/postgres-user-store';
 import { UserEngagementService, engagementStore } from '../services/user-engagement-service';
@@ -877,21 +878,9 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
             if (!idToken) {
                 return void res.status(400).json({ success: false, error: 'idToken is required' });
             }
-            const { OAuth2Client } = await import('google-auth-library');
-            const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
-            const GOOGLE_AUDIENCES = [
-                process.env.GOOGLE_CLIENT_ID,
-                '246210957471-18662dh38h9tmlk7nppdk15ucbha4emk.apps.googleusercontent.com',
-                '246210957471-4dmnb95bcduaocr8toiphv3guq9a8htl.apps.googleusercontent.com',
-                '957628580421-1gj9mmbq20o9jva6olb28t2un6vb6jqh.apps.googleusercontent.com',
-            ].filter(Boolean) as string[];
             let payload: any;
             try {
-                const ticket = await client.verifyIdToken({
-                    idToken,
-                    audience: GOOGLE_AUDIENCES,
-                });
-                payload = ticket.getPayload();
+                payload = await verifyMobileGoogleToken(idToken);
             }
             catch (verifyErr) {
                 logger.error('Google idToken verification failed:', verifyErr);
@@ -986,15 +975,9 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
             if (!identityToken) {
                 return void res.status(400).json({ success: false, error: 'identityToken is required' });
             }
-            const jose = await import('jose');
             let applePayload: any;
             try {
-                const JWKS = jose.createRemoteJWKSet(new URL('https://appleid.apple.com/auth/keys'));
-                const { payload } = await jose.jwtVerify(identityToken, JWKS, {
-                    issuer: 'https://appleid.apple.com',
-                    audience: process.env.APPLE_CLIENT_ID || process.env.APPLE_SERVICE_ID || 'com.visiongo.megaradio',
-                });
-                applePayload = payload;
+                applePayload = await verifyMobileAppleToken(identityToken);
             }
             catch (verifyErr) {
                 logger.error('Apple identityToken verification failed:', verifyErr);
