@@ -1,4 +1,5 @@
 import type { Express, Request, Response } from "express";
+import { mobileAppLinkPaths } from '../seo/mobile-app-links';
 import crypto from 'crypto';
 import { pgReportStationDebugLog, pgListStationDebugLogs } from '../data/postgres-station-debug-store';
 import { pgActiveManifests, pgSeoGenres, pgTouchSitemapStations, pgSitemapStationDiagnostics, pgSitemapStationBatch, SITEMAP_STATION_READ_BATCH_SIZE } from '../data/postgres-seo-indexing-store';
@@ -417,14 +418,7 @@ export async function registerSeoSitemapRoutes(app: Express, deps: any, options?
         details: [
           {
             appID: "M6T85HP76P.com.visiongo.megaradio",
-            paths: [
-              "/station/*",
-              "/*/station/*",
-              "/genre/*",
-              "/*/genre/*",
-              "/user/*",
-              "/*/user/*"
-            ]
+            paths: mobileAppLinkPaths()
           }
         ]
       }
