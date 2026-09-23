@@ -1,4 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useRef, useState, type MouseEvent } from 'react';
+import { VisitorDetailsDialog } from './VisitorDetailsDialog';
+import type { VisitorWindow } from '@/lib/admin-visitor-details';
 import { apiFetch } from "@/lib/queryClient";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatCard } from "./StatCard";
@@ -105,6 +108,12 @@ const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'
 
 export default function AdminDashboard() {
   const queryClient = useQueryClient();
+  const [visitorWindow, setVisitorWindow] = useState<VisitorWindow | null>(null);
+  const visitorTrigger = useRef<HTMLButtonElement | null>(null);
+  const openVisitors = (window: VisitorWindow) => (event: MouseEvent<HTMLButtonElement>) => {
+    visitorTrigger.current = event.currentTarget;
+    setVisitorWindow(window);
+  };
   const statsQuery = useQuery<DashboardStats>({
     queryKey: ["/api/dashboard/stats"],
     staleTime: 30000, // Cache for 30 seconds
@@ -432,9 +441,9 @@ export default function AdminDashboard() {
       {/* Statistics Cards */}
       <section aria-label="Visitor and account metrics" className="space-y-3">
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-          <StatCard label="Active unique IPs" value={visitors?.activeVisitors.toLocaleString() ?? '—'} caption="Last 30 minutes" icon={Users} accent="green" />
-          <StatCard label="Unique IPs today" value={visitors?.todayVisitors.toLocaleString() ?? '—'} caption="Today · Europe/Berlin" icon={Activity} accent="blue" />
-          <StatCard label="Unique IPs · last 7 days" value={visitors?.weekVisitors.toLocaleString() ?? '—'} caption="Last 7 days" icon={TrendingUp} accent="purple" />
+          <StatCard label="Active unique IPs" value={visitors?.activeVisitors.toLocaleString() ?? '—'} caption="Last 30 minutes" icon={Users} accent="green" onClick={openVisitors('active')} />
+          <StatCard label="Unique IPs today" value={visitors?.todayVisitors.toLocaleString() ?? '—'} caption="Today · Europe/Berlin" icon={Activity} accent="blue" onClick={openVisitors('today')} />
+          <StatCard label="Unique IPs · last 7 days" value={visitors?.weekVisitors.toLocaleString() ?? '—'} caption="Last 7 days" icon={TrendingUp} accent="purple" onClick={openVisitors('week')} />
           <StatCard label="Registered accounts" value={stats?.totalUsers || 0} caption="All account records" icon={Users} accent="indigo" />
         </div>
         {visitorUnavailable ? <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
@@ -452,6 +461,8 @@ export default function AdminDashboard() {
           <p>This is a new clean series, without historical backfill. People sharing an IP count as one; these are not verified human counts. Known bots and admin traffic are excluded. Registered accounts include all account records, not verified people.</p>
         </div>
       </section>
+
+      {visitorWindow && <VisitorDetailsDialog initialWindow={visitorWindow} onClose={() => setVisitorWindow(null)} restoreFocus={() => visitorTrigger.current?.focus()} />}
 
       {/* Secondary Stats Row */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">

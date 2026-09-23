@@ -1,10 +1,12 @@
 import React from 'react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { focusManager, QueryClient, QueryClientProvider } from '@tanstack/react-query';
 vi.mock('wouter', () => ({ Link: ({ href, children, ...props }: any) => <a href={href} {...props}>{children}</a> }));
 vi.mock('@/lib/queryClient', () => ({ apiFetch: (url: string, init?: RequestInit) => fetch(url, init) }));
 import Dashboard from '../src/pages/admin/dashboard';
+import { visitorDetails } from './fixtures/visitor-details';
 
 let client: QueryClient;
 let values: Record<string, unknown>;
@@ -160,3 +162,22 @@ it('refresh-all includes the unique-IP endpoint without changing the other metri
   expect(visitorRequests()).toBe(2);
   expect(cardValue('Total Stations')).toHaveTextContent('20');
 });
+
+it.each([['Active unique IPs', 'active'], ['Unique IPs today', 'today'], ['Unique IPs · last 7 days', 'week']] as const)(
+  'opens %s details only on activation and restores keyboard focus after closing', async (label, window) => {
+    const user = userEvent.setup();
+    const path = '/api/admin/visitor-metrics/details';
+    values[path] = visitorDetails({ window });
+    show(); await screen.findByText('11');
+    expect(vi.mocked(fetch).mock.calls.filter(([url]) => String(url).startsWith(path))).toHaveLength(0);
+    const trigger = screen.getByRole('button', { name: new RegExp(`^${label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}:`) });
+    expect(trigger).toHaveAttribute('aria-haspopup', 'dialog');
+    trigger.focus(); await user.keyboard('{Enter}');
+    await screen.findByText('198.51.100.0/24');
+    expect(fetch).toHaveBeenCalledWith(`${path}?window=${window}&page=1&limit=25`, expect.objectContaining({ signal: expect.any(AbortSignal) }));
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    await waitFor(() => expect(trigger).toHaveFocus());
+    expect(vi.mocked(fetch).mock.calls.filter(([url]) => String(url).startsWith(path))).toHaveLength(1);
+  },
+);

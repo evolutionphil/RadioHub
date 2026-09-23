@@ -1,6 +1,7 @@
 import { isIP } from 'node:net';
 import type { Request, RequestHandler } from 'express';
 import { logger } from '../utils/logger';
+import { classifyVisitorContext, type VisitorContext } from './visitor-client-context';
 
 const WRITE_INTERVAL_MS = 30_000;
 const MAX_RECENT_IPS = 50_000;
@@ -49,14 +50,19 @@ function isInternalIp(address: string): boolean {
  * entry: Express resolves that chain according to the configured trust policy.
  * Header spoofing through an unprotected origin still requires ingress hardening;
  * these statistics are best-effort measurement, not an authentication boundary. */
-function visitorIp(req: Request): string | null {
+function visitorAddress(req: Request): { ip: string; countryCode: unknown } | null {
   const remote = normalizeVisitorIp(req.socket?.remoteAddress);
   const trust = req.app?.get('trust proxy fn') as ((ip: string, hop: number) => boolean) | undefined;
   const privateTrustedProxy = remote && isInternalIp(remote)
     && typeof trust === 'function' && trust(req.socket.remoteAddress!, 0);
   const edge = privateTrustedProxy ? normalizeVisitorIp(req.headers['cf-connecting-ip']) : null;
   const address = edge ?? normalizeVisitorIp(req.ip) ?? remote;
-  return address && !isInternalIp(address) ? address : null;
+  return address && !isInternalIp(address) ? {
+    ip: address,
+    // Never infer country from UI language, selected station country or an
+    // unauthenticated direct-origin CF header. Missing edge data stays unknown.
+    countryCode: edge && !isInternalIp(edge) ? req.headers['cf-ipcountry'] : null,
+  } : null;
 }
 
 function adminRequest(req: Request): boolean {
@@ -88,14 +94,15 @@ function eligibleRequest(req: Request): boolean {
  * Writes start after finish and never delay next(), response delivery or errors.
  * The capped, process-local throttle coalesces tabs/API bursts in 30-second windows;
  * the database's unique canonical IP remains authoritative across processes. */
-export function createUniqueVisitorTrackingMiddleware(track: (ip: string) => Promise<void>): RequestHandler {
+export function createUniqueVisitorTrackingMiddleware(track: (ip: string, context: VisitorContext) => Promise<void>): RequestHandler {
   const recent = new Map<string, { expiresAt: number; pending: boolean }>();
   let pendingWrites = 0;
   let lastWarningAt = Number.NEGATIVE_INFINITY;
   return (req, res, next) => {
     if (!eligibleRequest(req)) return next();
-    const ip = visitorIp(req);
-    if (!ip) return next();
+    const address = visitorAddress(req);
+    if (!address) return next();
+    const { ip, countryCode } = address;
     res.once('finish', () => {
       if (res.statusCode < 200 || res.statusCode >= 400 || adminRequest(req)) return;
       const contentType = String(res.getHeader('Content-Type') || '');
@@ -123,7 +130,9 @@ export function createUniqueVisitorTrackingMiddleware(track: (ip: string) => Pro
       const entry = { expiresAt: (Math.floor(now / WRITE_INTERVAL_MS) + 1) * WRITE_INTERVAL_MS, pending: true };
       recent.set(ip, entry);
       pendingWrites++;
-      void Promise.resolve().then(() => track(ip)).catch(() => {
+      void Promise.resolve().then(() => track(ip, classifyVisitorContext({
+        userAgent: req.headers['user-agent'], platformHeader: req.headers['x-megaradio-platform'], countryCode,
+      }))).catch(() => {
         // Deliberately omit addresses and driver errors from request logs.
         // Keep the retry interval during outages to avoid a hot-path retry storm.
         if (Date.now() - lastWarningAt >= 60_000) {

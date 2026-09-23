@@ -5,6 +5,7 @@ import { test } from 'node:test';
 import express, { type Request, type RequestHandler, type Response } from 'express';
 import { createUniqueVisitorTrackingMiddleware, normalizeVisitorIp } from '../src/middleware/unique-visitor-tracking';
 import { logger } from '../src/utils/logger';
+import type { VisitorContext } from '../src/middleware/visitor-client-context';
 
 const browser = 'Mozilla/5.0 Chrome/128.0 Safari/537.36';
 const settle = () => new Promise<void>(resolve => setImmediate(resolve));
@@ -137,6 +138,43 @@ test('address resolution trusts CF only through a configured private proxy, neve
   }
   await settle();
   assert.deepEqual(calls, ['203.0.113.8', '198.51.100.4', '198.51.100.5', '198.51.100.7']);
+});
+
+test('metadata is attached only to admitted successful writes, and country requires the trusted edge path', async () => {
+  const calls: Array<{ ip: string; context: VisitorContext }> = [];
+  const middleware = createUniqueVisitorTrackingMiddleware(async (ip, context) => { calls.push({ ip, context }); });
+  const headers = { 'cf-connecting-ip': '198.51.100.42', 'cf-ipcountry': 'DE', 'x-megaradio-platform': 'webos' };
+  request(middleware, { status: 500, remote: '10.0.0.1', trusted: true, headers }).finish();
+  request(middleware, { remote: '10.0.0.1', trusted: true, headers }).finish();
+  request(middleware, { remote: '10.0.0.1', trusted: true, headers: { ...headers, 'x-megaradio-platform': 'ios' } }).finish();
+  request(middleware, { ip: '203.0.113.9', trusted: true, headers }).finish(); // public direct origin
+  request(middleware, { ip: '203.0.113.10', remote: '10.0.0.1', trusted: true, headers: { ...headers, 'cf-connecting-ip': 'invalid' } }).finish();
+  request(middleware, { ip: '203.0.113.11', remote: '10.0.0.1', trusted: false, headers }).finish();
+  await settle();
+  assert.equal(calls.length, 4);
+  assert.equal(calls[0].ip, '198.51.100.42');
+  assert.equal(calls[0].context.countryCode, 'DE');
+  assert.equal(calls[0].context.platform, 'webos');
+  assert.equal(calls[0].context.deviceType, 'tv');
+  assert.equal(calls[0].context.contextSource, 'client-header');
+  for (const call of calls.slice(1)) assert.equal(call.context.countryCode, null);
+  assert.ok(calls.every(call => !('userAgent' in call.context)));
+});
+
+test('a different client behind the same IP updates context next interval without creating another identity', async t => {
+  let now = 1_000_000;
+  t.mock.method(Date, 'now', () => now);
+  const calls: Array<{ ip: string; context: VisitorContext }> = [];
+  const middleware = createUniqueVisitorTrackingMiddleware(async (ip, context) => { calls.push({ ip, context }); });
+  request(middleware, { headers: { 'x-megaradio-platform': 'web' } }).finish();
+  await settle();
+  now += 30_000;
+  request(middleware, { headers: { 'x-megaradio-platform': 'ios' } }).finish();
+  await settle();
+  assert.equal(calls.length, 2);
+  assert.equal(calls[0].ip, calls[1].ip);
+  assert.equal(calls[0].context.platform, 'web');
+  assert.equal(calls[1].context.platform, 'ios');
 });
 
 test('30-second throttle retries after expiry and coalesces outstanding writes beyond the TTL', async t => {

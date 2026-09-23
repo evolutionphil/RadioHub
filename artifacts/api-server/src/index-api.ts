@@ -287,7 +287,7 @@ app.use((req, res, next) => {
   // browsers reject 'ACAO: *' on credentialed requests anyway, and emitting
   // it just hides real misconfigurations.
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, HEAD');
-  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, Range, X-API-Key, X-API-User-Token');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, Range, X-API-Key, X-API-User-Token, X-MegaRadio-Platform');
   res.header('Access-Control-Expose-Headers', 'Content-Range, Accept-Ranges, Content-Length');
   res.header('Access-Control-Max-Age', '86400');
 

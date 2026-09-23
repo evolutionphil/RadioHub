@@ -1,4 +1,5 @@
 import type { LucideIcon } from "lucide-react";
+import type { MouseEventHandler } from 'react';
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 
@@ -31,12 +32,15 @@ interface StatCardProps {
   caption?: string;
   /** Optional progress 0..100 rendered as a thin bar. */
   progress?: number;
+  /** Optional drilldown action; remains a native keyboard-accessible button. */
+  onClick?: MouseEventHandler<HTMLButtonElement>;
 }
 
-export function StatCard({ label, value, icon: Icon, accent = 'slate', caption, progress }: StatCardProps) {
+export function StatCard({ label, value, icon: Icon, accent = 'slate', caption, progress, onClick }: StatCardProps) {
   const a = ACCENTS[accent];
   return (
-    <Card className="transition-shadow hover:shadow-md">
+    <Card className="relative transition-shadow hover:shadow-md">
+      {onClick && <button type="button" onClick={onClick} aria-label={`${label}: ${value}. View visitor details`} aria-haspopup="dialog" className="absolute inset-0 z-10 w-full rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"><span className="sr-only">View visitor details</span></button>}
       <CardContent className="p-4 sm:p-5">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
