@@ -20,6 +20,26 @@ Sayaçlar kullanıcı hesabı veya cihaz bazlı değil **tekil IP** bazlıdır: 
 
 <a id="native-platform-header"></a>
 
+<a id="visitor-page-activity"></a>
+
+### 24 Eylül 2026: isteğe bağlı ekran hareketi ölçümü
+
+Platform başlığı mevcut sayımlar için yeterli olmaya devam eder. **Ekran geçmişi farklı bir özelliktir:** yerel cache'den açılan ekranı backend bilemez. Bu özellik sunucuda yayımlandıktan sonra, ölçüm tercihleri izin veriyorsa, gerçek ekran açılışında aşağıdaki isteğe bağlı isteği arka planda gönderebilirsiniz:
+
+```http
+POST https://api.themegaradio.com/api/visitor-activity/page-view
+Content-Type: application/json
+X-MegaRadio-Platform: ios
+
+{"path":"/de/station/kral-fm","referralCategory":"direct-or-unknown"}
+```
+
+Android için başlık `android`. Yanıt `204`, olayın kesin saklandığına dair teslim garantisi değildir; kapasite/gizlilik filtreleri ölçümü atlayabilir. Mevcut oturum yönetimini değiştirmeyin. Bu endpoint'e kullanıcı ID, IP, cihaz reklam kimliği, ekran görüntüsü, mesaj metni, şifre, arama metni, token veya keyfi özellik eklemeyin. URL query/hash göndermeyin; özel konuşma/profil kimliklerini göndermeyin. `path` yalnız sitenin karşılık gelen izinli ekran yolu olmalıdır. Bu bir native route adı serbest-metin alanı değildir.
+
+`referralCategory`: `google`, `search`, `social`, `internal`, `direct-or-unknown`, `other-referral`. Kaynağı gerçekten bilmiyorsanız `direct-or-unknown`; kaynak beyanı kanıtlanmış attribution değildir. Harici URL veya arama terimi göndermeyin. Gönderim hata verirse kullanıcıya hata göstermeyin, tekrar denemeyin ve giriş/oynatma/favori işlemini bekletmeyin. En fazla rota değişiminde bir gönderim; yeniden çizim, polling ve ses zamanlayıcısına bağlamayın. Telemetry devre dışıysa, ekran arka plandaysa veya cihaz çevrimdışıysa göndermeyin. İstekleri kısa timeout ile sınırlandırın.
+
+Admin kayıtları IP bazında birleşir ve yedi gün örneklenen hareket tutar; bu kullanıcı hesabına veya cihaz başına kesin oturum geçmişi değildir. Ekran açma bildirimi istemci beyanıdır; doğrulanmış insan, gerçek dinleme veya kişinin niyeti sayılmaz. Eski sürümler bu endpoint'i kullanmadan çalışmaya devam eder. Bu depoda native kaynak bulunmadığından uygulamalara otomatik eklenmiş değildir.
+
 ### Swift / Kotlin: API'ye özel platform başlığı
 
 Bu örnekler mevcut HTTP client'a uyarlanacak entegrasyon parçalarıdır; native repo burada bulunmadığından Xcode/Gradle cihaz derlemesi yapılmamıştır. API client'ını bir kez oluşturup tekrar kullanın. Header'ı eklemek için yeni istek/timer üretmeyin. Token'ı iOS Keychain'den veya Android'de Keystore ile korunan özel depodan sağlayın; kaynak kod, UserDefaults/düz preferences, URL, log veya crash raporuna koymayın.

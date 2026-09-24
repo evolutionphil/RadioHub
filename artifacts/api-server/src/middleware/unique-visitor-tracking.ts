@@ -50,7 +50,7 @@ function isInternalIp(address: string): boolean {
  * entry: Express resolves that chain according to the configured trust policy.
  * Header spoofing through an unprotected origin still requires ingress hardening;
  * these statistics are best-effort measurement, not an authentication boundary. */
-function visitorAddress(req: Request): { ip: string; countryCode: unknown } | null {
+export function visitorAddress(req: Request): { ip: string; countryCode: unknown } | null {
   const remote = normalizeVisitorIp(req.socket?.remoteAddress);
   const trust = req.app?.get('trust proxy fn') as ((ip: string, hop: number) => boolean) | undefined;
   const privateTrustedProxy = remote && isInternalIp(remote)
@@ -65,7 +65,7 @@ function visitorAddress(req: Request): { ip: string; countryCode: unknown } | nu
   } : null;
 }
 
-function adminRequest(req: Request): boolean {
+export function adminRequest(req: Request): boolean {
   const session = req.session as typeof req.session & {
     adminAuth?: unknown; adminUser?: unknown; user?: { role?: string };
   };
@@ -76,13 +76,17 @@ function adminRequest(req: Request): boolean {
   try { return ADMIN_PATH.test(new URL(referer).pathname); } catch { return false; }
 }
 
-function eligibleRequest(req: Request): boolean {
+export function isAutomatedVisitorAgent(userAgent: unknown): boolean {
+  return typeof userAgent === 'string' && AUTOMATED_USER_AGENT.test(userAgent.slice(0,2048));
+}
+
+export function eligibleRequest(req: Request, includeAutomated = false): boolean {
   if (!['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method)) return false;
   const path = req.path;
   if (ADMIN_PATH.test(path) || EXCLUDED_PATH.test(path) || EXCLUDED_TV_PATH.test(path)
     || STATIC_EXTENSION.test(path) || adminRequest(req)) return false;
   const userAgent = req.get('user-agent');
-  if (!userAgent || AUTOMATED_USER_AGENT.test(userAgent)) return false;
+  if (!userAgent || (!includeAutomated && AUTOMATED_USER_AGENT.test(userAgent))) return false;
   if (/prefetch|prerender/i.test(`${req.get('purpose') || ''} ${req.get('sec-purpose') || ''}`)) return false;
   const destination = req.get('sec-fetch-dest');
   if (destination && !['empty', 'document', 'iframe'].includes(destination)) return false;
@@ -99,6 +103,8 @@ export function createUniqueVisitorTrackingMiddleware(track: (ip: string, contex
   let pendingWrites = 0;
   let lastWarningAt = Number.NEGATIVE_INFINITY;
   return (req, res, next) => {
+    // Optional telemetry is not an additional source of unique-IP presence.
+    if (req.path === '/api/visitor-activity/page-view') return next();
     if (!eligibleRequest(req)) return next();
     const address = visitorAddress(req);
     if (!address) return next();

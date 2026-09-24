@@ -9,6 +9,9 @@ import { pgPruneVisitors, pgRecordListening } from './data/postgres-runtime-oper
 import { pgTrackQualifiedVisitor, pgPruneQualifiedVisitors } from './data/postgres-visitor-metrics';
 import { createUniqueVisitorTrackingMiddleware } from './middleware/unique-visitor-tracking';
 import { registerVisitorMetricsRoutes } from './routes/visitor-metrics-routes';
+import { createVisitorActivityMiddleware } from './middleware/visitor-activity';
+import { registerVisitorActivityRoutes } from './routes/visitor-activity-routes';
+import { pgPruneVisitorActivity } from './data/postgres-visitor-activity';
 import { pgDeleteOldAppLogs } from './data/postgres-content-store';
 import passport from './auth/passport-config';
 import { pgLocalization } from './data/postgres-localization-store';
@@ -231,10 +234,11 @@ export async function registerRoutes(app: Express, options?: RegisterRoutesOptio
   // Qualified, normalized unique IPs only. Tracking never blocks a response;
   // old unfiltered request/IP records are retained but not reused as people.
   app.use(createUniqueVisitorTrackingMiddleware(pgTrackQualifiedVisitor));
+  app.use(createVisitorActivityMiddleware());
 
   // All database indexes are versioned SQL migrations; no startup DDL.
   setInterval(() => {
-    void Promise.all([pgPruneVisitors(),pgPruneQualifiedVisitors(),pgDeleteOldAppLogs(new Date(Date.now()-30*86400000))])
+    void Promise.all([pgPruneVisitors(),pgPruneQualifiedVisitors(),pgPruneVisitorActivity(),pgDeleteOldAppLogs(new Date(Date.now()-30*86400000))])
       .catch(error=>logger.warn('PostgreSQL visitor/application-log retention failed',error.message));
   },60*60*1000).unref();
 
@@ -777,6 +781,7 @@ export async function registerRoutes(app: Express, options?: RegisterRoutesOptio
   // === REGISTER ALL ROUTE MODULES ===
   registerCacheDashboardRoutes(app, deps);
   registerVisitorMetricsRoutes(app, requireAdmin);
+  registerVisitorActivityRoutes(app, requireAdmin);
   registerAdminAuthRoutes(app, deps);
   registerSlugRoutes(app, deps);
   await registerAiDescriptionRoutes(app, deps);

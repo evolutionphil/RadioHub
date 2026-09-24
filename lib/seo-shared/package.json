@@ -7,6 +7,7 @@
     "transliteration": "^2.6.1"
   },
   "exports": {
+    "./visitor-activity": "./src/visitor-activity.ts",
     "./slug-utils": "./src/slug-utils.ts",
     "./faq-schema": "./src/faq-schema.ts",
     "./structured-data": "./src/structured-data.ts",

@@ -9,6 +9,7 @@ export const VISITOR_CHANNELS: Record<string, string> = { web: 'Web browser', ap
 export type VisitorFilters = { window: VisitorWindow; page: number; country: string; platform: string; deviceType: string };
 export type VisitorBreakdown = { value: string; count: number };
 export interface VisitorRow {
+  activityId?: string | null;
   maskedIp: string; firstSeenAt: string; lastSeenAt: string; countryCode: string | null;
   channel: string; platform: string; deviceType: string; os: string | null; browser: string | null;
   contextSource: 'client-header' | 'user-agent' | 'unknown'; contextCollectedAt: string | null;
@@ -46,6 +47,7 @@ export function isVisitorDetails(value: unknown, filters: VisitorFilters): value
     })
     && Array.isArray(v.visitors) && v.visitors.length <= v.pagination.limit && v.visitors.every(row =>
       !!row && typeof row === 'object' && isMaskedVisitorNetwork(row.maskedIp) && date(row.firstSeenAt) && date(row.lastSeenAt)
+      && (row.activityId == null || (typeof row.activityId === 'string' && /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(row.activityId)))
       && textOrNull(row.countryCode) && textOrNull(row.os) && textOrNull(row.browser)
       && Object.hasOwn(VISITOR_CHANNELS, row.channel) && Object.hasOwn(VISITOR_PLATFORMS, row.platform) && Object.hasOwn(VISITOR_DEVICES, row.deviceType)
       && ['client-header', 'user-agent', 'unknown'].includes(row.contextSource)

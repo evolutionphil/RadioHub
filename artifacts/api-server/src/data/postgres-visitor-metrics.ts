@@ -35,6 +35,7 @@ export interface VisitorDetailsQuery {
 }
 export interface VisitorBreakdown { value: string; count: number }
 export interface VisitorDetail extends VisitorContext {
+  activityId?: string | null;
   maskedIp: string;
   firstSeenAt: string;
   lastSeenAt: string;
@@ -100,7 +101,9 @@ export async function pgUniqueVisitorDetails(options: VisitorDetailsQuery, pool:
         ('channels',channel),('platforms',platform),('devices',device_type)) AS d(dimension,value)
       GROUP BY dimension,value
     ), paged AS (
-      SELECT * FROM filtered ORDER BY last_seen_at DESC,ip_address ASC LIMIT $5 OFFSET $6
+      SELECT filtered.*,activity.id AS activity_id FROM filtered
+      LEFT JOIN visitor_activity_subjects activity ON activity.ip_address=filtered.ip_address AND activity.traffic_kind='qualified'
+      ORDER BY filtered.last_seen_at DESC,filtered.ip_address ASC LIMIT $5 OFFSET $6
     ) SELECT now() AS measured_at,
       (SELECT value->>'collectionStartedAt' FROM runtime_app_state WHERE key='unique-visitor-metrics:v1') AS started_at,
       (SELECT value->>'dimensionsStartedAt' FROM runtime_app_state WHERE key='unique-visitor-details:v1') AS dimensions_started_at,
@@ -115,6 +118,7 @@ export async function pgUniqueVisitorDetails(options: VisitorDetailsQuery, pool:
       coalesce((SELECT jsonb_agg(jsonb_build_object('value',value,'count',count) ORDER BY count DESC,value ASC)
         FROM breakdown WHERE dimension='devices'),'[]'::jsonb) AS devices,
       coalesce((SELECT jsonb_agg(jsonb_build_object(
+        'activityId',activity_id,
         'maskedIp',host(network(set_masklen(ip_address,CASE family(ip_address) WHEN 4 THEN 24 ELSE 48 END)))
           || CASE family(ip_address) WHEN 4 THEN '/24' ELSE '/48' END,
         'firstSeenAt',first_seen_at,'lastSeenAt',last_seen_at,'countryCode',country_code,

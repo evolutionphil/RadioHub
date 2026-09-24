@@ -65,6 +65,7 @@ test('qualified unique-IP migration, counters and retention use actual PostgreSQ
         INSERT INTO visitor_sessions VALUES('198.51.100.99',now())`);
       const migration = await readFile(new URL('../../../lib/db/migrations/0037_qualified_unique_visitors.sql', import.meta.url), 'utf8');
       await db.exec(`BEGIN;${migration}COMMIT;`);
+      await db.exec(await readFile(new URL('../../../lib/db/migrations/0040_visitor_activity.sql', import.meta.url), 'utf8'));
       await t.test('new series starts at a persisted cutover, never copies legacy bot/admin records', async () => {
         const metrics = await pgUniqueVisitorMetrics(pool);
         assert.equal(metrics.activeVisitors, 0); assert.equal(metrics.todayVisitors, 0); assert.equal(metrics.weekVisitors, 0);
@@ -80,7 +81,7 @@ test('qualified unique-IP migration, counters and retention use actual PostgreSQ
         assert.equal(details.totalVisitors, 1);
         assert.ok(Date.parse(details.collectionStartedAt) <= Date.parse(details.dimensionsStartedAt));
         assert.ok(Date.parse(details.dimensionsStartedAt) <= Date.parse(details.computedAt));
-        assert.deepEqual(details.visitors[0], { ...unknown, maskedIp: '198.51.100.0/24',
+        assert.deepEqual(details.visitors[0], { ...unknown, activityId: null, maskedIp: '198.51.100.0/24',
           firstSeenAt: details.visitors[0].firstSeenAt, lastSeenAt: details.visitors[0].lastSeenAt, contextCollectedAt: null });
         for (const breakdown of Object.values(details.breakdowns)) assert.deepEqual(breakdown, [{ value: 'unknown', count: 1 }]);
         assert.equal((await db.query('SELECT count(*)::int n FROM visitor_sessions')).rows[0].n, 1);

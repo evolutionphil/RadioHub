@@ -1,10 +1,12 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Activity, ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { apiFetch } from '@/lib/queryClient';
+import { AutomatedTrafficPanel, VisitorActivityPanel } from './VisitorActivityPanel';
+import { isVisitorActivityId, type ActivitySelection, type TrafficKind } from '@/lib/admin-visitor-activity';
 import {
   isVisitorDetails, visitorClientLabel, visitorCountry, visitorDetailsParams, visitorDetailTimestamp,
   VISITOR_CHANNELS, VISITOR_DEVICES, VISITOR_PLATFORMS, VISITOR_WINDOWS,
@@ -25,8 +27,12 @@ function Breakdown({ title, rows, total, label }: { title: string; rows: Visitor
 
 /** Mount only when a metric is opened: no drilldown request during normal dashboard polling. */
 export function VisitorDetailsDialog({ initialWindow, onClose, restoreFocus }: { initialWindow: VisitorWindow; onClose: () => void; restoreFocus?: () => void }) {
+  const [trafficKind, setTrafficKind] = useState<TrafficKind>('qualified');
+  const [selectedActivity, setSelectedActivity] = useState<ActivitySelection | null>(null);
+  const trafficControls = useRef<HTMLDivElement>(null);
   const [filters, setFilters] = useState<VisitorFilters>({ window: initialWindow, page: 1, country: 'all', platform: 'all', deviceType: 'all' });
   const query = useQuery({
+    enabled: trafficKind === 'qualified' && !selectedActivity,
     queryKey: ['/api/admin/visitor-metrics/details', filters],
     queryFn: async ({ signal }) => {
       const response = await apiFetch(`/api/admin/visitor-metrics/details?${visitorDetailsParams(filters)}`, { signal });
@@ -45,7 +51,7 @@ export function VisitorDetailsDialog({ initialWindow, onClose, restoreFocus }: {
   const hasFilters = filters.country !== 'all' || filters.platform !== 'all' || filters.deviceType !== 'all';
   const countryOptions = query.data?.breakdowns.countries ?? [];
   const countryValues = Array.from(new Set([...countryOptions.map(row => row.value), ...(filters.country !== 'all' ? [filters.country] : [])]));
-  const selectClass = 'mt-1 h-10 w-full min-w-0 rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-950 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2';
+  const selectClass = 'mt-1 block h-10 w-full min-w-0 max-w-full rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-950 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2';
   return <Dialog open onOpenChange={open => { if (!open) onClose(); }}>
     <DialogContent className="flex max-h-[92dvh] w-[calc(100%_-_1.5rem)] max-w-6xl flex-col gap-0 overflow-hidden rounded-xl border-slate-200 bg-white p-0 text-slate-950 shadow-2xl" onCloseAutoFocus={event => { if (restoreFocus) { event.preventDefault(); restoreFocus(); } }}>
       <DialogHeader className="shrink-0 border-b border-slate-200 px-4 py-5 pr-12 text-left sm:px-6">
@@ -53,6 +59,14 @@ export function VisitorDetailsDialog({ initialWindow, onClose, restoreFocus }: {
         <DialogDescription className="text-xs leading-relaxed text-slate-600">Unique IPs, not verified people. Shared IP addresses count once. Each IP is attributed to its latest sampled request.</DialogDescription>
       </DialogHeader>
       <div className="min-h-0 space-y-5 overflow-y-auto overscroll-contain px-4 py-4 sm:px-6">
+        {selectedActivity ? <VisitorActivityPanel key={`${selectedActivity.trafficKind}:${selectedActivity.activityId}`} selected={selectedActivity}
+          onBack={() => { setSelectedActivity(null); requestAnimationFrame(() => trafficControls.current?.querySelector<HTMLButtonElement>('[aria-pressed="true"]')?.focus()); }} /> : <>
+        <div ref={trafficControls} role="group" aria-label="Traffic category" className="flex flex-wrap gap-1 border-b border-slate-200 pb-3">
+          {(['qualified', 'automated'] as const).map(kind => <button key={kind} type="button" aria-pressed={trafficKind === kind}
+            className={`rounded-md px-3 py-2 text-sm font-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 ${trafficKind === kind ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'}`}
+            onClick={() => setTrafficKind(kind)}>{kind === 'qualified' ? 'Qualified visitors' : 'Automated traffic'}</button>)}
+        </div>
+        {trafficKind === 'automated' ? <AutomatedTrafficPanel onSelect={setSelectedActivity} /> : <>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div role="group" aria-label="Visitor time window" className="flex flex-wrap gap-1 rounded-lg bg-slate-100 p-1">
             {(Object.keys(VISITOR_WINDOWS) as VisitorWindow[]).map(window => <button key={window} type="button" aria-pressed={filters.window === window}
@@ -62,13 +76,13 @@ export function VisitorDetailsDialog({ initialWindow, onClose, restoreFocus }: {
           <Button variant="outline" size="sm" disabled={query.isFetching} onClick={() => void query.refetch()}><RefreshCw className={`mr-2 h-3.5 w-3.5 ${query.isFetching ? 'animate-spin' : ''}`} aria-hidden="true" />Refresh details</Button>
         </div>
         <div className="grid gap-3 sm:grid-cols-3">
-          <div><Label htmlFor="visitor-country">Country</Label><select id="visitor-country" value={filters.country} className={selectClass} onChange={event => change('country', event.target.value)}>
+          <div><Label className="block" htmlFor="visitor-country">Country</Label><select id="visitor-country" value={filters.country} className={selectClass} style={{ width: '100%' }} onChange={event => change('country', event.target.value)}>
             <option value="all">All countries</option>{countryValues.map(value => <option key={value} value={value}>{visitorCountry(value)}</option>)}
           </select></div>
-          <div><Label htmlFor="visitor-platform">Platform</Label><select id="visitor-platform" value={filters.platform} className={selectClass} onChange={event => change('platform', event.target.value)}>
+          <div><Label className="block" htmlFor="visitor-platform">Platform</Label><select id="visitor-platform" value={filters.platform} className={selectClass} style={{ width: '100%' }} onChange={event => change('platform', event.target.value)}>
             <option value="all">All platforms</option>{Object.entries(VISITOR_PLATFORMS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
           </select></div>
-          <div><Label htmlFor="visitor-device">Device type</Label><select id="visitor-device" value={filters.deviceType} className={selectClass} onChange={event => change('deviceType', event.target.value)}>
+          <div><Label className="block" htmlFor="visitor-device">Device type</Label><select id="visitor-device" value={filters.deviceType} className={selectClass} style={{ width: '100%' }} onChange={event => change('deviceType', event.target.value)}>
             <option value="all">All devices</option>{Object.entries(VISITOR_DEVICES).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
           </select></div>
         </div>
@@ -103,6 +117,11 @@ export function VisitorDetailsDialog({ initialWindow, onClose, restoreFocus }: {
                   <span>Last seen <time dateTime={row.lastSeenAt}>{visitorDetailTimestamp(row.lastSeenAt)}</time></span>
                   <span title={row.contextCollectedAt ? `Context observed ${visitorDetailTimestamp(row.contextCollectedAt)} (Berlin)` : 'No client context recorded'}>{row.contextSource === 'client-header' ? 'Self-reported client header' : row.contextSource === 'user-agent' ? 'Inferred from user-agent' : 'Client context unknown'}</span>
                 </div>
+                <div className="mt-3">
+                  {isVisitorActivityId(row.activityId) ? <Button size="sm" variant="outline" aria-label={`View activity for ${row.maskedIp}, visitor ${index + 1}`}
+                    onClick={() => setSelectedActivity({ activityId: row.activityId!, maskedIp: row.maskedIp, trafficKind: 'qualified' })}>View activity<ChevronRight className="ml-1 h-4 w-4" aria-hidden="true" /></Button>
+                    : <p className="text-xs text-slate-500">Activity history has not been collected for this record yet.</p>}
+                </div>
               </li>)}
             </ul>}
             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -119,6 +138,8 @@ export function VisitorDetailsDialog({ initialWindow, onClose, restoreFocus }: {
             <p>Countries are approximate IP locations, not verified residence or GPS. Older requests can have unknown metadata. Shared IPs and changing devices are attributed to the latest sampled client, not every device or person behind that IP.</p>
             <p>Client headers are self-reported and user-agents are inferred. TV client labels (including Samsung Tizen and LG webOS) do not distinguish a built-in TV browser from a packaged TV app. These are not verified hardware or human identities.</p>
           </aside>
+        </>}
+        </>}
         </>}
       </div>
     </DialogContent>

@@ -1,5 +1,40 @@
 import { sql } from 'drizzle-orm';
-import { bigint,check,index,inet,integer,jsonb,pgTable,text,timestamp } from 'drizzle-orm/pg-core';
+import { bigint,check,index,inet,integer,jsonb,pgTable,text,timestamp,uuid,unique } from 'drizzle-orm/pg-core';
+export const visitorActivitySubjects = pgTable('visitor_activity_subjects', {
+  id: uuid('id').primaryKey().defaultRandom(), ipAddress: inet('ip_address').notNull(),
+  trafficKind: text('traffic_kind').notNull(), firstSeenAt: timestamp('first_seen_at',{withTimezone:true}).notNull().defaultNow(),
+  lastSeenAt: timestamp('last_seen_at',{withTimezone:true}).notNull().defaultNow(), countryCode: text('country_code'),
+  channel: text('channel').notNull(), platform: text('platform').notNull(), deviceType: text('device_type').notNull(),
+  os: text('os'), browser: text('browser'), contextSource: text('context_source').notNull(),
+  hourStartedAt: timestamp('hour_started_at',{withTimezone:true}).notNull().default(sql`date_trunc('hour',now())`),
+  hourEvents: integer('hour_events').notNull().default(1),
+}, t => [unique('visitor_activity_subjects_ip_address_traffic_kind_key').on(t.ipAddress,t.trafficKind),
+  index('visitor_activity_subjects_kind_seen_idx').on(t.trafficKind,t.lastSeenAt.desc(),t.id.desc()),
+  index('visitor_activity_subjects_seen_idx').on(t.lastSeenAt),
+  check('visitor_activity_subjects_ip_address_check',sql`masklen(${t.ipAddress})=CASE family(${t.ipAddress}) WHEN 4 THEN 32 ELSE 128 END`),
+  check('visitor_activity_subjects_traffic_kind_check',sql`${t.trafficKind} IN ('qualified','automated')`),
+  check('visitor_activity_subjects_country_code_check',sql`${t.countryCode} ~ '^[A-Z]{2}$'`),
+  check('visitor_activity_subjects_channel_check',sql`${t.channel} IN ('web','app','tv','unknown')`),
+  check('visitor_activity_subjects_platform_check',sql`${t.platform} IN ('web','ios','android','tizen','webos','tvos','androidtv','desktop','unknown')`),
+  check('visitor_activity_subjects_device_type_check',sql`${t.deviceType} IN ('desktop','mobile','tablet','tv','unknown')`),
+  check('visitor_activity_subjects_os_check',sql`char_length(${t.os})<=64`),
+  check('visitor_activity_subjects_browser_check',sql`char_length(${t.browser})<=64`),
+  check('visitor_activity_subjects_context_source_check',sql`${t.contextSource} IN ('client-header','user-agent','unknown')`),
+  check('visitor_activity_subjects_hour_events_check',sql`${t.hourEvents} BETWEEN 1 AND 60`)]);
+export const visitorActivityEvents = pgTable('visitor_activity_events', {
+  id: uuid('id').primaryKey().defaultRandom(), subjectId: uuid('subject_id').notNull().references(()=>visitorActivitySubjects.id,{onDelete:'cascade'}),
+  occurredAt: timestamp('occurred_at',{withTimezone:true}).notNull().defaultNow(), path: text('path').notNull(),
+  action: text('action').notNull(), method: text('method').notNull(), status: integer('status').notNull(),
+  source: text('source').notNull(), referralCategory: text('referral_category').notNull(), automationStatus: text('automation_status').notNull(),
+}, t => [index('visitor_activity_events_subject_time_idx').on(t.subjectId,t.occurredAt.desc(),t.id.desc()),
+  index('visitor_activity_events_time_idx').on(t.occurredAt),
+  check('visitor_activity_events_path_check',sql`char_length(${t.path}) BETWEEN 1 AND 256 AND ${t.path} LIKE '/%' AND ${t.path} !~ '[?#]' AND position(chr(92) in ${t.path})=0`),
+  check('visitor_activity_events_action_check',sql`${t.action} IN ('page-view','station-view','play-request','favorite-add','favorite-remove','rating-submit')`),
+  check('visitor_activity_events_method_check',sql`${t.method} IN ('GET','POST','PUT','PATCH','DELETE')`),
+  check('visitor_activity_events_status_check',sql`${t.status} BETWEEN 200 AND 299`),
+  check('visitor_activity_events_source_check',sql`${t.source} IN ('http','client-pageview')`),
+  check('visitor_activity_events_referral_category_check',sql`${t.referralCategory} IN ('google','search','social','internal','direct-or-unknown','other-referral')`),
+  check('visitor_activity_events_automation_status_check',sql`${t.automationStatus} IN ('unknown','browser-like','automated')`)]);
 export const qualifiedVisitorPresence = pgTable('qualified_visitor_presence', {
   ipAddress: inet('ip_address').primaryKey(),
   firstSeenAt: timestamp('first_seen_at', { withTimezone: true }).notNull().defaultNow(),

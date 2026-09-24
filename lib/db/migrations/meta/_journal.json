@@ -274,6 +274,13 @@
       "when": 1791759600000,
       "tag": "0039_verified_historical_station_redirects",
       "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1791846000000,
+      "tag": "0040_visitor_activity",
+      "breakpoints": true
     }
   ]
 }

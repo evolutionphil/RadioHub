@@ -387,6 +387,11 @@ app.use(compression({
   }
 }));
 
+// A page-view report contains only a sanitized path and one referral enum.
+app.use('/api/visitor-activity/page-view', (req,res,next)=>{
+  if(req.method==='POST' && !req.is('application/json')) return void res.status(415).json({error:'Expected JSON page view'});
+  next();
+}, express.json({ limit: '2kb' }));
 app.use(express.json({
   limit: '2mb',
   // Capture the raw body for webhook HMAC verification (Stripe/Paddle).

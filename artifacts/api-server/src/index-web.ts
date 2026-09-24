@@ -33,6 +33,7 @@ import { startOperation, endOperation, getActiveOperations, getGcStats } from '.
 import { COUNTRY_TO_LANGUAGE, SEO_LANGUAGES } from '@workspace/seo-shared/seo-config';
 
 import { geoBlockMiddleware } from './middleware/geo-block';
+import { createVisitorActivityMiddleware } from './middleware/visitor-activity';
 import { privateApiCachePolicy, setHealthCacheHeaders } from './middleware/cache-policy';
 
 // Country-prefix duplicate canonical fix (Bing DALGA A)
@@ -63,6 +64,9 @@ app.disable('x-powered-by');
 
 // Geo-block FIRST — drop TCP connection from blocked countries (no response)
 app.use(geoBlockMiddleware);
+// Web serves SSR directly; qualified browser navigation is explicitly reported
+// by the client. Only sampled known automation is observed here, never /api.
+app.use(createVisitorActivityMiddleware(undefined, { botsOnly: true }));
 app.use(['/api/admin', '/api/auth'], privateApiCachePolicy);
 
 let uncaughtExitScheduled = false;
@@ -441,6 +445,10 @@ app.use(compression({
   }
 }));
 
+app.use('/api/visitor-activity/page-view', (req,res,next)=>{
+  if(req.method==='POST' && !req.is('application/json')) return void res.status(415).json({error:'Expected JSON page view'});
+  next();
+}, express.json({ limit: '2kb' }));
 app.use(express.json({
   limit: '2mb',
   // Capture the raw body for webhook HMAC verification (Stripe/Paddle).
