@@ -232,6 +232,48 @@
       "when": 1791241200000,
       "tag": "0033_verified_eurodance_duplicate_redirect",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1791327600000,
+      "tag": "0034_private_noindex_recovery_journal",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1791414000000,
+      "tag": "0035_station_description_summary",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1791500400000,
+      "tag": "0036_backfill_station_description_summary",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1791586800000,
+      "tag": "0037_qualified_unique_visitors",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1791673200000,
+      "tag": "0038_qualified_visitor_dimensions",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1791759600000,
+      "tag": "0039_verified_historical_station_redirects",
+      "breakpoints": true
     }
   ]
 }
