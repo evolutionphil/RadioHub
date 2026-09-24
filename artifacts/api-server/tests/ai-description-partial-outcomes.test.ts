@@ -411,6 +411,24 @@ test('global repair does not replace invalid stored content with another wrong-s
   assert.deepEqual(persisted.ar, fixture.descriptions.ar); assert.equal(writes.length, 0);
 });
 
+test('global repair replaces a proven mixed opener only and keeps metadata, extensions and CAS guards', async () => {
+  fixture.noIndex = false; fixture.descriptions = shortComplete();
+  fixture.descriptions.en = description('en');
+  const full = "Rusya'daki bu radyo istasyonu, müzik kataloğunda istasyon bilgileriyle birlikte listeleniyor.";
+  const meta = "Rusya'daki radyo istasyonunun müzik kataloğunda yer alan bilgileri.";
+  fixture.descriptions.tr = { full: `is vibrant ${full}`, meta, reviewer: 'preserve' };
+  persisted = structuredClone(fixture.descriptions);
+  translate = async languages => { assert.deepEqual(languages, ['tr']); return new Map([['tr', { full, meta: 'unused generated meta' }]]); };
+  const job = await runAdminJob(repairRoute, []);
+  assert.equal(job.successful, 1); assert.equal(job.failed, 0); assert.equal(translationCalls, 1);
+  assert.equal(persisted.tr.full, full); assert.equal(persisted.tr.meta, meta);
+  assert.equal((persisted.tr as any).reviewer, 'preserve');
+  assert.deepEqual(writes[0].filter['descriptions.tr'], fixture.descriptions.tr);
+  assert.equal(writes[0].filter['manualEditFields.descriptions'].$ne, true);
+  assert.equal(writes[0].filter.noIndex, false);
+  assert.deepEqual(writes[0].filter.redirectToSlug, { $in: [null, ''] });
+});
+
 test('global repair skips newly excluded, redirected or manually protected stations before paying', async () => {
   for (const excluded of [{noIndex: true}, {noIndex: false, redirectToSlug: 'canonical'}, {noIndex: false, manualEditFields: {descriptions: true}}]) {
     Object.assign(fixture, excluded);

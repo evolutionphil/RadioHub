@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 import { COUNTRY_TO_LANGUAGE, getNativeCountryName } from "@workspace/seo-shared/seo-config";
 import { logger } from "../utils/logger";
+import { hasUntranslatedDescriptionOpener } from './station-description-validation';
 
 // Optional AI credentials must not prevent the API from starting. Construct
 // the client only when an operator actually invokes generation/translation.
@@ -277,6 +278,8 @@ Return exactly two plain-text parts: the full description first, then a line con
         if (!fallbackResponse.includes('NO_INFO_AVAILABLE') && fallbackFull &&
             (isCompactLanguage ? fallbackFull.length >= minFullLength : fallbackFull.length > 100) &&
             fallbackMeta && fallbackMeta.length >= (isCompactLanguage ? 20 : 50) &&
+            !hasUntranslatedDescriptionOpener(fallbackFull, language, stationName) &&
+            !hasUntranslatedDescriptionOpener(fallbackMeta, language, stationName) &&
             (!isCompactLanguage || (hasCompactProse(fallbackFull, 'full') && hasCompactProse(fallbackMeta, 'meta')))) {
           logger.log(`✅ AI: Fallback generated ${fallbackFull.length} chars full + ${fallbackMeta.length} chars meta for "${station.name}"`);
           logger.log(`   Fallback FULL: ${fallbackFull.substring(0, 100)}...`);
@@ -305,6 +308,11 @@ Return exactly two plain-text parts: the full description first, then a line con
       };
     }
     
+    if (hasUntranslatedDescriptionOpener(fullDescription, language, stationName) ||
+        hasUntranslatedDescriptionOpener(metaDescription, language, stationName)) {
+      return { success: false, language, usedFallback: false, error: 'Generated description retains an English opener' };
+    }
+
     logger.log(`✅ AI: Generated ${fullDescription.length} chars full + ${metaDescription.length} chars meta for "${station.name}"`);
     
     return {
@@ -350,18 +358,6 @@ function isTranslationIdentityOnly(value: string, stationName?: string): boolean
   const normalized = normalize(value);
   const name = normalize(stationName || '');
   return Boolean(normalized) && [name, 'megaradio', name + 'megaradio', 'megaradio' + name].includes(normalized);
-}
-
-// Catch the observed untranslated English opener without treating Latin-script
-// brands (or an English target) as a language failure. Check comparison copies
-// only, preserving every original Unicode character in accepted output.
-function hasUntranslatedMetaOpener(value: string, targetLanguage: string, stationName?: string): boolean {
-  if (targetLanguage.toLowerCase().split(/[-_]/)[0] === 'en') return false;
-  let prose = value;
-  for (const name of [stationName, 'Mega Radio'].filter((name): name is string => Boolean(name)).sort((a, b) => b.length - a.length)) {
-    prose = prose.split(name).join('');
-  }
-  return /^[\s\p{P}\p{S}]*tune\s+in\s+to\b/iu.test(prose);
 }
 
 // Translate BOTH full description AND meta description to multiple target languages
@@ -459,6 +455,13 @@ Return exactly two plain-text parts: the translated full description first, then
         return { lang: targetLang, langName: targetLangName, success: false };
       }
 
+      // Never derive metadata from a full description that still starts in
+      // English. Reject this locale without changing older stored content.
+      if (hasUntranslatedDescriptionOpener(translatedFull, targetLang, stationName)) {
+        logger.warn(`⚠️ AI: Translation to ${targetLangName} rejected: full description retains an English opener`);
+        return { lang: targetLang, langName: targetLangName, success: false };
+      }
+
       // RELAXED validation: Accept translations that have meaningful content
       // Some languages (Arabic, Chinese, etc.) need shorter content to express same idea
       const minFullLength = 50; // Reduced from 100
@@ -469,7 +472,7 @@ Return exactly two plain-text parts: the translated full description first, then
       // which legitimately stays the same across languages.
       const copiedSourceMeta = translatedMeta && translatedMeta === sourceMeta &&
         !isTranslationIdentityOnly(translatedMeta, stationName);
-      const untranslatedMetaOpener = hasUntranslatedMetaOpener(translatedMeta, targetLang, stationName);
+      const untranslatedMetaOpener = hasUntranslatedDescriptionOpener(translatedMeta, targetLang, stationName);
       if (translatedFull && translatedFull.length >= minFullLength && (!translatedMeta || translatedMeta.length < minMetaLength || copiedSourceMeta || untranslatedMetaOpener)) {
         // Generate meta from full description - take first 155 chars and add ellipsis
         const generatedMeta = translatedFull.substring(0, 155).trim();
@@ -484,7 +487,7 @@ Return exactly two plain-text parts: the translated full description first, then
         logger.log(`🔧 AI: Generated meta from full for ${targetLangName} (${translatedMeta.length} chars)`);
       }
 
-      if (hasUntranslatedMetaOpener(translatedMeta, targetLang, stationName)) {
+      if (hasUntranslatedDescriptionOpener(translatedMeta, targetLang, stationName)) {
         logger.warn(`⚠️ AI: Translation to ${targetLangName} rejected: meta retains an English opener`);
         return { lang: targetLang, langName: targetLangName, success: false };
       }

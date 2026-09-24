@@ -18,7 +18,7 @@ mock.module('../src/data/postgres-seo-indexing-store', { namedExports: {
 } });
 mock.module('../src/services/precomputed-cities', { namedExports: { PrecomputedCitiesService: { getSupportedCountries: () => [] } } });
 const { getStationByIdentifier } = await import('../src/data/station-read-store');
-const { loadSlugExistence, hasStationSlug, getCanonicalStationSlug } = await import('../src/seo/slug-existence');
+const { loadSlugExistence, hasStationSlug, getCanonicalStationSlug, getRedirectableStationSlug } = await import('../src/seo/slug-existence');
 
 beforeEach(async () => {
   reads.length = 0;
@@ -59,6 +59,8 @@ for (const [legacy, canonical, id] of [
     assert.equal(getCanonicalStationSlug(legacy), canonical);
     assert.equal(getCanonicalStationSlug(legacy.toUpperCase()), canonical);
     assert.equal(getCanonicalStationSlug(canonical), null, 'canonical destination is stable');
+    assert.equal(getRedirectableStationSlug(legacy), canonical);
+    assert.equal(getRedirectableStationSlug(canonical), canonical);
   });
 
   for (const reason of ['missing', 'reassigned', 'redirect-cycle', 'redirect-chain']) {
@@ -174,9 +176,42 @@ for (const reversed of [false, true]) {
       await loadSlugExistence();
       assert.equal(hasStationSlug('smooth-1'), true);
       assert.equal(getCanonicalStationSlug('smooth-1'), null, 'defer the exact record to SSR and its own redirect');
+      assert.equal(getRedirectableStationSlug('smooth-1'), null, 'explicit redirect records remain with SSR');
       assert.equal(getCanonicalStationSlug('SMOOTH-1'), null, 'case normalization preserves exact identity');
       assert.equal(getCanonicalStationSlug('smooth-uganda'), 'smooth', 'unrelated legitimate aliases still work');
       assert.equal(getCanonicalStationSlug('smooth-3'), noIndex ? null : 'smooth-1');
     });
   }
 }
+
+test('legacy-locale shortcuts require actual non-excluded exact/alias identities, not just slug existence', async () => {
+  const valid = { _id: 'valid-id', name: 'Valid FM', url: 'https://stream.example.invalid/live', noIndex: false, slug: 'valid-fm', slugAliases: ['old-valid-fm'] };
+  slugRows = [valid,
+    { ...valid, _id: '68a8c4a6bd66579311ab887d', name: 'Джем FM', slug: 'dzhem-fm', slugAliases: ['fm-100'], noIndex: true, lastCheckOk: false },
+    { ...valid, slug: 'format-mp3', slugAliases: ['old-format'] },
+    { ...valid, slug: '1234', slugAliases: ['numeric-brand'] },
+    { ...valid, slug: 'explicit-redirect', slugAliases: ['redirect-alias'], redirectToSlug: 'valid-fm' },
+  ];
+  await loadSlugExistence();
+  for (const identifier of ['valid-fm', 'old-valid-fm', 'OLD-VALID-FM']) assert.equal(getRedirectableStationSlug(identifier), 'valid-fm');
+  for (const identifier of ['dzhem-fm', 'fm-100', 'format-mp3', 'old-format', '1234', 'numeric-brand',
+    'explicit-redirect', 'redirect-alias', 'missing', '__proto__']) assert.equal(getRedirectableStationSlug(identifier), null, identifier);
+  assert.equal(hasStationSlug('fm-100'), true, 'excluded identity remains available to the existing SSR policy');
+  slugRows = [{ ...valid, noIndex: true }]; await loadSlugExistence();
+  assert.equal(getRedirectableStationSlug('valid-fm'), null, 'refresh removes newly excluded destinations');
+  assert.equal(getRedirectableStationSlug('old-valid-fm'), null);
+});
+
+test('excluded and numeric exact owners cannot fall through to another station stale alias', async () => {
+  const valid = { name: 'Valid FM', url: 'https://stream.example.invalid/live', noIndex: false, slug: 'valid-fm', slugAliases: ['excluded-fm', '1234', 'legitimate-alias'] };
+  const owners = [{ ...valid, slug: 'excluded-fm', noIndex: true, slugAliases: [] },
+    { ...valid, slug: '1234', slugAliases: [] }];
+  for (const candidates of [[valid, ...owners], [...owners, valid]]) {
+    slugRows = candidates; await loadSlugExistence();
+    for (const identifier of ['excluded-fm', '1234']) {
+      assert.equal(getCanonicalStationSlug(identifier), null, 'exact identity wins before aliases');
+      assert.equal(getRedirectableStationSlug(identifier), null, 'ineligible exact identity must remain with SSR');
+    }
+    assert.equal(getRedirectableStationSlug('legitimate-alias'), 'valid-fm');
+  }
+});

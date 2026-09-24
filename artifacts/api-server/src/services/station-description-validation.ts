@@ -1,7 +1,7 @@
 export type DescriptionLanguageIssue = {
   language: string;
   field: 'full' | 'meta';
-  reason: 'source-copy' | 'wrong-script';
+  reason: 'source-copy' | 'wrong-script' | 'untranslated-opener';
 };
 
 export type DescriptionLanguageValidationOptions = {
@@ -56,9 +56,22 @@ function hasSubstantialProse(value: string): boolean {
   return (value.match(/\p{Letter}/gu)?.length || 0) >= MIN_PROSE_LETTERS;
 }
 
-/** Find only explicit source copies and clear missing-script evidence.
+/** Narrow evidence of an untranslated sentence starter, not a language detector.
+ * Preserve proper names and legitimate Latin text in otherwise native prose.
+ * A lone "is" is inconclusive except immediately before a target's native script.
+ */
+export function hasUntranslatedDescriptionOpener(value: string, language: string, stationName?: string): boolean {
+  const base = baseLanguage(language);
+  if (base === 'en') return false;
+  const prose = proseWithoutNames(value, stationName).replace(/^[\s\p{P}\p{S}]*/u, '');
+  if (/^(?:tune\s+in\s+to\b|is\s+(?:a|an|the|vibrant)\b)/iu.test(prose)) return true;
+  const nativeStart = prose.match(/^is\s+(\S)/iu)?.[1];
+  return Boolean(nativeStart && EXPECTED_SCRIPTS[base]?.test(nativeStart));
+}
+
+/** Find explicit source copies, known English openers and clear missing-script evidence.
  * An empty result means "no conclusive issue", not verified language correctness.
- * Missing fields, arbitrary Latin-language guesses, mixed scripts and other proper
+ * Missing fields, arbitrary Latin-language guesses, other mixed scripts and proper
  * names are intentionally outside this repair decision. Inputs are never changed.
  */
 export function findDescriptionLanguageIssues(
@@ -85,6 +98,8 @@ export function findDescriptionLanguageIssues(
         issues.push({ language, field, reason: 'source-copy' });
       } else if (expectedScript && !expectedScript.test(prose)) {
         issues.push({ language, field, reason: 'wrong-script' });
+      } else if (hasUntranslatedDescriptionOpener(text, language, options.stationName)) {
+        issues.push({ language, field, reason: 'untranslated-opener' });
       }
     }
   }

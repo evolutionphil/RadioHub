@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { findDescriptionLanguageIssues, getInvalidDescriptionLocales } from '../src/services/station-description-validation';
+import { findDescriptionLanguageIssues, getInvalidDescriptionLocales, hasUntranslatedDescriptionOpener } from '../src/services/station-description-validation';
 
 const name = 'Fixture Radio';
 const english = {
@@ -24,10 +24,38 @@ test('explicit cross-locale source copies identify individual fields without cha
   assert.deepEqual(descriptions, before);
 });
 
-test('does not infer source language or distinguish arbitrary Latin prose', () => {
-  assert.deepEqual(findDescriptionLanguageIssues({ en: english, de: english, fr: german }, ['en', 'de', 'fr']), []);
+test('does not infer source language or distinguish arbitrary Latin prose outside known openers', () => {
+  const otherEnglish = { full: `${name} broadcasts music for listeners in the United States.`, meta: `${name}: music for listeners in the United States.` };
+  assert.deepEqual(findDescriptionLanguageIssues({ en: otherEnglish, de: otherEnglish, fr: german }, ['en', 'de', 'fr']), []);
   assert.deepEqual(findDescriptionLanguageIssues({ en: english, 'en-GB': english }, ['en', 'en-GB'], { sourceLanguage: 'en' }), []);
   assert.deepEqual(findDescriptionLanguageIssues({ en: english, de: german }, ['en', 'de'], { sourceLanguage: 'en' }), []);
+});
+
+test('observed mixed-language English openers are identified per field without editing input', () => {
+  const stationName = 'Джем FM';
+  const descriptions = {
+    tr: { full: `${stationName} is vibrant bir radyo istasyonu olarak Rusya'da listeleniyor.`, meta: `${stationName}, Rusya'daki bir radyo istasyonudur.` },
+    he: { full: `${stationName} is תחנת רדיו הרשומה בקטלוג כתחנה מרוסיה.`, meta: `${stationName} היא תחנת רדיו הרשומה בקטלוג ברוסיה.` },
+    hi: { full: `${stationName} is रूस के एक रेडियो स्टेशन के रूप में इस संगीत कैटलॉग में दर्ज है।`, meta: `${stationName} रूस के एक रेडियो स्टेशन के रूप में दर्ज है।` },
+    ko: { full: `${stationName} is 러시아의 라디오 방송국으로 카탈로그에 등록되어 있습니다.`, meta: `${stationName}은 러시아의 라디오 방송국으로 등록되어 있습니다.` },
+  };
+  const before = structuredClone(descriptions);
+  assert.deepEqual(findDescriptionLanguageIssues(descriptions, ['tr', 'he', 'hi', 'ko'], { stationName }),
+    ['tr', 'he', 'hi', 'ko'].map(language => ({ language, field: 'full', reason: 'untranslated-opener' })));
+  assert.deepEqual(descriptions, before);
+});
+
+test('opener checks preserve English locales, proper names, native connecting prose and ambiguous terms', () => {
+  for (const stationName of ['Is A Radio', 'Tune in to Radio', 'is vibrant', '城市之声', 'Radio [FM]+']) {
+    const value = `${stationName}: ein Radiosender aus Deutschland mit Musik im Programm.`;
+    assert.equal(hasUntranslatedDescriptionOpener(value, 'de', stationName), false, stationName);
+  }
+  assert.equal(hasUntranslatedDescriptionOpener(`${name} is a radio station from Germany.`, 'en-US', name), false);
+  assert.equal(hasUntranslatedDescriptionOpener(`${name} is vibrant bir radyo istasyonu olarak listeleniyor.`, 'tr', name), true);
+  assert.equal(hasUntranslatedDescriptionOpener(`${name} — Tune in to unseren Sender für Musik aus der Region.`, 'de', name), true);
+  assert.equal(hasUntranslatedDescriptionOpener(`${name}: İş günlerinde müzik dinlemek için radyo bilgileri.`, 'tr', name), false);
+  assert.equal(hasUntranslatedDescriptionOpener(`${name}: Hitler, klasikler ve farklı müzik türleri.`, 'tr', name), false, 'a word alone is not conclusive semantic evidence');
+  assert.equal(hasUntranslatedDescriptionOpener(`${name} is listed here`, 'de', name), false, 'do not turn a narrow guard into arbitrary Latin-language detection');
 });
 
 test('unchanged identity-only or short technical metadata is inconclusive', () => {

@@ -319,3 +319,44 @@ test('English targets and proper names containing the English opener are exempt'
   responses = [`${full}===${meta}`];
   assert.deepEqual((await translateDescription(`${name} offers music programmes for regional listeners.`, `${name}: regional music programmes.`, 'en', ['de'], name)).get('de'), { full, meta });
 });
+
+test('mixed English full openers cannot be stored even when metadata is translated', async () => {
+  const invalid: Record<string, string> = {
+    tr: 'Fixture Radio is vibrant bir radyo istasyonu olarak Rusya müzik kataloğunda listeleniyor.',
+    ko: 'Fixture Radio is 러시아의 라디오 방송국으로 음악 카탈로그에 등록되어 있습니다.',
+    hi: 'Fixture Radio is रूस के एक रेडियो स्टेशन के रूप में इस संगीत कैटलॉग में दर्ज है।',
+    he: 'Fixture Radio is תחנת רדיו הרשומה בקטלוג המוזיקה כתחנה מרוסיה.',
+  };
+  const before = requests;
+  for (const [language, full] of Object.entries(invalid)) {
+    responses = [`${full}===${translatedMeta}`];
+    assert.equal((await translateDescription(sourceFull, sourceMeta, 'en', [language], 'Fixture Radio')).size, 0, language);
+  }
+  assert.equal(requests - before, 4, 'a rejected locale does not trigger unbounded retries');
+});
+
+test('mixed English meta opener reuses valid full prose without modifying it', async () => {
+  const full = "Fixture Radio, Rusya'daki bir radyo istasyonu olarak müzik kataloğunda listeleniyor.";
+  responses = [`${full}===Fixture Radio is vibrant bir Rus radyo istasyonu olarak listeleniyor.`];
+  assert.deepEqual((await translateDescription(sourceFull, sourceMeta, 'en', ['tr'], 'Fixture Radio')).get('tr'), { full, meta: full });
+});
+
+test('primary and fallback generation reject mixed openers without extra paid retries', async () => {
+  const station = { name: 'Fixture Radio', country: 'Russia', countryCode: 'RU' };
+  const full = "Fixture Radio, Rusya'da yer alan bir radyo istasyonudur. İstasyonun sağlanan katalog bilgilerinde müzik kategorisi belirtiliyor.";
+  const meta = "Fixture Radio, Rusya'da yer alan ve müzik kataloğunda listelenen bir radyo istasyonudur.";
+  for (const [badFull, badMeta] of [[full.replace('Fixture Radio,', 'Fixture Radio is vibrant'), meta], [full, meta.replace('Fixture Radio,', 'Fixture Radio is vibrant')]]) {
+    const before = requests;
+    responses = [`${badFull}===${badMeta}`];
+    const primary = await generateStationDescription(station, 'tr');
+    assert.equal(primary.success, false);
+    assert.equal(primary.usedFallback, false);
+    assert.match(primary.error || '', /English opener/);
+    assert.equal(requests - before, 1);
+    responses = ['NO_INFO_AVAILABLE', `${badFull}===${badMeta}`];
+    const fallback = await generateStationDescription(station, 'tr');
+    assert.equal(fallback.success, false);
+    assert.equal(fallback.usedFallback, true);
+    assert.equal(requests - before, 3, 'fallback uses only the existing bounded second attempt');
+  }
+});

@@ -1,10 +1,10 @@
 import { Request, Response, NextFunction } from 'express';
 import { URL_TRANSLATIONS, normalizeUrlForLanguage, GLOBAL_REVERSE_URL_TRANSLATIONS } from '@workspace/seo-shared/url-translations';
-import { SEO_LANGUAGES, COUNTRY_TO_LANGUAGE } from '@workspace/seo-shared/seo-config';
+import { SEO_LANGUAGES, COUNTRY_TO_LANGUAGE, ACTIVE_SITEMAP_LANGUAGES } from '@workspace/seo-shared/seo-config';
 import { getPreferredLanguageCookie } from '@workspace/seo-shared/language-preference';
 import { logger } from './utils/logger';
 import { performanceCache } from './performance-cache';
-import { getCanonicalStationSlug, isSlugExistenceReady } from './seo/slug-existence';
+import { getCanonicalStationSlug, getRedirectableStationSlug, isSlugExistenceReady } from './seo/slug-existence';
 import { AZ_KEY_RE } from './seo/az-station-index';
 
 /**
@@ -478,6 +478,34 @@ export async function urlRedirectMiddleware(req: Request, res: Response, next: N
           aliasRedirectApplied = true;
         }
       }
+    }
+  }
+
+  // Fold the later pre-SSR language fallback into this same hop, but ONLY for
+  // known non-excluded station identities. Before this, /af/station/<alias>
+  // first became /af/stasie/<canonical>, then /en/station/<canonical>.
+  // Keep the existing SSR path for a cold cache, missing/noindex/junk stations
+  // and explicit redirect records. No locale-only rule is added for private,
+  // directory, A-Z, query-only or mutation routes, and all 14 live locales stay.
+  if ((req.method === 'GET' || req.method === 'HEAD') && segments.length === 3
+      && isSlugExistenceReady() && !AZ_KEY_RE.test(segments[2])
+      && encodeURIComponent(segments[2]) === segments[2]
+      && SEO_LANGUAGES.some(language => language.enabled && language.code === segments[0])
+      && !(ACTIVE_SITEMAP_LANGUAGES as readonly string[]).includes(segments[0])) {
+    const db = await getDbTranslations();
+    const stationSegment = db.get(`${segments[0]}:station`) || URL_TRANSLATIONS[segments[0]]?.station || 'station';
+    let decodedSegment: string | undefined;
+    try {
+      decodedSegment = decodeURIComponent(segments[1]);
+    } catch { /* Malformed encoding remains on the existing error/SSR path. */ }
+    // English SSR currently looks up the raw slug component. Do not decode an
+    // encoded alias here or shortcut to a destination requiring encoding: that
+    // would make warm-cache identity/status differ from the existing cold path.
+    const canonical = decodedSegment === stationSegment
+      ? getRedirectableStationSlug(segments[2]) : null;
+    if (canonical && encodeURIComponent(canonical) === canonical) {
+      segments = ['en', db.get('en:station') || 'station', encodeURIComponent(canonical)];
+      aliasRedirectApplied = true;
     }
   }
 

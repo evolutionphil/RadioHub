@@ -21,7 +21,7 @@ export async function fillMissingStationDescriptions(
   const expectedDescriptions = structuredClone(descriptions);
   if (options.repairInvalid) {
     // Country/native-language metadata is not proof of a stored source's
-    // language. Only conclusive script evidence authorizes stored replacement.
+    // language. Only conclusive script/opening evidence authorizes replacement.
     for (const issue of findDescriptionLanguageIssues(descriptions, targetLanguages, { stationName: station.name })) {
       descriptions[issue.language][issue.field] = '';
     }

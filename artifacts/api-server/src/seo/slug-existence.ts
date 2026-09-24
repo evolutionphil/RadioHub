@@ -40,7 +40,7 @@ import {
 } from '@workspace/seo-shared/country-regions';
 import { PrecomputedCitiesService } from '../services/precomputed-cities';
 import { logger } from '../utils/logger';
-import { isJunkStation } from './junk-station-rules';
+import { isJunkStation, isNumericOnlySlug } from './junk-station-rules';
 import { matchesVerifiedLegacyStationTarget, verifiedLegacyStationAliases } from './verified-legacy-station-alias';
 
 /**
@@ -77,6 +77,9 @@ let citySlugsByCountry: Map<string, Set<string>> = new Map();
 // reverse the SSR's deindex strategy. All slugs lowercased.
 interface AliasInfo { canonical: string; junk: boolean; stationId?: unknown; redirectToSlug?: string; }
 let stationAliasToCanonical: Map<string, AliasInfo> = new Map();
+// Exact destinations safe for the legacy-locale shortcut. This is derived in
+// the existing refresh, never by a new request-time catalog query.
+let redirectableStationSlugs: Set<string> = new Set();
 let ready = false;
 
 export function isSlugExistenceReady(): boolean {
@@ -106,6 +109,19 @@ export function getCanonicalStationSlug(aliasSlug: string): string | null {
   if (info.canonical === aliasSlug.toLowerCase()) return null;
   if (info.junk) return null;
   return info.canonical;
+}
+
+/** An existing, non-excluded exact identity or its verified cached alias.
+ * Unlike getCanonicalStationSlug, a canonical input returns itself. Numeric
+ * noindex pages, explicit redirects and unknown/excluded records stay with SSR
+ * so this optimization cannot change their status or infer a replacement. */
+export function getRedirectableStationSlug(identifier: string): string | null {
+  if (!ready || !identifier) return null;
+  const lower = identifier.toLowerCase();
+  if (redirectableStationSlugs.has(lower)) return lower;
+  const alias = stationAliasToCanonical.get(lower);
+  if (!alias || alias.junk || alias.redirectToSlug || !redirectableStationSlugs.has(alias.canonical)) return null;
+  return alias.canonical;
 }
 
 export function hasGenreSlug(slug: string): boolean {
@@ -155,6 +171,7 @@ export async function loadSlugExistence(): Promise<void> {
 
     const nextStations = new Set<string>();
     const nextAliasMap = new Map<string, AliasInfo>();
+    const nextRedirectableStations = new Set<string>();
     const repairTargets = new Set(verifiedLegacyStationAliases.map(([, target]) => target));
     const nextRepairTargets = new Map<string, AliasInfo>();
     let junkAliasCount = 0;
@@ -174,6 +191,9 @@ export async function loadSlugExistence(): Promise<void> {
       const canonical = doc.slug ? doc.slug.toLowerCase() : '';
       if (canonical) nextStations.add(canonical);
       const isJunk = doc.noIndex === true || isJunkStation(doc);
+      if (canonical && !isJunk && !doc.redirectToSlug && !isNumericOnlySlug(canonical)) {
+        nextRedirectableStations.add(canonical);
+      }
       const info = { canonical, junk: isJunk, stationId: doc._id, redirectToSlug: doc.redirectToSlug };
       if (repairTargets.has(canonical)) nextRepairTargets.set(canonical, info);
       if (Array.isArray(doc.slugAliases) && canonical) {
@@ -315,6 +335,7 @@ export async function loadSlugExistence(): Promise<void> {
 
     stationSlugs = nextStations;
     stationAliasToCanonical = nextAliasMap;
+    redirectableStationSlugs = nextRedirectableStations;
     genreSlugs = nextGenres;
     countrySlugs = nextCountries;
     citySlugsByCountry = nextCities;

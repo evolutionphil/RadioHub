@@ -11,7 +11,7 @@ before(async () => {
     performanceCache: { getUrlTranslations: async () => new Map() },
   } });
   mock.module('../src/seo/slug-existence', { namedExports: {
-    getCanonicalStationSlug: () => null, isSlugExistenceReady: () => false,
+    getCanonicalStationSlug: () => null, getRedirectableStationSlug: () => null, isSlugExistenceReady: () => false,
   } });
   const { urlRedirectMiddleware } = await import('../src/url-redirect-middleware');
   const app = express();
