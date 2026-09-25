@@ -259,6 +259,7 @@ function PublicRouter({ selectedCountry, onCountryChange }: { selectedCountry?: 
     if (pathToUse === '/contact') return <LazyRoutes.Contact />;
     if (pathToUse === '/feedback') return <LazyRoutes.PublicFeedback />;
     if (pathToUse === '/llms') return <LazyRoutes.LLMsPage />;
+    if (pathToUse === '/blog' || pathToUse.startsWith('/blog/')) return <LazyRoutes.BlogPage />;
 
     if (pathToUse === '/applications') return <LazyRoutes.Applications />;
     if (pathToUse === '/search') return <LazyRoutes.SearchPage />;

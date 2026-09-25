@@ -59,6 +59,7 @@ export const Applications = lazy(() => import("@/pages/applications").then(mod =
 export const TermsAndConditions = lazy(() => import("@/pages/terms-and-conditions").then(mod => ({ default: mod.TermsAndConditions })));
 export const PrivacyPolicy = lazy(() => import("@/pages/privacy-policy").then(mod => ({ default: mod.PrivacyPolicy })));
 export const LLMsPage = lazy(() => import("@/pages/llms-page"));
+export const BlogPage = lazy(() => import("@/pages/blog"));
 
 // Genres - can be lazy loaded
 export const GenresPage = lazy(() => import("@/pages/genres"));

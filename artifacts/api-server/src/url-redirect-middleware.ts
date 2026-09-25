@@ -80,6 +80,7 @@ const OLD_ENGLISH_PATHS = [
 ];
 
 const KNOWN_BARE_ROUTES = new Set<string>([
+  'blog',
   'radios', 'genres', 'station', 'stations', 'regions', 'discover',
   'favorites', 'trending', 'about', 'contact', 'privacy-policy',
   'terms-and-conditions', 'feedback', 'profile', 'settings', 'notifications',

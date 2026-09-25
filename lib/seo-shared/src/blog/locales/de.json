@@ -1,0 +1,719 @@
+{
+  "ui": {
+    "title": "Ratgeber zum Radiohören",
+    "description": "Praktische Tipps für Internetradio, Radio auf dem Handy und die Entdeckung neuer Musikrichtungen.",
+    "home": "Startseite",
+    "read": "Ratgeber lesen",
+    "contents": "In diesem Ratgeber",
+    "related": "Weitere Ratgeber",
+    "sources": "Quellen",
+    "questions": "Fragen und Antworten",
+    "explore": "Jetzt Radio entdecken",
+    "author": "Mega Radio",
+    "editorialNote": "Mit KI-Unterstützung erstellt. Die Ratgeber enthalten allgemeine Hinweise; unabhängige Sendertests oder eine fachliche Prüfung durch Menschen werden nicht behauptet.",
+    "updated": "Aktualisiert",
+    "language": "Sprache"
+  },
+  "articles": [
+    {
+      "id": "listen-to-radio-online",
+      "title": "Radio online hören: So gelingt der Einstieg",
+      "seoTitle": "Radio online hören: So gelingt der Einstieg",
+      "description": "Finde Onlineradio nach Sendername, Musikrichtung oder Region und prüfe mit einer einfachen Checkliste, warum ein Stream nicht startet.",
+      "primaryKeyword": "Radio online hören",
+      "secondaryKeywords": [
+        "kostenloses Internetradio",
+        "Radiosender finden",
+        "Radio im Browser"
+      ],
+      "imageAlt": "Illustration eines Radiogeräts neben einem Kopfhörer",
+      "intro": "Radio online zu hören beginnt mit einer einfachen Entscheidung: Möchtest du einen bekannten Sender einschalten oder etwas Neues entdecken? Beides ist über ein Senderverzeichnis möglich. Entscheidend ist, welche Angaben du bereits kennst und welche Art von Programm du gerade suchst.",
+      "sections": [
+        {
+          "heading": "Mit dem passenden Suchmerkmal beginnen",
+          "paragraphs": [
+            "Kennst du den Namen eines Senders, suche zuerst danach und prüfe anschließend die zugehörige Region. Ähnliche Namen können zu unterschiedlichen Angeboten gehören. Geht es dir vor allem um Musik, ist die Auswahl nach Genre meist hilfreicher. Die Region verrät etwas über den Standort eines Senders, aber nicht automatisch über seine musikalische Ausrichtung. Kombiniere Name, Sprache und Musikrichtung, wenn die ersten Ergebnisse nicht zu deiner Vorstellung passen. So wird aus einer sehr breiten Suche eine überschaubare Auswahl."
+          ]
+        },
+        {
+          "heading": "Einen Stream starten und kurz zuhören",
+          "paragraphs": [
+            "Öffne die Senderseite und betätige die Wiedergabe. Gib der Verbindung einen Moment Zeit und kontrolliere die Lautstärke am Gerät sowie im Player. Ein laufender Radiosender beginnt nicht für dich von vorn: Vielleicht kommst du mitten in ein Lied, einen Beitrag oder einen Werbeblock. Höre deshalb etwas länger zu, bevor du das Programm beurteilst. Auch ein anderer Sendezeitpunkt kann sinnvoll sein, weil einzelne Sendungen denselben Sender sehr unterschiedlich klingen lassen."
+          ]
+        },
+        {
+          "heading": "Kostenlosen Zugang und Datenkosten unterscheiden",
+          "paragraphs": [
+            "Ein frei zugänglicher Stream kann trotzdem mobile Daten verbrauchen, die über deinen Tarif abgerechnet werden. Außerdem kann der Sender Werbung in seinem Programm ausstrahlen. Das sind getrennte Fragen: Kostet der Zugang etwas, entstehen Verbindungskosten und welche Inhalte sendet der Anbieter? Prüfe vor einer längeren Sitzung unterwegs dein verfügbares Datenvolumen. Falls ein Dienst eine Anmeldung oder ein Abonnement verlangt, lies dessen Angaben. Die Bedingungen eines einzelnen Angebots lassen sich nicht auf alle Sender übertragen."
+          ]
+        },
+        {
+          "heading": "Probleme Schritt für Schritt eingrenzen",
+          "paragraphs": [
+            "Ändere bei einer Störung jeweils nur einen Punkt. So erkennst du leichter, ob die Verbindung, die Audioausgabe oder der einzelne Stream betroffen ist. Funktioniert ein anderer Sender, versuche den ursprünglichen später noch einmal. Viele schnelle Klicks auf die Wiedergabe helfen bei dieser Unterscheidung kaum."
+          ],
+          "items": [
+            "Prüfe, ob dein Gerät tatsächlich mit dem Internet verbunden ist.",
+            "Kontrolliere die Lautstärke im Player, am Gerät und am angeschlossenen Kopfhörer.",
+            "Teste einen weiteren Sender über dieselbe Verbindung.",
+            "Wechsle erst nach Prüfung deines Tarifs zwischen WLAN und mobilen Daten."
+          ]
+        }
+      ],
+      "faq": [
+        {
+          "question": "Kann ich ohne zusätzliche App Radio hören?",
+          "answer": "Ein Sender mit funktionierendem Browserstream lässt sich über seine Webseite hören. Prüfe mit einer kurzen Sitzung, wie sich dein Browser und dein Gerät bei längerer Wiedergabe verhalten."
+        },
+        {
+          "question": "Warum passt das aktuelle Programm nicht zur Beschreibung?",
+          "answer": "Eine Beschreibung fasst den Sender zusammen. Nachrichten, Interviews und Spezialsendungen können davon abweichen. Höre zu einer anderen Zeit hinein oder prüfe die Programminformationen des Senders."
+        }
+      ],
+      "links": [
+        {
+          "route": "search",
+          "label": "Nach einem Sender suchen"
+        },
+        {
+          "route": "genres",
+          "label": "Musikrichtungen entdecken"
+        },
+        {
+          "route": "regions",
+          "label": "Sender nach Region auswählen"
+        }
+      ]
+    },
+    {
+      "id": "internet-radio-explained",
+      "title": "Internetradio erklärt: Streams, UKW und Podcasts",
+      "seoTitle": "Internetradio erklärt: Streams, UKW und Podcasts",
+      "description": "Erfahre, wie sich Internetradio von UKW, DAB und Podcasts unterscheidet, welche Verbindung nötig ist und warum Streams ausfallen können.",
+      "primaryKeyword": "Internetradio",
+      "secondaryKeywords": [
+        "Internetradio erklärt",
+        "Internetradio und UKW",
+        "Live-Radiostream"
+      ],
+      "imageAlt": "Illustration einer Weltkugel mit umlaufenden Funkwellen",
+      "intro": "Internetradio überträgt das Programm eines Senders über eine Internetverbindung. Du wählst einen Stream und hörst, was der Anbieter gerade sendet. Das macht vertrautes Radio auf verschiedenen Geräten zugänglich, bringt aber eigene Fragen zu Verbindung, Programmablauf und Verfügbarkeit mit sich.",
+      "sections": [
+        {
+          "heading": "Du steigst in ein laufendes Programm ein",
+          "paragraphs": [
+            "Bei einem Livestream schaltest du dich normalerweise in eine bereits laufende Sendung ein. Musik, Wortbeiträge und Werbung folgen der Auswahl des Senders. Du bestimmst damit nicht automatisch das nächste Lied oder den Anfang einer Sendung. Manche Anbieter stellen zusätzlich Aufzeichnungen bereit; diese gehören jedoch zu einem anderen Hörangebot. Überlege vor dem Start, ob du ein fortlaufendes Programm als Begleitung möchtest oder gezielt eine bestimmte Folge hören willst. Davon hängt die passende Auswahl ab."
+          ]
+        },
+        {
+          "heading": "UKW, DAB und Internet verwenden andere Wege",
+          "paragraphs": [
+            "Ein UKW- oder DAB-Empfänger erhält ein ausgestrahltes Radiosignal über seine Empfangstechnik. Ein Internetstream erreicht dein Gerät dagegen über WLAN, mobile Daten oder eine andere Internetverbindung. Dass derselbe Sender auf mehreren Wegen verfügbar ist, macht die Übertragungsarten nicht gleich. Prüfe für eine Onlinesitzung die Verbindung, die du tatsächlich nutzen wirst. Ein als Radio bezeichnetes Gerät kann eine oder mehrere Empfangsarten unterstützen. Verlasse dich dafür auf die Angaben zum konkreten Gerät und nicht allein auf dessen Bezeichnung."
+          ]
+        },
+        {
+          "heading": "Ein Verzeichniseintrag garantiert keinen Zugang",
+          "paragraphs": [
+            "Ein gelisteter Stream kann vorübergehend unterbrochen sein oder nur in bestimmten Gebieten zur Verfügung stehen. Deshalb können sowohl dein Aufenthaltsort als auch die Entscheidungen des Senders den Zugang beeinflussen. Funktioniert eine Station nicht, bedeutet das noch keinen allgemeinen Ausfall des Internetradios. Teste einen anderen Sender über dieselbe Verbindung und lies gegebenenfalls die Zugangshinweise des Anbieters. Auch einzelne Sendungen oder Veranstaltungen müssen nicht überall über jeden Verbreitungsweg verfügbar sein."
+          ]
+        },
+        {
+          "heading": "Das Hörformat bewusst auswählen",
+          "paragraphs": [
+            "Der wichtigste Unterschied im Alltag ist die Kontrolle über den Ablauf. Radio eignet sich für ein weiterlaufendes Programm, das ein Sender zusammenstellt. Eine abrufbare Aufnahme passt besser, wenn du eine bestimmte Folge von Anfang an hören möchtest. Ein kurzer Versuch zeigt meist schnell, ob deine Erwartung zum gewählten Format passt."
+          ],
+          "items": [
+            "Wähle einen Livestream für das gerade laufende Senderprogramm.",
+            "Nutze eine abrufbare Aufnahme, wenn eine bestimmte Folge im Mittelpunkt steht.",
+            "Prüfe vor dem Hören unterwegs die verfügbare Internetverbindung.",
+            "Merke dir einen weiteren Sender als Alternative bei einer Unterbrechung."
+          ]
+        }
+      ],
+      "faq": [
+        {
+          "question": "Funktioniert Internetradio ohne Internet?",
+          "answer": "Ein Internetstream benötigt eine Internetverbindung. Ein Gerät kann zusätzlich einen eigenständigen Radioempfänger besitzen; diese Ausstattung muss für das jeweilige Modell geprüft werden."
+        },
+        {
+          "question": "Ist ein Podcast dasselbe wie ein Onlinesender?",
+          "answer": "Nein. Bei einem Podcast wählst du normalerweise eine aufgezeichnete Folge. Ein Livesender spielt sein aktuelles Programm. Zusätzliche Möglichkeiten zum Nachhören hängen vom jeweiligen Anbieter ab."
+        }
+      ],
+      "links": [
+        {
+          "route": "home",
+          "label": "Einen Livesender finden"
+        },
+        {
+          "route": "regions",
+          "label": "Radio nach Region entdecken"
+        },
+        {
+          "route": "genres",
+          "label": "Eine Musikrichtung auswählen"
+        }
+      ]
+    },
+    {
+      "id": "radio-app-iphone-android",
+      "title": "Radio auf iPhone und Android: Browser oder App?",
+      "seoTitle": "Radio auf iPhone und Android: Browser oder App?",
+      "description": "Wähle Browser oder App für Radio auf dem Handy und prüfe Hintergrundwiedergabe, Bluetooth-Ausgabe sowie Probleme mit der Verbindung.",
+      "primaryKeyword": "Radio-App",
+      "secondaryKeywords": [
+        "Radio auf dem iPhone",
+        "Radio auf Android",
+        "Radio auf dem Handy"
+      ],
+      "imageAlt": "Illustration eines Mobiltelefons neben einem Kopfhörer",
+      "intro": "Mit dem Handy kannst du Radio zu Hause und unterwegs hören, wenn Stream, Verbindung und Audioausgabe zusammenspielen. Wähle zunächst einen passenden Zugang und teste dann die Situationen, die für dich wichtig sind: gesperrter Bildschirm, Kopfhörer und ein Wechsel der Internetverbindung.",
+      "sections": [
+        {
+          "heading": "Browser und App nach dem Alltag auswählen",
+          "paragraphs": [
+            "Ein Browser eignet sich gut, um einen Sender zunächst über seine Webseite auszuprobieren. Eine App kann zu deiner gewohnten Nutzung passen, doch lies vor der Installation ihre aktuelle Beschreibung und die Voraussetzungen. Nimm nicht ungeprüft an, dass sie Offlinehören, eine bestimmte Fahrzeuganbindung oder jeden bekannten Sender unterstützt. Solche Funktionen müssen für das konkrete Angebot bestätigt werden. Entscheidend ist, ob sich deine übliche Hörsituation damit zuverlässig umsetzen lässt. Ein kurzer Test ist oft aussagekräftiger als eine lange Funktionsliste."
+          ]
+        },
+        {
+          "heading": "Die Wiedergabe bei gesperrtem Bildschirm testen",
+          "paragraphs": [
+            "Starte einen Stream und vergewissere dich, dass du ihn hörst. Sperre anschließend für kurze Zeit den Bildschirm. Stoppt die Wiedergabe, öffne den Browser oder die App erneut und beobachte, ob sie weiterläuft. Das Verhalten im Hintergrund kann von Software und Geräteeinstellungen abhängen. Prüfe passende Einstellungen für Akku oder Hintergrundaktivität, ohne wahllos andere Optionen zu verändern. Ein kurzer Versuch zu Hause zeigt dir, was du später beim Spaziergang oder auf einer Fahrt erwarten kannst."
+          ]
+        },
+        {
+          "heading": "Bei Bluetooth den Weg des Tons verfolgen",
+          "paragraphs": [
+            "Zeigt der Player eine laufende Wiedergabe, obwohl du nichts hörst, kontrolliere zuerst die gewählte Audioausgabe. Vielleicht sind noch ein Lautsprecher oder andere Kopfhörer verbunden. Prüfe die Lautstärke sowohl am Telefon als auch am Wiedergabegerät. Trenne Bluetooth kurz, teste den eingebauten Lautsprecher und verbinde anschließend das gewünschte Zubehör erneut. Damit lässt sich ein Problem der Tonausgabe von einem Stream unterscheiden, der gar nicht richtig geladen wird. Ändere dabei möglichst nur einen Punkt gleichzeitig."
+          ]
+        },
+        {
+          "heading": "Eine mobile Hörsitzung vorbereiten",
+          "paragraphs": [
+            "Eine funktionierende Verbindung zu Hause sagt wenig über die gesamte Strecke unterwegs aus. Rechne mit wechselnden Verbindungen und prüfe dein Datenvolumen. Probiere einen Sender zunächst einige Minuten aus, bevor du dich auf eine längere Sitzung verlässt. Änderungen am Gerät erledigst du am besten im Stillstand."
+          ],
+          "items": [
+            "Öffne den Sender im bevorzugten Browser oder in der gewählten App.",
+            "Kontrolliere, ob der richtige Lautsprecher oder Kopfhörer den Ton ausgibt.",
+            "Sperre und entsperre den Bildschirm für einen kurzen Wiedergabetest.",
+            "Prüfe den mobilen Datenverbrauch und vergleiche bei Aussetzern einen weiteren Stream."
+          ]
+        }
+      ],
+      "faq": [
+        {
+          "question": "Kann jede Radio-App auch offline spielen?",
+          "answer": "Davon solltest du nicht ausgehen. Live-Internetradio braucht eine Verbindung. Eine Downloadfunktion oder Offlinewiedergabe muss die konkrete App für geeignete Inhalte ausdrücklich anbieten."
+        },
+        {
+          "question": "Warum bleibt die Wiedergabe trotz laufender Anzeige stumm?",
+          "answer": "Der Ton kann an ein verbundenes Gerät gehen oder eine Lautstärkeregelung kann stummgeschaltet sein. Prüfe zuerst die Audioausgabe und teste danach bei Bedarf einen anderen Sender."
+        }
+      ],
+      "links": [
+        {
+          "route": "applications",
+          "label": "Informationen zu Anwendungen"
+        },
+        {
+          "route": "search",
+          "label": "Einen Sender fürs Handy finden"
+        },
+        {
+          "route": "home",
+          "label": "Das Radioverzeichnis öffnen"
+        }
+      ]
+    },
+    {
+      "id": "radio-data-usage",
+      "title": "Wie viel Datenvolumen verbraucht Internetradio?",
+      "seoTitle": "Wie viel Datenvolumen verbraucht Internetradio?",
+      "description": "Berechne den Datenverbrauch aus der Bitrate, vergleiche 64, 128 und 256 kbit/s und plane zusätzlichen Verbrauch beim mobilen Radiohören ein.",
+      "primaryKeyword": "Datenverbrauch Internetradio",
+      "secondaryKeywords": [
+        "Radio Datenvolumen",
+        "Radio Bitrate",
+        "Radio puffert"
+      ],
+      "imageAlt": "Illustration eines Funksignals neben einer Datenanzeige",
+      "intro": "Der Datenverbrauch beim Internetradio hängt unter anderem von der Bitrate und der Hördauer ab. Eine Rechnung hilft bei der Planung, ersetzt aber keine Messung. Vergleiche die Schätzung deshalb mit der Datenanzeige deines Geräts und den Bedingungen deines Internet- oder Mobilfunktarifs.",
+      "sections": [
+        {
+          "heading": "Den Stundenwert nachvollziehbar berechnen",
+          "paragraphs": [
+            "Bei gleichbleibender Bitrate multiplizierst du die Kilobit pro Sekunde mit 3.600 Sekunden. Anschließend teilst du durch acht, um Bit in Byte umzuwandeln, und durch 1.000 für dezimale Megabyte. Die Kurzform lautet: Bitrate in kbit/s × 0,45 = ungefähr MB pro Stunde. Diese Rechnung beschreibt die Audiodaten unter der genannten Annahme. Sie umfasst nicht sämtliche Übertragungen, die beim Laden einer Webseite, beim erneuten Verbindungsaufbau oder durch andere Anwendungen entstehen können."
+          ]
+        },
+        {
+          "heading": "Drei Beispiele miteinander vergleichen",
+          "paragraphs": [
+            "Bei 64 kbit/s ergibt die Rechnung 28,8 MB pro Stunde. Bei 128 kbit/s sind es 57,6 MB und bei 256 kbit/s 115,2 MB. Zwei Stunden mit konstanten 128 kbit/s entsprechen damit rechnerisch 115,2 MB Audiodaten. Alle Werte verwenden dezimale Megabyte. Es handelt sich um Beispiele, nicht um gemessene Ergebnisse eines bestimmten Senders. Zusätzliche Übertragungsdaten, wechselnde Bitraten und das Verhalten von Player oder Verbindung können den tatsächlichen Verbrauch verändern."
+          ]
+        },
+        {
+          "heading": "Die Schätzung an deine Hörgewohnheiten anpassen",
+          "paragraphs": [
+            "Überlege zuerst, wie lange du voraussichtlich hören wirst, und multipliziere diese Dauer mit dem passenden Stundenwert. Plane außerdem Platz für zusätzliche Übertragungen und andere Aktivitäten auf dem Handy ein. Gibt der Sender keine Bitrate an, behandle einen angenommenen Wert nicht als gesicherte Angabe. Eine kurze Hörsitzung mit anschließendem Blick auf die Datenanzeige kann dir Orientierung geben. Achte dabei darauf, dass weitere Datenübertragungen im selben Zeitraum den Vergleich ungenauer machen können."
+          ]
+        },
+        {
+          "heading": "Pufferprobleme getrennt untersuchen",
+          "paragraphs": [
+            "Aussetzer betreffen auch die Verbindung und nicht nur das verfügbare Datenvolumen. Ein Stream kann stocken, obwohl dein Tarif noch ausreichend Volumen enthält. Vergleiche einen anderen Sender und prüfe die aktuelle Verbindung. Eine geringere Bitrate lässt sich nur auswählen, wenn der Anbieter tatsächlich eine solche Option bereitstellt."
+          ],
+          "items": [
+            "Notiere die Bitrate, sofern sie ausdrücklich angegeben wird.",
+            "Schätze die Hördauer und berechne daraus den dezimalen MB-Wert.",
+            "Berücksichtige zusätzliche Übertragungsdaten und andere Aktivitäten des Geräts.",
+            "Vergleiche die Planung nach einer typischen Sitzung mit der Datenanzeige."
+          ]
+        }
+      ],
+      "faq": [
+        {
+          "question": "Verbraucht Radio über WLAN keine Daten?",
+          "answer": "Auch über WLAN werden Daten übertragen. Ob sie ein kostenpflichtiges Kontingent belasten, hängt vom verwendeten Internetanschluss und dessen Tarif ab."
+        },
+        {
+          "question": "Sind 57,6 MB der genaue Stundenverbrauch?",
+          "answer": "Nein. Der Wert beschreibt rechnerisch die Audiodaten eines konstanten Streams mit 128 kbit/s. Zusätzliche Übertragungen, eine variable Bitrate und weitere Netzwerkaktivitäten können die gemessene Menge verändern."
+        }
+      ],
+      "links": [
+        {
+          "route": "home",
+          "label": "Einen Stream ausprobieren"
+        },
+        {
+          "route": "applications",
+          "label": "Mobiles Radiohören entdecken"
+        },
+        {
+          "route": "search",
+          "label": "Einen weiteren Sender suchen"
+        }
+      ]
+    },
+    {
+      "id": "rock-radio-guide",
+      "title": "Rockradio finden: Classic, Alternative und Hard Rock",
+      "seoTitle": "Rockradio finden: Classic, Alternative und Hard Rock",
+      "description": "Vergleiche klassische, alternative und härtere Rockprogramme und beurteile Sender über mehrere Titel und verschiedene Sendezeiten.",
+      "primaryKeyword": "Rockradio",
+      "secondaryKeywords": [
+        "Classic-Rock-Radio",
+        "Alternative-Rock-Radio",
+        "Hard-Rock-Sender"
+      ],
+      "imageAlt": "Illustration einer E-Gitarre mit musikalischen Elementen",
+      "intro": "Rockradio umfasst sehr unterschiedliche Klänge. Ein einzelnes Genre sagt deshalb selten genug über das ganze Programm aus. Statt nach einem allgemeingültigen Sieger zu suchen, vergleiche die Gitarren, Stimmen, Epochen und Moderationsformen, die dir persönlich beim Hören wichtig sind.",
+      "sections": [
+        {
+          "heading": "Mit dem bevorzugten Rockklang anfangen",
+          "paragraphs": [
+            "Classic Rock kann ein guter Ausgangspunkt für ältere, vertraute Gitarrenmusik sein. Alternative und härtere Rockrichtungen führen häufig zu anderen Schwerpunkten. Solche Bezeichnungen helfen bei der Orientierung, versprechen aber keine feste Auswahl für jeden Titel. Notiere zwei oder drei Künstler oder musikalische Eigenschaften, die du hören möchtest: markante Riffs, ruhigere Arrangements oder weniger bekannte Veröffentlichungen. Diese Hinweise sind besonders nützlich, wenn mehrere Senderbeschreibungen zunächst fast gleich klingen und du konkrete Unterschiede finden möchtest."
+          ]
+        },
+        {
+          "heading": "Mehrere Titel als zusammenhängende Auswahl hören",
+          "paragraphs": [
+            "Ein einzelnes Lied kann ein Hörerwunsch, ein Sonderbeitrag oder der Abschluss einer anderen Sendung sein. Gib dem Programm daher mehrere Titel Zeit. Achte darauf, wie der Sender zwischen bekannten Stücken und Entdeckungen, lauten und zurückhaltenden Aufnahmen sowie Musik und Wortbeiträgen wechselt. Beginnt deine Hörprobe während einer Moderation, höre danach weiter. Du beurteilst die typische Zusammenstellung einer Sendung. Der zufällige Moment, in dem du eingeschaltet hast, muss dafür nicht repräsentativ sein."
+          ]
+        },
+        {
+          "heading": "Sendezeit, Region und Sprache vergleichen",
+          "paragraphs": [
+            "Ein Sender kann während einer abendlichen Spezialsendung anders klingen als im Tagesprogramm. Auch die Region beeinflusst, welche Künstler und musikalischen Bezüge du häufiger hörst. Die Sprache der Moderation entscheidet mit darüber, wie viel Hintergrund du mitbekommst. Probiere denselben Sender zu einer anderen Zeit aus, bevor du ihn aussortierst. Wenn du vor allem neue Bands entdecken möchtest, kann ein Vergleich mit einer anderen Region sinnvoller sein als die Suche nach möglichst vielen vertrauten Titeln."
+          ]
+        },
+        {
+          "heading": "Eine überschaubare Auswahl zusammenstellen",
+          "paragraphs": [
+            "Wähle einige Sender mit erkennbar unterschiedlichen Beschreibungen und höre unter ähnlichen Bedingungen hinein. Kurze Notizen genügen. Eine aufwendige Punktewertung macht eine persönliche Vorliebe nicht automatisch objektiver. Behalte ruhig verschiedene Sender für unterschiedliche Situationen, statt von einem einzigen Programm alles zu erwarten."
+          ],
+          "items": [
+            "Vergleiche zunächst ein breites Rockprogramm mit einem Classic-Rock-Sender.",
+            "Notiere das Verhältnis von bekannten Künstlern, Entdeckungen und Moderation.",
+            "Höre mehrere Titel und wiederhole den Versuch zu einer anderen Zeit.",
+            "Wähle getrennte Favoriten für viel Energie und eine abwechslungsreichere Mischung."
+          ]
+        }
+      ],
+      "faq": [
+        {
+          "question": "Bedeutet Classic Rock überall dieselbe Titelauswahl?",
+          "answer": "Nein. Sender und regionale Märkte verstehen die Bezeichnung unterschiedlich. Prüfe die tatsächlichen Künstler und Sendungen, statt eine überall identische Epoche oder Auswahl anzunehmen."
+        },
+        {
+          "question": "Darf ein Rocksender auch andere Musik spielen?",
+          "answer": "Ja. Zur Hauptausrichtung können verwandte Genres, Interviews und Spezialsendungen hinzukommen. Der Sendeplan und mehrere Hörproben vermitteln ein vollständigeres Bild als das Genre allein."
+        }
+      ],
+      "links": [
+        {
+          "route": "genre:rock",
+          "label": "Rocksender entdecken"
+        },
+        {
+          "route": "genre:classic-rock",
+          "label": "Classic Rock hören"
+        },
+        {
+          "route": "regions",
+          "label": "Sender nach Region vergleichen"
+        }
+      ]
+    },
+    {
+      "id": "jazz-radio-guide",
+      "title": "Jazzradio entdecken: akustisch, vokal und Smooth Jazz",
+      "seoTitle": "Jazzradio entdecken: akustisch, vokal und Smooth Jazz",
+      "description": "Vergleiche akustischen Jazz, Gesang und Smooth Jazz, lerne verschiedene Sendungen kennen und finde passende Programme durch Zuhören.",
+      "primaryKeyword": "Jazzradio",
+      "secondaryKeywords": [
+        "Smooth-Jazz-Radio",
+        "Vocal Jazz",
+        "akustischer Jazz"
+      ],
+      "imageAlt": "Illustration eines Saxofons mit geschwungenen musikalischen Linien",
+      "intro": "Jazzradio kann eine vertraute Stimme, ein Instrumentalensemble oder sehr unterschiedliche musikalische Traditionen zusammenbringen. Welcher Sender passt, hängt davon ab, was du gerade hören möchtest. Beginne mit Klang und Präsentation und lasse anschließend Raum für Aufnahmen, die du noch nicht kennst.",
+      "sections": [
+        {
+          "heading": "Zuerst den gewünschten Klang eingrenzen",
+          "paragraphs": [
+            "Akustischer Jazz, Vocal Jazz und Smooth Jazz sind hilfreiche Suchbegriffe, aber jeweils weit gefasst. Interessiert dich das Zusammenspiel der Instrumente, beginne bei Beschreibungen, die Ensembles oder akustische Aufnahmen betonen. Steht für dich die Stimme im Vordergrund, suche nach Gesangsprogrammen. Für eine gleichmäßigere zeitgenössische Klangrichtung kannst du Smooth Jazz ausprobieren. Verstehe alle Begriffe als erste Orientierung. Erst das laufende Programm zeigt, welche musikalischen Entscheidungen ein bestimmter Sender daraus ableitet und ob dir diese Auswahl gefällt."
+          ]
+        },
+        {
+          "heading": "Einer Sendung ausreichend Zeit geben",
+          "paragraphs": [
+            "Ein kurzer Ausschnitt kann das Interessante an einem Jazzprogramm übergehen. Höre mehrere Stücke und beachte Wechsel bei Besetzung, Instrumenten und Tempo. Eine Moderation kann eine Aufnahme erklären oder die Verbindung zum nächsten Titel herstellen. Dieser Zusammenhang gehört für manche Hörer zum Reiz einer Sendung. Bevorzugst du möglichst viel Musik, vergleiche den Wortanteil über eine längere Strecke. Die erste Ansage allein sagt wenig darüber aus, wie das gesamte Programm aufgebaut ist."
+          ]
+        },
+        {
+          "heading": "Unbekannte Musik als Hinweis nutzen",
+          "paragraphs": [
+            "Wenn dich eine Aufnahme anspricht, notiere Künstler oder Titel, sofern entsprechende Angaben verfügbar sind. Fehlen sie, können Programminformationen des Senders weiterhelfen; solche Listen sind jedoch nicht überall vorhanden. Du musst nicht jedes Stück bestimmen können, um deinen Geschmack genauer zu beschreiben. Stimme, Blechbläser, Klavier, kleine Gruppe oder großes Ensemble sind bereits nützliche Hinweise. Zusammen mit einer kurzen Notiz zum gehörten Programm helfen sie dir, die nächste Suche gezielter anzugehen und ähnliche Klänge wiederzufinden."
+          ]
+        },
+        {
+          "heading": "In einer passenden Alltagssituation vergleichen",
+          "paragraphs": [
+            "Probiere einen Sender während einer Situation aus, in der du später ebenfalls hören möchtest. Das kann aufmerksames Zuhören oder die Begleitung einer einfachen Tätigkeit sein. Deine eigene Vorliebe ist ein ausreichender Maßstab. Besondere Wirkungen auf Gesundheit oder Konzentration musst du dafür weder erwarten noch behaupten."
+          ],
+          "items": [
+            "Wähle zwei Sender mit deutlich unterschiedlichen Programmbeschreibungen.",
+            "Höre mehrere Stücke und notiere das Verhältnis von Musik und Sprache.",
+            "Halte einen Klang oder Künstler fest, den du erneut hören möchtest.",
+            "Prüfe zu einer anderen Zeit, ob auch das übrige Programm passt."
+          ]
+        }
+      ],
+      "faq": [
+        {
+          "question": "Ist Smooth Jazz gleichbedeutend mit instrumentalem Jazz?",
+          "answer": "Nein. Instrumentaler Jazz umfasst viele unterschiedliche Ansätze. Smooth Jazz bezeichnet nur eine Richtung für die Suche. Entscheidend bleibt die tatsächliche Auswahl des Senders."
+        },
+        {
+          "question": "Wie finde ich den Titel eines unbekannten Stücks?",
+          "answer": "Prüfe vorhandene Titelanzeigen und Programminformationen. Sind keine Angaben verfügbar, können Uhrzeit und Sendungsname als Ausgangspunkt für deine spätere Suche dienen."
+        }
+      ],
+      "links": [
+        {
+          "route": "genre:jazz",
+          "label": "Jazzsender erkunden"
+        },
+        {
+          "route": "search",
+          "label": "Nach einem Jazzsender suchen"
+        },
+        {
+          "route": "regions",
+          "label": "Jazz aus anderen Regionen entdecken"
+        }
+      ]
+    },
+    {
+      "id": "blues-radio-guide",
+      "title": "Bluesradio wählen: akustisch, elektrisch und mit Soul",
+      "seoTitle": "Bluesradio wählen: akustisch, elektrisch und mit Soul",
+      "description": "Finde Bluesprogramme nach akustischem oder elektrischem Klang, vergleiche Soul-Einflüsse und prüfe unterschiedliche Sendezeiten.",
+      "primaryKeyword": "Bluesradio",
+      "secondaryKeywords": [
+        "akustischer Blues",
+        "Electric Blues",
+        "Blues online hören"
+      ],
+      "imageAlt": "Illustration einer Gitarre neben einer Schallplatte",
+      "intro": "Bluesradio kann von einer sparsamen akustischen Aufnahme zu einer elektrischen Band und anschließend zu Soul wechseln. Diese Vielfalt ist hilfreich, wenn du deine Vorlieben etwas eingrenzt. Überlege zuerst, welchen Klang du suchst, und prüfe danach, wie ein Sender ihn in sein Programm einbindet.",
+      "sections": [
+        {
+          "heading": "Akustisch und elektrisch als erste Orientierung",
+          "paragraphs": [
+            "Eine Beschreibung mit akustischem Schwerpunkt kann passen, wenn dich das Zusammenspiel von Stimme und einem zurückgenommenen Arrangement interessiert. Elektrischer Blues führt zu anderen Gitarren- und Bandklängen. Keine dieser Bezeichnungen setzt eine vollständig feste Grenze oder garantiert die Ausrichtung jeder Aufnahme. Achte deshalb auf konkrete Eigenschaften: die Stimme, den Raum zwischen den Instrumenten, den Gitarrenklang oder die Energie einer größeren Besetzung. Solche Beobachtungen helfen dir auch dann weiter, wenn du noch keine Künstlernamen kennst."
+          ]
+        },
+        {
+          "heading": "Verwandte Stile im Zusammenhang hören",
+          "paragraphs": [
+            "Manche Sendungen mischen Blues mit Soul, Rock oder anderen verwandten Richtungen. Das kann zur Identität des Programms gehören und muss keine unpassende Zuordnung sein. Überlege, ob die Übergänge deiner gewünschten Hörsituation entsprechen. Suchst du eine engere Auswahl, vergleiche einen weiteren Bluessender oder eine ausdrücklich beschriebene Spezialsendung. Auch ein insgesamt breiter aufgestellter Sender kann einzelne Programme anbieten, die deinem bevorzugten Klang sehr nahekommen. Entscheidend ist der konkrete Abschnitt seines Sendeplans."
+          ]
+        },
+        {
+          "heading": "Neben dem Sender auch die Sendung beachten",
+          "paragraphs": [
+            "Das Genre fasst häufig ein ganzes Angebot zusammen. Einzelne Moderatoren können sich dagegen einem Künstler, einer Zeit oder einer musikalischen Verbindung widmen. Höre zu verschiedenen Zeiten und lies vorhandene Programminformationen. Ein Sender, der dir bei der ersten Probe zu breit erscheint, kann später eine stärker konzentrierte Bluessendung ausstrahlen. Notiere deshalb Sendungsname und Hörzeit gemeinsam. Damit wird es leichter, ein passendes Programm erneut zu finden, statt jedes Mal wieder bei der allgemeinen Sendersuche anzufangen."
+          ]
+        },
+        {
+          "heading": "Einen wiederholbaren Vergleich aufbauen",
+          "paragraphs": [
+            "Wähle zwei oder drei Kandidaten und gib jedem Zeit für mehrere Aufnahmen. Notiere kurz die Mischung, ohne nach einem einzigen Lieblingslied schon einen Sieger festzulegen. Eine sinnvolle Auswahl kann einen akustischen Schwerpunkt, elektrische Bands und ein Programm mit verwandten Stilen umfassen."
+          ],
+          "items": [
+            "Achte darauf, ob akustische Aufnahmen oder elektrische Bands überwiegen.",
+            "Notiere, wie häufig Soul, Rock oder andere verwandte Richtungen vorkommen.",
+            "Vergleiche den Umfang und den Nutzen der Moderationen zwischen den Titeln.",
+            "Höre eine vielversprechende Sendung an einem anderen Tag zur ähnlichen Zeit."
+          ]
+        }
+      ],
+      "faq": [
+        {
+          "question": "Spielt ein Bluessender ausschließlich Blues?",
+          "answer": "Nicht unbedingt. Verwandte Genres und gemischte Sendepläne sind möglich. Beschreibungen helfen bei der Auswahl, doch eine längere Hörprobe zeigt die tatsächliche Mischung am deutlichsten."
+        },
+        {
+          "question": "Wie suche ich ohne Kenntnisse über Künstler?",
+          "answer": "Beginne mit hörbaren Eigenschaften wie akustischer Gitarre, elektrischer Band oder einer besonders präsenten Stimme. Vergleiche anhand dieser Vorlieben die Angebote im Bluesverzeichnis."
+        }
+      ],
+      "links": [
+        {
+          "route": "genre:blues",
+          "label": "Bluessender auswählen"
+        },
+        {
+          "route": "genre:rock",
+          "label": "Verwandte Rockprogramme vergleichen"
+        },
+        {
+          "route": "genres",
+          "label": "Weitere Musikrichtungen entdecken"
+        }
+      ]
+    },
+    {
+      "id": "country-radio-guide",
+      "title": "Countryradio finden: aktuelle Musik, Klassiker, Americana",
+      "seoTitle": "Countryradio finden: aktuelle Musik, Klassiker, Americana",
+      "description": "Entdecke aktuelle Countrymusik, Klassiker und Americana und unterscheide die musikalische Richtung vom geografischen Länderfilter.",
+      "primaryKeyword": "Countryradio",
+      "secondaryKeywords": [
+        "klassisches Countryradio",
+        "aktuelle Countrymusik",
+        "Americana"
+      ],
+      "imageAlt": "Illustration einer akustischen Gitarre mit musikalischen Elementen",
+      "intro": "Bei der Suche nach Countryradio kann das englische Wort country für Verwirrung sorgen: Es bezeichnet eine Musikrichtung, bedeutet aber auch Land. Wenn du die Musik suchst, beginne beim Genre. Anschließend kannst du deine Auswahl nach Klang, Epoche und Senderregion weiter verfeinern.",
+      "sections": [
+        {
+          "heading": "Musikrichtung und Standort getrennt betrachten",
+          "paragraphs": [
+            "Ein Länder- oder Regionenfilter ordnet Sender geografisch ein. Er wählt nicht automatisch Countrymusik aus. Ein Sender aus einem bestimmten Land kann viele ganz andere Musikrichtungen spielen. Öffne deshalb zuerst das Countrygenre und nutze den Standort anschließend, wenn dich regionale Stimmen oder ein bestimmter Musikmarkt interessieren. Diese Reihenfolge erspart eine lange Liste unpassender Ergebnisse. Sie hilft außerdem dabei, später bewusst zu vergleichen: Hörst du gerade einen Unterschied zwischen zwei musikalischen Formaten oder zwischen zwei regionalen Programmen?"
+          ]
+        },
+        {
+          "heading": "Aktuelle Auswahl und Klassiker vergleichen",
+          "paragraphs": [
+            "Beschreibungen mit aktuellem Country können ein sinnvoller Einstieg sein, wenn du eher gegenwärtige Programme suchst. Klassisches Country deutet auf einen anderen Schwerpunkt bei älteren Aufnahmen hin. Wo die Grenze liegt, entscheidet der jeweilige Sender. Höre mehrere Titel und achte auf vertraute Stimmen, neuere Künstler, Produktionsweisen und Moderation. Ein Programm kann unterschiedliche Zeiten miteinander verbinden. Nutze die Beschreibung deshalb als Ausgangspunkt für die Auswahl und nicht als Versprechen einer vollständig festgelegten Titelliste."
+          ]
+        },
+        {
+          "heading": "Americana als Weg zu weiteren Klängen nutzen",
+          "paragraphs": [
+            "Americana kann zu Programmen führen, die Country mit verwandten musikalischen Traditionen verbinden. Der Begriff ist breit, und Sender legen ihn unterschiedlich aus. Wirkt eine Auswahl auf dich zu glatt oder zu eng, achte bei anderen Programmen auf abwechslungsreichere Besetzungen und angrenzende Stile. Es geht dabei um interessante musikalische Verbindungen. Du musst keine endgültige Definition festlegen, bevor du eine Sendung genießen kannst. Halte lieber fest, welche Übergänge und Aufnahmen du gern wieder hören würdest."
+          ]
+        },
+        {
+          "heading": "Eine echte Hörsitzung als Maßstab nehmen",
+          "paragraphs": [
+            "Ein Lieblingslied ist ein guter Anlass weiterzuhören, verrät aber noch nicht das gesamte Format. Vergleiche mehrere Titel, beachte den Wortanteil und höre zu einer anderen Tageszeit erneut hinein. Behalte verschiedene Angebote, wenn du sowohl vertraute Klassiker als auch Entdeckungen magst."
+          ],
+          "items": [
+            "Öffne zuerst die Musikrichtung und wähle danach bei Bedarf eine Region.",
+            "Vergleiche einen eher aktuellen Sender mit einem auf Klassiker ausgerichteten Programm.",
+            "Notiere, ob die Auswahl bei Country bleibt oder verwandte Stile einbezieht.",
+            "Höre eine zweite Sitzung, bevor du deinen regelmäßigen Sender auswählst."
+          ]
+        }
+      ],
+      "faq": [
+        {
+          "question": "Wählt der Länderfilter automatisch Countrymusik aus?",
+          "answer": "Nein. Dieser Filter bezieht sich auf den geografischen Standort. Nutze für die Musik das Countrygenre und verfeinere die Auswahl bei Bedarf anschließend nach Region."
+        },
+        {
+          "question": "Sind klassisches Country und Americana dasselbe?",
+          "answer": "Nein. Die Begriffe beschreiben unterschiedliche Suchrichtungen, auch wenn einzelne Aufnahmen in beiden Programmen vorkommen können. Vergleiche die tatsächliche Auswahl, statt identische Titellisten zu erwarten."
+        }
+      ],
+      "links": [
+        {
+          "route": "genre:country",
+          "label": "Countrymusik im Radio entdecken"
+        },
+        {
+          "route": "regions",
+          "label": "Nach geografischer Region stöbern"
+        },
+        {
+          "route": "genres",
+          "label": "Musikrichtungen miteinander vergleichen"
+        }
+      ]
+    },
+    {
+      "id": "news-talk-radio-guide",
+      "title": "Nachrichten- und Talkradio mit Kontext hören",
+      "seoTitle": "Nachrichten- und Talkradio mit Kontext hören",
+      "description": "Unterscheide Berichte und Kommentare, prüfe Datum, Zeitzone und Quellen und höre Nachrichten- sowie Talkradio mit mehr Kontext.",
+      "primaryKeyword": "Nachrichtenradio",
+      "secondaryKeywords": [
+        "Talkradio",
+        "Radionachrichten live",
+        "Nachrichtenquellen"
+      ],
+      "imageAlt": "Illustration eines Studiomikrofons mit Sprech- und Signalelementen",
+      "intro": "Nachrichten- und Talkradio bieten aktuelle Berichte, Interviews und unterschiedliche Argumente. Hilfreich ist dabei eine Hörgewohnheit, die Programmform, Zeitpunkt und Herkunft der Informationen berücksichtigt. Auch ein laufender Livestream erklärt nicht automatisch, wie aktuell oder wie gut belegt jede einzelne Aussage ist.",
+      "sections": [
+        {
+          "heading": "Bericht, Interview und Kommentar unterscheiden",
+          "paragraphs": [
+            "Eine Nachrichtensendung, ein Interview und ein Meinungsbeitrag verfolgen unterschiedliche Zwecke. Achte darauf, ob eine Person ein bestätigtes Ereignis beschreibt, einen Gast um Einordnung bittet oder selbst argumentiert. Die Aussage eines Gastes ist nicht automatisch eine überprüfte Schlussfolgerung des Senders. Ist die Form unklar, lies die Programmbeschreibung, bevor du eine Behauptung weitergibst. Zu wissen, wer in welcher Rolle spricht, hilft beim Verständnis und macht es leichter, Information, persönliche Erfahrung und Bewertung auseinanderzuhalten."
+          ]
+        },
+        {
+          "heading": "Hinter dem Wort live die Zeit prüfen",
+          "paragraphs": [
+            "Ein Sender kann ununterbrochen streamen und dabei Aufzeichnungen, Wiederholungen oder frühere Interviews ausstrahlen. Achte auf Datumsangaben und lokale Uhrzeiten. Vergleiche sie mit deinem eigenen Standort. Ein als Morgenprogramm bezeichnetes Angebot muss nicht während deines Morgens laufen. Bei sich entwickelnden Ereignissen ist auch die Zeit einer zugehörigen Veröffentlichung wichtig. Ein älterer Beitrag kann weiterhin verständlich klingen, obwohl inzwischen neue Informationen vorliegen. Prüfe deshalb den Zeitpunkt des konkreten Abschnitts und nicht nur den Status des Players."
+          ]
+        },
+        {
+          "heading": "Wichtige Behauptungen zu ihren Quellen verfolgen",
+          "paragraphs": [
+            "Wenn ein Bericht eine Entscheidung beeinflusst, suche nach Möglichkeit die ursprüngliche Erklärung, das Dokument oder eine benennbare Quelle. Vergleiche zusätzlich die Darstellung eines anderen Anbieters. Achte darauf, welche Fakten übereinstimmen und wo sich Bewertungen unterscheiden. Ein Anruf in einer Gesprächssendung zeigt die Meinung einer Person, aber nicht automatisch deren Verbreitung in der Bevölkerung. Behalte erkennbare Unsicherheit bei einer unbestätigten Aussage bei. Eine überzeugende Stimme ersetzt keinen nachvollziehbaren Beleg für den Inhalt."
+          ]
+        },
+        {
+          "heading": "Das Programm nach deinem Informationsbedarf wählen",
+          "paragraphs": [
+            "Lokale Berichte, ausführliche Interviews und offene Gespräche erfüllen unterschiedliche Bedürfnisse. Höre zunächst in die Sendung hinein. Auch Sportübertragungen und dringende Informationen hängen vom Anbieter und seinen Verbreitungswegen ab. Ein Verzeichniseintrag garantiert weder bestimmte Übertragungsrechte noch einen umfassenden Warndienst."
+          ],
+          "items": [
+            "Prüfe die Sendungsform sowie Namen und Rollen der beteiligten Personen.",
+            "Notiere Datum, Ortszeit und mögliche Hinweise auf eine Wiederholung.",
+            "Vergleiche folgenreiche Aussagen mit weiteren Quellen oder dem Originalmaterial.",
+            "Nutze für dringende örtliche Handlungsanweisungen die zuständigen offiziellen Informationsangebote."
+          ]
+        }
+      ],
+      "faq": [
+        {
+          "question": "Enthält ein Livestream immer aktuelle Liveberichte?",
+          "answer": "Nein. Ein fortlaufender Stream kann auch Aufzeichnungen und Wiederholungen enthalten. Wenn Aktualität wichtig ist, prüfe Datum und Zusammenhang des konkreten Beitrags."
+        },
+        {
+          "question": "Sind alle Sportereignisse und Warnmeldungen garantiert verfügbar?",
+          "answer": "Nein. Zugang und Berichterstattung hängen vom Sender und den jeweiligen Vereinbarungen ab. Prüfe dessen aktuelle Angaben und nutze für dringende örtliche Hinweise offizielle Informationswege."
+        }
+      ],
+      "links": [
+        {
+          "route": "genre:news",
+          "label": "Nachrichtensender finden"
+        },
+        {
+          "route": "genre:talk",
+          "label": "Talkradio entdecken"
+        },
+        {
+          "route": "regions",
+          "label": "Sender aus einer Region auswählen"
+        }
+      ]
+    },
+    {
+      "id": "80s-90s-radio-guide",
+      "title": "80er- und 90er-Radio nach deinem Geschmack finden",
+      "seoTitle": "80er- und 90er-Radio nach deinem Geschmack finden",
+      "description": "Vergleiche 80er- und 90er-Sender nach Musikrichtung, Region und Programm und entdecke, warum Oldies-Angebote unterschiedlich klingen.",
+      "primaryKeyword": "80er-Radio",
+      "secondaryKeywords": [
+        "90er-Radio",
+        "Oldies-Radio",
+        "Radio nach Jahrzehnt"
+      ],
+      "imageAlt": "Illustration einer Musikkassette mit musikalischen Retroelementen",
+      "intro": "Ein Jahrzehnt grenzt die Radiosuche ein, beschreibt aber noch nicht jedes Lied. Die 80er und 90er umfassen viele Musikrichtungen und regionale Erinnerungen. Nutze die Zeitangabe als Anfang und vergleiche anschließend die Stile und Regionen, die einen Sender für dich passend machen.",
+      "sections": [
+        {
+          "heading": "Eine Epoche und eine musikalische Richtung wählen",
+          "paragraphs": [
+            "Entscheide zunächst, ob du vor allem die 80er, die 90er oder eine Mischung hören möchtest. Überlege danach, welcher Klang dich interessiert: Gitarrenmusik, tanzbare Titel, Pop oder etwas anderes. Zwei Sender mit derselben Jahrzehntbezeichnung können sehr unterschiedlich klingen, weil sie andere Ausschnitte dieser Zeit auswählen. Einige Künstlernamen oder erinnerte musikalische Eigenschaften helfen bei der Suche. Eine vollständige persönliche Titelliste brauchst du dafür nicht. Schon diese grobe Richtung macht den Vergleich mehrerer Angebote deutlich nützlicher."
+          ]
+        },
+        {
+          "heading": "Oldies hängt auch vom jeweiligen Markt ab",
+          "paragraphs": [
+            "Oldies ist eine flexible Programmbeschreibung und keine weltweit einheitliche Liste von Jahren oder Liedern. Zielgruppe und regionale Musikgeschichte beeinflussen die Auswahl eines Senders. In einem anderen Land kannst du Aufnahmen entdecken, die du damals kaum gehört hast. Steht die persönliche Erinnerung im Vordergrund, beginne mit einer vertrauten Region. Geht es dir stärker um Entdeckungen, vergleiche dasselbe Jahrzehnt in verschiedenen Ländern. Achte dabei auf Unterschiede in Sprache, Künstlerauswahl und musikalischen Schwerpunkten."
+          ]
+        },
+        {
+          "heading": "Über den ersten bekannten Hit hinaus zuhören",
+          "paragraphs": [
+            "Ein vertrautes Lied hinterlässt schnell einen starken Eindruck. Erst eine längere Hörprobe zeigt jedoch die Entscheidungen des Senders. Achte darauf, ob eine eher enge Auswahl bekannter Hits läuft, weniger offensichtliche Titel auftauchen oder benachbarte Jahrzehnte hinzukommen. Moderation und Spezialsendungen prägen das Hörerlebnis ebenfalls. Beginnt dein erster Versuch während einer Themensendung, höre zu einer anderen Zeit erneut hinein. Die besondere Auswahl eines einzelnen Programms muss nicht den gesamten Alltag des Senders abbilden."
+          ]
+        },
+        {
+          "heading": "Mehrere passende Angebote behalten",
+          "paragraphs": [
+            "Du brauchst keinen einzigen endgültigen Jahrzehntsender. Behalte eine vertraute Auswahl für Erinnerungen und eine weitere für Entdeckungen oder andere Stilrichtungen. Vergleiche Kandidaten über ähnlich lange Hörzeiten. So entscheidet nicht allein ein zufällig besonders beliebtes Lied über deinen Eindruck vom gesamten Programm."
+          ],
+          "items": [
+            "Beginne mit den 80ern oder 90ern und höre mehrere Titel.",
+            "Notiere Musikrichtungen, Sprache und das Verhältnis vertrauter zu unbekannten Aufnahmen.",
+            "Prüfe, ob benachbarte Jahrzehnte vorkommen und ob dir diese Mischung gefällt.",
+            "Vergleiche einen Sender aus einer anderen Region vor deiner endgültigen Auswahl."
+          ]
+        }
+      ],
+      "faq": [
+        {
+          "question": "Spielt ein 80er-Sender ausschließlich Musik aus den 80ern?",
+          "answer": "Nicht unbedingt. Formate können angrenzende Jahre, verwandte Themen und besondere Sendungen einbeziehen. Prüfe Beschreibung und längere Hörprobe, um die tatsächliche Mischung kennenzulernen."
+        },
+        {
+          "question": "Warum unterscheiden sich zwei Oldies-Sender so stark?",
+          "answer": "Sie können andere Zeiten, Zielgruppen oder regionale Erinnerungen ansprechen. Oldies gibt eine grobe Richtung vor. Die konkrete Sendung zeigt dir, was sich dahinter verbirgt."
+        }
+      ],
+      "links": [
+        {
+          "route": "genre:80s",
+          "label": "80er-Sender hören"
+        },
+        {
+          "route": "genre:90s",
+          "label": "90er-Radio entdecken"
+        },
+        {
+          "route": "regions",
+          "label": "Jahrzehntsender nach Region vergleichen"
+        }
+      ]
+    }
+  ]
+}

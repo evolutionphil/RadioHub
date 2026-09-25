@@ -1,0 +1,759 @@
+{
+  "ui": {
+    "title": "Guias para ouvir rádio",
+    "description": "Explicações práticas para descobrir rádios, escolher estilos musicais e ouvir com mais clareza no navegador ou no telemóvel.",
+    "home": "Início",
+    "read": "Ler o guia",
+    "contents": "Neste guia",
+    "related": "Guias relacionados",
+    "sources": "Fontes e referências",
+    "questions": "Perguntas frequentes",
+    "explore": "Explorar rádios",
+    "author": "Mega Radio",
+    "editorialNote": "Conteúdo preparado com assistência de inteligência artificial. Não representa testes de estações nem uma avaliação humana independente.",
+    "updated": "Atualizado",
+    "language": "Idioma"
+  },
+  "articles": [
+    {
+      "id": "listen-to-radio-online",
+      "title": "Como ouvir rádio online: um guia para começar",
+      "seoTitle": "Como ouvir rádio online: primeiros passos | Mega Radio",
+      "description": "Aprenda a encontrar uma rádio pelo nome, região ou estilo, iniciar a reprodução e identificar problemas sem confundir acesso gratuito com dados gratuitos.",
+      "primaryKeyword": "ouvir rádio online",
+      "secondaryKeywords": [
+        "rádio online grátis",
+        "rádios pela internet",
+        "escutar rádio ao vivo"
+      ],
+      "imageAlt": "Ilustração de um rádio acompanhado por auscultadores",
+      "intro": "Ouvir rádio online começa por uma escolha simples: encontrar uma estação que combine com o momento. Pode procurar uma voz familiar, música de outro país ou um género novo. Este guia ajuda a passar da pesquisa à reprodução sem depender de listas que prometem uma estação perfeita para todos.",
+      "sections": [
+        {
+          "heading": "Comece pelo que procura",
+          "paragraphs": [
+            "Se conhece o nome, pesquise-o e confirme a região. Nomes semelhantes podem pertencer a emissoras diferentes ou a canais temáticos da mesma marca. Quando ainda não tem uma escolha, explore por género e depois por região. A língua da interface ajuda a navegar, mas não determina necessariamente a língua falada na emissão.",
+            "A página da rádio deve servir como ponto de confirmação, não apenas como um botão de reprodução."
+          ],
+          "items": [
+            "Compare nome e localização.",
+            "Verifique a descrição e o estilo musical.",
+            "Escolha uma estação antes de abrir várias reproduções."
+          ]
+        },
+        {
+          "heading": "Inicie a reprodução com atenção",
+          "paragraphs": [
+            "Carregue em reproduzir e dê alguns instantes à ligação. Alguns navegadores exigem uma ação sua antes de permitir áudio. Comece com volume moderado e verifique também o volume do dispositivo de saída: auscultadores, coluna Bluetooth ou altifalante do telefone. Se ouvir duas emissões, procure outra aba que esteja a tocar.",
+            "Uma ligação estabelecida não garante que exista som naquele instante: a emissora pode estar em pausa ou com dificuldades."
+          ]
+        },
+        {
+          "heading": "O que significa acesso gratuito",
+          "paragraphs": [
+            "Uma rádio disponível sem pagamento na página pode continuar a consumir o seu pacote de dados. Também pode incluir publicidade da própria emissora. Um diretório não controla necessariamente esses intervalos, a programação ou as restrições territoriais do sinal. Antes de ouvir durante horas fora de casa, confira o plano de internet.",
+            "Em redes partilhadas, o sinal Wi-Fi pode ser forte e a ligação à internet continuar lenta."
+          ]
+        },
+        {
+          "heading": "Quando a rádio não começa",
+          "paragraphs": [
+            "Teste primeiro uma segunda estação. Se esta funcionar, o problema pode estar na emissão original ou no acesso ao seu endereço. Se nenhuma funcionar, examine a ligação, a saída de áudio e as permissões do navegador. Atualize a página uma vez e evite carregar repetidamente no botão.",
+            "Uma pausa não demonstra que a rádio acabou definitivamente. Experimente novamente mais tarde sem apagar uma favorita que ainda lhe interessa."
+          ]
+        }
+      ],
+      "faq": [
+        {
+          "question": "Preciso de instalar uma aplicação?",
+          "answer": "Não obrigatoriamente. Pode começar pelo navegador e consultar a página de aplicações se preferir uma opção para o seu dispositivo."
+        },
+        {
+          "question": "A estação vai transmitir sempre a mesma música?",
+          "answer": "Não. Programas, locutores e horários podem mudar. Ouça vários momentos antes de decidir se a programação corresponde ao que procura."
+        }
+      ],
+      "links": [
+        {
+          "route": "search",
+          "label": "Pesquisar uma rádio"
+        },
+        {
+          "route": "genres",
+          "label": "Explorar géneros"
+        },
+        {
+          "route": "regions",
+          "label": "Encontrar rádios por região"
+        }
+      ]
+    },
+    {
+      "id": "internet-radio-explained",
+      "title": "Rádio pela internet, FM e podcasts: qual é a diferença?",
+      "seoTitle": "O que é rádio pela internet? | Mega Radio",
+      "description": "Entenda a diferença entre transmissão online, rádio FM ou DAB e podcasts, incluindo ligação, horários, atraso e disponibilidade regional.",
+      "primaryKeyword": "rádio pela internet",
+      "secondaryKeywords": [
+        "como funciona rádio online",
+        "rádio FM e internet",
+        "rádio e podcasts"
+      ],
+      "imageAlt": "Ilustração de um globo com ondas de sinal",
+      "intro": "Uma rádio pela internet envia áudio através de uma ligação de dados. Isso permite procurar emissoras fora do alcance de uma antena local, mas não transforma qualquer programa em conteúdo disponível a qualquer hora. Distinguir os formatos ajuda a escolher a maneira de ouvir que faz sentido para si.",
+      "sections": [
+        {
+          "heading": "Uma transmissão contínua, não uma biblioteca",
+          "paragraphs": [
+            "Numa emissão em direto, entra no ponto em que a programação se encontra. Não escolhe automaticamente a primeira música nem o início de uma entrevista. O sinal pode reproduzir uma estação também disponível por antena ou um canal exclusivamente online. O nome da marca, por si só, não esclarece qual destas situações se aplica.",
+            "Consulte a descrição da estação e, quando precisar de horários, confirme-os junto da própria emissora."
+          ]
+        },
+        {
+          "heading": "O que muda em relação a FM e DAB",
+          "paragraphs": [
+            "Um recetor FM ou DAB compatível recebe uma transmissão pelo ar, dentro da cobertura correspondente. A reprodução online depende de uma rede com acesso à internet. Um telefone não passa a receber FM só porque abriu uma página chamada rádio. Da mesma forma, uma coluna ligada à internet pode usar um fluxo online mesmo sem antena de rádio.",
+            "A cobertura da emissora e a qualidade da sua rede são problemas diferentes e exigem verificações diferentes."
+          ]
+        },
+        {
+          "heading": "Porque pode haver atraso ou interrupções",
+          "paragraphs": [
+            "O áudio percorre servidores e costuma ser acumulado brevemente antes da reprodução. Por isso, dois dispositivos podem não tocar exatamente ao mesmo tempo. Atrasos adicionais podem surgir com redes instáveis ou mudanças entre Wi-Fi e dados móveis. Algumas emissões também restringem o acesso em determinados territórios.",
+            "Não considere um pequeno atraso prova de avaria. Para informação sensível ao momento, confirme o horário e a fonte, em vez de comparar apenas o som de dois aparelhos."
+          ]
+        },
+        {
+          "heading": "Escolha o formato segundo a necessidade",
+          "paragraphs": [
+            "Um podcast permite normalmente selecionar um episódio; uma rádio em direto oferece a sequência escolhida pela emissora. São experiências diferentes, mesmo quando o mesmo programa aparece nos dois formatos. Recursos como descarregar episódios ou voltar atrás dependem do serviço utilizado e não devem ser presumidos numa transmissão de rádio."
+          ],
+          "items": [
+            "Quer companhia contínua? Experimente uma emissão em direto.",
+            "Procura um episódio específico? Verifique uma oferta a pedido.",
+            "Vai ficar sem internet? Não conte com um fluxo online para continuar.",
+            "Antes de viajar, confirme dados móveis e eventuais restrições."
+          ]
+        }
+      ],
+      "faq": [
+        {
+          "question": "Uma rádio online está sempre em direto?",
+          "answer": "Pode transmitir uma programação contínua com segmentos gravados. A presença de um fluxo não prova que o apresentador esteja a falar naquele momento."
+        },
+        {
+          "question": "Posso ouvir sem ligação à internet?",
+          "answer": "Um fluxo online precisa de dados enquanto é recebido. Receção FM e ficheiros previamente descarregados são alternativas distintas, quando o dispositivo ou serviço as suporta."
+        }
+      ],
+      "links": [
+        {
+          "route": "home",
+          "label": "Abrir o diretório de rádios"
+        },
+        {
+          "route": "applications",
+          "label": "Consultar aplicações"
+        },
+        {
+          "route": "regions",
+          "label": "Explorar emissoras de outras regiões"
+        }
+      ]
+    },
+    {
+      "id": "radio-app-iphone-android",
+      "title": "Rádio no iPhone e Android: navegador ou aplicação?",
+      "seoTitle": "Rádio no iPhone e Android: guia prático | Mega Radio",
+      "description": "Compare navegador e aplicação para ouvir rádio no telefone e verifique som, Bluetooth, rede e reprodução em segundo plano sem presumir funcionalidades.",
+      "primaryKeyword": "aplicação de rádio",
+      "secondaryKeywords": [
+        "rádio no iPhone",
+        "rádio no Android",
+        "rádio no telemóvel"
+      ],
+      "imageAlt": "Ilustração de um telefone ao lado de auscultadores",
+      "intro": "O melhor ponto de partida para ouvir rádio no telefone depende de como costuma escutar. Para uma experiência ocasional, o navegador pode bastar. Para um uso frequente, vale consultar as aplicações disponíveis e a compatibilidade real do dispositivo, sem assumir que todas oferecem os mesmos recursos.",
+      "sections": [
+        {
+          "heading": "Experimente primeiro uma situação simples",
+          "paragraphs": [
+            "Abra uma estação conhecida, mantenha o ecrã ligado e teste com uma ligação estável. Assim separa problemas da emissão de questões de segundo plano ou de Bluetooth. Só depois compare a experiência com outra opção. Mudar de aplicação, rede e auscultadores ao mesmo tempo torna difícil perceber a origem de uma falha.",
+            "Na página de aplicações, confirme a plataforma e siga apenas as ligações de instalação apresentadas."
+          ]
+        },
+        {
+          "heading": "Segundo plano depende de várias condições",
+          "paragraphs": [
+            "O comportamento ao bloquear o ecrã pode variar com o sistema, navegador, aplicação e definições de energia. Se o áudio parar, verifique as permissões relevantes e as opções de poupança de bateria disponíveis no seu dispositivo. Não desative todas as proteções indiscriminadamente: altere apenas o que compreende e volte a testar.",
+            "Chamadas e outras aplicações com áudio também podem interromper ou assumir a saída de som. Retome a rádio manualmente quando necessário."
+          ]
+        },
+        {
+          "heading": "Bluetooth ligado não significa saída correta",
+          "paragraphs": [
+            "O telefone pode estar associado a vários dispositivos, mas enviar áudio apenas para um deles. Veja qual está selecionado e confira o volume no telefone e no recetor. Se o som sair pela coluna errada, desligue temporariamente essa ligação. Um teste no altifalante do próprio telefone ajuda a descobrir se o problema está na rádio ou no acessório.",
+            "Quando mudar de auscultadores, reduza o volume antes de retomar a reprodução."
+          ]
+        },
+        {
+          "heading": "Prepare a utilização fora de casa",
+          "paragraphs": [
+            "Uma emissão contínua usa dados. A passagem de Wi-Fi para rede móvel pode causar uma pausa ou retomar o consumo do seu pacote. Antes de uma sessão longa, consulte os limites do plano. Não presuma funções de escuta offline, integração no automóvel ou compatibilidade com acessórios sem confirmação específica."
+          ],
+          "items": [
+            "Teste uma estação com o ecrã ligado.",
+            "Confira a saída de áudio selecionada.",
+            "Observe o comportamento ao bloquear o ecrã.",
+            "Compare Wi-Fi e dados móveis separadamente.",
+            "Anote qual condição provoca a interrupção."
+          ]
+        }
+      ],
+      "faq": [
+        {
+          "question": "Instalar uma aplicação resolve qualquer interrupção?",
+          "answer": "Não. Se a própria emissora estiver indisponível ou a ligação falhar, mudar de interface pode não resolver o problema."
+        },
+        {
+          "question": "Porque toca no telefone mas não na coluna?",
+          "answer": "A saída Bluetooth, o volume do recetor ou a ligação ao acessório podem ser a causa. Verifique esses pontos antes de concluir que a rádio está avariada."
+        }
+      ],
+      "links": [
+        {
+          "route": "applications",
+          "label": "Ver opções para dispositivos"
+        },
+        {
+          "route": "search",
+          "label": "Pesquisar uma estação para testar"
+        },
+        {
+          "route": "home",
+          "label": "Ouvir no navegador"
+        }
+      ]
+    },
+    {
+      "id": "radio-data-usage",
+      "title": "Quantos dados consome uma rádio online?",
+      "seoTitle": "Consumo de dados de rádio online: como calcular | Mega Radio",
+      "description": "Calcule o consumo aproximado de rádio a 64, 128 e 256 kbps, conheça os limites da estimativa e investigue pausas de reprodução.",
+      "primaryKeyword": "consumo de dados de rádio online",
+      "secondaryKeywords": [
+        "rádio megabytes por hora",
+        "bitrate de rádio",
+        "rádio a interromper"
+      ],
+      "imageAlt": "Ilustração de um sinal de áudio junto a um medidor de dados",
+      "intro": "O consumo de uma rádio online depende sobretudo da taxa de bits do fluxo e do tempo durante o qual recebe áudio. Uma estimativa simples ajuda a planear a escuta, mas não substitui o contador da operadora nem inclui automaticamente tudo o que a página carrega.",
+      "sections": [
+        {
+          "heading": "A conta, com unidades claras",
+          "paragraphs": [
+            "Para estimar megabytes decimais por hora, multiplique os kilobits por segundo por 3600 e divida por 8 e por 1000. O resultado é bitrate × 0,45. Assim, 64 kbps representam aproximadamente 28,8 MB por hora; 128 kbps, 57,6 MB; e 256 kbps, 115,2 MB.",
+            "A conta refere-se ao áudio com taxa constante. Não confunda kilobits com kilobytes: oito bits correspondem a um byte."
+          ]
+        },
+        {
+          "heading": "O que a estimativa não inclui",
+          "paragraphs": [
+            "Capas, imagens, scripts, publicidade e outros pedidos também podem consumir dados. Reconexões e transmissão com taxa variável podem alterar o resultado. A aplicação pode mostrar um bitrate anunciado que não descreve cada segundo real do fluxo. Por isso, trate a estimativa como uma ordem de grandeza, não como um limite garantido.",
+            "Para comparar, observe o contador de dados do dispositivo durante um período conhecido, evitando outras transferências ao mesmo tempo."
+          ]
+        },
+        {
+          "heading": "Planeie sessões mais longas",
+          "paragraphs": [
+            "Duas horas a 128 kbps correspondem a cerca de 115,2 MB de áudio, antes dos consumos adicionais. Se costuma deixar a rádio ligada, multiplique pela duração total esperada. Em roaming, consulte as condições do plano antes de começar. Uma opção com bitrate menor, quando realmente disponível, pode reduzir o consumo.",
+            "Um número maior de kbps não garante sozinho uma experiência melhor: a origem do áudio, o formato e os altifalantes também contam."
+          ]
+        },
+        {
+          "heading": "Pausas nem sempre significam falta de velocidade",
+          "paragraphs": [
+            "Uma ligação pode ter velocidade suficiente e ainda sofrer pequenas falhas que esvaziam o áudio acumulado. Redes congestionadas, mudanças de antena e problemas do servidor são possibilidades diferentes. Teste uma segunda estação e compare a mesma emissão noutra rede antes de alterar várias definições."
+          ],
+          "items": [
+            "Confirme se a pausa acontece em todas as estações.",
+            "Verifique outras transferências ativas.",
+            "Compare Wi-Fi e rede móvel.",
+            "Veja se o problema surge ao bloquear o ecrã.",
+            "Guarde a hora do teste para reconhecer padrões."
+          ]
+        }
+      ],
+      "faq": [
+        {
+          "question": "Wi-Fi faz a rádio deixar de consumir dados?",
+          "answer": "Continua a transferir dados, mas pela ligação Wi-Fi. Isso pode evitar o pacote móvel; a rede utilizada também pode ter limites próprios."
+        },
+        {
+          "question": "O consumo termina logo ao parar o som?",
+          "answer": "Parar a reprodução deve interromper o fluxo correspondente, mas a página pode continuar a fazer outros pedidos. Confirme o comportamento no contador do dispositivo."
+        }
+      ],
+      "links": [
+        {
+          "route": "applications",
+          "label": "Consultar opções de aplicação"
+        },
+        {
+          "route": "search",
+          "label": "Encontrar outra estação para comparar"
+        },
+        {
+          "route": "home",
+          "label": "Voltar às rádios"
+        }
+      ]
+    },
+    {
+      "id": "rock-radio-guide",
+      "title": "Como escolher uma rádio de rock que combine consigo",
+      "seoTitle": "Rádios de rock: clássico, alternativo e pesado | Mega Radio",
+      "description": "Distinga rock clássico, alternativo e mais pesado, compare a programação ao longo de várias músicas e encontre estações sem rankings inventados.",
+      "primaryKeyword": "rádio rock",
+      "secondaryKeywords": [
+        "rádio classic rock",
+        "rock alternativo online",
+        "ouvir rock"
+      ],
+      "imageAlt": "Ilustração de uma guitarra elétrica",
+      "intro": "Duas rádios classificadas como rock podem soar muito diferentes. Uma privilegia canções familiares, outra procura lançamentos e uma terceira mistura estilos mais pesados. Em vez de escolher pela promessa de ser a melhor, vale identificar o equilíbrio entre épocas, intensidade e presença de locutores.",
+      "sections": [
+        {
+          "heading": "O rock clássico é uma seleção, não uma data exata",
+          "paragraphs": [
+            "O rótulo classic rock costuma apontar para repertório consolidado, mas cada emissora define os seus próprios limites. Algumas concentram-se em poucas décadas; outras incluem músicas posteriores que ganharam espaço na programação. Não espere que todas usem o mesmo calendário ou a mesma interpretação do género.",
+            "Ouça uma sequência de músicas e observe se predominam grandes sucessos, faixas de álbum ou uma mistura dos dois."
+          ]
+        },
+        {
+          "heading": "Alternativo não significa sempre desconhecido",
+          "paragraphs": [
+            "Uma rádio alternativa pode combinar bandas populares com propostas menos habituais. Também pode aproximar-se de indie, pós-punk ou outros cruzamentos. O importante é perceber o seu modo de seleção: novidades frequentes, curadoria por programa ou repetição de um conjunto mais curto.",
+            "Se uma música lhe agradar, não conclua de imediato que todo o canal segue esse som. O bloco seguinte pode ter outra orientação."
+          ]
+        },
+        {
+          "heading": "Peso, ritmo e voz fazem parte da escolha",
+          "paragraphs": [
+            "Hard rock, metal e rock melódico aparecem por vezes juntos, mas não são equivalentes. Pense no nível de intensidade que procura e na quantidade de conversa que prefere. Uma rádio com entrevistas e notícias musicais pode ser interessante numa escuta atenta e menos adequada quando quer apenas continuidade.",
+            "A língua dos locutores também conta. A região ajuda a descobrir contextos diferentes, sem garantir que todas as músicas sejam locais."
+          ]
+        },
+        {
+          "heading": "Faça uma comparação que seja útil",
+          "paragraphs": [
+            "Escolha duas ou três estações e ouça cada uma durante várias faixas, de preferência em momentos comparáveis. Anote o que percebe em vez de procurar um vencedor universal. Repetir o teste noutro horário ajuda a distinguir uma característica da estação de um programa específico."
+          ],
+          "items": [
+            "Que épocas aparecem com mais frequência?",
+            "Há alternância entre músicas conhecidas e descobertas?",
+            "As intervenções dos locutores ajudam ou interrompem a experiência desejada?",
+            "O volume varia muito entre segmentos?",
+            "A descrição corresponde à programação que ouviu?"
+          ]
+        }
+      ],
+      "faq": [
+        {
+          "question": "Uma estação de rock clássico só toca músicas antigas?",
+          "answer": "Não existe uma regra única. O recorte depende da emissora, e repertórios de épocas diferentes podem conviver no mesmo canal."
+        },
+        {
+          "question": "Porque uma rádio de rock está a passar uma entrevista?",
+          "answer": "O género descreve a proposta geral, não cada minuto. Programas de conversa, notícias e especiais podem fazer parte da programação musical."
+        }
+      ],
+      "links": [
+        {
+          "route": "genre:rock",
+          "label": "Explorar rádios de rock"
+        },
+        {
+          "route": "genre:classic-rock",
+          "label": "Procurar classic rock"
+        },
+        {
+          "route": "regions",
+          "label": "Comparar rádios por região"
+        }
+      ]
+    },
+    {
+      "id": "jazz-radio-guide",
+      "title": "Rádios de jazz: encontre o tipo de escuta que procura",
+      "seoTitle": "Guia de rádios de jazz: vocal, acústico e smooth | Mega Radio",
+      "description": "Explore diferenças entre jazz acústico, vocal e smooth, identifique programas mistos e escolha estações pela programação, não por promessas vagas.",
+      "primaryKeyword": "rádio jazz",
+      "secondaryKeywords": [
+        "jazz vocal online",
+        "smooth jazz rádio",
+        "ouvir jazz"
+      ],
+      "imageAlt": "Ilustração de um saxofone",
+      "intro": "A categoria jazz reúne experiências muito diferentes, de pequenos grupos instrumentais a vozes e arranjos mais próximos da canção. Um nome ou uma imagem de saxofone não revela toda a programação. A escolha melhora quando observa os instrumentos, o repertório e a forma como a emissora apresenta a música.",
+      "sections": [
+        {
+          "heading": "Comece pelos elementos que consegue reconhecer",
+          "paragraphs": [
+            "Não precisa dominar a história do género para escolher uma estação. Pergunte se prefere vozes ou instrumentais, grupos pequenos ou arranjos amplos, repertório familiar ou exploração. Estas preferências são mais úteis do que tentar adivinhar um subgénero a partir de poucos segundos.",
+            "A presença de piano, sopros ou guitarra pode orientar a descoberta, mas nenhum instrumento, isoladamente, define uma proposta inteira."
+          ]
+        },
+        {
+          "heading": "Jazz vocal e acústico podem cruzar-se",
+          "paragraphs": [
+            "Uma estação de jazz vocal dá mais espaço a intérpretes e letras, enquanto uma seleção acústica pode destacar a interação entre músicos. Estas descrições não são categorias fechadas: um programa pode passar por ambas. O idioma cantado também pode variar independentemente da língua dos apresentadores.",
+            "Quando conhecer o nome de uma gravação, procure outras versões para perceber se aprecia a composição, a voz ou aquele arranjo específico."
+          ]
+        },
+        {
+          "heading": "O que observar numa rádio smooth jazz",
+          "paragraphs": [
+            "Smooth jazz costuma funcionar como uma indicação de seleção mais acessível e produção polida, mas o uso do nome varia. Alguns canais aproximam-se de soul, pop instrumental ou outros estilos. Ouça a transição entre músicas para perceber se esse cruzamento corresponde ao que pretende.",
+            "Não associe automaticamente a música a benefícios de saúde, concentração ou sono. A adequação ao momento é uma preferência pessoal, não uma garantia do género."
+          ]
+        },
+        {
+          "heading": "Descubra a programação para além de uma faixa",
+          "paragraphs": [
+            "Estações especializadas podem reservar horários para concertos, entrevistas ou seleções temáticas. Uma amostra curta pode mostrar apenas um desses blocos. Compare vários momentos e confirme detalhes de programas na fonte da emissora, sobretudo se estiver noutro fuso horário."
+          ],
+          "items": [
+            "Observe a proporção de vozes e instrumentais.",
+            "Note se as peças são breves ou se há espaço para interpretações longas.",
+            "Compare o papel dos locutores.",
+            "Experimente a mesma estação noutro dia.",
+            "Guarde favoritas com perfis diferentes, em vez de procurar apenas uma."
+          ]
+        }
+      ],
+      "faq": [
+        {
+          "question": "Preciso de conhecer subgéneros para ouvir jazz?",
+          "answer": "Não. Comece por características audíveis e aprofunde os nomes aos poucos. A descoberta pode partir de uma voz, um instrumento ou um arranjo."
+        },
+        {
+          "question": "Uma rádio de jazz pode tocar soul ou blues?",
+          "answer": "Pode, conforme a linha editorial e o programa. A etiqueta identifica uma orientação geral, não uma lista rígida de tudo o que será transmitido."
+        }
+      ],
+      "links": [
+        {
+          "route": "genre:jazz",
+          "label": "Encontrar rádios de jazz"
+        },
+        {
+          "route": "genre:blues",
+          "label": "Explorar também blues"
+        },
+        {
+          "route": "search",
+          "label": "Pesquisar uma emissora pelo nome"
+        }
+      ]
+    },
+    {
+      "id": "blues-radio-guide",
+      "title": "Como explorar rádios de blues acústico e elétrico",
+      "seoTitle": "Rádios de blues: um guia para descobrir estilos | Mega Radio",
+      "description": "Saiba comparar blues acústico, elétrico e cruzamentos com soul ou rock, observar horários e descobrir estações sem confundir um programa com todo o canal.",
+      "primaryKeyword": "rádio blues",
+      "secondaryKeywords": [
+        "blues acústico online",
+        "blues elétrico rádio",
+        "ouvir blues"
+      ],
+      "imageAlt": "Ilustração de uma guitarra ao lado de um disco de vinil",
+      "intro": "Uma rádio de blues pode aproximar-se de uma voz acompanhada por guitarra, de uma banda elétrica ou de seleções que dialogam com soul e rock. Estas diferenças ajudam a orientar a escuta. O objetivo não é encontrar uma fronteira perfeita, mas uma programação cujo carácter lhe faça sentido.",
+      "sections": [
+        {
+          "heading": "Acústico e elétrico são pontos de partida",
+          "paragraphs": [
+            "Nas seleções acústicas, a atenção pode recair sobre a relação entre voz, cordas e ritmo. Nos contextos elétricos, amplificação, bateria e outros instrumentos alteram a textura. Há inúmeras combinações entre esses extremos, por isso não use a presença de uma guitarra como única pista.",
+            "Compare algumas faixas completas. A dinâmica de uma interpretação pode revelar mais do que os primeiros segundos ou uma etiqueta curta na página."
+          ]
+        },
+        {
+          "heading": "Entenda os cruzamentos sem transformar tudo em blues",
+          "paragraphs": [
+            "Algumas estações misturam blues com soul, rhythm and blues ou rock. Isso pode ser uma escolha editorial coerente, mas também significa que uma busca muito específica exige mais atenção. Se procura um som acústico intimista, uma programação de guitarra elétrica intensa talvez não corresponda ao momento.",
+            "A descrição da rádio é um ponto de partida. A sequência real de músicas permite confirmar o alcance desse rótulo."
+          ]
+        },
+        {
+          "heading": "Gravações e apresentações têm características diferentes",
+          "paragraphs": [
+            "Uma seleção pode alternar gravações antigas, produções recentes e concertos. Diferenças de volume, ruído ou duração nem sempre são problemas do seu aparelho: podem fazer parte da origem do áudio. Ajuste o volume com cuidado e compare outra faixa antes de concluir que a ligação está degradada.",
+            "Uma pausa recorrente em várias estações, por outro lado, justifica verificar a rede e a saída de som."
+          ]
+        },
+        {
+          "heading": "Encontre uma rotina de descoberta",
+          "paragraphs": [
+            "Em rádios com programação variada, o blues pode ocupar apenas determinados blocos. Confira horários na página da emissora e considere o fuso local. Ao avaliar um canal, diferencie a seleção de um apresentador da proposta do restante dia. Assim evita descartar uma estação por um único segmento."
+          ],
+          "items": [
+            "Ouça várias músicas antes de decidir.",
+            "Note a presença de voz, guitarra, harmónica e secção rítmica.",
+            "Verifique quanto rock ou soul aparece entre as faixas.",
+            "Experimente outro horário.",
+            "Mantenha favoritas com propostas complementares."
+          ]
+        }
+      ],
+      "faq": [
+        {
+          "question": "Uma rádio de blues toca exclusivamente blues?",
+          "answer": "Nem sempre. Pode dedicar-se ao género ou incluí-lo numa programação mais ampla. A descrição e os horários ajudam a distinguir as situações."
+        },
+        {
+          "question": "Uma gravação com som antigo indica uma falha de transmissão?",
+          "answer": "Não necessariamente. A qualidade e as características do registo original podem ser audíveis. Compare outras faixas e estações antes de atribuir o problema à ligação."
+        }
+      ],
+      "links": [
+        {
+          "route": "genre:blues",
+          "label": "Ouvir rádios de blues"
+        },
+        {
+          "route": "genre:rock",
+          "label": "Comparar com rádios de rock"
+        },
+        {
+          "route": "genres",
+          "label": "Explorar outros géneros"
+        }
+      ]
+    },
+    {
+      "id": "country-radio-guide",
+      "title": "Rádio country: contemporâneo, clássico e Americana",
+      "seoTitle": "Rádios de country: escolha o seu estilo | Mega Radio",
+      "description": "Distinga country contemporâneo, clássico e Americana e aprenda a usar género e região como filtros diferentes para descobrir novas emissoras.",
+      "primaryKeyword": "rádio country",
+      "secondaryKeywords": [
+        "country clássico rádio",
+        "música country online",
+        "rádio Americana"
+      ],
+      "imageAlt": "Ilustração de uma guitarra acústica",
+      "intro": "Na procura por rádio, a palavra country pode designar um género musical ou aparecer em interfaces inglesas como país. São coisas diferentes. Uma estação situada num determinado país não é necessariamente uma rádio de country, e uma rádio desse género pode transmitir a partir de várias regiões.",
+      "sections": [
+        {
+          "heading": "Separe género musical e localização",
+          "paragraphs": [
+            "Use a categoria musical quando quer ouvir country. Use a região quando procura emissoras de um lugar específico. A combinação pode ajudar a descobrir apresentações, idiomas e seleções diferentes, mas não substitui a descrição da estação. Não tire conclusões sobre nacionalidade dos artistas apenas a partir do país do canal.",
+            "Se o resultado parecer estranho, reveja primeiro o filtro aplicado em vez de assumir que a classificação está errada."
+          ]
+        },
+        {
+          "heading": "O country contemporâneo varia de estação para estação",
+          "paragraphs": [
+            "Algumas programações aproximam-se de produções pop e dão destaque a lançamentos; outras mantêm uma instrumentação mais tradicional. O rótulo contemporâneo não revela sozinho o equilíbrio entre essas escolhas. Observe o repertório, a repetição e o espaço concedido a apresentações ou notícias musicais.",
+            "Uma única faixa pode representar um cruzamento de estilos e não a identidade de toda a emissão."
+          ]
+        },
+        {
+          "heading": "Clássicos e Americana oferecem recortes distintos",
+          "paragraphs": [
+            "Uma seleção de country clássico tende a revisitar repertório consolidado, com limites definidos pela própria emissora. Americana pode reunir elementos de country, folk, blues e outras tradições, sem corresponder a uma fórmula única. São pontos de exploração úteis, não categorias que resolvem todas as preferências.",
+            "Procure características concretas: destaque da narrativa, presença de instrumentos acústicos, energia da banda e variedade de épocas."
+          ]
+        },
+        {
+          "heading": "Compare a experiência completa",
+          "paragraphs": [
+            "Ouça cada candidata durante várias canções e regresse noutro horário. A proporção de conversa, o idioma dos locutores e os intervalos da emissora também moldam a experiência. Se gostar de propostas contrastantes, guarde mais de uma favorita em vez de procurar uma rádio que cumpra tudo.",
+            "Quando uma estação não iniciar, teste outra sem concluir que o género inteiro está indisponível."
+          ],
+          "items": [
+            "Confirme que escolheu o filtro de género.",
+            "Compare músicas recentes e repertório antigo.",
+            "Observe voz, instrumentos e ritmo.",
+            "Verifique se há programas temáticos em horários próprios.",
+            "Consulte a emissora quando precisar de uma grelha atualizada."
+          ]
+        }
+      ],
+      "faq": [
+        {
+          "question": "Country é um filtro para rádios dos Estados Unidos?",
+          "answer": "Não. Como género, refere-se à proposta musical. Um filtro geográfico seleciona a localização da estação e tem uma finalidade diferente."
+        },
+        {
+          "question": "Americana e country são sinónimos?",
+          "answer": "Não exatamente. Os termos podem cruzar-se na programação, mas Americana costuma indicar uma combinação mais ampla de influências. O uso depende da seleção editorial."
+        }
+      ],
+      "links": [
+        {
+          "route": "genre:country",
+          "label": "Explorar rádios de country"
+        },
+        {
+          "route": "regions",
+          "label": "Escolher uma região"
+        },
+        {
+          "route": "genres",
+          "label": "Ver outros estilos musicais"
+        }
+      ]
+    },
+    {
+      "id": "news-talk-radio-guide",
+      "title": "Rádios de notícias e conversa: como ouvir com contexto",
+      "seoTitle": "Rádio de notícias e talk: ouvir com contexto | Mega Radio",
+      "description": "Diferencie notícias, entrevistas e opinião, confira datas e fusos horários e escolha rádios de informação sem presumir direitos de transmissão.",
+      "primaryKeyword": "rádio de notícias",
+      "secondaryKeywords": [
+        "talk radio",
+        "notícias ao vivo rádio",
+        "rádio de informação"
+      ],
+      "imageAlt": "Ilustração de um microfone de estúdio",
+      "intro": "Ouvir uma rádio de notícias não dispensa verificar quando uma informação foi publicada e quem a apresenta. Uma mesma emissora pode alternar boletins, entrevistas, comentários e repetições. Reconhecer estes formatos ajuda a aproveitar a programação sem tratar toda a conversa como um relato factual acabado.",
+      "sections": [
+        {
+          "heading": "Identifique o tipo de programa",
+          "paragraphs": [
+            "Um boletim costuma resumir acontecimentos; uma entrevista apresenta respostas de uma fonte; um comentário desenvolve uma interpretação. Estes formatos podem aparecer lado a lado. Escute como o segmento é introduzido e se há indicação de autoria, convidados ou edição anterior.",
+            "Uma pessoa falar com convicção não transforma uma opinião em informação confirmada. Procure a origem dos dados quando um detalhe for importante para si."
+          ]
+        },
+        {
+          "heading": "Data, hora e local fazem diferença",
+          "paragraphs": [
+            "Uma emissão contínua pode incluir material gravado. Confira a data mencionada e o fuso horário da estação antes de interpretar expressões como hoje ou esta manhã. Quando a rádio transmite de outro país, o calendário local pode não coincidir com o seu.",
+            "Para acompanhar uma situação em evolução, compare fontes e consulte a publicação original correspondente. O som em direto, por si só, não garante que todas as informações estejam atualizadas."
+          ]
+        },
+        {
+          "heading": "Escolha também pelo contexto linguístico",
+          "paragraphs": [
+            "Compreender a língua dos locutores é especialmente importante em notícias e debates. Um diretório traduzido facilita a navegação, mas não traduz automaticamente o conteúdo do fluxo. Uma estação regional pode oferecer contexto próximo de um local, enquanto outra trabalha com uma agenda mais ampla.",
+            "Não deduza independência, rigor ou orientação editorial apenas do país ou do nome da emissora. Observe como distingue factos, atribuições e comentários."
+          ]
+        },
+        {
+          "heading": "Conheça os limites de uma emissão online",
+          "paragraphs": [
+            "Direitos de transmissão e regras territoriais podem impedir que certos programas estejam disponíveis no fluxo online. Isso é particularmente relevante para conteúdos licenciados, sem que exista uma garantia geral para desporto ou outros eventos. Também não trate uma rádio pela internet como um sistema garantido de alertas de emergência."
+          ],
+          "items": [
+            "Confirme a data e o horário do segmento.",
+            "Identifique reportagem, entrevista ou opinião.",
+            "Procure a fonte original de afirmações relevantes.",
+            "Compare informações em desenvolvimento.",
+            "Use os canais oficiais apropriados para orientações urgentes."
+          ]
+        }
+      ],
+      "faq": [
+        {
+          "question": "Uma rádio de notícias transmite apenas informação factual?",
+          "answer": "Não. Pode incluir debate, opinião, entretenimento e publicidade. O formato de cada segmento deve ser identificado separadamente."
+        },
+        {
+          "question": "A emissão online é igual à transmissão local por antena?",
+          "answer": "Nem sempre. Programas, direitos e disponibilidade territorial podem produzir diferenças. Confirme a oferta com a própria emissora."
+        }
+      ],
+      "links": [
+        {
+          "route": "genre:news",
+          "label": "Encontrar rádios de notícias"
+        },
+        {
+          "route": "genre:talk",
+          "label": "Explorar programas de conversa"
+        },
+        {
+          "route": "regions",
+          "label": "Ver emissoras por região"
+        }
+      ]
+    },
+    {
+      "id": "80s-90s-radio-guide",
+      "title": "Rádios dos anos 80 e 90: descubra seleções diferentes",
+      "seoTitle": "Rádios dos anos 80 e 90: guia de descoberta | Mega Radio",
+      "description": "Compare rádios dos anos 80 e 90 por género, região e variedade, entendendo por que uma estação de clássicos pode soar diferente de outra.",
+      "primaryKeyword": "rádio anos 80 e 90",
+      "secondaryKeywords": [
+        "músicas dos anos 80 rádio",
+        "rádio anos 90",
+        "rádio oldies"
+      ],
+      "imageAlt": "Ilustração de uma cassete de áudio",
+      "intro": "Uma década não tem um único som. As músicas que marcaram os anos 80 ou 90 dependem também do país, do género e das experiências de quem ouviu. Por isso, duas rádios dedicadas ao mesmo período podem oferecer seleções bastante diferentes sem que uma delas esteja necessariamente mal classificada.",
+      "sections": [
+        {
+          "heading": "Escolha uma década e depois um perfil",
+          "paragraphs": [
+            "Comece por decidir se quer uma seleção ampla ou um estilo mais definido, como pop, rock ou música de dança. Um canal temático pode combinar vários géneros; outro privilegia apenas uma parte do período. O nome da década é um convite à exploração, não uma descrição completa da programação.",
+            "Se procura um artista ou uma canção específicos, uma rádio em direto pode não os transmitir no momento desejado."
+          ]
+        },
+        {
+          "heading": "A região muda a memória musical",
+          "paragraphs": [
+            "Uma estação pode destacar sucessos locais que não tiveram a mesma presença noutros mercados. A língua das músicas e dos locutores também altera a experiência. Explorar outras regiões ajuda a encontrar repertório menos habitual, mas não significa que todas as faixas sejam originárias daquele lugar.",
+            "Compare duas rádios de países diferentes com o mesmo tema e observe o que aparece entre as músicas que já conhece."
+          ]
+        },
+        {
+          "heading": "Oldies e clássicos não têm fronteiras fixas",
+          "paragraphs": [
+            "Estes termos podem incluir décadas anteriores ou posteriores às que esperava. Algumas emissoras renovam o recorte ao longo do tempo; outras mantêm uma proposta mais delimitada. Uma faixa fora do período anunciado pode fazer parte de um especial, de uma influência musical ou de uma seleção mista.",
+            "Consulte a descrição e ouça várias sequências antes de concluir que a etiqueta não corresponde à estação."
+          ]
+        },
+        {
+          "heading": "Encontre variedade sem depender de rankings",
+          "paragraphs": [
+            "O grau de repetição pode ser mais importante para si do que a quantidade de músicas famosas. Observe também versões ao vivo, remisturas e faixas menos conhecidas. Se prefere uma seleção previsível, isso é uma escolha legítima; se quer descobrir repertório, procure outra combinação de géneros e regiões.",
+            "Avalie em momentos diferentes para não confundir um programa especial com o restante dia."
+          ],
+          "items": [
+            "Compare canais dos anos 80 e dos anos 90 separadamente.",
+            "Note a mistura de géneros.",
+            "Observe a repetição ao longo da escuta.",
+            "Experimente uma rádio de outra região.",
+            "Guarde favoritas com recortes complementares."
+          ]
+        }
+      ],
+      "faq": [
+        {
+          "question": "Uma rádio dos anos 90 só toca gravações dessa década?",
+          "answer": "Depende da linha editorial. Pode incluir versões posteriores, especiais ou repertório de ligação. A descrição da emissora ajuda a compreender o recorte."
+        },
+        {
+          "question": "Porque não encontro as mesmas músicas em todas as rádios oldies?",
+          "answer": "Os mercados, géneros e critérios editoriais variam. Oldies é um rótulo amplo, não uma lista universal de canções obrigatórias."
+        }
+      ],
+      "links": [
+        {
+          "route": "genre:80s",
+          "label": "Explorar rádios dos anos 80"
+        },
+        {
+          "route": "genre:90s",
+          "label": "Explorar rádios dos anos 90"
+        },
+        {
+          "route": "regions",
+          "label": "Comparar seleções por região"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,1076 @@
+{
+  "checkedAt": "2026-09-25T20:56:02.738Z",
+  "sourceHash": 1544847429,
+  "concurrency": 2,
+  "summary": {
+    "count": 42,
+    "status": {
+      "200": 42
+    },
+    "noindex": 0,
+    "errors": 0
+  },
+  "rows": [
+    {
+      "url": "https://themegaradio.com/en/station/radio-ora-news",
+      "final": "https://themegaradio.com/en/station/radio-ora-news",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/en/station/radio-ora-news",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/en/station/radio-ora-news"
+    },
+    {
+      "url": "https://themegaradio.com/en/station/radio-ora-news-tirana-96-7-fm",
+      "final": "https://themegaradio.com/en/station/radio-ora-news",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/en/station/radio-ora-news-tirana-96-7-fm",
+          "status": 301,
+          "location": "/en/station/radio-ora-news"
+        },
+        {
+          "url": "https://themegaradio.com/en/station/radio-ora-news",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/en/station/radio-ora-news"
+    },
+    {
+      "url": "https://themegaradio.com/en/station/radio-ora-news-tirana-967-fm",
+      "final": "https://themegaradio.com/en/station/radio-ora-news",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/en/station/radio-ora-news-tirana-967-fm",
+          "status": 301,
+          "location": "/en/station/radio-ora-news"
+        },
+        {
+          "url": "https://themegaradio.com/en/station/radio-ora-news",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/en/station/radio-ora-news"
+    },
+    {
+      "url": "https://themegaradio.com/es/station/radio-ora-news",
+      "final": "https://themegaradio.com/es/estacion/radio-ora-news",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/es/station/radio-ora-news",
+          "status": 301,
+          "location": "/es/estacion/radio-ora-news"
+        },
+        {
+          "url": "https://themegaradio.com/es/estacion/radio-ora-news",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/es/estacion/radio-ora-news"
+    },
+    {
+      "url": "https://themegaradio.com/es/station/radio-ora-news-tirana-96-7-fm",
+      "final": "https://themegaradio.com/es/estacion/radio-ora-news",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/es/station/radio-ora-news-tirana-96-7-fm",
+          "status": 301,
+          "location": "/es/estacion/radio-ora-news-tirana-96-7-fm"
+        },
+        {
+          "url": "https://themegaradio.com/es/estacion/radio-ora-news-tirana-96-7-fm",
+          "status": 301,
+          "location": "/es/estacion/radio-ora-news"
+        },
+        {
+          "url": "https://themegaradio.com/es/estacion/radio-ora-news",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/es/estacion/radio-ora-news"
+    },
+    {
+      "url": "https://themegaradio.com/es/station/radio-ora-news-tirana-967-fm",
+      "final": "https://themegaradio.com/es/estacion/radio-ora-news",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/es/station/radio-ora-news-tirana-967-fm",
+          "status": 301,
+          "location": "/es/estacion/radio-ora-news-tirana-967-fm"
+        },
+        {
+          "url": "https://themegaradio.com/es/estacion/radio-ora-news-tirana-967-fm",
+          "status": 301,
+          "location": "/es/estacion/radio-ora-news"
+        },
+        {
+          "url": "https://themegaradio.com/es/estacion/radio-ora-news",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/es/estacion/radio-ora-news"
+    },
+    {
+      "url": "https://themegaradio.com/fr/station/radio-ora-news",
+      "final": "https://themegaradio.com/fr/station/radio-ora-news",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/fr/station/radio-ora-news",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/fr/station/radio-ora-news"
+    },
+    {
+      "url": "https://themegaradio.com/fr/station/radio-ora-news-tirana-96-7-fm",
+      "final": "https://themegaradio.com/fr/station/radio-ora-news",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/fr/station/radio-ora-news-tirana-96-7-fm",
+          "status": 301,
+          "location": "/fr/station/radio-ora-news"
+        },
+        {
+          "url": "https://themegaradio.com/fr/station/radio-ora-news",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/fr/station/radio-ora-news"
+    },
+    {
+      "url": "https://themegaradio.com/fr/station/radio-ora-news-tirana-967-fm",
+      "final": "https://themegaradio.com/fr/station/radio-ora-news",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/fr/station/radio-ora-news-tirana-967-fm",
+          "status": 301,
+          "location": "/fr/station/radio-ora-news"
+        },
+        {
+          "url": "https://themegaradio.com/fr/station/radio-ora-news",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/fr/station/radio-ora-news"
+    },
+    {
+      "url": "https://themegaradio.com/de/station/radio-ora-news",
+      "final": "https://themegaradio.com/de/sender/radio-ora-news",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/de/station/radio-ora-news",
+          "status": 301,
+          "location": "/de/sender/radio-ora-news"
+        },
+        {
+          "url": "https://themegaradio.com/de/sender/radio-ora-news",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/de/sender/radio-ora-news"
+    },
+    {
+      "url": "https://themegaradio.com/de/station/radio-ora-news-tirana-96-7-fm",
+      "final": "https://themegaradio.com/de/sender/radio-ora-news",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/de/station/radio-ora-news-tirana-96-7-fm",
+          "status": 301,
+          "location": "/de/sender/radio-ora-news-tirana-96-7-fm"
+        },
+        {
+          "url": "https://themegaradio.com/de/sender/radio-ora-news-tirana-96-7-fm",
+          "status": 301,
+          "location": "/de/sender/radio-ora-news"
+        },
+        {
+          "url": "https://themegaradio.com/de/sender/radio-ora-news",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/de/sender/radio-ora-news"
+    },
+    {
+      "url": "https://themegaradio.com/de/station/radio-ora-news-tirana-967-fm",
+      "final": "https://themegaradio.com/de/sender/radio-ora-news",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/de/station/radio-ora-news-tirana-967-fm",
+          "status": 301,
+          "location": "/de/sender/radio-ora-news-tirana-967-fm"
+        },
+        {
+          "url": "https://themegaradio.com/de/sender/radio-ora-news-tirana-967-fm",
+          "status": 301,
+          "location": "/de/sender/radio-ora-news"
+        },
+        {
+          "url": "https://themegaradio.com/de/sender/radio-ora-news",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/de/sender/radio-ora-news"
+    },
+    {
+      "url": "https://themegaradio.com/pt/station/radio-ora-news",
+      "final": "https://themegaradio.com/pt/estacao/radio-ora-news",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/pt/station/radio-ora-news",
+          "status": 301,
+          "location": "/pt/estacao/radio-ora-news"
+        },
+        {
+          "url": "https://themegaradio.com/pt/estacao/radio-ora-news",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/pt/estacao/radio-ora-news"
+    },
+    {
+      "url": "https://themegaradio.com/pt/station/radio-ora-news-tirana-96-7-fm",
+      "final": "https://themegaradio.com/pt/estacao/radio-ora-news",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/pt/station/radio-ora-news-tirana-96-7-fm",
+          "status": 301,
+          "location": "/pt/estacao/radio-ora-news-tirana-96-7-fm"
+        },
+        {
+          "url": "https://themegaradio.com/pt/estacao/radio-ora-news-tirana-96-7-fm",
+          "status": 301,
+          "location": "/pt/estacao/radio-ora-news"
+        },
+        {
+          "url": "https://themegaradio.com/pt/estacao/radio-ora-news",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/pt/estacao/radio-ora-news"
+    },
+    {
+      "url": "https://themegaradio.com/pt/station/radio-ora-news-tirana-967-fm",
+      "final": "https://themegaradio.com/pt/estacao/radio-ora-news",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/pt/station/radio-ora-news-tirana-967-fm",
+          "status": 301,
+          "location": "/pt/estacao/radio-ora-news-tirana-967-fm"
+        },
+        {
+          "url": "https://themegaradio.com/pt/estacao/radio-ora-news-tirana-967-fm",
+          "status": 301,
+          "location": "/pt/estacao/radio-ora-news"
+        },
+        {
+          "url": "https://themegaradio.com/pt/estacao/radio-ora-news",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/pt/estacao/radio-ora-news"
+    },
+    {
+      "url": "https://themegaradio.com/it/station/radio-ora-news",
+      "final": "https://themegaradio.com/it/stazione/radio-ora-news",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/it/station/radio-ora-news",
+          "status": 301,
+          "location": "/it/stazione/radio-ora-news"
+        },
+        {
+          "url": "https://themegaradio.com/it/stazione/radio-ora-news",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/it/stazione/radio-ora-news"
+    },
+    {
+      "url": "https://themegaradio.com/it/station/radio-ora-news-tirana-96-7-fm",
+      "final": "https://themegaradio.com/it/stazione/radio-ora-news",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/it/station/radio-ora-news-tirana-96-7-fm",
+          "status": 301,
+          "location": "/it/stazione/radio-ora-news-tirana-96-7-fm"
+        },
+        {
+          "url": "https://themegaradio.com/it/stazione/radio-ora-news-tirana-96-7-fm",
+          "status": 301,
+          "location": "/it/stazione/radio-ora-news"
+        },
+        {
+          "url": "https://themegaradio.com/it/stazione/radio-ora-news",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/it/stazione/radio-ora-news"
+    },
+    {
+      "url": "https://themegaradio.com/it/station/radio-ora-news-tirana-967-fm",
+      "final": "https://themegaradio.com/it/stazione/radio-ora-news",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/it/station/radio-ora-news-tirana-967-fm",
+          "status": 301,
+          "location": "/it/stazione/radio-ora-news-tirana-967-fm"
+        },
+        {
+          "url": "https://themegaradio.com/it/stazione/radio-ora-news-tirana-967-fm",
+          "status": 301,
+          "location": "/it/stazione/radio-ora-news"
+        },
+        {
+          "url": "https://themegaradio.com/it/stazione/radio-ora-news",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/it/stazione/radio-ora-news"
+    },
+    {
+      "url": "https://themegaradio.com/ru/station/radio-ora-news",
+      "final": "https://themegaradio.com/ru/stantsiya/radio-ora-news",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ru/station/radio-ora-news",
+          "status": 301,
+          "location": "/ru/stantsiya/radio-ora-news"
+        },
+        {
+          "url": "https://themegaradio.com/ru/stantsiya/radio-ora-news",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/ru/stantsiya/radio-ora-news"
+    },
+    {
+      "url": "https://themegaradio.com/ru/station/radio-ora-news-tirana-96-7-fm",
+      "final": "https://themegaradio.com/ru/stantsiya/radio-ora-news",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ru/station/radio-ora-news-tirana-96-7-fm",
+          "status": 301,
+          "location": "/ru/stantsiya/radio-ora-news-tirana-96-7-fm"
+        },
+        {
+          "url": "https://themegaradio.com/ru/stantsiya/radio-ora-news-tirana-96-7-fm",
+          "status": 301,
+          "location": "/ru/stantsiya/radio-ora-news"
+        },
+        {
+          "url": "https://themegaradio.com/ru/stantsiya/radio-ora-news",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/ru/stantsiya/radio-ora-news"
+    },
+    {
+      "url": "https://themegaradio.com/ru/station/radio-ora-news-tirana-967-fm",
+      "final": "https://themegaradio.com/ru/stantsiya/radio-ora-news",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ru/station/radio-ora-news-tirana-967-fm",
+          "status": 301,
+          "location": "/ru/stantsiya/radio-ora-news-tirana-967-fm"
+        },
+        {
+          "url": "https://themegaradio.com/ru/stantsiya/radio-ora-news-tirana-967-fm",
+          "status": 301,
+          "location": "/ru/stantsiya/radio-ora-news"
+        },
+        {
+          "url": "https://themegaradio.com/ru/stantsiya/radio-ora-news",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/ru/stantsiya/radio-ora-news"
+    },
+    {
+      "url": "https://themegaradio.com/ar/station/radio-ora-news",
+      "final": "https://themegaradio.com/ar/mahta/radio-ora-news",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ar/station/radio-ora-news",
+          "status": 301,
+          "location": "/ar/mahta/radio-ora-news"
+        },
+        {
+          "url": "https://themegaradio.com/ar/mahta/radio-ora-news",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/ar/mahta/radio-ora-news"
+    },
+    {
+      "url": "https://themegaradio.com/ar/station/radio-ora-news-tirana-96-7-fm",
+      "final": "https://themegaradio.com/ar/mahta/radio-ora-news",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ar/station/radio-ora-news-tirana-96-7-fm",
+          "status": 301,
+          "location": "/ar/mahta/radio-ora-news-tirana-96-7-fm"
+        },
+        {
+          "url": "https://themegaradio.com/ar/mahta/radio-ora-news-tirana-96-7-fm",
+          "status": 301,
+          "location": "/ar/mahta/radio-ora-news"
+        },
+        {
+          "url": "https://themegaradio.com/ar/mahta/radio-ora-news",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/ar/mahta/radio-ora-news"
+    },
+    {
+      "url": "https://themegaradio.com/ar/station/radio-ora-news-tirana-967-fm",
+      "final": "https://themegaradio.com/ar/mahta/radio-ora-news",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ar/station/radio-ora-news-tirana-967-fm",
+          "status": 301,
+          "location": "/ar/mahta/radio-ora-news-tirana-967-fm"
+        },
+        {
+          "url": "https://themegaradio.com/ar/mahta/radio-ora-news-tirana-967-fm",
+          "status": 301,
+          "location": "/ar/mahta/radio-ora-news"
+        },
+        {
+          "url": "https://themegaradio.com/ar/mahta/radio-ora-news",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/ar/mahta/radio-ora-news"
+    },
+    {
+      "url": "https://themegaradio.com/zh/station/radio-ora-news",
+      "final": "https://themegaradio.com/zh/%E7%94%B5%E5%8F%B0/radio-ora-news",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/zh/station/radio-ora-news",
+          "status": 301,
+          "location": "/zh/%E7%94%B5%E5%8F%B0/radio-ora-news"
+        },
+        {
+          "url": "https://themegaradio.com/zh/%E7%94%B5%E5%8F%B0/radio-ora-news",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/zh/%E7%94%B5%E5%8F%B0/radio-ora-news"
+    },
+    {
+      "url": "https://themegaradio.com/zh/station/radio-ora-news-tirana-96-7-fm",
+      "final": "https://themegaradio.com/zh/%E7%94%B5%E5%8F%B0/radio-ora-news",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/zh/station/radio-ora-news-tirana-96-7-fm",
+          "status": 301,
+          "location": "/zh/%E7%94%B5%E5%8F%B0/radio-ora-news-tirana-96-7-fm"
+        },
+        {
+          "url": "https://themegaradio.com/zh/%E7%94%B5%E5%8F%B0/radio-ora-news-tirana-96-7-fm",
+          "status": 301,
+          "location": "/zh/%E7%94%B5%E5%8F%B0/radio-ora-news"
+        },
+        {
+          "url": "https://themegaradio.com/zh/%E7%94%B5%E5%8F%B0/radio-ora-news",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/zh/%E7%94%B5%E5%8F%B0/radio-ora-news"
+    },
+    {
+      "url": "https://themegaradio.com/zh/station/radio-ora-news-tirana-967-fm",
+      "final": "https://themegaradio.com/zh/%E7%94%B5%E5%8F%B0/radio-ora-news",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/zh/station/radio-ora-news-tirana-967-fm",
+          "status": 301,
+          "location": "/zh/%E7%94%B5%E5%8F%B0/radio-ora-news-tirana-967-fm"
+        },
+        {
+          "url": "https://themegaradio.com/zh/%E7%94%B5%E5%8F%B0/radio-ora-news-tirana-967-fm",
+          "status": 301,
+          "location": "/zh/%E7%94%B5%E5%8F%B0/radio-ora-news"
+        },
+        {
+          "url": "https://themegaradio.com/zh/%E7%94%B5%E5%8F%B0/radio-ora-news",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/zh/%E7%94%B5%E5%8F%B0/radio-ora-news"
+    },
+    {
+      "url": "https://themegaradio.com/tr/station/radio-ora-news",
+      "final": "https://themegaradio.com/tr/istasyon/radio-ora-news",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/tr/station/radio-ora-news",
+          "status": 301,
+          "location": "/tr/istasyon/radio-ora-news"
+        },
+        {
+          "url": "https://themegaradio.com/tr/istasyon/radio-ora-news",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/tr/istasyon/radio-ora-news"
+    },
+    {
+      "url": "https://themegaradio.com/tr/station/radio-ora-news-tirana-96-7-fm",
+      "final": "https://themegaradio.com/tr/istasyon/radio-ora-news",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/tr/station/radio-ora-news-tirana-96-7-fm",
+          "status": 301,
+          "location": "/tr/istasyon/radio-ora-news-tirana-96-7-fm"
+        },
+        {
+          "url": "https://themegaradio.com/tr/istasyon/radio-ora-news-tirana-96-7-fm",
+          "status": 301,
+          "location": "/tr/istasyon/radio-ora-news"
+        },
+        {
+          "url": "https://themegaradio.com/tr/istasyon/radio-ora-news",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/tr/istasyon/radio-ora-news"
+    },
+    {
+      "url": "https://themegaradio.com/tr/station/radio-ora-news-tirana-967-fm",
+      "final": "https://themegaradio.com/tr/istasyon/radio-ora-news",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/tr/station/radio-ora-news-tirana-967-fm",
+          "status": 301,
+          "location": "/tr/istasyon/radio-ora-news-tirana-967-fm"
+        },
+        {
+          "url": "https://themegaradio.com/tr/istasyon/radio-ora-news-tirana-967-fm",
+          "status": 301,
+          "location": "/tr/istasyon/radio-ora-news"
+        },
+        {
+          "url": "https://themegaradio.com/tr/istasyon/radio-ora-news",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/tr/istasyon/radio-ora-news"
+    },
+    {
+      "url": "https://themegaradio.com/ja/station/radio-ora-news",
+      "final": "https://themegaradio.com/ja/%E3%82%B9%E3%83%86%E3%83%BC%E3%82%B7%E3%83%A7%E3%83%B3/radio-ora-news",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ja/station/radio-ora-news",
+          "status": 301,
+          "location": "/ja/%E3%82%B9%E3%83%86%E3%83%BC%E3%82%B7%E3%83%A7%E3%83%B3/radio-ora-news"
+        },
+        {
+          "url": "https://themegaradio.com/ja/%E3%82%B9%E3%83%86%E3%83%BC%E3%82%B7%E3%83%A7%E3%83%B3/radio-ora-news",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/ja/%E3%82%B9%E3%83%86%E3%83%BC%E3%82%B7%E3%83%A7%E3%83%B3/radio-ora-news"
+    },
+    {
+      "url": "https://themegaradio.com/ja/station/radio-ora-news-tirana-96-7-fm",
+      "final": "https://themegaradio.com/ja/%E3%82%B9%E3%83%86%E3%83%BC%E3%82%B7%E3%83%A7%E3%83%B3/radio-ora-news",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ja/station/radio-ora-news-tirana-96-7-fm",
+          "status": 301,
+          "location": "/ja/%E3%82%B9%E3%83%86%E3%83%BC%E3%82%B7%E3%83%A7%E3%83%B3/radio-ora-news-tirana-96-7-fm"
+        },
+        {
+          "url": "https://themegaradio.com/ja/%E3%82%B9%E3%83%86%E3%83%BC%E3%82%B7%E3%83%A7%E3%83%B3/radio-ora-news-tirana-96-7-fm",
+          "status": 301,
+          "location": "/ja/%E3%82%B9%E3%83%86%E3%83%BC%E3%82%B7%E3%83%A7%E3%83%B3/radio-ora-news"
+        },
+        {
+          "url": "https://themegaradio.com/ja/%E3%82%B9%E3%83%86%E3%83%BC%E3%82%B7%E3%83%A7%E3%83%B3/radio-ora-news",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/ja/%E3%82%B9%E3%83%86%E3%83%BC%E3%82%B7%E3%83%A7%E3%83%B3/radio-ora-news"
+    },
+    {
+      "url": "https://themegaradio.com/ja/station/radio-ora-news-tirana-967-fm",
+      "final": "https://themegaradio.com/ja/%E3%82%B9%E3%83%86%E3%83%BC%E3%82%B7%E3%83%A7%E3%83%B3/radio-ora-news",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ja/station/radio-ora-news-tirana-967-fm",
+          "status": 301,
+          "location": "/ja/%E3%82%B9%E3%83%86%E3%83%BC%E3%82%B7%E3%83%A7%E3%83%B3/radio-ora-news-tirana-967-fm"
+        },
+        {
+          "url": "https://themegaradio.com/ja/%E3%82%B9%E3%83%86%E3%83%BC%E3%82%B7%E3%83%A7%E3%83%B3/radio-ora-news-tirana-967-fm",
+          "status": 301,
+          "location": "/ja/%E3%82%B9%E3%83%86%E3%83%BC%E3%82%B7%E3%83%A7%E3%83%B3/radio-ora-news"
+        },
+        {
+          "url": "https://themegaradio.com/ja/%E3%82%B9%E3%83%86%E3%83%BC%E3%82%B7%E3%83%A7%E3%83%B3/radio-ora-news",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/ja/%E3%82%B9%E3%83%86%E3%83%BC%E3%82%B7%E3%83%A7%E3%83%B3/radio-ora-news"
+    },
+    {
+      "url": "https://themegaradio.com/ko/station/radio-ora-news",
+      "final": "https://themegaradio.com/ko/%EC%8A%A4%ED%85%8C%EC%9D%B4%EC%85%98/radio-ora-news",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ko/station/radio-ora-news",
+          "status": 301,
+          "location": "/ko/%EC%8A%A4%ED%85%8C%EC%9D%B4%EC%85%98/radio-ora-news"
+        },
+        {
+          "url": "https://themegaradio.com/ko/%EC%8A%A4%ED%85%8C%EC%9D%B4%EC%85%98/radio-ora-news",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/ko/%EC%8A%A4%ED%85%8C%EC%9D%B4%EC%85%98/radio-ora-news"
+    },
+    {
+      "url": "https://themegaradio.com/ko/station/radio-ora-news-tirana-96-7-fm",
+      "final": "https://themegaradio.com/ko/%EC%8A%A4%ED%85%8C%EC%9D%B4%EC%85%98/radio-ora-news",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ko/station/radio-ora-news-tirana-96-7-fm",
+          "status": 301,
+          "location": "/ko/%EC%8A%A4%ED%85%8C%EC%9D%B4%EC%85%98/radio-ora-news-tirana-96-7-fm"
+        },
+        {
+          "url": "https://themegaradio.com/ko/%EC%8A%A4%ED%85%8C%EC%9D%B4%EC%85%98/radio-ora-news-tirana-96-7-fm",
+          "status": 301,
+          "location": "/ko/%EC%8A%A4%ED%85%8C%EC%9D%B4%EC%85%98/radio-ora-news"
+        },
+        {
+          "url": "https://themegaradio.com/ko/%EC%8A%A4%ED%85%8C%EC%9D%B4%EC%85%98/radio-ora-news",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/ko/%EC%8A%A4%ED%85%8C%EC%9D%B4%EC%85%98/radio-ora-news"
+    },
+    {
+      "url": "https://themegaradio.com/ko/station/radio-ora-news-tirana-967-fm",
+      "final": "https://themegaradio.com/ko/%EC%8A%A4%ED%85%8C%EC%9D%B4%EC%85%98/radio-ora-news",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ko/station/radio-ora-news-tirana-967-fm",
+          "status": 301,
+          "location": "/ko/%EC%8A%A4%ED%85%8C%EC%9D%B4%EC%85%98/radio-ora-news-tirana-967-fm"
+        },
+        {
+          "url": "https://themegaradio.com/ko/%EC%8A%A4%ED%85%8C%EC%9D%B4%EC%85%98/radio-ora-news-tirana-967-fm",
+          "status": 301,
+          "location": "/ko/%EC%8A%A4%ED%85%8C%EC%9D%B4%EC%85%98/radio-ora-news"
+        },
+        {
+          "url": "https://themegaradio.com/ko/%EC%8A%A4%ED%85%8C%EC%9D%B4%EC%85%98/radio-ora-news",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/ko/%EC%8A%A4%ED%85%8C%EC%9D%B4%EC%85%98/radio-ora-news"
+    },
+    {
+      "url": "https://themegaradio.com/hi/station/radio-ora-news",
+      "final": "https://themegaradio.com/hi/station/radio-ora-news",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/hi/station/radio-ora-news",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/hi/station/radio-ora-news"
+    },
+    {
+      "url": "https://themegaradio.com/hi/station/radio-ora-news-tirana-96-7-fm",
+      "final": "https://themegaradio.com/hi/station/radio-ora-news",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/hi/station/radio-ora-news-tirana-96-7-fm",
+          "status": 301,
+          "location": "/hi/station/radio-ora-news"
+        },
+        {
+          "url": "https://themegaradio.com/hi/station/radio-ora-news",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/hi/station/radio-ora-news"
+    },
+    {
+      "url": "https://themegaradio.com/hi/station/radio-ora-news-tirana-967-fm",
+      "final": "https://themegaradio.com/hi/station/radio-ora-news",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/hi/station/radio-ora-news-tirana-967-fm",
+          "status": 301,
+          "location": "/hi/station/radio-ora-news"
+        },
+        {
+          "url": "https://themegaradio.com/hi/station/radio-ora-news",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/hi/station/radio-ora-news"
+    },
+    {
+      "url": "https://themegaradio.com/he/station/radio-ora-news",
+      "final": "https://themegaradio.com/he/tachana/radio-ora-news",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/he/station/radio-ora-news",
+          "status": 301,
+          "location": "/he/tachana/radio-ora-news"
+        },
+        {
+          "url": "https://themegaradio.com/he/tachana/radio-ora-news",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/he/tachana/radio-ora-news"
+    },
+    {
+      "url": "https://themegaradio.com/he/station/radio-ora-news-tirana-96-7-fm",
+      "final": "https://themegaradio.com/he/tachana/radio-ora-news",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/he/station/radio-ora-news-tirana-96-7-fm",
+          "status": 301,
+          "location": "/he/tachana/radio-ora-news-tirana-96-7-fm"
+        },
+        {
+          "url": "https://themegaradio.com/he/tachana/radio-ora-news-tirana-96-7-fm",
+          "status": 301,
+          "location": "/he/tachana/radio-ora-news"
+        },
+        {
+          "url": "https://themegaradio.com/he/tachana/radio-ora-news",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/he/tachana/radio-ora-news"
+    },
+    {
+      "url": "https://themegaradio.com/he/station/radio-ora-news-tirana-967-fm",
+      "final": "https://themegaradio.com/he/tachana/radio-ora-news",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/he/station/radio-ora-news-tirana-967-fm",
+          "status": 301,
+          "location": "/he/tachana/radio-ora-news-tirana-967-fm"
+        },
+        {
+          "url": "https://themegaradio.com/he/tachana/radio-ora-news-tirana-967-fm",
+          "status": 301,
+          "location": "/he/tachana/radio-ora-news"
+        },
+        {
+          "url": "https://themegaradio.com/he/tachana/radio-ora-news",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/he/tachana/radio-ora-news"
+    }
+  ]
+}

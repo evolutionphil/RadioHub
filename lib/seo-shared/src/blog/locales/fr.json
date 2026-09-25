@@ -1,0 +1,719 @@
+{
+  "ui": {
+    "title": "Guides pour écouter la radio",
+    "description": "Des conseils pratiques pour la radio en ligne, l'écoute sur mobile et la découverte de styles musicaux.",
+    "home": "Accueil",
+    "read": "Lire le guide",
+    "contents": "Dans ce guide",
+    "related": "Guides associés",
+    "sources": "Sources",
+    "questions": "Questions et réponses",
+    "explore": "Commencer à écouter",
+    "author": "Mega Radio",
+    "editorialNote": "Préparé avec l'aide de l'IA. Ces guides donnent des conseils généraux ; ils ne revendiquent aucun test indépendant des stations ni aucune relecture humaine par un expert.",
+    "updated": "Mis à jour",
+    "language": "Langue"
+  },
+  "articles": [
+    {
+      "id": "listen-to-radio-online",
+      "title": "Comment écouter la radio en ligne",
+      "seoTitle": "Comment écouter la radio en ligne",
+      "description": "Trouvez une radio par son nom, son style musical ou sa région et vérifiez les points essentiels lorsqu'un flux ne démarre pas.",
+      "primaryKeyword": "écouter la radio en ligne",
+      "secondaryKeywords": [
+        "radio gratuite en ligne",
+        "stations en direct",
+        "radio dans le navigateur"
+      ],
+      "imageAlt": "Illustration d'un poste de radio accompagné d'un casque",
+      "intro": "Écouter la radio en ligne commence par un choix simple : retrouver une station connue ou découvrir un nouveau programme. Un annuaire peut répondre aux deux envies. Pour chercher efficacement, partez des informations que vous possédez déjà, puis accordez un peu de temps à l'écoute.",
+      "sections": [
+        {
+          "heading": "Choisir le bon point de départ",
+          "paragraphs": [
+            "Si vous connaissez le nom de la station, recherchez-le d'abord et vérifiez sa région. Des noms proches peuvent désigner des radios différentes. Si votre envie concerne surtout la musique, commencez plutôt par le genre. La région aide à trouver des voix, des langues et des programmes locaux, mais ne décrit pas automatiquement le style musical. Combinez ces indices lorsque les premiers résultats ne correspondent pas à votre recherche."
+          ]
+        },
+        {
+          "heading": "Lancer un flux et découvrir le programme",
+          "paragraphs": [
+            "Ouvrez la page de la station et utilisez la commande de lecture. Laissez un instant à la connexion, puis vérifiez le volume du lecteur et de votre appareil. Vous rejoignez un programme en cours : une chanson, une intervention ou une publicité peut avoir déjà commencé. Écoutez au-delà de ce premier passage avant de juger la station. À un autre horaire, une émission spécialisée peut également lui donner une couleur très différente."
+          ]
+        },
+        {
+          "heading": "Comprendre ce que signifie gratuit",
+          "paragraphs": [
+            "Un flux accessible gratuitement peut tout de même consommer des données mobiles facturées selon votre forfait. La station peut aussi diffuser de la publicité dans son programme. Distinguez donc le prix d'accès, le coût de la connexion et le contenu diffusé. Avant une longue écoute hors Wi-Fi, vérifiez votre enveloppe de données. Si un service demande une inscription ou un abonnement, consultez ses conditions particulières sans les généraliser à toutes les radios."
+          ]
+        },
+        {
+          "heading": "Vérifier les causes d'un problème",
+          "paragraphs": [
+            "Si la lecture échoue, ne changez qu'un élément à la fois. Vous pourrez mieux distinguer un problème de flux, de connexion ou de sortie audio. Quand une autre station fonctionne sur le même réseau, essayez à nouveau la première un peu plus tard. Appuyer sans cesse sur lecture n'explique pas la cause."
+          ],
+          "items": [
+            "Vérifiez que l'appareil dispose réellement d'une connexion internet.",
+            "Contrôlez le volume du lecteur, de l'appareil et du casque.",
+            "Essayez une autre station avec la même connexion.",
+            "Vérifiez votre forfait avant de passer du Wi-Fi aux données mobiles."
+          ]
+        }
+      ],
+      "faq": [
+        {
+          "question": "Faut-il installer une application pour écouter ?",
+          "answer": "Une station disposant d'un flux compatible avec le navigateur peut s'écouter depuis sa page. Le comportement dépend aussi de l'appareil : faites un essai court avant une longue session."
+        },
+        {
+          "question": "Pourquoi l'émission ne correspond-elle pas à la description ?",
+          "answer": "La description résume la station. Des journaux, entretiens ou émissions spécialisées peuvent élargir son programme. Essayez un autre horaire ou consultez les informations du diffuseur."
+        }
+      ],
+      "links": [
+        {
+          "route": "search",
+          "label": "Rechercher une station"
+        },
+        {
+          "route": "genres",
+          "label": "Découvrir les genres musicaux"
+        },
+        {
+          "route": "regions",
+          "label": "Choisir une région"
+        }
+      ]
+    },
+    {
+      "id": "internet-radio-explained",
+      "title": "Comprendre la radio internet, la FM et les podcasts",
+      "seoTitle": "Comprendre la radio internet, la FM et les podcasts",
+      "description": "Découvrez les différences entre radio internet, FM, DAB et podcasts, la connexion nécessaire et les limites possibles d'accès aux flux.",
+      "primaryKeyword": "radio internet",
+      "secondaryKeywords": [
+        "radio en ligne expliquée",
+        "radio internet ou FM",
+        "flux radio en direct"
+      ],
+      "imageAlt": "Illustration d'un globe entouré d'ondes radio",
+      "intro": "La radio internet transmet le son d'une station par une connexion internet. Vous choisissez un flux et écoutez le programme proposé à cet instant. Ce mode de diffusion rend la radio accessible sur différents appareils, avec des questions pratiques de connexion, d'horaires et de disponibilité.",
+      "sections": [
+        {
+          "heading": "Rejoindre un programme déjà commencé",
+          "paragraphs": [
+            "Un flux en direct revient généralement à rejoindre une émission en cours. La station choisit l'ordre des chansons, des interventions et des publicités. Sélectionner la radio ne signifie donc pas choisir le morceau suivant ou reprendre l'émission au début. Certains diffuseurs proposent aussi des enregistrements, mais il s'agit d'une autre option. Demandez-vous si vous cherchez un programme qui vous accompagne ou un épisode précis à écouter à votre rythme."
+          ]
+        },
+        {
+          "heading": "Distinguer les modes de réception",
+          "paragraphs": [
+            "Un récepteur FM ou DAB reçoit un signal diffusé grâce à son système de réception radio. Un flux internet arrive par le Wi-Fi, les données mobiles ou une autre connexion internet. Retrouver une même station sur ces supports ne rend pas leurs fonctionnements identiques. Pour une écoute en ligne, vérifiez la connexion que vous utiliserez réellement. Un appareil appelé radio peut prendre en charge plusieurs modes : ses propres caractéristiques permettent de le confirmer."
+          ]
+        },
+        {
+          "heading": "Comprendre les limites de disponibilité",
+          "paragraphs": [
+            "Une station présente dans un annuaire peut interrompre temporairement son flux ou limiter l'écoute à certains territoires. Votre localisation et les choix de distribution du diffuseur peuvent donc jouer sur l'accès. Un flux indisponible ne signifie pas que toute la radio internet est en panne. Comparez une autre station sur le même réseau et consultez les indications du diffuseur. Une fiche ne garantit pas que chaque émission ou événement soit accessible partout."
+          ]
+        },
+        {
+          "heading": "Choisir le format adapté à votre envie",
+          "paragraphs": [
+            "La différence utile concerne votre contrôle sur le déroulement. La radio en direct convient à un programme continu choisi par une station. Un podcast ou un enregistrement convient mieux à un épisode précis. Un essai court aide à vérifier que le format répond à votre attente avant d'organiser une longue écoute."
+          ],
+          "items": [
+            "Choisissez le direct pour suivre le programme actuel de la station.",
+            "Cherchez un enregistrement pour commencer un épisode précis au début.",
+            "Vérifiez votre connexion avant de compter sur un flux en déplacement.",
+            "Prévoyez une autre station si le premier flux est momentanément indisponible."
+          ]
+        }
+      ],
+      "faq": [
+        {
+          "question": "La radio internet fonctionne-t-elle sans internet ?",
+          "answer": "Un flux en ligne nécessite une connexion. Certains appareils disposent aussi d'un récepteur radio distinct, mais cette capacité doit être vérifiée pour le modèle concerné."
+        },
+        {
+          "question": "Un podcast est-il une station en ligne ?",
+          "answer": "Non. Un podcast permet normalement de sélectionner un épisode enregistré. Une station en direct diffuse son programme actuel ; les éventuelles possibilités de réécoute dépendent du diffuseur."
+        }
+      ],
+      "links": [
+        {
+          "route": "home",
+          "label": "Trouver une station en direct"
+        },
+        {
+          "route": "regions",
+          "label": "Explorer les radios par région"
+        },
+        {
+          "route": "genres",
+          "label": "Choisir un genre musical"
+        }
+      ]
+    },
+    {
+      "id": "radio-app-iphone-android",
+      "title": "Écouter la radio sur iPhone et Android",
+      "seoTitle": "Écouter la radio sur iPhone et Android",
+      "description": "Choisissez navigateur ou application pour la radio mobile, puis vérifiez la lecture en arrière-plan, le Bluetooth et la connexion.",
+      "primaryKeyword": "application radio",
+      "secondaryKeywords": [
+        "radio sur iPhone",
+        "radio sur Android",
+        "écouter la radio sur téléphone"
+      ],
+      "imageAlt": "Illustration d'un téléphone mobile accompagné d'un casque",
+      "intro": "Un téléphone facilite l'écoute de la radio à la maison ou en déplacement lorsque le flux, la connexion et la sortie audio fonctionnent ensemble. Choisissez d'abord comment ouvrir vos stations, puis testez les situations importantes pour vous : écran verrouillé, casque et changement de réseau.",
+      "sections": [
+        {
+          "heading": "Choisir entre navigateur et application",
+          "paragraphs": [
+            "Le navigateur est un bon point de départ pour essayer une station depuis sa page. Une application peut mieux correspondre à vos habitudes, mais lisez sa description actuelle et ses conditions d'utilisation avant de l'installer. Ne supposez pas qu'elle propose l'écoute hors connexion, une intégration automobile ou toutes les stations connues. Ces fonctions doivent être confirmées pour le service et l'appareil concernés. Le bon choix répond à votre usage réel."
+          ]
+        },
+        {
+          "heading": "Tester le verrouillage de l'écran",
+          "paragraphs": [
+            "Lancez un flux, assurez-vous d'entendre le son, puis verrouillez brièvement l'écran. Si la lecture s'arrête, rouvrez le navigateur ou l'application et observez si elle reprend. Le fonctionnement en arrière-plan peut dépendre du logiciel et des réglages du téléphone. Consultez les paramètres pertinents de batterie ou d'activité en arrière-plan sans modifier des options sans rapport. Un petit essai à la maison évite de découvrir une limite au milieu d'une promenade."
+          ]
+        },
+        {
+          "heading": "Suivre le trajet du son en Bluetooth",
+          "paragraphs": [
+            "Si le lecteur semble fonctionner sans produire de son, vérifiez la sortie audio choisie. Une enceinte, un casque ou un autre appareil associé peut encore recevoir le signal. Contrôlez le volume du téléphone et celui de l'accessoire. Désactivez brièvement le Bluetooth pour essayer le haut-parleur du téléphone, puis reconnectez l'appareil souhaité. Cette comparaison aide à distinguer un problème d'orientation du son d'un flux qui ne se charge pas."
+          ]
+        },
+        {
+          "heading": "Préparer une session en déplacement",
+          "paragraphs": [
+            "Une connexion stable à la maison ne décrit pas tout un trajet. Tenez compte des changements de réseau et de votre forfait de données. Essayez la station quelques minutes avant une longue session. Faites les ajustements nécessaires à l'arrêt, en gardant un seul changement à la fois pour comprendre son effet."
+          ],
+          "items": [
+            "Ouvrez la station dans le navigateur ou l'application choisis.",
+            "Confirmez que le son sort du casque ou du haut-parleur souhaité.",
+            "Verrouillez puis déverrouillez l'écran pour observer la lecture.",
+            "Contrôlez les données mobiles et comparez un autre flux si les coupures persistent."
+          ]
+        }
+      ],
+      "faq": [
+        {
+          "question": "Toutes les applications radio fonctionnent-elles hors connexion ?",
+          "answer": "Il ne faut pas le supposer. La radio internet en direct demande une connexion. Toute fonction de téléchargement doit être explicitement proposée pour les contenus concernés."
+        },
+        {
+          "question": "Pourquoi le lecteur avance-t-il sans son ?",
+          "answer": "Le son peut être envoyé à un appareil connecté ou un réglage de volume peut être coupé. Vérifiez d'abord la sortie sélectionnée, puis comparez une autre station si nécessaire."
+        }
+      ],
+      "links": [
+        {
+          "route": "applications",
+          "label": "Consulter les informations sur les applications"
+        },
+        {
+          "route": "search",
+          "label": "Trouver une radio pour votre téléphone"
+        },
+        {
+          "route": "home",
+          "label": "Ouvrir l'annuaire radio"
+        }
+      ]
+    },
+    {
+      "id": "radio-data-usage",
+      "title": "Combien de données consomme la radio internet ?",
+      "seoTitle": "Combien de données consomme la radio internet ?",
+      "description": "Estimez les données utilisées selon le débit, comparez 64, 128 et 256 kbps et prévoyez une marge pour les transferts supplémentaires.",
+      "primaryKeyword": "consommation de données radio",
+      "secondaryKeywords": [
+        "radio et données mobiles",
+        "débit radio",
+        "radio qui coupe"
+      ],
+      "imageAlt": "Illustration d'un signal radio accompagné d'une jauge de données",
+      "intro": "La consommation de données dépend notamment du débit du flux et de la durée d'écoute. Un calcul aide à préparer une session, mais ne mesure pas votre facture. Comparez l'estimation avec le compteur de votre appareil et les conditions de votre forfait internet ou mobile.",
+      "sections": [
+        {
+          "heading": "Calculer une estimation par heure",
+          "paragraphs": [
+            "Pour un débit constant, multipliez les kilobits par seconde par 3 600 secondes. Divisez ensuite par huit pour convertir les bits en octets, puis par 1 000 pour obtenir des mégaoctets décimaux. Le raccourci est : débit en kbps × 0,45 = environ Mo par heure. Le résultat décrit les données audio sous cette hypothèse. Il n'inclut pas chaque transfert lié à l'ouverture d'une page, aux reconnexions ou aux autres activités du téléphone."
+          ]
+        },
+        {
+          "heading": "Comparer trois exemples transparents",
+          "paragraphs": [
+            "À 64 kbps, le calcul donne 28,8 Mo pour une heure. À 128 kbps, il donne 57,6 Mo ; à 256 kbps, 115,2 Mo. Deux heures à débit constant de 128 kbps représentent donc 115,2 Mo de données audio. Il s'agit de mégaoctets décimaux et d'exemples calculés, pas de mesures d'une station précise. Les échanges supplémentaires, les variations du débit et le comportement de la connexion peuvent modifier la consommation réelle."
+          ]
+        },
+        {
+          "heading": "Adapter le calcul à votre forfait",
+          "paragraphs": [
+            "Estimez d'abord la durée de votre écoute, puis multipliez-la par la valeur horaire correspondante. Gardez de la place pour les transferts supplémentaires et les autres usages du téléphone. Si la station ne précise pas son débit, ne présentez pas une valeur supposée comme certaine. Une session courte suivie d'un contrôle du compteur peut donner un repère pratique. D'autres transferts pendant la même période peuvent toutefois rendre cette comparaison moins précise."
+          ]
+        },
+        {
+          "heading": "Examiner séparément les interruptions",
+          "paragraphs": [
+            "Les coupures concernent aussi la connexion, même lorsque votre enveloppe de données reste suffisante. Essayez une autre station et vérifiez le réseau utilisé. Une option de débit inférieur peut servir de comparaison uniquement si le diffuseur la propose réellement. Modifier plusieurs éléments ensemble rendrait le résultat plus difficile à interpréter."
+          ],
+          "items": [
+            "Notez le débit lorsqu'il est explicitement indiqué par le diffuseur.",
+            "Estimez la durée et calculez le total en Mo décimaux.",
+            "Prévoyez une marge pour les autres transferts et usages du téléphone.",
+            "Comparez votre estimation au compteur après une session représentative."
+          ]
+        }
+      ],
+      "faq": [
+        {
+          "question": "Écouter en Wi-Fi ne consomme-t-il aucune donnée ?",
+          "answer": "Le Wi-Fi transporte lui aussi des données. Leur éventuel impact sur un quota payant dépend de l'accès internet utilisé et du contrat associé."
+        },
+        {
+          "question": "57,6 Mo est-il un total horaire exact ?",
+          "answer": "Non. C'est le volume audio calculé pour un flux constant de 128 kbps. Les transferts supplémentaires, un débit variable et d'autres activités peuvent changer la mesure réelle."
+        }
+      ],
+      "links": [
+        {
+          "route": "home",
+          "label": "Choisir un flux à essayer"
+        },
+        {
+          "route": "applications",
+          "label": "Découvrir l'écoute mobile"
+        },
+        {
+          "route": "search",
+          "label": "Rechercher une autre station"
+        }
+      ]
+    },
+    {
+      "id": "rock-radio-guide",
+      "title": "Trouver une radio rock à votre goût",
+      "seoTitle": "Trouver une radio rock à votre goût",
+      "description": "Comparez rock classique, alternatif et plus musclé, puis évaluez les stations sur plusieurs morceaux et à différents horaires.",
+      "primaryKeyword": "radio rock",
+      "secondaryKeywords": [
+        "radio rock classique",
+        "radio rock alternatif",
+        "stations hard rock"
+      ],
+      "imageAlt": "Illustration d'une guitare électrique avec des éléments musicaux",
+      "intro": "La radio rock recouvre des sons très variés. Une étiquette ne suffit donc pas toujours à décrire un programme. Plutôt que de chercher une station idéale pour tout le monde, comparez les guitares, les voix, les époques et la présentation qui correspondent à vos envies.",
+      "sections": [
+        {
+          "heading": "Partir du rock que vous aimez",
+          "paragraphs": [
+            "Le rock classique peut guider vers des morceaux plus anciens et familiers, tandis que les descriptions alternatives ou plus musclées indiquent d'autres orientations. Ces termes restent des repères, pas des promesses sur chaque titre. Notez deux ou trois artistes ou caractéristiques que vous souhaitez entendre : riffs marqués, arrangements plus calmes ou découvertes. Vous disposerez ainsi d'un point de comparaison concret lorsque plusieurs descriptions de stations se ressemblent."
+          ]
+        },
+        {
+          "heading": "Écouter une suite de morceaux",
+          "paragraphs": [
+            "Une seule chanson peut être une demande d'auditeur, un choix exceptionnel ou la fin d'une autre émission. Laissez passer plusieurs titres avant de vous décider. Observez les transitions entre classiques connus et découvertes, performances énergiques et plus retenues, musique et interventions. Si votre essai commence pendant une discussion, poursuivez après celle-ci. Vous cherchez à comprendre la logique du programme, qui ne se résume pas au hasard du premier instant d'écoute."
+          ]
+        },
+        {
+          "heading": "Comparer horaires, régions et langues",
+          "paragraphs": [
+            "Une émission spécialisée du soir peut donner à une station une couleur différente de son programme de journée. La région influence aussi les artistes et les références rencontrés. La langue des animateurs joue sur le contexte que vous comprenez. Essayez un autre horaire avant d'écarter une radio. Si votre priorité est de découvrir des groupes plutôt que de reconnaître tous les morceaux, ajoutez une station d'une autre région à votre comparaison."
+          ]
+        },
+        {
+          "heading": "Constituer une petite sélection personnelle",
+          "paragraphs": [
+            "Choisissez quelques candidates aux descriptions distinctes et écoutez-les dans des conditions comparables. Des notes brèves suffisent : une grille compliquée ne rend pas une préférence personnelle plus objective. Vous pouvez garder plusieurs radios pour différentes envies, avec une sélection énergique et une autre davantage tournée vers la variété musicale."
+          ],
+          "items": [
+            "Comparez d'abord une station rock généraliste et une orientation classique.",
+            "Notez la place des artistes connus, des découvertes et des interventions.",
+            "Écoutez plusieurs titres et recommencez à un autre moment.",
+            "Gardez différentes options pour une session énergique ou plus éclectique."
+          ]
+        }
+      ],
+      "faq": [
+        {
+          "question": "Le rock classique désigne-t-il la même sélection partout ?",
+          "answer": "Non. Les stations et les marchés interprètent cette expression différemment. Écoutez les artistes et les émissions proposés plutôt que de supposer une période identique."
+        },
+        {
+          "question": "Une station rock peut-elle diffuser d'autres genres ?",
+          "answer": "Oui. Sa direction principale peut inclure des morceaux voisins, des entretiens ou des émissions spécialisées. Le programme et plusieurs essais donnent une image plus complète que l'étiquette seule."
+        }
+      ],
+      "links": [
+        {
+          "route": "genre:rock",
+          "label": "Explorer les stations rock"
+        },
+        {
+          "route": "genre:classic-rock",
+          "label": "Écouter du rock classique"
+        },
+        {
+          "route": "regions",
+          "label": "Comparer les radios par région"
+        }
+      ]
+    },
+    {
+      "id": "jazz-radio-guide",
+      "title": "Découvrir la radio jazz : acoustique, vocal et smooth",
+      "seoTitle": "Découvrir la radio jazz : acoustique, vocal et smooth",
+      "description": "Partez du jazz acoustique, vocal ou smooth, comparez les émissions et repérez les sons et les présentations que vous aimez écouter.",
+      "primaryKeyword": "radio jazz",
+      "secondaryKeywords": [
+        "radio smooth jazz",
+        "jazz vocal",
+        "jazz acoustique"
+      ],
+      "imageAlt": "Illustration d'un saxophone entouré de lignes musicales fluides",
+      "intro": "La radio jazz peut offrir une voix familière, un ensemble instrumental ou des émissions très différentes au fil de la journée. Le meilleur repère reste ce que vous souhaitez entendre maintenant. Commencez par le son et la présentation, puis laissez une place aux découvertes.",
+      "sections": [
+        {
+          "heading": "Choisir une couleur musicale",
+          "paragraphs": [
+            "Jazz acoustique, vocal et smooth constituent des points de départ utiles, mais chacun couvre un ensemble assez large. Si vous aimez les échanges entre instruments, cherchez des descriptions centrées sur les ensembles ou les performances acoustiques. Si la voix retient votre attention, explorez les programmes vocaux. Pour une couleur contemporaine plus régulière, essayez une description smooth jazz. Écoutez ensuite comment la station interprète ces mots plutôt que d'attendre une frontière stricte."
+          ]
+        },
+        {
+          "heading": "Donner du temps à l'émission",
+          "paragraphs": [
+            "Un court extrait peut manquer ce qui rend un programme intéressant. Écoutez plusieurs morceaux et remarquez les changements d'effectif, d'instrumentation et de rythme. Un animateur peut présenter une séance ou relier deux choix ; ce contexte participe parfois au plaisir d'écoute. Si vous préférez davantage de musique, comparez la place des interventions sur une durée plus longue. Une première introduction ne permet pas de déduire toute la construction de l'émission."
+          ]
+        },
+        {
+          "heading": "Transformer une découverte en indice",
+          "paragraphs": [
+            "Lorsqu'un morceau vous plaît, notez l'artiste ou l'enregistrement si l'information est disponible. À défaut, la page de l'émission peut apporter du contexte, sans garantie de liste complète. Vous n'avez pas besoin d'identifier chaque performance pour préciser vos goûts. Une voix, des cuivres, un piano, un petit groupe ou un grand ensemble sont déjà des indices utiles. Ils peuvent guider votre prochaine recherche et rendre l'exploration moins aléatoire."
+          ]
+        },
+        {
+          "heading": "Comparer dans votre situation d'écoute",
+          "paragraphs": [
+            "Essayez une station dans les circonstances où vous pensez la retrouver : écoute attentive ou musique accompagnant une activité simple. Votre préférence personnelle suffit. Il n'est pas nécessaire d'attribuer à un style des effets particuliers sur la santé ou la concentration pour expliquer pourquoi son programme vous convient."
+          ],
+          "items": [
+            "Sélectionnez deux stations aux descriptions sensiblement différentes.",
+            "Écoutez plusieurs morceaux et notez l'équilibre entre parole et musique.",
+            "Retenez un artiste ou une couleur sonore à retrouver.",
+            "Revenez à un autre horaire pour découvrir le reste du programme."
+          ]
+        }
+      ],
+      "faq": [
+        {
+          "question": "Le smooth jazz désigne-t-il tout le jazz instrumental ?",
+          "answer": "Non. Le jazz instrumental comprend de nombreuses approches. Smooth jazz indique une direction de recherche parmi d'autres ; la sélection réelle de la station reste le meilleur repère."
+        },
+        {
+          "question": "Comment retrouver le titre d'un morceau inconnu ?",
+          "answer": "Consultez les informations de piste ou celles de l'émission lorsqu'elles existent. Leur disponibilité varie. Noter l'heure et le nom du programme peut faciliter votre recherche ultérieure."
+        }
+      ],
+      "links": [
+        {
+          "route": "genre:jazz",
+          "label": "Explorer les stations jazz"
+        },
+        {
+          "route": "search",
+          "label": "Rechercher une radio jazz"
+        },
+        {
+          "route": "regions",
+          "label": "Découvrir le jazz d'autres régions"
+        }
+      ]
+    },
+    {
+      "id": "blues-radio-guide",
+      "title": "Choisir une radio blues : acoustique, électrique, soul",
+      "seoTitle": "Choisir une radio blues : acoustique, électrique, soul",
+      "description": "Comparez blues acoustique et électrique, repérez les passages vers la soul et trouvez des programmes adaptés à vos goûts musicaux.",
+      "primaryKeyword": "radio blues",
+      "secondaryKeywords": [
+        "blues acoustique",
+        "blues électrique",
+        "blues en ligne"
+      ],
+      "imageAlt": "Illustration d'une guitare accompagnée d'un disque vinyle",
+      "intro": "La radio blues peut passer d'une performance acoustique dépouillée à un groupe électrique, puis à la soul ou à des styles voisins. Cette diversité devient plus facile à explorer lorsque vous identifiez ce que vous aimez. Commencez par le son recherché, puis observez le programme.",
+      "sections": [
+        {
+          "heading": "Prendre acoustique et électrique comme indices",
+          "paragraphs": [
+            "Une description acoustique peut vous orienter si vous appréciez la relation entre une voix et un arrangement plus sobre. Le blues électrique conduit vers d'autres sonorités de guitare et de groupe. Ces étiquettes ne définissent pas des frontières absolues ni chaque enregistrement. Écoutez les qualités importantes pour vous : manière de chanter, espace entre les instruments, son de guitare ou énergie de l'ensemble. Même sans connaître les artistes, ces repères permettent une comparaison."
+          ]
+        },
+        {
+          "heading": "Comprendre les passages vers d'autres styles",
+          "paragraphs": [
+            "Certaines émissions associent le blues à la soul, au rock ou à d'autres musiques proches. Cela peut faire partie de leur identité plutôt que signaler un mauvais classement. Demandez-vous si ces transitions correspondent à votre envie du moment. Pour une sélection plus resserrée, comparez une autre station ou cherchez une émission spécialisée clairement décrite. Une radio assez généraliste peut proposer, à certains horaires, un programme particulièrement proche du son que vous recherchez."
+          ]
+        },
+        {
+          "heading": "Suivre l'émission autant que la station",
+          "paragraphs": [
+            "Un genre résume souvent toute une radio, tandis qu'un animateur peut organiser son émission autour d'un artiste, d'une période ou d'un lien musical. Écoutez à différents moments et consultez les informations disponibles. Une première session trop large peut laisser place plus tard à une émission blues ciblée. Notez ensemble le nom du programme et son horaire pour retrouver cette expérience sans recommencer chaque fois votre recherche depuis la liste générale."
+          ]
+        },
+        {
+          "heading": "Construire une comparaison que vous pourrez répéter",
+          "paragraphs": [
+            "Choisissez deux ou trois stations et donnez à chacune le temps de diffuser plusieurs morceaux. Quelques notes sur la sélection valent mieux qu'un classement décidé après une chanson favorite. Votre petite sélection peut comporter une orientation acoustique, une électrique et une radio qui fait découvrir des styles voisins."
+          ],
+          "items": [
+            "Notez si les performances acoustiques ou les groupes électriques dominent.",
+            "Observez la place de la soul, du rock et des autres passages musicaux.",
+            "Comparez la quantité et l'intérêt des présentations entre les morceaux.",
+            "Retrouvez une émission prometteuse à un horaire similaire un autre jour."
+          ]
+        }
+      ],
+      "faq": [
+        {
+          "question": "Une radio blues diffuse-t-elle uniquement du blues ?",
+          "answer": "Pas nécessairement. Des genres voisins et des programmes variés peuvent être présents. Les descriptions aident, mais une écoute prolongée montre plus clairement le mélange proposé."
+        },
+        {
+          "question": "Comment chercher sans connaître de noms d'artistes ?",
+          "answer": "Partez des éléments que vous pouvez décrire : guitare acoustique, groupe électrique ou voix très présente. Comparez ensuite les stations de l'annuaire blues selon ces préférences."
+        }
+      ],
+      "links": [
+        {
+          "route": "genre:blues",
+          "label": "Parcourir les radios blues"
+        },
+        {
+          "route": "genre:rock",
+          "label": "Comparer des programmes rock voisins"
+        },
+        {
+          "route": "genres",
+          "label": "Explorer les autres genres"
+        }
+      ]
+    },
+    {
+      "id": "country-radio-guide",
+      "title": "Trouver une radio country : actuelle, classique, Americana",
+      "seoTitle": "Trouver une radio country : actuelle, classique, Americana",
+      "description": "Explorez country actuelle, classiques et Americana, et distinguez le genre musical du filtre géographique des stations par pays.",
+      "primaryKeyword": "radio country",
+      "secondaryKeywords": [
+        "radio country classique",
+        "country actuelle",
+        "radio Americana"
+      ],
+      "imageAlt": "Illustration d'une guitare acoustique avec des éléments musicaux",
+      "intro": "Une recherche de radio country peut prêter à confusion : en anglais, country désigne aussi un pays. Pour trouver la musique, commencez par le genre. Affinez ensuite selon l'époque, la couleur sonore et la région de la station afin de choisir un programme adapté à vos envies.",
+      "sections": [
+        {
+          "heading": "Séparer le style musical de la géographie",
+          "paragraphs": [
+            "Un filtre par pays ou région classe les stations selon leur localisation ; il ne sélectionne pas la musique country. Dans un même pays, les radios peuvent diffuser des genres très différents. Ouvrez donc d'abord la catégorie musicale, puis utilisez la géographie si des voix locales ou un marché particulier vous intéressent. Cet ordre évite une longue liste de résultats sans rapport et rend votre comparaison suivante plus facile à interpréter."
+          ]
+        },
+        {
+          "heading": "Comparer les sélections actuelles et classiques",
+          "paragraphs": [
+            "Les descriptions de country actuelle peuvent aider lorsque vous cherchez une programmation plus récente. La country classique suggère une autre place accordée aux enregistrements plus anciens. La limite varie toutefois selon la station. Écoutez plusieurs chansons et remarquez les voix connues, les nouveaux artistes, les arrangements et les interventions. Un programme peut réunir plusieurs époques. Utilisez l'étiquette pour choisir une première candidate, sans en faire une promesse de liste rigide."
+          ]
+        },
+        {
+          "heading": "Explorer les liens avec l'Americana",
+          "paragraphs": [
+            "Americana peut conduire vers des émissions où la country rencontre d'autres traditions musicales proches. Le terme reste large et les diffuseurs l'interprètent différemment. Si une station vous semble trop lisse ou trop étroite, cherchez des arrangements plus variés et des styles voisins. L'objectif est de trouver des liens musicaux intéressants, pas de résoudre une définition avant d'écouter. Notez surtout les voix, les instruments et les transitions que vous aimeriez retrouver."
+          ]
+        },
+        {
+          "heading": "Évaluer une vraie session d'écoute",
+          "paragraphs": [
+            "Une chanson favorite donne envie de rester, mais ne décrit pas l'ensemble du format. Comparez plusieurs titres, observez la place des paroles et revenez à une autre heure. Vous pouvez conserver des stations distinctes pour une sélection familière de classiques et pour une émission davantage tournée vers la découverte."
+          ],
+          "items": [
+            "Choisissez le genre musical avant d'appliquer un filtre géographique.",
+            "Comparez une orientation actuelle et une programmation plutôt classique.",
+            "Notez si le programme reste dans la country ou explore des styles voisins.",
+            "Faites une deuxième session avant de choisir votre radio habituelle."
+          ]
+        }
+      ],
+      "faq": [
+        {
+          "question": "Choisir un pays sélectionne-t-il automatiquement la country ?",
+          "answer": "Non. Le filtre géographique correspond à la localisation d'une station. Utilisez le genre country pour la musique, puis affinez par région si cela vous est utile."
+        },
+        {
+          "question": "Country classique et Americana sont-elles interchangeables ?",
+          "answer": "Non. Ce sont des descriptions différentes, même si certains enregistrements peuvent figurer dans les deux types de programme. Comparez les choix réels plutôt que d'attendre des sélections identiques."
+        }
+      ],
+      "links": [
+        {
+          "route": "genre:country",
+          "label": "Découvrir les radios country"
+        },
+        {
+          "route": "regions",
+          "label": "Parcourir les régions"
+        },
+        {
+          "route": "genres",
+          "label": "Comparer les genres musicaux"
+        }
+      ]
+    },
+    {
+      "id": "news-talk-radio-guide",
+      "title": "Écouter les radios d'actualité et de débat avec contexte",
+      "seoTitle": "Écouter les radios d'actualité et de débat avec contexte",
+      "description": "Distinguez information et commentaire, vérifiez dates et fuseaux horaires et comparez les sources des radios d'actualité et de débat.",
+      "primaryKeyword": "radio d'actualité",
+      "secondaryKeywords": [
+        "radio de débat",
+        "informations radio en direct",
+        "sources des informations"
+      ],
+      "imageAlt": "Illustration d'un microphone de studio avec des éléments de parole",
+      "intro": "Les radios d'actualité et de débat permettent de suivre des événements, d'écouter des entretiens et de rencontrer des arguments variés. Une bonne habitude consiste aussi à vérifier le type d'émission, sa date et l'origine de ses informations. Le direct ne dispense pas de contexte.",
+      "sections": [
+        {
+          "heading": "Identifier reportage, entretien et commentaire",
+          "paragraphs": [
+            "Un journal, une interview et une émission d'opinion répondent à des objectifs différents. Écoutez si la personne rapporte un événement confirmé, interroge un invité ou défend une interprétation. La déclaration d'un invité n'est pas automatiquement une conclusion vérifiée par la station. Si le format reste ambigu, consultez la présentation de l'émission avant de reprendre l'affirmation. Savoir qui parle et à quel titre aide à distinguer information, expérience personnelle et jugement."
+          ]
+        },
+        {
+          "heading": "Vérifier le temps derrière le direct",
+          "paragraphs": [
+            "Une station peut diffuser en continu des enregistrements, des rediffusions ou des entretiens plus anciens. Soyez attentif aux dates et aux références à l'heure locale, puis comparez-les avec votre lieu d'écoute. Une matinale n'arrive pas forcément pendant votre matinée. Pour une actualité en évolution, vérifiez aussi l'heure de publication d'une page associée. Une mise à jour ancienne ne doit pas devenir votre représentation actuelle de la situation."
+          ]
+        },
+        {
+          "heading": "Remonter aux sources des affirmations importantes",
+          "paragraphs": [
+            "Lorsqu'un sujet influence une décision, cherchez si possible la déclaration originale, le document ou une source identifiée. Comparez avec un autre média en repérant les faits communs et les interprétations différentes. Une intervention d'auditeur révèle son avis, mais ne mesure pas la diffusion de cet avis dans la population. Conservez l'incertitude d'une affirmation non confirmée : une expression assurée ne remplace pas les éléments qui permettraient de la vérifier."
+          ]
+        },
+        {
+          "heading": "Choisir la station selon votre besoin",
+          "paragraphs": [
+            "Information locale, longs entretiens et conversations générales correspondent à des usages différents. Essayez le programme avant de vous fier à son intitulé. La disponibilité des événements sportifs et des informations urgentes dépend aussi du diffuseur et de ses modalités de distribution ; un annuaire ne garantit pas ces services."
+          ],
+          "items": [
+            "Vérifiez le format et l'identité ou le rôle des intervenants.",
+            "Notez la date, l'heure locale et les indices de rediffusion.",
+            "Comparez les affirmations importantes avec une autre source ou le document original.",
+            "Consultez les canaux officiels locaux pour des consignes pratiques urgentes."
+          ]
+        }
+      ],
+      "faq": [
+        {
+          "question": "Un flux en direct contient-il toujours des reportages en direct ?",
+          "answer": "Non. Un flux continu peut comprendre des émissions enregistrées et des rediffusions. Vérifiez la date et le contexte du passage lorsque sa fraîcheur compte."
+        },
+        {
+          "question": "Tous les événements sportifs et toutes les alertes sont-ils accessibles ?",
+          "answer": "Non. Cela dépend du diffuseur et des accords applicables. Consultez ses informations actuelles et utilisez les canaux officiels pour les consignes locales urgentes."
+        }
+      ],
+      "links": [
+        {
+          "route": "genre:news",
+          "label": "Trouver des radios d'actualité"
+        },
+        {
+          "route": "genre:talk",
+          "label": "Explorer les radios de débat"
+        },
+        {
+          "route": "regions",
+          "label": "Choisir des stations par région"
+        }
+      ]
+    },
+    {
+      "id": "80s-90s-radio-guide",
+      "title": "Choisir une radio des années 80 et 90",
+      "seoTitle": "Choisir une radio des années 80 et 90",
+      "description": "Comparez les radios des années 80 et 90 par style, région et présentation, et découvrez pourquoi leurs sélections rétro diffèrent.",
+      "primaryKeyword": "radio années 80",
+      "secondaryKeywords": [
+        "radio années 90",
+        "radio rétro",
+        "stations par décennie"
+      ],
+      "imageAlt": "Illustration d'une cassette audio avec des éléments musicaux rétro",
+      "intro": "Une décennie précise votre recherche radio sans décrire toutes les chansons à venir. Les années 80 et 90 regroupent des genres et des souvenirs musicaux régionaux très variés. Partez de la période, puis comparez les styles et les régions qui donnent à une station sa personnalité.",
+      "sections": [
+        {
+          "heading": "Choisir une époque et une direction musicale",
+          "paragraphs": [
+            "Décidez si vous cherchez surtout les années 80, les années 90 ou un mélange. Pensez ensuite au son : guitares, morceaux dansants, pop ou autre préférence. Deux stations portant la même décennie dans leur description peuvent explorer des parties très différentes de cette période. Quelques noms d'artistes ou caractéristiques de chansons mémorisées suffisent pour préciser votre envie. Il n'est pas nécessaire d'établir une liste complète avant de commencer l'écoute."
+          ]
+        },
+        {
+          "heading": "Comprendre les variations du répertoire rétro",
+          "paragraphs": [
+            "Rétro et oldies sont des descriptions souples, pas une sélection mondiale de dates ou de titres. Le public visé et l'histoire musicale d'une région influencent les choix du diffuseur. Une station étrangère peut présenter des morceaux que vous entendiez rarement à leur sortie. Pour retrouver des souvenirs, commencez par une région familière. Pour découvrir, comparez une même décennie dans plusieurs régions et remarquez les différences de langue, d'artistes et de styles."
+          ]
+        },
+        {
+          "heading": "Écouter au-delà du premier succès connu",
+          "paragraphs": [
+            "Reconnaître immédiatement une chanson crée une forte impression, mais une session plus longue révèle les choix habituels. La station reste-t-elle dans un petit ensemble de succès, explore-t-elle des titres moins évidents ou ajoute-t-elle des décennies voisines ? Les interventions et les émissions spécialisées comptent également. Si votre essai commence au milieu d'un programme thématique, revenez plus tard : ce moment particulier ne représente pas forcément toute la grille."
+          ]
+        },
+        {
+          "heading": "Garder plusieurs options pour différentes envies",
+          "paragraphs": [
+            "Vous n'avez pas besoin d'une seule radio définitive pour une décennie. Conservez une option familière et une autre pour les découvertes ou un style différent. Accordez des durées comparables aux candidates afin qu'une chanson particulièrement appréciée ne détermine pas, à elle seule, votre jugement sur l'ensemble."
+          ],
+          "items": [
+            "Choisissez les années 80 ou 90 et écoutez plusieurs morceaux.",
+            "Notez les genres, la langue et la part de titres connus ou nouveaux pour vous.",
+            "Vérifiez la présence de décennies voisines et votre préférence pour ce mélange.",
+            "Comparez une station d'une autre région avant de fixer votre sélection."
+          ]
+        }
+      ],
+      "faq": [
+        {
+          "question": "Une radio années 80 ne joue-t-elle que cette décennie ?",
+          "answer": "Pas nécessairement. Des années voisines, thèmes associés et émissions spéciales peuvent apparaître. La description et une écoute prolongée permettent de comprendre le mélange réel."
+        },
+        {
+          "question": "Pourquoi deux radios rétro sonnent-elles si différemment ?",
+          "answer": "Elles peuvent viser d'autres périodes, publics ou souvenirs régionaux. Le terme rétro donne une direction générale ; le programme apporte les détails."
+        }
+      ],
+      "links": [
+        {
+          "route": "genre:80s",
+          "label": "Écouter les radios des années 80"
+        },
+        {
+          "route": "genre:90s",
+          "label": "Découvrir les radios des années 90"
+        },
+        {
+          "route": "regions",
+          "label": "Comparer les décennies par région"
+        }
+      ]
+    }
+  ]
+}

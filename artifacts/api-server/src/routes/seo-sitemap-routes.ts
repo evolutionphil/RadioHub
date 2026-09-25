@@ -1,5 +1,7 @@
 import type { Express, Request, Response } from "express";
 import crypto from 'crypto';
+import { buildBlogSitemap } from '../seo/blog-sitemap';
+import { BLOG_UPDATED } from '@workspace/seo-shared/blog-manifest';
 import { pgReportStationDebugLog, pgListStationDebugLogs } from '../data/postgres-station-debug-store';
 import { pgActiveManifests, pgSeoGenres, pgTouchSitemapStations, pgSitemapStationDiagnostics, pgSitemapStationBatch, SITEMAP_STATION_READ_BATCH_SIZE } from '../data/postgres-seo-indexing-store';
 import { markSeoTemporarilyUnavailable } from '../seo/temporary-unavailable';
@@ -1225,7 +1227,8 @@ Allow: /
 # re-discover them as separate submitted sitemaps, which surface as
 # confusing "0 discovered URLs" index rows in Search Console. One entry
 # point keeps the Sitemaps report clean. (2026-07-01)
-Sitemap: ${baseUrl}/sitemap-index.xml`;
+Sitemap: ${baseUrl}/sitemap-index.xml
+Sitemap: ${baseUrl}/sitemap-blog.xml`;
 
     res.setHeader('Content-Type', 'text/plain');
     res.setHeader('Cache-Control', 'public, max-age=86400');
@@ -1243,6 +1246,11 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
   // same source of truth. Sitemap uses the shared helper below.
 
   // Language-specific main sitemap route — manifest-driven (refactored 2026-04-30)
+  const blogSitemap = cacheSitemapXml(buildBlogSitemap());
+  app.get('/sitemap-blog.xml', (req, res) => {
+    sendSitemapXml(req, res, blogSitemap, 'public, max-age=600, s-maxage=600', new Date(BLOG_UPDATED));
+  });
+
   app.get("/sitemap-main-:lang.xml", async (req, res) => {
     const startTime = Date.now();
     const lang = req.params.lang;
@@ -1756,6 +1764,8 @@ ${buildHreflangLinks(altLang, baseUrl + altPath).slice(1)}`);
   </sitemap>`);
       };
 
+      emitEntry(`${baseUrl}/sitemap-blog.xml`, BLOG_UPDATED);
+
       // 1. Main sitemaps (one per qualified lang, only if manifest exists)
       for (const lang of qualifiedLanguages) {
         const m = manifestByKey.get(`main:${lang}`);
@@ -1782,7 +1792,7 @@ ${buildHreflangLinks(altLang, baseUrl + altPath).slice(1)}`);
       // the index. Skip-and-warn instead so the index stays consistent with
       // what the per-chunk route can actually serve.
       let totalChildSitemaps = 0;
-      let indexMaxLastmod: Date | null = null;
+      let indexMaxLastmod: Date | null = new Date(BLOG_UPDATED);
       for (const lang of qualifiedLanguages) {
         const m = manifestByKey.get(`stations:${lang}`);
         if (!m || !Array.isArray(m.chunks) || m.chunks.length === 0) continue;

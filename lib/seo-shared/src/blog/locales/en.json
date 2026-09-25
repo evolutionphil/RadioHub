@@ -1,0 +1,719 @@
+{
+  "ui": {
+    "title": "Radio listening guides",
+    "description": "Practical guides to online radio, mobile listening and discovering music by genre.",
+    "home": "Home",
+    "read": "Read guide",
+    "contents": "In this guide",
+    "related": "Related guides",
+    "sources": "Sources",
+    "questions": "Questions and answers",
+    "explore": "Start listening",
+    "author": "Mega Radio",
+    "editorialNote": "Prepared with AI assistance. These guides provide general listening advice; no independent station testing or human expert review is claimed.",
+    "updated": "Updated",
+    "language": "Language"
+  },
+  "articles": [
+    {
+      "id": "listen-to-radio-online",
+      "title": "How to listen to radio online",
+      "seoTitle": "How to listen to radio online",
+      "description": "Find online radio by station name, music genre or country, start a stream and check simple causes when listening does not work.",
+      "primaryKeyword": "listen to radio online",
+      "secondaryKeywords": [
+        "free online radio",
+        "live radio stations",
+        "radio listening"
+      ],
+      "imageAlt": "Illustration of a radio receiver beside headphones",
+      "intro": "Listening to radio online starts with a simple choice: a familiar station or something new. A station directory can help with both, but a useful search depends on what you already know. This guide takes you from that first choice to a working stream.",
+      "sections": [
+        {
+          "heading": "Choose a useful starting point",
+          "paragraphs": [
+            "If you know the station name, search for it first and check its country or region before pressing play. Similar names can belong to different broadcasters. If you only know the music you want, browse by genre instead. A region filter is helpful for local voices, languages and programmes, but it does not describe a station's musical style. Combine these clues when the first result feels wrong."
+          ]
+        },
+        {
+          "heading": "Start one stream and listen",
+          "paragraphs": [
+            "Open the station page and use its listening control. Give the connection a moment to establish, then check the volume on the player and your device. Listen beyond an introduction or advertisement before judging the programme. Online radio follows the broadcaster's schedule, so you might join a song halfway through. A different show later in the day may give the same station a very different character."
+          ]
+        },
+        {
+          "heading": "Understand what free listening means",
+          "paragraphs": [
+            "A freely accessible stream can still use paid mobile data. The broadcaster may also include advertising within its programme. These are separate questions: whether access requires payment, whether your connection costs money, and what the station broadcasts. Check your own network allowance before a long session away from Wi-Fi. If you find a subscription or registration request, read that service's terms rather than assuming every station works alike."
+          ]
+        },
+        {
+          "heading": "Work through a short listening check",
+          "paragraphs": [
+            "When playback fails, change one thing at a time. That makes it easier to tell whether the problem belongs to the stream, your device or the connection. Repeatedly tapping play can obscure what is happening. If another station works, return to the original stream later."
+          ],
+          "items": [
+            "Confirm that your device has an active internet connection.",
+            "Check player volume, device volume and the selected audio output.",
+            "Try another station to compare the result on the same connection.",
+            "Switch between Wi-Fi and mobile data only after checking your allowance."
+          ]
+        }
+      ],
+      "faq": [
+        {
+          "question": "Can I listen without installing an app?",
+          "answer": "A station with a working browser stream can be played from its web page. Browser and device behaviour can vary; test a short session before relying on it for a long journey."
+        },
+        {
+          "question": "Why does the programme differ from the station description?",
+          "answer": "Descriptions summarise a station, while schedules can include news, interviews and specialist shows. Listen at another time or check the broadcaster's programme information."
+        }
+      ],
+      "links": [
+        {
+          "route": "search",
+          "label": "Search for a station"
+        },
+        {
+          "route": "genres",
+          "label": "Explore music genres"
+        },
+        {
+          "route": "regions",
+          "label": "Browse stations by region"
+        }
+      ]
+    },
+    {
+      "id": "internet-radio-explained",
+      "title": "Internet radio explained: streams, FM and podcasts",
+      "seoTitle": "Internet radio explained: streams, FM and podcasts",
+      "description": "Understand how internet radio differs from FM, DAB and podcasts, what connection you need and why some streams may be unavailable.",
+      "primaryKeyword": "internet radio",
+      "secondaryKeywords": [
+        "online radio explained",
+        "internet radio vs FM",
+        "live radio streams"
+      ],
+      "imageAlt": "Illustration of a globe surrounded by radio signal arcs",
+      "intro": "Internet radio carries a station's audio over an internet connection. You choose a stream and hear the programme as the broadcaster sends it. That makes familiar radio available through different devices, while introducing practical questions about connectivity, schedules and access.",
+      "sections": [
+        {
+          "heading": "A stream follows a running programme",
+          "paragraphs": [
+            "Think of a live stream as joining a programme already in progress. You generally hear the station's current selection of music, speech and advertising. Choosing the station does not mean choosing the next song or starting a show from its beginning. Some broadcasters offer separate recordings, but those are a different listening option. Before selecting a stream, decide whether you want live company or a particular episode on demand."
+          ]
+        },
+        {
+          "heading": "FM, DAB and internet use different paths",
+          "paragraphs": [
+            "An FM or DAB receiver gets a broadcast signal through its radio reception system. An internet stream reaches you through Wi-Fi, mobile data or another internet connection. Finding the same station in both places does not make those delivery methods identical. For an online session, check the connection you will actually use. A device described as a radio may support one or several methods, so consult its own information."
+          ]
+        },
+        {
+          "heading": "Availability depends on the stream",
+          "paragraphs": [
+            "A station listed in a directory may temporarily stop streaming or restrict listening in certain territories. Your physical location and the broadcaster's distribution choices can therefore affect access. An unavailable stream is not proof that all internet radio is broken. Compare another station on the same connection and look for the broadcaster's access information. Avoid assuming that a listing guarantees every show or event can be heard everywhere."
+          ]
+        },
+        {
+          "heading": "Choose the format that fits your session",
+          "paragraphs": [
+            "The useful distinction is control. Live radio works well when you want a continuing programme chosen by a broadcaster. A podcast or other recording is more suitable when you want a specific episode. Use a short trial to check whether the format matches your expectations."
+          ],
+          "items": [
+            "Choose live radio for the station's current programme and running schedule.",
+            "Choose an on-demand recording when you need to start a particular episode.",
+            "Check internet access before relying on a stream away from home.",
+            "Keep another station in mind if the first stream is temporarily unavailable."
+          ]
+        }
+      ],
+      "faq": [
+        {
+          "question": "Does internet radio work without the internet?",
+          "answer": "An online stream requires an internet connection. A device may also have a separate broadcast receiver, but that capability must be checked for the particular device."
+        },
+        {
+          "question": "Is a podcast the same as an online station?",
+          "answer": "No. A podcast normally lets you select a recorded episode. A live station presents its current programme; any separate catch-up offering depends on the broadcaster."
+        }
+      ],
+      "links": [
+        {
+          "route": "home",
+          "label": "Find a live station"
+        },
+        {
+          "route": "regions",
+          "label": "Explore radio by region"
+        },
+        {
+          "route": "genres",
+          "label": "Choose a listening genre"
+        }
+      ]
+    },
+    {
+      "id": "radio-app-iphone-android",
+      "title": "Listening to radio on iPhone and Android",
+      "seoTitle": "Listening to radio on iPhone and Android",
+      "description": "Choose between a browser and an app for phone listening, then check background playback, Bluetooth audio and connection problems.",
+      "primaryKeyword": "radio app",
+      "secondaryKeywords": [
+        "radio on iPhone",
+        "radio on Android",
+        "mobile radio listening"
+      ],
+      "imageAlt": "Illustration of a mobile phone beside headphones",
+      "intro": "A phone can make radio convenient at home and while travelling, provided the stream, connection and audio output work together. Start by deciding how you want to open stations, then test the situations that matter to you: a locked screen, headphones or a change of network.",
+      "sections": [
+        {
+          "heading": "Choose a browser or an app deliberately",
+          "paragraphs": [
+            "A browser is a useful starting point when you want to try a station through its page. An app may suit your usual listening routine, but compare its actual description and current requirements before installing it. Do not assume an app includes offline listening, vehicle integration or every station you know. Those features need explicit confirmation for the particular service and device. The right choice is the one that supports your everyday session."
+          ]
+        },
+        {
+          "heading": "Test what happens when the screen locks",
+          "paragraphs": [
+            "Start a stream, confirm that you can hear it, then lock the screen briefly. If playback stops, reopen the browser or app and note whether the stream resumes. Background behaviour can depend on the software and device settings. Check relevant battery or background-activity settings without changing unrelated controls. A short test at home gives you more useful information than discovering the limitation halfway through a walk."
+          ]
+        },
+        {
+          "heading": "Follow the sound through Bluetooth",
+          "paragraphs": [
+            "If the player appears active but you hear nothing, check where the phone is sending audio. A paired speaker, headphones or another connected device may be the selected output. Check volume on both the phone and the listening device. Disconnect Bluetooth briefly to test the phone's own speaker, then reconnect the intended accessory. This helps separate an audio-routing problem from a stream that is not loading."
+          ]
+        },
+        {
+          "heading": "Prepare for a mobile listening session",
+          "paragraphs": [
+            "A working home connection does not tell you how a stream will behave throughout a journey. Plan for connection changes and check your data allowance. Test one station for a few minutes before committing to a long session, and make changes while stationary."
+          ],
+          "items": [
+            "Open the station using your preferred browser or installed app.",
+            "Confirm the intended speaker or headphones are receiving the sound.",
+            "Lock and unlock the screen to check whether playback continues.",
+            "Check mobile-data use and try another stream if buffering persists."
+          ]
+        }
+      ],
+      "faq": [
+        {
+          "question": "Can every radio app play offline?",
+          "answer": "Do not assume so. Live internet radio needs a connection. Any download or offline feature must be explicitly offered by the particular app for eligible content."
+        },
+        {
+          "question": "Why is playback silent while the timer moves?",
+          "answer": "The audio may be directed to a connected device, or one volume control may be muted. Check the selected output first, then compare another station if necessary."
+        }
+      ],
+      "links": [
+        {
+          "route": "applications",
+          "label": "View application information"
+        },
+        {
+          "route": "search",
+          "label": "Find a station for your phone"
+        },
+        {
+          "route": "home",
+          "label": "Open the radio directory"
+        }
+      ]
+    },
+    {
+      "id": "radio-data-usage",
+      "title": "How much data does internet radio use?",
+      "seoTitle": "How much data does internet radio use?",
+      "description": "Estimate radio data use from bitrate, compare 64, 128 and 256 kbps examples, and account for overhead when planning mobile listening.",
+      "primaryKeyword": "radio data usage",
+      "secondaryKeywords": [
+        "radio mobile data",
+        "radio bitrate",
+        "radio buffering"
+      ],
+      "imageAlt": "Illustration of a radio signal beside a data meter",
+      "intro": "Internet radio data use depends partly on the stream's bitrate and how long you listen. A calculation is useful for planning, but it is not a measurement of your phone bill. Use the estimate below alongside your device's data counter and your network provider's allowance.",
+      "sections": [
+        {
+          "heading": "Calculate an hourly estimate",
+          "paragraphs": [
+            "For a constant bitrate, multiply kilobits per second by 3,600 seconds, then divide by eight to convert bits to bytes and by 1,000 for decimal megabytes. The shortcut is bitrate in kbps × 0.45 = approximate MB per hour. This describes the audio payload under the stated assumption. It does not include every transfer associated with loading a page, reconnecting a stream or using the rest of your device."
+          ]
+        },
+        {
+          "heading": "Compare three transparent examples",
+          "paragraphs": [
+            "At 64 kbps, the calculation gives 28.8 MB for one hour. At 128 kbps, it gives 57.6 MB; at 256 kbps, 115.2 MB. Two hours at a constant 128 kbps therefore represent 115.2 MB of audio payload. These are decimal MB estimates, not measured results for a named station. Actual traffic can differ because of overhead, bitrate changes and how the player or connection behaves."
+          ]
+        },
+        {
+          "heading": "Make the estimate useful for your allowance",
+          "paragraphs": [
+            "First decide the likely listening duration, then multiply the hourly estimate by that number of hours. Leave room for overhead and other phone activity. If the station does not state a bitrate, avoid presenting a guessed value as fact. A short session checked against your device's usage information can provide practical context, although other traffic during the same period can make that comparison less precise."
+          ]
+        },
+        {
+          "heading": "Separate buffering from data planning",
+          "paragraphs": [
+            "Interruptions are a connection question as well as a data question. A stream can buffer even when your allowance has plenty left. Compare another station, check the current connection and look for a lower-bitrate option only if the broadcaster actually offers one."
+          ],
+          "items": [
+            "Record the bitrate if the player or broadcaster explicitly provides it.",
+            "Estimate the session length and calculate a decimal MB total.",
+            "Allow additional data for overhead and unrelated network activity.",
+            "Compare estimates with your device counter after a representative session."
+          ]
+        }
+      ],
+      "faq": [
+        {
+          "question": "Does listening over Wi-Fi use no data?",
+          "answer": "It still transfers data through the Wi-Fi connection. Whether that affects a charged allowance depends on the internet service and your plan."
+        },
+        {
+          "question": "Is 57.6 MB an exact hourly charge?",
+          "answer": "No. It is the calculated audio payload for a constant 128 kbps stream. Overhead, variable bitrate and other traffic mean actual recorded use can differ."
+        }
+      ],
+      "links": [
+        {
+          "route": "home",
+          "label": "Choose a stream to try"
+        },
+        {
+          "route": "applications",
+          "label": "Explore mobile listening"
+        },
+        {
+          "route": "search",
+          "label": "Search for another station"
+        }
+      ]
+    },
+    {
+      "id": "rock-radio-guide",
+      "title": "Find rock radio that matches your taste",
+      "seoTitle": "Find rock radio that matches your taste",
+      "description": "Compare classic, alternative and harder rock programming, then judge stations across several tracks and different times of day.",
+      "primaryKeyword": "rock radio",
+      "secondaryKeywords": [
+        "classic rock radio",
+        "alternative rock radio",
+        "hard rock stations"
+      ],
+      "imageAlt": "Illustration of an electric guitar with musical accents",
+      "intro": "Rock radio covers a wide range of sounds, and a single genre label rarely tells the whole story. Instead of looking for a universal best station, build a small listening comparison around the guitars, voices, eras and programme style you actually enjoy.",
+      "sections": [
+        {
+          "heading": "Start with the part of rock you like",
+          "paragraphs": [
+            "Classic rock can be a useful route toward older familiar guitar music, while alternative and harder rock labels point toward different selections. These terms are guides, not fixed promises about every track. Write down two or three artists or song qualities you want to hear, such as prominent riffs, quieter arrangements or less familiar releases. That gives you a practical reference when station descriptions sound similar."
+          ]
+        },
+        {
+          "heading": "Listen across a sequence of tracks",
+          "paragraphs": [
+            "One song may be a request, a special feature or the end of a different programme. Give a station several tracks before deciding whether it fits. Notice how it moves between familiar songs and discoveries, loud and restrained performances, and music and presenter speech. If a spoken segment interrupts your first sample, return after it finishes. You are assessing the pattern of a programme, not the luck of one starting moment."
+          ]
+        },
+        {
+          "heading": "Compare schedule, region and language",
+          "paragraphs": [
+            "A rock station may sound different during a specialist evening show than during daytime programming. Region also affects the artists and musical references you encounter, while presenter language can change how much context you receive. Try the same station at another time before dismissing it. If discovering bands matters more than recognising every song, include a station from a different region in your comparison."
+          ]
+        },
+        {
+          "heading": "Build a listening shortlist",
+          "paragraphs": [
+            "Choose a few candidates with distinct descriptions, then sample them under similar conditions. A simple note is enough; elaborate scores can hide the personal nature of the decision. Keep the stations that serve different listening moods instead of forcing one to do everything."
+          ],
+          "items": [
+            "Start with one broad rock station and one classic-rock option.",
+            "Note the balance of familiar artists, discoveries and presenter speech.",
+            "Listen to several tracks and repeat the check at another time.",
+            "Keep separate choices for energetic listening and a more varied programme."
+          ]
+        }
+      ],
+      "faq": [
+        {
+          "question": "Does classic rock mean the same playlist everywhere?",
+          "answer": "No. Stations and markets interpret the label differently. Check the actual programme and artist mix rather than assuming an identical era or selection."
+        },
+        {
+          "question": "Can a rock station include other genres?",
+          "answer": "Yes. A station's main identity can coexist with crossover tracks, interviews and specialist shows. Its schedule and several listening samples give a fuller picture than the genre label alone."
+        }
+      ],
+      "links": [
+        {
+          "route": "genre:rock",
+          "label": "Explore rock stations"
+        },
+        {
+          "route": "genre:classic-rock",
+          "label": "Listen to classic rock"
+        },
+        {
+          "route": "regions",
+          "label": "Compare stations by region"
+        }
+      ]
+    },
+    {
+      "id": "jazz-radio-guide",
+      "title": "Explore jazz radio: acoustic, vocal and smooth",
+      "seoTitle": "Explore jazz radio: acoustic, vocal and smooth",
+      "description": "Use acoustic, vocal and smooth jazz as starting points, compare programme styles, and discover stations through attentive listening.",
+      "primaryKeyword": "jazz radio",
+      "secondaryKeywords": [
+        "smooth jazz radio",
+        "vocal jazz radio",
+        "acoustic jazz"
+      ],
+      "imageAlt": "Illustration of a saxophone with flowing musical lines",
+      "intro": "Jazz radio can offer a familiar voice, an instrumental ensemble or a programme that moves between very different traditions. The most useful station is the one that matches what you want to hear today. Begin with sound and presentation, then leave room for discoveries.",
+      "sections": [
+        {
+          "heading": "Choose a sound before choosing a station",
+          "paragraphs": [
+            "Acoustic, vocal and smooth jazz are useful browsing clues, but each covers a broad range. If you enjoy instrumental interaction, start with descriptions focused on ensembles or acoustic performances. If the singer draws your attention, look for vocal programming. If you want a more consistent contemporary sound, sample smooth-jazz descriptions. Treat all three as starting points and let the actual programme show how the station interprets them."
+          ]
+        },
+        {
+          "heading": "Give a programme enough time",
+          "paragraphs": [
+            "A short excerpt can miss what makes a jazz programme interesting. Listen across several pieces and notice changes in ensemble size, instrumentation and pace. A presenter may explain a recording or connect it with another selection; that context can be part of the appeal. If you prefer uninterrupted music, compare the proportion of speech across a longer sample rather than judging from the first introduction you hear."
+          ]
+        },
+        {
+          "heading": "Turn unfamiliar music into a useful clue",
+          "paragraphs": [
+            "When something catches your ear, note the artist or recording information if it is available. If no track details appear, the broadcaster's programme page may offer more context, but coverage varies. You do not need to identify every performance to refine your taste. Describing what you heard—voice, brass, piano, small group or larger ensemble—can still guide your next station search and make exploration feel less random."
+          ]
+        },
+        {
+          "heading": "Compare listening settings honestly",
+          "paragraphs": [
+            "Try a station during the kind of session you expect to repeat, whether that is attentive listening or music alongside a routine task. Personal preference is enough; there is no need to claim that one jazz style has a special effect on health or concentration."
+          ],
+          "items": [
+            "Choose two stations with clearly different programme descriptions.",
+            "Listen through several pieces and note the balance of speech and music.",
+            "Record one sound or performer you would like to hear again.",
+            "Return at another time to check whether the station's wider schedule fits."
+          ]
+        }
+      ],
+      "faq": [
+        {
+          "question": "Is smooth jazz the same as all instrumental jazz?",
+          "answer": "No. Instrumental jazz includes many approaches, and a smooth-jazz label only describes one browsing direction. Listen to the actual selection before deciding."
+        },
+        {
+          "question": "How can I find the title of an unfamiliar piece?",
+          "answer": "Check any available track information or the broadcaster's programme details. Listings are not guaranteed, so a brief note about the time and show can help with your own follow-up."
+        }
+      ],
+      "links": [
+        {
+          "route": "genre:jazz",
+          "label": "Explore jazz stations"
+        },
+        {
+          "route": "search",
+          "label": "Search for a jazz station"
+        },
+        {
+          "route": "regions",
+          "label": "Discover jazz from other regions"
+        }
+      ]
+    },
+    {
+      "id": "blues-radio-guide",
+      "title": "Choose blues radio: acoustic, electric and crossover",
+      "seoTitle": "Choose blues radio: acoustic, electric and crossover",
+      "description": "Discover blues stations through acoustic and electric sounds, soul influences and programme schedules, with a practical listening checklist.",
+      "primaryKeyword": "blues radio",
+      "secondaryKeywords": [
+        "acoustic blues radio",
+        "electric blues",
+        "blues music online"
+      ],
+      "imageAlt": "Illustration of a guitar beside a vinyl record",
+      "intro": "Blues radio can move from a spare acoustic performance to an electric band and then into soul or related music. That breadth is useful when you know what you enjoy. Start by identifying the sound you want, then check how a station combines it with the rest of its schedule.",
+      "sections": [
+        {
+          "heading": "Use acoustic and electric as first clues",
+          "paragraphs": [
+            "An acoustic-focused description can help if you want to hear the interplay between voice and a less amplified arrangement. Electric blues points you toward a different guitar and band sound. Neither label establishes a strict boundary or guarantees every recording will fit. Listen for the qualities that matter to you: the vocal delivery, space between instruments, guitar tone or energy of a full group."
+          ]
+        },
+        {
+          "heading": "Understand crossover without treating it as a fault",
+          "paragraphs": [
+            "Some programmes include soul, rock or other related styles alongside blues. This can be part of a station's identity, rather than an incorrect genre assignment. Ask whether the transitions work for your listening session. If you want a narrower selection, compare another blues station or look for a clearly described specialist programme. A broad station may still have a show that closely matches the sound you prefer."
+          ]
+        },
+        {
+          "heading": "Check the show as well as the station",
+          "paragraphs": [
+            "A genre tag summarises a whole service, but individual presenters may organise their shows around an artist, period or musical connection. Listen at different times and read programme information when available. A station that seems too broad during one session may offer a focused blues show later. Keep the show name and listening time together so you can find the same kind of programme again."
+          ]
+        },
+        {
+          "heading": "Make a comparison you can repeat",
+          "paragraphs": [
+            "Choose two or three stations and give each enough time for several performances. Take short notes about the mix instead of declaring a winner from one favourite song. A practical shortlist might include an acoustic choice, an electric choice and a station that introduces related styles."
+          ],
+          "items": [
+            "Note whether acoustic performances or electric bands dominate your sample.",
+            "Check how often soul, rock or other crossover material appears.",
+            "Compare the amount and usefulness of presenter introductions.",
+            "Return to a promising show at a similar time on another day."
+          ]
+        }
+      ],
+      "faq": [
+        {
+          "question": "Is a blues station always exclusively blues?",
+          "answer": "No. Stations can include related genres and mixed schedules. Their descriptions and programme information help, but a longer listening sample is the clearest check."
+        },
+        {
+          "question": "How do I search when I do not know artist names?",
+          "answer": "Begin with the qualities you can describe, such as acoustic guitar, electric band or a strong vocal presence. Use those preferences to compare stations in the blues directory."
+        }
+      ],
+      "links": [
+        {
+          "route": "genre:blues",
+          "label": "Browse blues stations"
+        },
+        {
+          "route": "genre:rock",
+          "label": "Compare related rock programming"
+        },
+        {
+          "route": "genres",
+          "label": "Explore other music genres"
+        }
+      ]
+    },
+    {
+      "id": "country-radio-guide",
+      "title": "Find country radio: contemporary, classic and Americana",
+      "seoTitle": "Find country radio: contemporary, classic and Americana",
+      "description": "Explore contemporary country, classic selections and Americana, and learn how music genres differ from station country filters.",
+      "primaryKeyword": "country radio",
+      "secondaryKeywords": [
+        "classic country radio",
+        "contemporary country",
+        "Americana radio"
+      ],
+      "imageAlt": "Illustration of an acoustic guitar with country-inspired musical accents",
+      "intro": "Searching for country radio involves an easy misunderstanding: country can name a musical genre or a geographic filter. Start with the genre when you want the music. Then refine your listening by era, sound and station region to find a programme that suits you.",
+      "sections": [
+        {
+          "heading": "Separate music genre from geography",
+          "paragraphs": [
+            "A country or region filter groups stations by location; it does not select country music. A station based in any given country may broadcast many different genres. To find the musical style, open the country genre first, then use geography if local voices or a particular market interest you. This order avoids a long list of unrelated stations and makes your next comparison more meaningful."
+          ]
+        },
+        {
+          "heading": "Compare contemporary and classic selections",
+          "paragraphs": [
+            "Contemporary country descriptions can be useful when you want a more current programme, while classic-country descriptions suggest a different emphasis on earlier recordings. The dividing line varies between stations. Sample several songs and notice the mix of familiar voices, newer artists, production styles and presenter speech. A programme can combine eras, so use the label to choose an initial candidate rather than as a promise of a rigid playlist."
+          ]
+        },
+        {
+          "heading": "Use Americana as an exploration route",
+          "paragraphs": [
+            "Americana can lead toward programming that overlaps with country and related roots styles. It is a broad description, and stations may interpret it differently. If a country station feels too polished or too narrowly focused for your taste, listen for more varied arrangements and adjacent genres. The aim is to find a useful musical connection, not to settle a strict definition before you are allowed to enjoy the programme."
+          ]
+        },
+        {
+          "heading": "Judge the station over a real session",
+          "paragraphs": [
+            "Your favourite song is a good reason to keep listening, but it does not reveal the whole format. Compare several tracks, note the amount of speech and check another time of day. Keep separate options if you enjoy both a familiar classic selection and a more exploratory programme."
+          ],
+          "items": [
+            "Open the music genre before applying a country or region filter.",
+            "Choose one contemporary and one classic-leaning station to compare.",
+            "Note whether the programme stays within country or explores related styles.",
+            "Check a second session before deciding which station suits your routine."
+          ]
+        }
+      ],
+      "faq": [
+        {
+          "question": "Does choosing a country in the directory select country music?",
+          "answer": "No. The geographic filter selects a station location. Use the country music genre to find the musical style, then refine by region if useful."
+        },
+        {
+          "question": "Are classic country and Americana interchangeable?",
+          "answer": "No. They are different browsing descriptions, though some recordings can appear in both kinds of programme. Compare the actual selection instead of expecting identical playlists."
+        }
+      ],
+      "links": [
+        {
+          "route": "genre:country",
+          "label": "Explore country music stations"
+        },
+        {
+          "route": "regions",
+          "label": "Browse by geographic region"
+        },
+        {
+          "route": "genres",
+          "label": "Compare music genres"
+        }
+      ]
+    },
+    {
+      "id": "news-talk-radio-guide",
+      "title": "Listen to news and talk radio with context",
+      "seoTitle": "Listen to news and talk radio with context",
+      "description": "Distinguish live reporting from commentary, check timestamps and time zones, and compare sources when listening to news and talk radio.",
+      "primaryKeyword": "news radio",
+      "secondaryKeywords": [
+        "talk radio",
+        "live news radio",
+        "radio news sources"
+      ],
+      "imageAlt": "Illustration of a broadcast microphone with speech and signal accents",
+      "intro": "News and talk radio can help you follow events, hear interviews and encounter different arguments. A useful listening habit includes checking what kind of programme is on, when it was made and where its information comes from. Live audio still needs context.",
+      "sections": [
+        {
+          "heading": "Identify reporting, interviews and commentary",
+          "paragraphs": [
+            "A news bulletin, an interview and an opinion programme serve different purposes. Listen for whether the presenter is reporting a confirmed event, asking a guest to explain it or making an argument. A guest's statement is not automatically the station's verified conclusion. When the distinction is unclear, check the programme description or broadcaster information before repeating the claim. Knowing the format helps you interpret what you hear."
+          ]
+        },
+        {
+          "heading": "Check the time behind the word live",
+          "paragraphs": [
+            "A station can stream continuously while carrying a recording, a repeat or an earlier interview. Listen for dates and references to local time, and compare them with the place you are listening from. A programme described as morning radio may not match your morning. For developing stories, confirm the publication or broadcast time of any supporting page so an older update does not become your current picture."
+          ]
+        },
+        {
+          "heading": "Follow important claims to their sources",
+          "paragraphs": [
+            "When a report matters to a decision, look for the original statement, document or attributable source where practical. Compare coverage from another outlet and notice where facts agree and interpretation differs. A phone-in contribution may reveal a person's view, but it does not establish how widely that view is held. Keep uncertainty attached to an unconfirmed claim instead of turning confident delivery into proof."
+          ]
+        },
+        {
+          "heading": "Choose a station for the task",
+          "paragraphs": [
+            "Local coverage, extended interviews and broad conversation are different listening needs. Sample the programme before relying on its label. Sports availability and emergency information also depend on the broadcaster and distribution arrangements; a directory listing alone does not guarantee either."
+          ],
+          "items": [
+            "Check the programme type and the identity or role of its speakers.",
+            "Note the relevant date, local time and whether the segment is repeated.",
+            "Compare consequential claims with another source or the original material.",
+            "Use official local information channels when you need urgent practical guidance."
+          ]
+        }
+      ],
+      "faq": [
+        {
+          "question": "Does an online live stream always contain live reporting?",
+          "answer": "No. A continuous stream can include recorded programmes and repeats. Check the segment's own date and context when freshness matters."
+        },
+        {
+          "question": "Can I assume every sports event or alert is available?",
+          "answer": "No. Access and coverage depend on the broadcaster and relevant arrangements. Check the station's current information, and use official channels for urgent local instructions."
+        }
+      ],
+      "links": [
+        {
+          "route": "genre:news",
+          "label": "Find news stations"
+        },
+        {
+          "route": "genre:talk",
+          "label": "Explore talk radio"
+        },
+        {
+          "route": "regions",
+          "label": "Find stations by region"
+        }
+      ]
+    },
+    {
+      "id": "80s-90s-radio-guide",
+      "title": "Find 80s and 90s radio beyond a single playlist",
+      "seoTitle": "Find 80s and 90s radio beyond a single playlist",
+      "description": "Compare 80s and 90s radio by genre, region and programme style, and discover why oldies stations can offer very different selections.",
+      "primaryKeyword": "80s radio",
+      "secondaryKeywords": [
+        "90s radio",
+        "oldies radio",
+        "decade radio stations"
+      ],
+      "imageAlt": "Illustration of a cassette tape with retro musical accents",
+      "intro": "A decade label narrows a radio search, but it does not describe every song you will hear. The 80s and 90s contain many genres and local musical memories. Use the decade as a starting point, then compare the styles and regions that make a station feel right to you.",
+      "sections": [
+        {
+          "heading": "Choose an era and a musical direction",
+          "paragraphs": [
+            "Start by deciding whether you want an 80s focus, a 90s focus or a mix. Then think about the sound: guitar music, dance selections, pop or another preference. Two stations using the same decade label can offer very different programmes because they choose different parts of that period. A few artists or remembered song qualities can help you explain what you want without needing a complete playlist."
+          ]
+        },
+        {
+          "heading": "Understand why oldies varies by market",
+          "paragraphs": [
+            "Oldies is a flexible station description, not a universal set of years or songs. A broadcaster's audience and regional musical history influence its selection. A station in another country may introduce recordings you rarely heard when they were new. If nostalgia is your priority, start with a familiar region. If discovery matters more, compare the same decade across several regions and note what changes."
+          ]
+        },
+        {
+          "heading": "Listen past the first familiar hit",
+          "paragraphs": [
+            "Recognising the first song can create a strong impression, but a longer sample reveals the station's choices. Notice whether it repeats a narrow set of hits, explores less obvious tracks or mixes in adjacent decades. Presenter speech and specialist shows can also shape the experience. Return at another time if your first session begins during a themed programme that may not represent the everyday schedule."
+          ]
+        },
+        {
+          "heading": "Create a small set for different moods",
+          "paragraphs": [
+            "There is no need to choose one definitive decade station. Keep a familiar option for remembered favourites and another for discoveries or a different musical style. Compare candidates with the same listening time so that one unusually appealing song does not decide everything."
+          ],
+          "items": [
+            "Choose either an 80s or a 90s starting point and sample several tracks.",
+            "Note the main genres, language and balance between familiar and unfamiliar music.",
+            "Check whether adjacent decades appear and whether that suits your preference.",
+            "Compare a station from another region before finalising your shortlist."
+          ]
+        }
+      ],
+      "faq": [
+        {
+          "question": "Does an 80s station play only songs from that decade?",
+          "answer": "Not necessarily. Station formats can include adjacent years, related themes and special shows. Use the description and an extended sample to check the actual mix."
+        },
+        {
+          "question": "Why do two oldies stations sound so different?",
+          "answer": "They may target different eras, audiences or regional memories. The word oldies gives a broad direction; the programme itself provides the detail."
+        }
+      ],
+      "links": [
+        {
+          "route": "genre:80s",
+          "label": "Listen to 80s stations"
+        },
+        {
+          "route": "genre:90s",
+          "label": "Explore 90s radio"
+        },
+        {
+          "route": "regions",
+          "label": "Compare decade radio by region"
+        }
+      ]
+    }
+  ]
+}

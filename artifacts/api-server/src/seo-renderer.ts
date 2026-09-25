@@ -57,6 +57,9 @@ import {
   MIN_STATIONS_FOR_GENRE_INDEX,
 } from './seo/genre-whitelist';
 import { resolveFaqPageItems } from '@workspace/seo-shared/faq-schema';
+import { loadBlogContent, buildBlogSeo, buildBlogSchema } from '@workspace/seo-shared/blog';
+import { isBlogPath, parseBlogPath } from '@workspace/seo-shared/blog-manifest';
+import { renderBlogHtml } from '@workspace/seo-shared/blog-html';
 
 // SEO audit fix (2026-05-12) — per-language fallback labels used by the
 // regions/country page <title>+<h1> when the corresponding DB translation
@@ -325,6 +328,20 @@ export class SeoRenderer {
 
     // Get language from URL path, but prefer user's stored preference if available
     let { language, cleanPath } = getLanguageFromPath(cleanUrl);
+    // Editorial URLs own their locale. A preference cookie must not substitute
+    // another language at a crawlable, self-canonical article URL. No DB reads
+    // are needed to render these versioned articles.
+    if (isBlogPath(cleanPath)) {
+      const route = parseBlogPath(cleanUrl);
+      if (!route) return { language, cleanPath, translations: {}, urlTranslations: new Map(),
+        seoTags: { title: '404 | MegaRadio', robots: 'noindex, follow', noIndex: true, hreflangs: [] },
+        pageData: { pageType: 'blog', httpNotFound: true, notFound: true } };
+      const content = await loadBlogContent(route.locale);
+      const blog = { locale: route.locale, content, article: content.articles.find(a => a.id === route.id) };
+      const seoTags = buildBlogSeo(blog);
+      return { language: route.locale, cleanPath, translations: {}, urlTranslations: new Map(), seoTags,
+        pageData: { pageType: 'blog', seoTags, blog, additionalData: { blog }, notFound: false } };
+    }
     const pagination = parseSeoCatalogPage(url);
     // Validate before either pageData or HTML can alias an invalid request to
     // a cached valid slice. Non-paginated pages retain their query behaviour.
@@ -2252,6 +2269,7 @@ export class SeoRenderer {
 
   generateHtmlBody(pageData: { pageType: string; language: string; translations: Record<string, string>; seoTags?: any; stationData?: any; additionalData?: any; urlTranslations?: Map<string, string>; cleanPath?: string }): string {
     const { pageType, language, translations, seoTags, stationData, additionalData, urlTranslations, cleanPath } = pageData;
+    if (pageType === 'blog' && additionalData?.blog) return renderBlogHtml(additionalData.blog);
     const h1Text = this.getH1Text(pageType, language, translations, seoTags, stationData, additionalData);
 
     // Visible breadcrumb trail — Task #280. Rendered above <main> on every
@@ -3238,6 +3256,10 @@ export class SeoRenderer {
     const websiteSchema = generateWebSiteSchema(schemaDomain, language, translations);
     const organizationSchema = generateOrganizationSchema(schemaDomain, language, translations);
     const visionGoOrgSchema = generateDeveloperOrganizationSchema(language);
+    if (additionalData?.blog) return {
+      global: [websiteSchema, organizationSchema, visionGoOrgSchema],
+      page: buildBlogSchema(additionalData.blog),
+    };
 
     // LOCALIZED: BreadcrumbList with proper translated paths.
     // Items come from the shared `computeBreadcrumbItems` helper so the
@@ -3738,6 +3760,7 @@ export class SeoRenderer {
 
     return `
     <title>${safeTitle}</title>
+    ${additionalData?.blog ? '<link rel="stylesheet" href="/blog.css?v=20260925">' : ''}
     <meta name="description" content="${safeDescription}">
     <meta name="author" content="MegaRadio">
     

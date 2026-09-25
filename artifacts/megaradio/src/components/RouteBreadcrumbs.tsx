@@ -101,6 +101,9 @@ function computeItems(params: {
 }): BreadcrumbItem[] {
   const { language, cleanPath, t, localeTranslations, lastItemName } = params;
   if (!cleanPath || cleanPath === '/' || cleanPath === '') return [];
+  // The shared editorial renderer owns the fully localized breadcrumb and
+  // matching JSON-LD, including article titles rather than slug-derived text.
+  if (cleanPath === '/blog' || cleanPath.startsWith('/blog/')) return [];
 
   const lang = language || 'en';
   const langTranslations = (URL_TRANSLATIONS[lang] || {}) as Record<string, string>;

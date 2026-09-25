@@ -25,6 +25,9 @@ export function buildLocalizedUrl(
   countryCode?: string,
   translationMap?: Map<string, string>,
 ): string {
+  // Editorial slugs remain stable identifiers, including with custom DB route
+  // translations. Their 14 variants are distinguished by locale prefix only.
+  if (/^\/blog(?:\/|$)/.test(englishPath)) return `/${languageCode}${englishPath}`;
   // UPDATED: All languages (including English) use /{lang}/* format for consistency.
   if (!translationMap) {
     const prefix = countryCode ? `/${countryCode}` : `/${languageCode}`;

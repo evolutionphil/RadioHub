@@ -34,7 +34,7 @@ mock.module('../src/data/postgres-localization-store', { namedExports: {
 mock.module('../src/data/postgres-seo-read-store', { namedExports: {
   pgSeoCatalog: () => ({ find: async () => [], count: async () => 0, findById: async () => null, findOne: async () => null }),
 } });
-mock.module('../src/data/postgres-taxonomy-store', { namedExports: { pgStoredGenreBySlug: async () => null } });
+mock.module('../src/data/postgres-taxonomy-store', { namedExports: { pgStoredGenreBySlug: async () => null, pgPublicGenres: async () => [] } });
 mock.module('../src/data/postgres-content-store', { namedExports: { pgSeoMetadata: async () => null } });
 mock.module('../src/services/precomputed-genres', { namedExports: {
   PrecomputedGenresService: { getGenres: async () => ({ genres: [], total: 0 }) },

@@ -2048,6 +2048,7 @@ export function reverseTranslateUrlSegment(segment: string, sourceLanguage: stri
  * Translate a full URL path from English to target language
  */
 export function translateUrl(urlPath: string, targetLanguage: string): string {
+  if (/^\/blog(?:\/|$)/.test(urlPath)) return urlPath;
   if (!URL_TRANSLATIONS[targetLanguage]) {
     return urlPath;
   }
@@ -2087,6 +2088,7 @@ export function translateUrl(urlPath: string, targetLanguage: string): string {
  * CRITICAL: Checks database translations FIRST for admin-configured custom paths
  */
 export function reverseTranslateUrl(urlPath: string, sourceLanguage: string): string {
+  if (/^\/blog(?:\/|$)/.test(urlPath)) return urlPath;
   const segments = urlPath.split('/').filter(Boolean);
   const englishSegments = segments.map(segment => {
     // CRITICAL: Decode URL-encoded characters (e.g., %D5%BD%D5%BF%D5%A1%D6%81%D5%AB%D5%A1 → ստացիա)

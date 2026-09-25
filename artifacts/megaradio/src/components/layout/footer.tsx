@@ -5,6 +5,7 @@ import { useTranslation } from "@/hooks/useTranslation";
 import { useSeoRouting } from "@/hooks/useSeoRouting";
 import { useQuery } from "@tanstack/react-query";
 import { SEO_LANGUAGES, ACTIVE_SITEMAP_LANGUAGES } from "@workspace/seo-shared/seo-config";
+import { BLOG_LABELS, isBlogLocale, blogPath } from '@workspace/seo-shared/blog-manifest';
 // 🚀 LAZY: modals only load on first open — keeps Radix Select/Input
 // out of the footer chunk until the user clicks the action.
 const AddYourStationModal = lazy(() => import("@/components/modals/AddYourStationModal"));
@@ -269,6 +270,9 @@ export default function Footer() {
                     <div className="grid min-w-0 grid-cols-1 gap-0.5 md:gap-1.5 [&>button]:min-w-0 [&>button]:text-sm [&>button]:leading-5 [&>button]:[overflow-wrap:anywhere] [&>button]:hyphens-auto">
                       <Link to={getLocalizedUrl("/about")} className={footerLinkClass}>
                         {ft('footer_about_us', 'About Us')}
+                      </Link>
+                      <Link to={blogPath(isBlogLocale(currentLanguage) ? currentLanguage : 'en')} className={footerLinkClass}>
+                        {BLOG_LABELS[isBlogLocale(currentLanguage) ? currentLanguage : 'en']}
                       </Link>
                       <Link to={getLocalizedUrl("/applications")} className={footerLinkClass}>
                         {ft('footer_applications', 'Applications')}

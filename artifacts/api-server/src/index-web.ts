@@ -818,8 +818,9 @@ app.use('/api/stream', forwardApiRequest(streamServiceProxy));
     const isFaqPage = SEO_PRECOMPILED_REGEX.faqPage.test(cleanUrlForMatching);
     const isTermsPage = SEO_PRECOMPILED_REGEX.termsPage.test(cleanUrlForMatching);
     const isApplicationsPage = SEO_PRECOMPILED_REGEX.applicationsPage.test(cleanUrlForMatching);
+    const isBlogPage = /^\/(?:[a-z]{2}\/)?blog(?:\/|$)/.test(cleanUrlForMatching);
 
-    const isSeoEligiblePage = isStationPage || isHomepage || isRegionsPage || isGenresPage || isAboutPage || isContactPage || isPrivacyPage || isCountryPage || isStationsPage || isSearchPage || isFaqPage || isTermsPage || isApplicationsPage;
+    const isSeoEligiblePage = isBlogPage || isStationPage || isHomepage || isRegionsPage || isGenresPage || isAboutPage || isContactPage || isPrivacyPage || isCountryPage || isStationsPage || isSearchPage || isFaqPage || isTermsPage || isApplicationsPage;
     const isBot = SEO_PRECOMPILED_REGEX.botDetect.test(userAgent);
 
     // CLOAKING FIX (2026-05-12): SSR is now served to ALL visitors on SEO

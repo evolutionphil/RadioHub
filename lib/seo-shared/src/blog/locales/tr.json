@@ -1,0 +1,719 @@
+{
+  "ui": {
+    "title": "Radyo dinleme rehberleri",
+    "description": "İnternet radyosu, telefonda dinleme ve yeni müzik türleri keşfetmek için kullanışlı rehberler.",
+    "home": "Ana sayfa",
+    "read": "Rehberi oku",
+    "contents": "Bu rehberde",
+    "related": "İlgili rehberler",
+    "sources": "Kaynaklar",
+    "questions": "Sorular ve yanıtlar",
+    "explore": "Dinlemeye başla",
+    "author": "Mega Radio",
+    "editorialNote": "Yapay zekâ desteğiyle hazırlanmıştır. Rehberler genel dinleme önerileri sunar; bağımsız istasyon testi veya insanlar tarafından uzman incelemesi yapıldığı iddia edilmez.",
+    "updated": "Güncelleme",
+    "language": "Dil"
+  },
+  "articles": [
+    {
+      "id": "listen-to-radio-online",
+      "title": "İnternetten radyo nasıl dinlenir?",
+      "seoTitle": "İnternetten radyo nasıl dinlenir?",
+      "description": "İstasyon adı, müzik türü veya bölgeye göre radyo bulmayı öğren; yayın başlamadığında bağlantı ve ses ayarlarını adım adım kontrol et.",
+      "primaryKeyword": "internetten radyo dinle",
+      "secondaryKeywords": [
+        "ücretsiz radyo dinle",
+        "canlı radyo istasyonları",
+        "tarayıcıda radyo"
+      ],
+      "imageAlt": "Bir radyo alıcısı ile yanında duran kulaklığın çizimi",
+      "intro": "İnternetten radyo dinlemeye başlarken önce ne aradığını belirlemek işini kolaylaştırır. Bildiğin bir istasyonu açmak ile yeni bir müzik programı bulmak aynı arama yolunu gerektirmez. Elindeki isim, bölge veya tür bilgisini kullanarak uygun yayına ulaşabilir, ardından kısa bir dinleme denemesi yapabilirsin.",
+      "sections": [
+        {
+          "heading": "Aramaya doğru ipucuyla başla",
+          "paragraphs": [
+            "İstasyonun adını biliyorsan önce bu adı ara ve çıkan sonucun hangi ülke veya bölgeye ait olduğunu kontrol et. Birbirine benzeyen adlar farklı yayıncılara ait olabilir. Belirli bir müzik istiyorsan tür sayfasından başlamak daha kullanışlıdır. Bölge seçimi ise yerel sesleri ve programları bulmana yardımcı olur; tek başına müziğin tarzını anlatmaz. İlk sonuçlar beklentini karşılamıyorsa bu bilgileri birlikte değerlendir. Böylece geniş bir listede rastgele dolaşmak yerine neden seçtiğini bildiğin birkaç aday oluşturursun."
+          ]
+        },
+        {
+          "heading": "Yayını aç ve programa zaman tanı",
+          "paragraphs": [
+            "İstasyon sayfasını açtıktan sonra oynatma düğmesini kullan. Bağlantının kurulması için kısa bir süre bekle; hem oynatıcıdaki hem cihazdaki ses düzeyini kontrol et. Radyo, sen açtığında baştan başlayan bir kayıt değildir. Bir şarkının ortasına, konuşmaya veya reklama denk gelebilirsin. Bu yüzden ilk birkaç saniyeye bakarak karar verme. Bir süre dinlemek, programın müzik ve konuşma dengesini anlamanı sağlar. Başka bir saatte yeniden denemek de aynı istasyonun farklı bir yönünü gösterebilir."
+          ]
+        },
+        {
+          "heading": "Ücretsiz erişim ile bağlantı maliyetini ayır",
+          "paragraphs": [
+            "Ücretsiz açılan bir yayın yine de mobil internet kotanı kullanabilir. Yayıncı programın içine reklam da yerleştirebilir. Erişim için ücret istenmesi, internet bağlantısının maliyeti ve programda reklam bulunması ayrı konulardır. Wi-Fi dışında uzun süre dinlemeden önce kendi tarifendeki veri hakkını kontrol et. Bir hizmet üyelik veya abonelik istiyorsa o hizmetin açıklamalarını oku. Tek bir istasyonda gördüğün koşulların bütün radyolar için geçerli olduğunu varsayma. Dinleme planını kendi bağlantına ve seçtiğin yayına göre yap."
+          ]
+        },
+        {
+          "heading": "Sorunu küçük adımlarla kontrol et",
+          "paragraphs": [
+            "Yayın açılmazsa her seferinde yalnızca bir şeyi değiştir. Böylece sorunun bağlantıdan, ses çıkışından veya seçtiğin yayından kaynaklanıp kaynaklanmadığını daha kolay anlarsın. Başka bir istasyon çalışıyorsa ilk yayını daha sonra yeniden deneyebilirsin. Oynatma düğmesine arka arkaya basmak tek başına iyi bir karşılaştırma sağlamaz."
+          ],
+          "items": [
+            "Cihazın gerçekten internete bağlı olduğunu kontrol et.",
+            "Oynatıcı, telefon ve kulaklık üzerindeki ses düzeylerine ayrı ayrı bak.",
+            "Aynı bağlantıyı kullanarak başka bir istasyonu aç.",
+            "Mobil veriye geçmeden önce tarifendeki kullanım hakkını gözden geçir."
+          ]
+        }
+      ],
+      "faq": [
+        {
+          "question": "Uygulama yüklemeden radyo dinleyebilir miyim?",
+          "answer": "Tarayıcıda çalışan bir yayını olan istasyonu web sayfasından dinleyebilirsin. Tarayıcı ve cihaz davranışı değişebileceği için uzun bir dinleme öncesinde kısa bir deneme yap."
+        },
+        {
+          "question": "Program neden istasyon açıklamasından farklı geliyor?",
+          "answer": "Açıklama genellikle istasyonun genel yönünü anlatır. Haberler, söyleşiler ve özel programlar farklı içerik taşıyabilir. Başka bir saatte dinle veya yayıncının program bilgilerine bak."
+        }
+      ],
+      "links": [
+        {
+          "route": "search",
+          "label": "Bir istasyon ara"
+        },
+        {
+          "route": "genres",
+          "label": "Müzik türlerini keşfet"
+        },
+        {
+          "route": "regions",
+          "label": "Bölgeye göre radyo bul"
+        }
+      ]
+    },
+    {
+      "id": "internet-radio-explained",
+      "title": "İnternet radyosu nedir? Yayın, FM ve podcast farkları",
+      "seoTitle": "İnternet radyosu nedir? Yayın, FM ve podcast farkları",
+      "description": "İnternet radyosunun FM, DAB ve podcast yayınlarından farkını, gereken bağlantıyı ve bazı yayınlara neden erişilemediğini öğren.",
+      "primaryKeyword": "internet radyosu",
+      "secondaryKeywords": [
+        "internet radyosu nedir",
+        "internet radyosu ve FM",
+        "canlı radyo yayını"
+      ],
+      "imageAlt": "Çevresinde radyo dalgaları bulunan bir dünya küresinin çizimi",
+      "intro": "İnternet radyosu, bir istasyonun sesini internet bağlantısı üzerinden cihazına ulaştırır. Yayını seçersin ve yayıncının o sırada sunduğu programı dinlersin. Bu yöntem radyoyu farklı cihazlardan erişilebilir kılar; ancak bağlantı, programın akışı ve bulunduğun yerdeki erişim koşulları hakkında birkaç temel ayrımı bilmek yararlıdır.",
+      "sections": [
+        {
+          "heading": "Devam eden bir programa katılırsın",
+          "paragraphs": [
+            "Canlı yayını açmak çoğunlukla başlamış bir programa katılmak anlamına gelir. Şarkı, konuşma ve reklam sırasını yayıncı belirler. Bir istasyon seçmek, sıradaki parçayı seçtiğin veya programı başa aldığın anlamına gelmez. Bazı yayıncılar ayrıca kayıtlar sunabilir; bunlar farklı bir dinleme seçeneğidir. Başlamadan önce ne istediğini düşün: Seninle birlikte akıp giden bir program mı, yoksa belirli bir bölüm mü? Bu küçük ayrım, yanlış formatta arama yapmanı ve istediğin içeriği bulamadığını düşünmeni önler."
+          ]
+        },
+        {
+          "heading": "FM, DAB ve internet farklı yollar kullanır",
+          "paragraphs": [
+            "FM veya DAB alıcısı, yayın sinyalini kendi radyo alım sistemiyle alır. İnternet yayını ise Wi-Fi, mobil veri veya başka bir internet bağlantısı üzerinden gelir. Aynı istasyonun iki yerde bulunması bu yolları aynı yapmaz. Çevrim içi dinleyeceksen gerçekten kullanacağın bağlantıyı kontrol et. Radyo adıyla satılan bir cihaz birden fazla yöntemi destekleyebilir, ancak bunu cihazın kendi açıklamasından doğrulamak gerekir. Yalnızca ürünün adına bakarak hangi bağlantı olmadan çalışacağını varsayma; kendi kullanım durumunu temel al."
+          ]
+        },
+        {
+          "heading": "Listelenmek her yerde erişim garantisi değildir",
+          "paragraphs": [
+            "Bir dizinde görünen yayın geçici olarak durabilir veya yalnızca bazı bölgelerde dinlenebilir. Bu nedenle bulunduğun yer ve yayıncının dağıtım tercihleri erişimi etkileyebilir. Tek bir istasyonun açılmaması bütün internet radyolarının çalışmadığını göstermez. Aynı bağlantıda başka bir istasyonu dene, ardından yayıncının erişim açıklamalarına bak. Özellikle belirli bir programı bekliyorsan genel istasyon kaydını tek başına yeterli kabul etme. Her içerik veya etkinliğin her yerde aynı şekilde sunulduğunu söylemek için ayrıca bilgi gerekir."
+          ]
+        },
+        {
+          "heading": "Dinleme biçimini amacına göre seç",
+          "paragraphs": [
+            "Günlük kullanımda temel fark, programın akışını ne kadar senin belirlediğindir. Yayıncının seçtiği kesintisiz bir akış istiyorsan canlı radyo uygundur. Belirli bir kaydı baştan dinlemek istiyorsan isteğe bağlı içerik daha uygun olabilir. Kısa bir deneme, seçtiğin biçimin beklentinle uyuşup uyuşmadığını gösterir."
+          ],
+          "items": [
+            "İstasyonun mevcut programını duymak için canlı yayını seç.",
+            "Belirli bir bölümü baştan dinlemek için sunuluyorsa kaydını aç.",
+            "Evden ayrılmadan önce kullanacağın internet bağlantısını kontrol et.",
+            "İlk yayın geçici olarak açılmazsa deneyebileceğin başka bir istasyon belirle."
+          ]
+        }
+      ],
+      "faq": [
+        {
+          "question": "İnternet radyosu internetsiz çalışır mı?",
+          "answer": "Çevrim içi yayın için internet bağlantısı gerekir. Cihazında ayrıca ayrı bir radyo alıcısı bulunabilir, ancak bu özelliği kullandığın model için kontrol etmelisin."
+        },
+        {
+          "question": "Podcast ile canlı radyo aynı şey mi?",
+          "answer": "Hayır. Podcast dinlerken genellikle kaydedilmiş bir bölüm seçersin. Canlı istasyon mevcut programını sunar. Sonradan dinleme seçeneklerinin bulunup bulunmadığı ise yayıncıya bağlıdır."
+        }
+      ],
+      "links": [
+        {
+          "route": "home",
+          "label": "Canlı bir istasyon bul"
+        },
+        {
+          "route": "regions",
+          "label": "Bölgelere göre radyo keşfet"
+        },
+        {
+          "route": "genres",
+          "label": "Bir müzik türü seç"
+        }
+      ]
+    },
+    {
+      "id": "radio-app-iphone-android",
+      "title": "iPhone ve Android telefonda radyo dinleme rehberi",
+      "seoTitle": "iPhone ve Android telefonda radyo dinleme rehberi",
+      "description": "Telefonda radyo için tarayıcı veya uygulama seç; ekran kilitliyken oynatmayı, Bluetooth sesini ve bağlantı sorunlarını kontrol et.",
+      "primaryKeyword": "radyo uygulaması",
+      "secondaryKeywords": [
+        "iPhone radyo",
+        "Android radyo",
+        "telefonda radyo dinleme"
+      ],
+      "imageAlt": "Bir cep telefonu ile yanında duran kulaklığın çizimi",
+      "intro": "Telefonda radyo dinlemek, yayın, bağlantı ve ses çıkışı birlikte çalıştığında günlük rutine kolayca eklenebilir. Önce istasyonları nasıl açmak istediğini seç. Ardından senin için önemli durumları dene: ekranı kilitlemek, kulaklıkla dinlemek ve evdeki bağlantıdan mobil internete geçmek gibi.",
+      "sections": [
+        {
+          "heading": "Tarayıcı ile uygulamayı ihtiyacına göre karşılaştır",
+          "paragraphs": [
+            "Bir istasyonu ilk kez denemek için web sayfasını tarayıcıda açmak kullanışlı bir başlangıçtır. Uygulama da günlük alışkanlıklarına uyabilir; ancak yüklemeden önce güncel açıklamasını ve gereksinimlerini oku. Her uygulamanın çevrim dışı dinleme, araç bağlantısı veya bildiğin bütün istasyonları sunduğunu varsayma. Böyle özelliklerin seçtiğin hizmet ve cihaz için açıkça belirtilmesi gerekir. Tercihini uzun bir özellik listesine göre değil, gerçekleştirmek istediğin dinleme oturumuna göre yap. Kısa bir gerçek kullanım denemesi bu kararı daha somut hale getirir."
+          ]
+        },
+        {
+          "heading": "Ekran kilitlendiğinde ne olduğunu dene",
+          "paragraphs": [
+            "Önce bir yayını başlat ve sesi duyduğundan emin ol. Sonra ekranı kısa süreliğine kilitle. Yayın durursa tarayıcıyı veya uygulamayı yeniden açıp devam edip etmediğini gözlemle. Arka planda çalışma, kullanılan yazılıma ve cihaz ayarlarına bağlı olabilir. İlgili pil veya arka plan etkinliği ayarlarını kontrol et; bunun için ilgisiz bütün seçenekleri değiştirme. Evde yapılan birkaç dakikalık deneme, yürüyüşün ortasında beklemediğin bir davranışla karşılaşmaktan daha fazla bilgi sağlar. Sonucu kendi cihazın için değerlendir."
+          ]
+        },
+        {
+          "heading": "Bluetooth kullanırken sesin nereye gittiğine bak",
+          "paragraphs": [
+            "Oynatıcı çalışıyor gibi görünüyor ama ses gelmiyorsa telefonun hangi çıkışı kullandığını kontrol et. Daha önce bağlanan bir hoparlör veya kulaklık hâlâ seçili olabilir. Hem telefondaki hem dinleme cihazındaki ses düzeyine bak. Bluetooth bağlantısını kısa süre kapatıp telefonun kendi hoparlörünü dene, sonra istediğin aksesuarı yeniden bağla. Bu adım, sesin başka yere yönlenmesi ile yayının hiç yüklenmemesini ayırmaya yardımcı olur. Birden fazla ayarı aynı anda değiştirmemek karşılaştırmanın sonucunu daha anlaşılır kılar."
+          ]
+        },
+        {
+          "heading": "Dışarı çıkmadan önce kısa bir hazırlık yap",
+          "paragraphs": [
+            "Evde çalışan bir bağlantı, yol boyunca aynı sonucu alacağını göstermez. Ağ değişimlerini ve mobil veri hakkını hesaba kat. Uzun bir oturuma güvenmeden önce seçtiğin yayını birkaç dakika dinle. Cihazda değişiklik yapman gerekiyorsa bunu hareket etmeden yapman daha uygundur."
+          ],
+          "items": [
+            "İstasyonu tercih ettiğin tarayıcı veya uygulama üzerinden aç.",
+            "Doğru hoparlörün ya da kulaklığın sesi aldığını kontrol et.",
+            "Ekranı kilitleyip açarak yayının devam edip etmediğini gözlemle.",
+            "Kesilmeler sürerse veri kullanımına bak ve başka bir istasyonu karşılaştır."
+          ]
+        }
+      ],
+      "faq": [
+        {
+          "question": "Her radyo uygulaması çevrim dışı çalışır mı?",
+          "answer": "Bunu varsaymamalısın. Canlı internet radyosu bağlantı ister. İndirme veya çevrim dışı dinleme varsa uygulama bunu uygun içerikler için açıkça belirtmelidir."
+        },
+        {
+          "question": "Oynatma göstergesi ilerlerken neden ses duymuyorum?",
+          "answer": "Ses bağlı başka bir cihaza yönlenmiş olabilir veya ses düzeylerinden biri kapalıdır. Önce seçili çıkışı kontrol et; gerekirse ardından başka bir istasyonla karşılaştır."
+        }
+      ],
+      "links": [
+        {
+          "route": "applications",
+          "label": "Uygulama bilgilerini incele"
+        },
+        {
+          "route": "search",
+          "label": "Telefonun için bir istasyon bul"
+        },
+        {
+          "route": "home",
+          "label": "Radyo dizinini aç"
+        }
+      ]
+    },
+    {
+      "id": "radio-data-usage",
+      "title": "İnternet radyosu ne kadar mobil veri kullanır?",
+      "seoTitle": "İnternet radyosu ne kadar mobil veri kullanır?",
+      "description": "Radyo veri kullanımını bit hızından hesapla; 64, 128 ve 256 kbps örneklerini karşılaştır ve ek veri aktarımı için pay bırak.",
+      "primaryKeyword": "radyo veri kullanımı",
+      "secondaryKeywords": [
+        "radyo mobil veri",
+        "radyo bit hızı",
+        "radyo neden takılır"
+      ],
+      "imageAlt": "Bir radyo sinyali ile veri göstergesinin çizimi",
+      "intro": "İnternet radyosunun veri kullanımı, yayının bit hızına ve ne kadar süre dinlediğine bağlı olarak değişir. Hesap yapmak planlamaya yardımcı olur, ancak telefon faturasının ölçümü değildir. Tahmini, cihazının veri sayacı ve bağlantı sağlayıcının tanımladığı kullanım hakkıyla birlikte değerlendirmen daha doğru bir yaklaşım sağlar.",
+      "sections": [
+        {
+          "heading": "Saatlik tahmini adım adım hesapla",
+          "paragraphs": [
+            "Sabit bir bit hızı için saniyedeki kilobit değerini 3.600 saniyeyle çarp. Bitleri bayta çevirmek için sekize, ondalık megabayt elde etmek için de bine böl. Kısa yol şu şekildedir: kbps cinsinden bit hızı × 0,45 = saatte yaklaşık MB. Bu işlem, belirtilen varsayım altında yalnızca ses yükünü gösterir. Bir sayfanın açılması, bağlantının yeniden kurulması veya telefonun başka işlerinin yaptığı bütün aktarımları içermez. Sonucu kesin tüketim yerine hesaplanmış bir başlangıç noktası olarak kullan."
+          ]
+        },
+        {
+          "heading": "Üç örneği aynı birimle karşılaştır",
+          "paragraphs": [
+            "64 kbps için hesap saatte 28,8 MB verir. 128 kbps için 57,6 MB, 256 kbps için 115,2 MB elde edilir. Sabit 128 kbps ile iki saat dinlemek böylece 115,2 MB ses yüküne karşılık gelir. Buradaki birim ondalık MB'dir ve değerler belirli bir istasyonda yapılmış ölçümler değildir. Ek aktarım yükü, bit hızının değişmesi ve oynatıcı ile bağlantının davranışı gerçek kullanımın farklı çıkmasına neden olabilir. Bu yüzden örnekleri doğrudan bir ücret garantisi gibi yorumlama."
+          ]
+        },
+        {
+          "heading": "Hesabı kendi dinleme sürene uygula",
+          "paragraphs": [
+            "Önce yaklaşık kaç saat dinleyeceğini belirle, sonra bu süreyi uygun saatlik tahminle çarp. Ek veri aktarımı ve telefondaki diğer işlemler için de pay bırak. İstasyon bit hızını açıklamıyorsa tahmin ettiğin bir değeri kesin bilgi gibi sunma. Kısa bir dinleme oturumundan sonra cihazdaki kullanım bilgisine bakmak pratik bir karşılaştırma sağlayabilir. Bununla birlikte aynı sürede başka uygulamaların veri kullanması sonucu etkiler. Hangi bağlantıyı ve hangi zaman aralığını değerlendirdiğini not etmek karşılaştırmayı daha anlaşılır yapar."
+          ]
+        },
+        {
+          "heading": "Takılma sorununu ayrı olarak incele",
+          "paragraphs": [
+            "Yayının durup yeniden yüklenmesi yalnızca kota meselesi değildir; bağlantıyla da ilgilidir. Tarifenin veri hakkı yeterli olsa bile yayın takılabilir. Başka bir istasyonu dene ve mevcut bağlantıyı kontrol et. Daha düşük bit hızı seçeneğini ise ancak yayıncı gerçekten sunuyorsa kullanabilirsin."
+          ],
+          "items": [
+            "Bit hızı oynatıcıda veya yayıncı bilgisinde açıkça veriliyorsa not et.",
+            "Dinleme süresini tahmin ederek toplam ondalık MB değerini hesapla.",
+            "Ek aktarım ve telefonun diğer internet işleri için boşluk bırak.",
+            "Tipik bir oturumdan sonra tahmini cihazındaki veri sayacıyla karşılaştır."
+          ]
+        }
+      ],
+      "faq": [
+        {
+          "question": "Wi-Fi üzerinden dinlemek veri kullanmaz mı?",
+          "answer": "Wi-Fi bağlantısında da veri aktarılır. Bunun ücretli bir kullanım hakkını etkileyip etkilemediği kullandığın internet hizmetine ve tarifeye bağlıdır."
+        },
+        {
+          "question": "Saatte 57,6 MB kesin tüketim midir?",
+          "answer": "Hayır. Sabit 128 kbps yayın için hesaplanan ses yüküdür. Ek aktarım, değişken bit hızı ve başka ağ etkinlikleri cihazın kaydettiği toplamı değiştirebilir."
+        }
+      ],
+      "links": [
+        {
+          "route": "home",
+          "label": "Denemek için bir yayın seç"
+        },
+        {
+          "route": "applications",
+          "label": "Mobil dinleme seçeneklerini incele"
+        },
+        {
+          "route": "search",
+          "label": "Başka bir istasyon ara"
+        }
+      ]
+    },
+    {
+      "id": "rock-radio-guide",
+      "title": "Zevkine uygun rock radyosu nasıl bulunur?",
+      "seoTitle": "Zevkine uygun rock radyosu nasıl bulunur?",
+      "description": "Klasik, alternatif ve sert rock programlarını karşılaştır; istasyonları birkaç şarkı ve farklı yayın saatleri boyunca değerlendir.",
+      "primaryKeyword": "rock radyo",
+      "secondaryKeywords": [
+        "klasik rock radyosu",
+        "alternatif rock",
+        "sert rock istasyonları"
+      ],
+      "imageAlt": "Müzik öğeleriyle birlikte çizilmiş bir elektro gitar",
+      "intro": "Rock radyosu çok farklı sesleri bir araya getirir; tek bir tür etiketi programın tamamını anlatmaya yetmez. Herkes için geçerli bir en iyi istasyon aramak yerine sevdiğin gitarları, sesleri, dönemleri ve sunum biçimlerini temel alan küçük bir dinleme karşılaştırması yapabilirsin.",
+      "sections": [
+        {
+          "heading": "Rock içinde sevdiğin özellikten başla",
+          "paragraphs": [
+            "Klasik rock, daha eski ve tanıdık gitar müziğine ulaşmak için yararlı bir başlangıç olabilir. Alternatif veya daha sert rock tanımları ise başka seçimlere işaret eder. Bu adlar her parçanın nasıl olacağını kesin olarak belirlemez. Duymak istediğin iki üç sanatçıyı ya da özelliği yaz: belirgin gitar motifleri, daha sakin düzenlemeler veya henüz bilmediğin kayıtlar gibi. İstasyon açıklamaları birbirine benziyorsa bu küçük liste somut bir karşılaştırma noktası sağlar. Aramanın amacı etiketi doğrulamak değil, istediğin sesi bulmaktır."
+          ]
+        },
+        {
+          "heading": "Tek parça yerine birkaç şarkıyı birlikte değerlendir",
+          "paragraphs": [
+            "İlk duyduğun şarkı bir istek parçası, özel bir bölüm veya bitmek üzere olan başka bir programdan kalmış olabilir. Karar vermeden önce istasyona birkaç şarkı boyunca zaman tanı. Tanıdık parçalarla yeni keşifler, sert ve sakin kayıtlar, müzik ile sunucu konuşmaları arasındaki geçişleri dinle. İlk anda bir konuşmaya denk geldiysen bitmesini bekle. Burada değerlendirdiğin şey rastgele açılış anı değil, programın kurduğu genel dengedir. Birden fazla parça bu dengeyi daha görünür hale getirir."
+          ]
+        },
+        {
+          "heading": "Saat, bölge ve sunum dilini karşılaştır",
+          "paragraphs": [
+            "Bir rock istasyonu akşamki özel programında gündüzden farklı duyulabilir. Bölge de duyduğun sanatçıları ve müzikle ilgili göndermeleri etkileyebilir. Sunucunun dili ise açıklamalardan ne kadar yararlanacağını değiştirir. Bir istasyonu tamamen elemeden önce başka bir zamanda yeniden dene. Amacın her şarkıyı tanımaktan çok yeni gruplar keşfetmekse farklı bir bölgeden programı karşılaştırmaya ekleyebilirsin. Dinleme saatini not etmek, sevdiğin karışımın istasyonun genel akışı mı yoksa belirli bir program mı olduğunu anlamana yardımcı olur."
+          ]
+        },
+        {
+          "heading": "Farklı durumlar için küçük bir liste oluştur",
+          "paragraphs": [
+            "Açıklamaları birbirinden ayrılan birkaç aday seç ve benzer sürelerle dinle. Kısa notlar yeterlidir; ayrıntılı puanlar kişisel tercihi mutlaka daha nesnel yapmaz. Tek bir istasyonun bütün ihtiyaçlarını karşılamasını beklemek yerine farklı dinleme anlarına uygun seçenekleri tut."
+          ],
+          "items": [
+            "Geniş bir rock programıyla klasik rock ağırlıklı bir yayını karşılaştır.",
+            "Tanıdık sanatçı, yeni keşif ve konuşma dengesini kısa biçimde not et.",
+            "Birkaç şarkı dinle ve farklı bir saatte aynı denemeyi tekrarla.",
+            "Enerjik bir oturum ile daha çeşitli program için ayrı seçenekler belirle."
+          ]
+        }
+      ],
+      "faq": [
+        {
+          "question": "Klasik rock her yerde aynı şarkıları mı ifade eder?",
+          "answer": "Hayır. İstasyonlar ve bölgeler bu tanımı farklı yorumlayabilir. Aynı dönem veya listeyi varsaymak yerine gerçek programı ve sanatçı dağılımını kontrol et."
+        },
+        {
+          "question": "Rock istasyonu başka türler de çalabilir mi?",
+          "answer": "Evet. Ana kimliğinin yanında geçiş türleri, söyleşiler ve özel programlar bulunabilir. Yayın akışı ve birkaç dinleme denemesi tek bir etiketten daha geniş bilgi verir."
+        }
+      ],
+      "links": [
+        {
+          "route": "genre:rock",
+          "label": "Rock istasyonlarını keşfet"
+        },
+        {
+          "route": "genre:classic-rock",
+          "label": "Klasik rock dinle"
+        },
+        {
+          "route": "regions",
+          "label": "Bölgelere göre karşılaştır"
+        }
+      ]
+    },
+    {
+      "id": "jazz-radio-guide",
+      "title": "Caz radyosu keşfi: akustik, vokal ve smooth jazz",
+      "seoTitle": "Caz radyosu keşfi: akustik, vokal ve smooth jazz",
+      "description": "Akustik caz, vokal caz ve smooth jazz arasından bir başlangıç seç; programları dinleyerek sunum ve müzik tercihlerine uygun radyo bul.",
+      "primaryKeyword": "caz radyo",
+      "secondaryKeywords": [
+        "smooth jazz radyo",
+        "vokal caz",
+        "akustik caz"
+      ],
+      "imageAlt": "Akıcı müzik çizgileriyle çevrili bir saksafon çizimi",
+      "intro": "Caz radyosu tanıdık bir sesi, enstrümantal bir topluluğu veya farklı müzik yaklaşımlarını sunabilir. En kullanışlı seçim, bugün duymak istediğine uyan programdır. Önce ses ve sunum biçimini düşün; ardından henüz tanımadığın kayıtların tercihlerini geliştirmesine izin ver. Her parçayı önceden bilmen gerekmez.",
+      "sections": [
+        {
+          "heading": "İstasyondan önce istediğin sesi seç",
+          "paragraphs": [
+            "Akustik caz, vokal caz ve smooth jazz yararlı arama ipuçlarıdır, fakat her biri geniş bir alanı kapsar. Enstrümanların birbiriyle ilişkisini seviyorsan toplulukları veya akustik kayıtları vurgulayan açıklamalardan başlayabilirsin. Dikkatini şarkıcı çekiyorsa vokal programlarını karşılaştır. Daha tutarlı bir çağdaş ses arıyorsan smooth jazz tanımlarını dinleyerek dene. Bu başlıkları kesin sınırlar gibi düşünme. Her yayıncının onları nasıl yorumladığını ancak gerçek program gösterir; seçim yaparken kendi duyduğun özelliklere dönmek bu yüzden önemlidir."
+          ]
+        },
+        {
+          "heading": "Programın gelişmesine zaman ver",
+          "paragraphs": [
+            "Çok kısa bir bölüm, caz programını ilginç yapan bağlantıları kaçırabilir. Birkaç eser boyunca dinleyerek topluluğun büyüklüğünü, enstrümanları ve hız değişimlerini fark etmeye çalış. Sunucu bir kaydı açıklayabilir veya bir sonraki seçimle ilişki kurabilir. Bu bağlam, bazı dinleyiciler için programın önemli bir parçasıdır. Daha az konuşma istiyorsan ilk anonsa göre karar vermek yerine daha uzun bir örnekte müzik ve söz oranını karşılaştır. Böylece tek bir bölümden bütün istasyon hakkında acele sonuç çıkarmamış olursun."
+          ]
+        },
+        {
+          "heading": "Tanımadığın müziği yeni bir ipucuna dönüştür",
+          "paragraphs": [
+            "Bir kayıt ilgini çekerse mevcutsa sanatçı veya eser bilgisini not et. Ekranda bilgi yoksa yayıncının program sayfasına bakabilirsin; ancak her yerde eksiksiz liste bulunmasını bekleme. Zevkini netleştirmek için bütün kayıtları tanımlaman gerekmez. Ses, üflemeli çalgılar, piyano, küçük topluluk veya büyük orkestra gibi açıklamalar da bir sonraki aramayı yönlendirir. Hangi özelliği tekrar duymak istediğini yazmak rastgele denemeleri daha anlamlı bir keşfe dönüştürür. Program adı ve saat de sonradan karşılaştırmana yardımcı olabilir."
+          ]
+        },
+        {
+          "heading": "Gerçek dinleme ortamında karşılaştır",
+          "paragraphs": [
+            "Bir istasyonu daha sonra düzenli dinleyeceğin duruma benzer bir ortamda dene. Bu, dikkatle müzik dinlediğin bir zaman veya basit bir iş yaparken eşlik eden yayın olabilir. Kişisel tercihin yeterli bir ölçüttür; herhangi bir caz türüne sağlık veya odaklanma etkisi atfetmen gerekmez."
+          ],
+          "items": [
+            "Açıklamaları belirgin biçimde farklı iki caz istasyonu seç.",
+            "Birkaç eser boyunca dinle ve konuşma ile müzik dengesini not et.",
+            "Yeniden duymak istediğin bir sanatçıyı veya ses özelliğini yaz.",
+            "Başka bir saatte geri dönerek genel yayın akışını da kontrol et."
+          ]
+        }
+      ],
+      "faq": [
+        {
+          "question": "Smooth jazz bütün enstrümantal cazı kapsar mı?",
+          "answer": "Hayır. Enstrümantal caz birçok yaklaşım içerir. Smooth jazz yalnızca bir arama yönüdür; karar vermeden önce istasyonun gerçekten neler çaldığını dinlemelisin."
+        },
+        {
+          "question": "Bilmediğim bir eserin adını nasıl bulurum?",
+          "answer": "Varsa parça bilgisini ve yayıncının program ayrıntılarını kontrol et. Bilgiler her zaman bulunmayabilir; saat ve program adını not etmek sonraki araman için yararlı olur."
+        }
+      ],
+      "links": [
+        {
+          "route": "genre:jazz",
+          "label": "Caz istasyonlarını keşfet"
+        },
+        {
+          "route": "search",
+          "label": "Bir caz radyosu ara"
+        },
+        {
+          "route": "regions",
+          "label": "Farklı bölgelerin cazını dinle"
+        }
+      ]
+    },
+    {
+      "id": "blues-radio-guide",
+      "title": "Blues radyosu seçimi: akustik, elektrik ve soul",
+      "seoTitle": "Blues radyosu seçimi: akustik, elektrik ve soul",
+      "description": "Akustik ve elektrik blues seslerini karşılaştır, soul geçişlerini değerlendir ve farklı program saatleriyle sana uygun istasyonu bul.",
+      "primaryKeyword": "blues radyo",
+      "secondaryKeywords": [
+        "akustik blues",
+        "elektrik blues",
+        "internetten blues dinle"
+      ],
+      "imageAlt": "Bir gitar ile yanında duran plak çizimi",
+      "intro": "Blues radyosu yalın bir akustik kayıttan elektrikli bir gruba, ardından soul veya yakın türlere geçebilir. Bu çeşitlilik, sevdiğin sesi biraz tanımladığında daha kullanışlı olur. Önce hangi özellikleri duymak istediğine karar ver; sonra istasyonun bunları yayın akışında nasıl bir araya getirdiğini incele.",
+      "sections": [
+        {
+          "heading": "Akustik ve elektrik ayrımını başlangıç olarak kullan",
+          "paragraphs": [
+            "Akustik ağırlıklı bir açıklama, ses ile daha sade bir düzenlemenin ilişkisini duymak istediğinde iyi bir ipucu olabilir. Elektrik blues ise farklı gitar ve grup seslerine yönlendirir. İki tanım da her kaydı kapsayan kesin bir sınır çizmez. Senin için önemli özellikleri dinle: vokalin anlatımı, enstrümanlar arasındaki boşluk, gitarın tonu veya grubun enerjisi gibi. Bu gözlemler sanatçı adlarını bilmesen de seçim yapmanı sağlar. Bir sonraki istasyonda aynı özellikleri arayarak daha anlamlı bir karşılaştırma yapabilirsin."
+          ]
+        },
+        {
+          "heading": "Türler arasındaki geçişi bağlamıyla değerlendir",
+          "paragraphs": [
+            "Bazı programlar blues yanında soul, rock veya başka yakın stillere de yer verir. Bu durum istasyonun kimliğinin bir parçası olabilir; mutlaka yanlış sınıflandırıldığı anlamına gelmez. Geçişlerin dinleme beklentine uyup uymadığını düşün. Daha dar bir seçim istiyorsan başka bir blues istasyonunu veya açıkça tanımlanan özel bir programı dene. Geniş kapsamlı bir istasyonun belirli saatlerde senin sevdiğin sese çok yakın yayın yapması mümkündür. Bu yüzden tek bir tür geçişi duyduğunda bütün programı hemen eleme."
+          ]
+        },
+        {
+          "heading": "İstasyon kadar programı da takip et",
+          "paragraphs": [
+            "Tür etiketi bütün bir yayın hizmetini özetler, fakat sunucular belirli bir sanatçıya, döneme veya müzik ilişkisine odaklanan programlar hazırlayabilir. Farklı zamanlarda dinle ve bulunuyorsa yayın akışını incele. İlk denemede fazla geniş gelen bir istasyon, başka bir saatte daha odaklı bir blues programı sunabilir. Programın adını dinlediğin saatle birlikte yazmak aynı seçimi yeniden bulmanı kolaylaştırır. Böylece her seferinde genel listeden başlaman gerekmez ve sevdiğin karışımın ne zaman sunulduğunu daha iyi anlarsın."
+          ]
+        },
+        {
+          "heading": "Tekrarlanabilir bir dinleme karşılaştırması yap",
+          "paragraphs": [
+            "İki veya üç aday seç ve her birine birkaç kayıt boyunca zaman ver. Tek bir sevdiğin şarkıdan kazanan çıkarmak yerine karışım hakkında kısa notlar al. Akustik, elektrik ve yakın türlere açılan programlardan oluşan küçük bir liste farklı dinleme isteklerini karşılayabilir."
+          ],
+          "items": [
+            "Örneğinde akustik kayıtların mı elektrikli grupların mı ağırlıkta olduğunu yaz.",
+            "Soul, rock ve diğer yakın türlerin ne sıklıkla duyulduğunu gözlemle.",
+            "Sunucu açıklamalarının miktarını ve sana yararlı olup olmadığını karşılaştır.",
+            "Beğendiğin programa başka bir gün benzer saatte yeniden kulak ver."
+          ]
+        }
+      ],
+      "faq": [
+        {
+          "question": "Blues istasyonu yalnızca blues mu çalar?",
+          "answer": "Her zaman değil. Yakın türler ve karma yayın akışları bulunabilir. Açıklamalar yardımcı olur, ancak daha uzun bir dinleme örneği gerçek karışımı anlamanın en açık yoludur."
+        },
+        {
+          "question": "Sanatçı adlarını bilmiyorsam nasıl arama yaparım?",
+          "answer": "Akustik gitar, elektrikli grup veya belirgin vokal gibi tarif edebildiğin özelliklerden başla. Blues dizinindeki istasyonları bu tercihlere göre karşılaştırarak aramanı daraltabilirsin."
+        }
+      ],
+      "links": [
+        {
+          "route": "genre:blues",
+          "label": "Blues istasyonlarına göz at"
+        },
+        {
+          "route": "genre:rock",
+          "label": "Yakın rock programlarını karşılaştır"
+        },
+        {
+          "route": "genres",
+          "label": "Diğer müzik türlerini keşfet"
+        }
+      ]
+    },
+    {
+      "id": "country-radio-guide",
+      "title": "Country radyosu: güncel müzik, klasikler ve Americana",
+      "seoTitle": "Country radyosu: güncel müzik, klasikler ve Americana",
+      "description": "Güncel country, klasik kayıtlar ve Americana programlarını keşfet; müzik türünün coğrafi ülke filtresinden nasıl ayrıldığını öğren.",
+      "primaryKeyword": "country radyo",
+      "secondaryKeywords": [
+        "klasik country radyosu",
+        "güncel country",
+        "Americana radyosu"
+      ],
+      "imageAlt": "Müzik öğeleriyle birlikte çizilmiş bir akustik gitar",
+      "intro": "Country radyosu ararken İngilizce country sözcüğü iki farklı anlama gelebilir: müzik türü veya ülke. Müzik arıyorsan önce tür sayfasını seç. Ardından dönem, ses ve istasyonun bulunduğu bölge üzerinden ilerleyerek dinlemek istediğin programa daha kolay ulaşabilirsin. Bu küçük ayrım arama sonuçlarını anlamayı kolaylaştırır.",
+      "sections": [
+        {
+          "heading": "Müzik türü ile coğrafi konumu ayrı düşün",
+          "paragraphs": [
+            "Ülke ya da bölge filtresi istasyonları bulundukları yere göre gruplar; country müziğini seçmez. Herhangi bir ülkedeki radyo pek çok farklı tür yayınlayabilir. Müzikal tarzı bulmak için önce country kategorisini aç, yerel sesler veya belirli bir bölgenin programları ilgini çekiyorsa ardından konumu kullan. Bu sıra, ilgisiz sonuçlardan oluşan uzun bir listeyi inceleme ihtiyacını azaltır. Karşılaştırma yaparken de neyi değiştirdiğini bilirsin: müzik seçimini mi, istasyonun coğrafyasını mı, yoksa programın sunulduğu dili mi?"
+          ]
+        },
+        {
+          "heading": "Güncel ve klasik seçkileri karşılaştır",
+          "paragraphs": [
+            "Güncel country açıklamaları daha yeni bir program aradığında yararlı olabilir. Klasik country tanımı ise önceki kayıtlara farklı bir ağırlık verildiğini düşündürür. İki alan arasındaki sınır istasyondan istasyona değişebilir. Birkaç şarkı dinleyerek tanıdık sesleri, yeni sanatçıları, düzenleme biçimlerini ve sunucu konuşmalarını karşılaştır. Bir program farklı dönemleri birleştirebilir. Bu nedenle etiketi katı bir şarkı listesi sözü olarak değil, ilk adayını seçmeye yarayan bir ipucu olarak kullan. Asıl kararını duyduğun bütünlük üzerinden ver."
+          ]
+        },
+        {
+          "heading": "Americana ile yakın sesleri keşfet",
+          "paragraphs": [
+            "Americana, country ile ilişkili köklü müzik tarzlarının kesiştiği programlara yönlendirebilir. Geniş bir tanımdır ve yayıncılar farklı yorumlayabilir. Bir country istasyonu sana fazla parlak veya dar geliyorsa daha çeşitli düzenlemeler ve yakın türler içeren programları dinle. Amaç, müziğin hoşuna giden bağlantılarını bulmaktır; dinlemeden önce kesin bir tür tanımı üzerinde anlaşman gerekmez. Özellikle hangi çalgıların, seslerin veya geçişlerin ilgini çektiğini not et. Böylece sonraki seçiminde yalnızca etikete dayanmak yerine kendi somut dinleme izlenimini kullanırsın."
+          ]
+        },
+        {
+          "heading": "Kararı gerçek bir oturum üzerinden ver",
+          "paragraphs": [
+            "Sevdiğin bir şarkı dinlemeye devam etmek için iyi bir nedendir, ama bütün formatı göstermez. Birkaç parçayı karşılaştır, konuşma miktarını gözlemle ve başka bir saatte yeniden dene. Hem tanıdık klasiklerden hem keşiflerden hoşlanıyorsan bunlar için ayrı seçenekler tutabilirsin."
+          ],
+          "items": [
+            "Ülke veya bölge seçmeden önce country müzik türünü aç.",
+            "Güncel ağırlıklı bir program ile klasiklere yönelen bir istasyonu karşılaştır.",
+            "Yayının country içinde kalmasını mı yakın stillere açılmasını mı sevdiğini not et.",
+            "Düzenli dinleyeceğin radyoya karar vermeden önce ikinci bir oturum yap."
+          ]
+        }
+      ],
+      "faq": [
+        {
+          "question": "Ülke seçmek otomatik olarak country müziğini açar mı?",
+          "answer": "Hayır. Coğrafi filtre istasyonun konumunu seçer. Müzik için country türünü kullan, ardından yararlı olacaksa bölgeye göre daralt."
+        },
+        {
+          "question": "Klasik country ile Americana aynı şey midir?",
+          "answer": "Hayır. Ayrı arama tanımlarıdır; bazı kayıtlar iki tür programda da duyulabilir. Aynı şarkı listesini beklemek yerine yayıncının gerçek seçkisini karşılaştır."
+        }
+      ],
+      "links": [
+        {
+          "route": "genre:country",
+          "label": "Country istasyonlarını keşfet"
+        },
+        {
+          "route": "regions",
+          "label": "Coğrafi bölgeye göre göz at"
+        },
+        {
+          "route": "genres",
+          "label": "Müzik türlerini karşılaştır"
+        }
+      ]
+    },
+    {
+      "id": "news-talk-radio-guide",
+      "title": "Haber ve sohbet radyosunu bağlamıyla dinlemek",
+      "seoTitle": "Haber ve sohbet radyosunu bağlamıyla dinlemek",
+      "description": "Haber ile yorumu ayır, tarih ve saat dilimini kontrol et; haber ve sohbet radyosundaki önemli iddiaları kaynaklarla karşılaştır.",
+      "primaryKeyword": "haber radyosu",
+      "secondaryKeywords": [
+        "sohbet radyosu",
+        "canlı radyo haberleri",
+        "haber kaynakları"
+      ],
+      "imageAlt": "Konuşma ve sinyal öğeleriyle birlikte çizilmiş bir yayın mikrofonu",
+      "intro": "Haber ve sohbet radyosu olayları takip etmene, söyleşiler dinlemene ve farklı görüşlerle karşılaşmana yardımcı olabilir. Yararlı bir dinleme alışkanlığı, programın türünü, ne zaman hazırlandığını ve bilginin nereden geldiğini kontrol etmeyi de içerir. Canlı ses duymak, her sözün bağlamını kendiliğinden açıklamaz.",
+      "sections": [
+        {
+          "heading": "Haber, söyleşi ve yorumu ayırt et",
+          "paragraphs": [
+            "Haber bülteni, söyleşi ve görüş programı farklı amaçlar taşır. Sunucunun doğrulanmış bir olayı mı aktardığına, bir konuğa açıklama mı sorduğuna yoksa kendi savını mı geliştirdiğine dikkat et. Konuğun söylediği bir şey otomatik olarak istasyonun doğrulanmış sonucu sayılmaz. Ayrım belirsizse iddiayı paylaşmadan önce program açıklamasını veya yayıncı bilgisini kontrol et. Kimin hangi rolle konuştuğunu bilmek, kişisel deneyim ile genel bir iddia arasındaki farkı anlamana yardımcı olur. Böylece içeriği sadece ses tonuna göre değerlendirmezsin."
+          ]
+        },
+        {
+          "heading": "Canlı ifadesinin arkasındaki zamanı kontrol et",
+          "paragraphs": [
+            "Bir istasyon sürekli yayın yaparken kayıt, tekrar veya daha önce yapılmış bir söyleşi sunabilir. Tarihleri ve yerel saate ilişkin ifadeleri dinle; bunları kendi bulunduğun yerle karşılaştır. Sabah programı olarak tanımlanan yayın senin sabah saatlerine denk gelmeyebilir. Gelişen bir olayda, ilişkili yazının yayımlanma veya bölümün yayınlanma zamanını da kontrol et. Eski bir güncellemenin bugünkü durumu anlatıyor gibi görünmesi mümkündür. Oynatıcının çalışıyor olması ile belirli bir haberin güncelliğini ayrı sorular olarak ele al."
+          ]
+        },
+        {
+          "heading": "Önemli iddiaların kaynağına ulaşmaya çalış",
+          "paragraphs": [
+            "Bir haber kararını etkiliyorsa mümkün olduğunda ilk açıklamayı, belgeyi veya adı belli kaynağı bul. Başka bir yayın kuruluşunun anlatımıyla karşılaştır ve ortak gerçeklerle farklı yorumları ayır. Telefonla katılan bir dinleyicinin sözü onun görüşünü gösterebilir, fakat aynı görüşün toplumda ne kadar yaygın olduğunu kanıtlamaz. Doğrulanmamış bir iddianın belirsizliğini koru. Kendinden emin anlatım, dayanağın yerine geçmez. Kaynak gösterilmeyen bir söz için daha fazla bağlam aramak, dinlediğin programın tamamını peşinen reddetmeni de gerektirmez."
+          ]
+        },
+        {
+          "heading": "İstasyonu bilgi ihtiyacına göre seç",
+          "paragraphs": [
+            "Yerel haber, uzun söyleşi ve genel sohbet farklı ihtiyaçlara karşılık gelir. Sadece kategoriye güvenmeden önce programı dinle. Spor karşılaşmalarının sunulması ve acil durum bilgileri de yayıncıya ve dağıtım koşullarına bağlıdır. Bir dizindeki kayıt bunların her biri için garanti oluşturmaz."
+          ],
+          "items": [
+            "Program türünü, konuşmacıların kimliğini ve hangi rolle konuştuğunu kontrol et.",
+            "İlgili tarihi, yerel saati ve tekrar yayını işaretlerini not et.",
+            "Önemli iddiaları başka bir kaynak veya özgün açıklamayla karşılaştır.",
+            "Acil yerel yönlendirmeler gerektiğinde ilgili resmî bilgi kanallarını kullan."
+          ]
+        }
+      ],
+      "faq": [
+        {
+          "question": "Canlı radyo her zaman canlı haber mi sunar?",
+          "answer": "Hayır. Kesintisiz bir yayın içinde kayıtlar ve tekrarlar bulunabilir. Güncellik önemliyse dinlediğin bölümün kendi tarihini ve bağlamını kontrol et."
+        },
+        {
+          "question": "Her spor yayınına veya uyarıya erişebilir miyim?",
+          "answer": "Bunu varsayamazsın. Erişim ve kapsam yayıncıya ve ilgili düzenlemelere bağlıdır. İstasyonun güncel açıklamasına bak; acil yerel talimatlar için resmî kanalları kullan."
+        }
+      ],
+      "links": [
+        {
+          "route": "genre:news",
+          "label": "Haber istasyonlarını bul"
+        },
+        {
+          "route": "genre:talk",
+          "label": "Sohbet radyolarını keşfet"
+        },
+        {
+          "route": "regions",
+          "label": "Bölgeye göre istasyon seç"
+        }
+      ]
+    },
+    {
+      "id": "80s-90s-radio-guide",
+      "title": "80'ler ve 90'lar radyosunu zevkine göre seç",
+      "seoTitle": "80'ler ve 90'lar radyosunu zevkine göre seç",
+      "description": "80'ler ve 90'lar radyolarını tür, bölge ve sunuma göre karşılaştır; eski şarkı programlarının neden farklı seçimler sunduğunu keşfet.",
+      "primaryKeyword": "80'ler radyosu",
+      "secondaryKeywords": [
+        "90'lar radyosu",
+        "eski şarkılar radyosu",
+        "dönem radyoları"
+      ],
+      "imageAlt": "Nostaljik müzik öğeleriyle birlikte çizilmiş bir kaset",
+      "intro": "Bir on yıl etiketi radyo aramasını daraltır, ancak duyacağın bütün şarkıları tanımlamaz. 80'ler ve 90'lar farklı türleri ve yerel müzik anılarını içerir. Dönemi başlangıç olarak kullan, sonra istasyonu sana uygun kılan tarzları, bölgeleri ve programın sunuluş biçimini karşılaştır.",
+      "sections": [
+        {
+          "heading": "Önce dönemi ve müzikal yönü belirle",
+          "paragraphs": [
+            "80'ler ağırlıklı bir yayın mı, 90'lar mı yoksa ikisinin karışımı mı istediğine karar ver. Ardından sesi düşün: gitar müziği, dans parçaları, pop veya başka bir tercih. Aynı dönem adını kullanan iki istasyon farklı alanları seçtiği için çok farklı programlar sunabilir. Birkaç sanatçı ya da hatırladığın şarkı özelliği aradığını anlatmaya yardımcı olur. Eksiksiz bir çalma listesi hazırlamana gerek yoktur. Hangi tür anıyı veya hangi müzikal enerjiyi yeniden duymak istediğini bilmen ilk karşılaştırma için yeterlidir."
+          ]
+        },
+        {
+          "heading": "Eski şarkı tanımının bölgeye göre değiştiğini bil",
+          "paragraphs": [
+            "Eski şarkılar veya nostalji gibi tanımlar evrensel bir yıl ve parça listesi oluşturmaz. Yayıncının hedeflediği dinleyici ve bölgenin müzik geçmişi seçkiyi etkiler. Başka bir ülkedeki istasyon, çıktığı dönemde çok az duyduğun kayıtları tanıtabilir. Amacın kişisel anıları canlandırmaksa tanıdık bir bölgeden başla. Keşif daha önemliyse aynı dönemi birkaç farklı bölgeden dinleyip değişen özellikleri not et. Dil, sanatçı seçimi ve baskın türler bu karşılaştırmada özellikle yararlı ipuçları olabilir; hepsinin aynı olması gerekmez."
+          ]
+        },
+        {
+          "heading": "İlk tanıdık şarkının ötesini dinle",
+          "paragraphs": [
+            "İlk parçayı tanımak güçlü bir izlenim yaratabilir, ancak daha uzun bir örnek istasyonun genel tercihlerini gösterir. Dar bir hit listesinde mi kaldığına, daha az bilinen kayıtlara mı açıldığına veya komşu dönemleri mi eklediğine dikkat et. Sunucu konuşmaları ve özel programlar da deneyimi şekillendirir. İlk denemen bir tema programıyla başladıysa başka bir saatte yeniden gel. Tek bir özel bölüm, istasyonun günlük yayın akışını temsil etmeyebilir. Kararını birkaç şarkının birlikte oluşturduğu karışıma göre vermek daha yararlıdır."
+          ]
+        },
+        {
+          "heading": "Farklı ruh hâlleri için küçük bir seçim yap",
+          "paragraphs": [
+            "Tek bir kesin dönem radyosu seçmek zorunda değilsin. Hatırladığın favoriler için bir istasyon, yeni keşifler veya başka türler için bir diğeri işine yarayabilir. Adayları benzer sürelerle karşılaştır; böylece tek bir çok sevdiğin şarkı bütün kararı belirlemez."
+          ],
+          "items": [
+            "80'ler veya 90'lardan bir başlangıç seçerek birkaç parça dinle.",
+            "Başlıca türleri, dili ve tanıdık parçalarla yeni keşiflerin dengesini yaz.",
+            "Yakın dönemlerin eklenip eklenmediğini ve bu karışımı sevip sevmediğini kontrol et.",
+            "Son seçimini yapmadan önce başka bir bölgedeki istasyonu da karşılaştır."
+          ]
+        }
+      ],
+      "faq": [
+        {
+          "question": "80'ler radyosu yalnızca o yılların şarkılarını mı çalar?",
+          "answer": "Her zaman değil. Yakın yıllar, ilişkili temalar ve özel programlar bulunabilir. Gerçek karışımı anlamak için açıklamayı ve daha uzun bir dinleme örneğini kullan."
+        },
+        {
+          "question": "İki nostalji radyosu neden çok farklı duyuluyor?",
+          "answer": "Farklı dönemlere, dinleyicilere veya bölgesel anılara seslenebilirler. Nostalji sözcüğü genel bir yön verir; ayrıntıyı programın kendisi gösterir."
+        }
+      ],
+      "links": [
+        {
+          "route": "genre:80s",
+          "label": "80'ler istasyonlarını dinle"
+        },
+        {
+          "route": "genre:90s",
+          "label": "90'lar radyosunu keşfet"
+        },
+        {
+          "route": "regions",
+          "label": "Dönem radyolarını bölgelere göre karşılaştır"
+        }
+      ]
+    }
+  ]
+}

@@ -555,7 +555,8 @@ test('rolling manifest hashes retain every locale and incomplete builds are retr
     assert.equal(rolling.status, 200);
     const body = await rolling.text();
     const parsed = assertValidXml(body, 'rolling cohort index') as any;
-    assert.equal(parsed.sitemapindex.sitemap.length, QUALIFIED_LANGS.length * 3);
+    assert.equal(parsed.sitemapindex.sitemap.length, QUALIFIED_LANGS.length * 3 + 1);
+    assert.ok(body.includes('/sitemap-blog.xml'), 'the independently translated editorial sitemap is discoverable');
     for (const lang of QUALIFIED_LANGS) {
       assert.ok(body.includes(`/sitemap-stations-${lang}-1.xml`), `${lang} remains discoverable during the swap`);
     }
@@ -1156,6 +1157,18 @@ test('Task #344: sitemap-index defensively skips a station chunk numbered 0 (wou
     enStations.chunks = originalChunks;
     fakeCacheStore.clear();
   }
+});
+
+test('blog sitemap serves 140 translated articles and 14 indexes with validators', async () => {
+  const response = await fetch(`${baseUrl}/sitemap-blog.xml`);
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get('content-type') || '', /xml/);
+  const parsed = assertValidXml(await response.text(), 'blog sitemap') as any;
+  assert.equal(parsed.urlset.url.length, 154);
+  assert.equal(parsed.urlset.url.filter((entry: any) => entry['image:image']).length, 140);
+  const cached = await fetch(`${baseUrl}/sitemap-blog.xml`, { headers: { 'If-None-Match': response.headers.get('etag')! } });
+  assert.equal(cached.status, 304);
+  assert.ok((await (await fetch(`${baseUrl}/robots.txt`)).text()).includes('/sitemap-blog.xml'));
 });
 
 test('A clearly-unmatched path DOES fall through to the SPA catch-all (negative control)', async () => {

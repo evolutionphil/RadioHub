@@ -1,0 +1,589 @@
+{
+  "checkedAt": "2026-09-25T19:20:37.009Z",
+  "sourceHash": 2982201243,
+  "concurrency": 2,
+  "summary": {
+    "count": 28,
+    "status": {
+      "200": 28
+    },
+    "noindex": 0,
+    "errors": 0
+  },
+  "rows": [
+    {
+      "url": "https://themegaradio.com/en/station/kral-fm",
+      "final": "https://themegaradio.com/en/station/kral-fm",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/en/station/kral-fm",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/en/station/kral-fm"
+    },
+    {
+      "url": "https://themegaradio.com/en/station/radio-eurodance-classic",
+      "final": "https://themegaradio.com/en/station/radio-eurodance-classic-pure-and-addictive",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/en/station/radio-eurodance-classic",
+          "status": 301,
+          "location": "/en/station/radio-eurodance-classic-pure-and-addictive"
+        },
+        {
+          "url": "https://themegaradio.com/en/station/radio-eurodance-classic-pure-and-addictive",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/en/station/radio-eurodance-classic-pure-and-addictive"
+    },
+    {
+      "url": "https://themegaradio.com/es/estacion/kral-fm",
+      "final": "https://themegaradio.com/es/estacion/kral-fm",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/es/estacion/kral-fm",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/es/estacion/kral-fm"
+    },
+    {
+      "url": "https://themegaradio.com/es/estacion/radio-eurodance-classic",
+      "final": "https://themegaradio.com/es/estacion/radio-eurodance-classic-pure-and-addictive",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/es/estacion/radio-eurodance-classic",
+          "status": 301,
+          "location": "/es/estacion/radio-eurodance-classic-pure-and-addictive"
+        },
+        {
+          "url": "https://themegaradio.com/es/estacion/radio-eurodance-classic-pure-and-addictive",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/es/estacion/radio-eurodance-classic-pure-and-addictive"
+    },
+    {
+      "url": "https://themegaradio.com/fr/station/kral-fm",
+      "final": "https://themegaradio.com/fr/station/kral-fm",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/fr/station/kral-fm",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/fr/station/kral-fm"
+    },
+    {
+      "url": "https://themegaradio.com/fr/station/radio-eurodance-classic",
+      "final": "https://themegaradio.com/fr/station/radio-eurodance-classic-pure-and-addictive",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/fr/station/radio-eurodance-classic",
+          "status": 301,
+          "location": "/fr/station/radio-eurodance-classic-pure-and-addictive"
+        },
+        {
+          "url": "https://themegaradio.com/fr/station/radio-eurodance-classic-pure-and-addictive",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/fr/station/radio-eurodance-classic-pure-and-addictive"
+    },
+    {
+      "url": "https://themegaradio.com/de/sender/kral-fm",
+      "final": "https://themegaradio.com/de/sender/kral-fm",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/de/sender/kral-fm",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/de/sender/kral-fm"
+    },
+    {
+      "url": "https://themegaradio.com/de/sender/radio-eurodance-classic",
+      "final": "https://themegaradio.com/de/sender/radio-eurodance-classic-pure-and-addictive",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/de/sender/radio-eurodance-classic",
+          "status": 301,
+          "location": "/de/sender/radio-eurodance-classic-pure-and-addictive"
+        },
+        {
+          "url": "https://themegaradio.com/de/sender/radio-eurodance-classic-pure-and-addictive",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/de/sender/radio-eurodance-classic-pure-and-addictive"
+    },
+    {
+      "url": "https://themegaradio.com/pt/estacao/kral-fm",
+      "final": "https://themegaradio.com/pt/estacao/kral-fm",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/pt/estacao/kral-fm",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/pt/estacao/kral-fm"
+    },
+    {
+      "url": "https://themegaradio.com/pt/estacao/radio-eurodance-classic",
+      "final": "https://themegaradio.com/pt/estacao/radio-eurodance-classic-pure-and-addictive",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/pt/estacao/radio-eurodance-classic",
+          "status": 301,
+          "location": "/pt/estacao/radio-eurodance-classic-pure-and-addictive"
+        },
+        {
+          "url": "https://themegaradio.com/pt/estacao/radio-eurodance-classic-pure-and-addictive",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/pt/estacao/radio-eurodance-classic-pure-and-addictive"
+    },
+    {
+      "url": "https://themegaradio.com/it/stazione/kral-fm",
+      "final": "https://themegaradio.com/it/stazione/kral-fm",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/it/stazione/kral-fm",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/it/stazione/kral-fm"
+    },
+    {
+      "url": "https://themegaradio.com/it/stazione/radio-eurodance-classic",
+      "final": "https://themegaradio.com/it/stazione/radio-eurodance-classic-pure-and-addictive",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/it/stazione/radio-eurodance-classic",
+          "status": 301,
+          "location": "/it/stazione/radio-eurodance-classic-pure-and-addictive"
+        },
+        {
+          "url": "https://themegaradio.com/it/stazione/radio-eurodance-classic-pure-and-addictive",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/it/stazione/radio-eurodance-classic-pure-and-addictive"
+    },
+    {
+      "url": "https://themegaradio.com/ru/stantsiya/kral-fm",
+      "final": "https://themegaradio.com/ru/stantsiya/kral-fm",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ru/stantsiya/kral-fm",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/ru/stantsiya/kral-fm"
+    },
+    {
+      "url": "https://themegaradio.com/ru/stantsiya/radio-eurodance-classic",
+      "final": "https://themegaradio.com/ru/stantsiya/radio-eurodance-classic-pure-and-addictive",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ru/stantsiya/radio-eurodance-classic",
+          "status": 301,
+          "location": "/ru/stantsiya/radio-eurodance-classic-pure-and-addictive"
+        },
+        {
+          "url": "https://themegaradio.com/ru/stantsiya/radio-eurodance-classic-pure-and-addictive",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/ru/stantsiya/radio-eurodance-classic-pure-and-addictive"
+    },
+    {
+      "url": "https://themegaradio.com/ar/mahta/kral-fm",
+      "final": "https://themegaradio.com/ar/mahta/kral-fm",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ar/mahta/kral-fm",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/ar/mahta/kral-fm"
+    },
+    {
+      "url": "https://themegaradio.com/ar/mahta/radio-eurodance-classic",
+      "final": "https://themegaradio.com/ar/mahta/radio-eurodance-classic-pure-and-addictive",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ar/mahta/radio-eurodance-classic",
+          "status": 301,
+          "location": "/ar/mahta/radio-eurodance-classic-pure-and-addictive"
+        },
+        {
+          "url": "https://themegaradio.com/ar/mahta/radio-eurodance-classic-pure-and-addictive",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/ar/mahta/radio-eurodance-classic-pure-and-addictive"
+    },
+    {
+      "url": "https://themegaradio.com/zh/电台/kral-fm",
+      "final": "https://themegaradio.com/zh/电台/kral-fm",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/zh/电台/kral-fm",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/zh/%E7%94%B5%E5%8F%B0/kral-fm"
+    },
+    {
+      "url": "https://themegaradio.com/zh/电台/radio-eurodance-classic",
+      "final": "https://themegaradio.com/zh/%E7%94%B5%E5%8F%B0/radio-eurodance-classic-pure-and-addictive",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/zh/电台/radio-eurodance-classic",
+          "status": 301,
+          "location": "/zh/%E7%94%B5%E5%8F%B0/radio-eurodance-classic-pure-and-addictive"
+        },
+        {
+          "url": "https://themegaradio.com/zh/%E7%94%B5%E5%8F%B0/radio-eurodance-classic-pure-and-addictive",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/zh/%E7%94%B5%E5%8F%B0/radio-eurodance-classic-pure-and-addictive"
+    },
+    {
+      "url": "https://themegaradio.com/tr/istasyon/kral-fm",
+      "final": "https://themegaradio.com/tr/istasyon/kral-fm",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/tr/istasyon/kral-fm",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/tr/istasyon/kral-fm"
+    },
+    {
+      "url": "https://themegaradio.com/tr/istasyon/radio-eurodance-classic",
+      "final": "https://themegaradio.com/tr/istasyon/radio-eurodance-classic-pure-and-addictive",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/tr/istasyon/radio-eurodance-classic",
+          "status": 301,
+          "location": "/tr/istasyon/radio-eurodance-classic-pure-and-addictive"
+        },
+        {
+          "url": "https://themegaradio.com/tr/istasyon/radio-eurodance-classic-pure-and-addictive",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/tr/istasyon/radio-eurodance-classic-pure-and-addictive"
+    },
+    {
+      "url": "https://themegaradio.com/ja/ステーション/kral-fm",
+      "final": "https://themegaradio.com/ja/ステーション/kral-fm",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ja/ステーション/kral-fm",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/ja/%E3%82%B9%E3%83%86%E3%83%BC%E3%82%B7%E3%83%A7%E3%83%B3/kral-fm"
+    },
+    {
+      "url": "https://themegaradio.com/ja/ステーション/radio-eurodance-classic",
+      "final": "https://themegaradio.com/ja/%E3%82%B9%E3%83%86%E3%83%BC%E3%82%B7%E3%83%A7%E3%83%B3/radio-eurodance-classic-pure-and-addictive",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ja/ステーション/radio-eurodance-classic",
+          "status": 301,
+          "location": "/ja/%E3%82%B9%E3%83%86%E3%83%BC%E3%82%B7%E3%83%A7%E3%83%B3/radio-eurodance-classic-pure-and-addictive"
+        },
+        {
+          "url": "https://themegaradio.com/ja/%E3%82%B9%E3%83%86%E3%83%BC%E3%82%B7%E3%83%A7%E3%83%B3/radio-eurodance-classic-pure-and-addictive",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/ja/%E3%82%B9%E3%83%86%E3%83%BC%E3%82%B7%E3%83%A7%E3%83%B3/radio-eurodance-classic-pure-and-addictive"
+    },
+    {
+      "url": "https://themegaradio.com/ko/스테이션/kral-fm",
+      "final": "https://themegaradio.com/ko/스테이션/kral-fm",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ko/스테이션/kral-fm",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/ko/%EC%8A%A4%ED%85%8C%EC%9D%B4%EC%85%98/kral-fm"
+    },
+    {
+      "url": "https://themegaradio.com/ko/스테이션/radio-eurodance-classic",
+      "final": "https://themegaradio.com/ko/%EC%8A%A4%ED%85%8C%EC%9D%B4%EC%85%98/radio-eurodance-classic-pure-and-addictive",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ko/스테이션/radio-eurodance-classic",
+          "status": 301,
+          "location": "/ko/%EC%8A%A4%ED%85%8C%EC%9D%B4%EC%85%98/radio-eurodance-classic-pure-and-addictive"
+        },
+        {
+          "url": "https://themegaradio.com/ko/%EC%8A%A4%ED%85%8C%EC%9D%B4%EC%85%98/radio-eurodance-classic-pure-and-addictive",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/ko/%EC%8A%A4%ED%85%8C%EC%9D%B4%EC%85%98/radio-eurodance-classic-pure-and-addictive"
+    },
+    {
+      "url": "https://themegaradio.com/hi/station/kral-fm",
+      "final": "https://themegaradio.com/hi/station/kral-fm",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/hi/station/kral-fm",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/hi/station/kral-fm"
+    },
+    {
+      "url": "https://themegaradio.com/hi/station/radio-eurodance-classic",
+      "final": "https://themegaradio.com/hi/station/radio-eurodance-classic-pure-and-addictive",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/hi/station/radio-eurodance-classic",
+          "status": 301,
+          "location": "/hi/station/radio-eurodance-classic-pure-and-addictive"
+        },
+        {
+          "url": "https://themegaradio.com/hi/station/radio-eurodance-classic-pure-and-addictive",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/hi/station/radio-eurodance-classic-pure-and-addictive"
+    },
+    {
+      "url": "https://themegaradio.com/he/tachana/kral-fm",
+      "final": "https://themegaradio.com/he/tachana/kral-fm",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/he/tachana/kral-fm",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/he/tachana/kral-fm"
+    },
+    {
+      "url": "https://themegaradio.com/he/tachana/radio-eurodance-classic",
+      "final": "https://themegaradio.com/he/tachana/radio-eurodance-classic-pure-and-addictive",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/he/tachana/radio-eurodance-classic",
+          "status": 301,
+          "location": "/he/tachana/radio-eurodance-classic-pure-and-addictive"
+        },
+        {
+          "url": "https://themegaradio.com/he/tachana/radio-eurodance-classic-pure-and-addictive",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/he/tachana/radio-eurodance-classic-pure-and-addictive"
+    }
+  ]
+}

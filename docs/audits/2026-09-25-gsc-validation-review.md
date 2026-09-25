@@ -121,6 +121,49 @@ work is preserved and must not be silently included in a scoped release.
   successfully, with the PostgreSQL-only dependency boundary enforced.
 - These checks used the current working tree; deployment status is not implied.
 
+The focused test command (from `artifacts/api-server`) was:
+
+```powershell
+node node_modules/tsx/dist/cli.mjs --experimental-test-module-mocks --test --test-concurrency=4 --test-timeout=90000 --test-reporter=dot tests/seo-renderer-transient-recovery.test.ts tests/lang-ineligibility-redirect.test.ts tests/station-list-canonical.test.ts tests/hreflang-reciprocal-cluster.test.ts tests/blog-seo.test.ts tests/seo-direct-station-redirect.test.ts tests/seo-temporary-unavailable.test.ts
+```
+
+No actual Unicode canonical station slug was found in the bounded live sample
+(current GSC source, one 10,000-URL English sitemap chunk, one five-result catalog
+lookup). Unicode behavior is a regression-tested safeguard, **not a claimed live
+station restoration**.
+
+## Scoped release
+
+Commit `4ea925b6abaa88d4dd1a211ffc1e5863487bd99e` contains only the two routing
+fixes, their regression tests and this investigation's audit artifacts. Pushed
+through the existing GitHub Desktop session; `origin/main` matches that commit.
+Unpublished blog changes remain in the working tree and are not in the commit.
+
+Before pushing, inspected all four pages of `bulk_description_jobs`: 37 records,
+none running/pending/publishing. The original 14,526-item job and its sitemap
+publication are completed. No translation job was started, cancelled or restarted.
+
+Railway started automatic web deployment `33a11caa-d8d9-43d7-9630-39c79c81c22c`
+and API deployment `aae03605-3eb5-442b-8dbe-b7d2c0719943`. No database/stream
+restart or manual application restart was requested.
+
+### Production verification after release
+
+Both new deployments are Active / Deployment successful. Web build logs report
+`[1/1] Healthcheck succeeded!`; its Details link names the exact commit above.
+Both application `/healthz` endpoints return200. `/en`, the Turkish Kral FM page,
+and `/sitemap-index.xml` return200; the sitemap index is XML with112 sitemap entries.
+
+- Rechecked all41 failed crawled-not-indexed examples after deployment:41 HTTP200,
+  zero noindex and zero request errors (`2026-09-25-gsc-postdeploy-crawled.json`).
+- Checked Kral FM and the direct Radio Eurodance alias in each of14 locales:
+  28 finalHTTP200, zero noindex or request errors
+  (`2026-09-25-gsc-postdeploy-locales.json`).
+- No Google validation was restarted. A live indexability test and these HTTP
+  checks do not establish that Google has indexed a page or accepted a validation.
+- Post-release evidence is retained locally with this report; it was not sent in
+  another code commit just to trigger duplicate production builds.
+
 ## Google guidance
 
 - [Page indexing report](https://support.google.com/webmasters/answer/7440203):

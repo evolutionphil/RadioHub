@@ -34,7 +34,17 @@ The [separate review](2026-09-24-club-fm-identity-review.md) establishes Mathrub
 
 ## Release verification
 
-The guarded five-record migration is ready. Deployment and locale-preserving live checks are pending; they are not implied by local test success.
+Published commit **`14a47806007f726a217eebe6d211f10e34302d71`** to `evolutionphil/RadioHub` main through the existing GitHub Desktop session; remote hash matched. Only the reviewed repair, tests, migration metadata and audit documents were committed. Unrelated visitor-details/indexing-request edits were preserved.
+
+- Web deployment `f530e9b8-872f-4e30-b5d3-f3dae5121668`: **Active / Deployment successful**, exact commit confirmed in Details. Startup log records `[schema] applied: 0039_verified_historical_station_redirects.sql` at **15:27:52 Europe/Berlin**.
+- API deployment `8fc33f2e-d36c-4a74-aeab-d8a5ce6cc10d`: **Active / Deployment successful**, same repair title and GitHub publication.
+- Public reads show **all five** intended redirects set, all five target redirects still null. Hash comparison of the ten records' identity, URL, alias, country, manual/noindex and description fields is **unchanged in 10/10 records**.
+- At **13:29:15 UTC**, **70/70 checks passed**: five stations × fourteen published localized routes each return exactly one 301 to their corresponding self-canonical, indexable 200 destination. Hreflang region/script subtags are accounted for (`tr-TR`, `zh-Hans`, etc.); an initial audit-script bare-language filter undercounted them and was corrected, not the application.
+- Sunshine aliases `-2`, `-3`, `-4` each return one 301 to the canonical English station. The five exact historical GSC sample URLs now reach correct 200 destinations with no loop. Some obsolete-language/untranslated-path inputs still use two or three redirects through existing normalization; this release does not claim to collapse those legacy chains.
+- Unproven France Bleu, Radio Russia and 1.FM historical examples, plus the explicitly excluded colour-bar test feed, still terminate at 410 as intended for this bounded decision. Club FM was not unexcluded or redirected.
+- Both `/healthz` endpoints and EN/DE/TR homepages return **200**. `/sitemap-index.xml` returns **200 application/xml**, retaining **112 child sitemaps**. No large sitemap recrawl was triggered.
+
+No additional restart, Postgres operation or new AI job was issued. The existing GitHub auto-deploy configuration also triggered its normal stream-service build; no stream-service control was manually changed. These results confirm the observed release, not perpetual uptime or Google indexing completion. This post-release addendum is local verification evidence; it was not pushed again solely to trigger another deployment.
 
 Pre-release checks: 228 existing redirect/SSR/API tests passed (one native-PostgreSQL test explicitly skipped); 20 migration foundation/lifecycle tests passed; API TypeScript checking and default/API/web production bundles passed. Existing migration journal metadata for 0034–0038 was missing and was aligned with the existing immutable SQL files when adding 0039. No older SQL migration was edited.
 

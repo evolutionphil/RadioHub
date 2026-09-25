@@ -7,6 +7,9 @@
     "transliteration": "^2.6.1"
   },
   "exports": {
+    "./blog": "./src/blog/index.ts",
+    "./blog-manifest": "./src/blog/manifest.ts",
+    "./blog-html": "./src/blog/html.ts",
     "./visitor-activity": "./src/visitor-activity.ts",
     "./slug-utils": "./src/slug-utils.ts",
     "./faq-schema": "./src/faq-schema.ts",

@@ -28,4 +28,8 @@ Native ekran geçişleri otomatik çıkarılamaz; mevcut başarılı API istekle
 - Production frontend, API ve web sunucu derlemeleri başarılı. Mevcut büyük-chunk/sourcemap uyarıları bu özelliğin başarısız derlenmesi değildir.
 - Gerçek admin bileşenleri masaüstü, 390px ve 320px genişliklerde incelendi; yatay taşma, geçmişin IP'ler arasında karışması ve bot geçmişi ayrımı kontrol edildi. Yerel örnek kayıtlar production'a gönderilmedi.
 - Yayın öncesi Railway'deki 37 AI işi incelendi: çalışan iş yok. Ana çeviri işinin ve sitemap yayın adımının durumu completed; geçmişteki 40 başarısız çeviri bu özellik tarafından değiştirilmedi.
-- Canlı yayın ve erişim sonucu deployment sonrasında ayrıca doğrulanacak. Yeni geçmiş, deployment sonrası gelen uygun ziyaretlerle oluşur.
+- `d3c408022f18c3d2f6e8344886aa5624aa226225` GitHub Desktop üzerinden main'e push edildi; uzak HEAD doğrulandı. Railway API ve web için bu commit üzerinde Deployment successful / Active görüldü. Manuel restart yapılmadı.
+- API deploy logunda `0040_visitor_activity.sql` uygulandı. Canlı panelde yeni geçmiş başlangıcı 24 Eylül 2026 22:42 Europe/Berlin olarak doğrulandı.
+- Canlı panelde doğal tarayıcı trafiğinin `/en/station/top-merengue-radio` görüntülemesi (client-pageview, 204, browser-like) ve ayrı otomatik trafik kaydının `/he/station/radio-emscher-lippe-dein-deutschpop-radio` görüntülemesi (HTTP GET, 200, automated) açıldı. Bunlar doğrulanmış insan/bot kimliği iddiası değildir; ham IP rapora alınmadı.
+- `/en`, web `/healthz` ve API `/readyz`: 200. Oturumsuz admin otomatik-trafik isteği: 401, private/no-store. Web proxy üzerinden DNT opt-out: 204; beklenmeyen alan: 400; JSON olmayan gövde: 415; 2 KB sınırını aşan gövde: 413. Bu negatif testler ziyaret olaylarına kaydedilmez.
+- Mevcut üç ilgisiz çalışma dokümanı commit dışında korundu. Bu deployment sonrası doğrulama notu yerel raporda güncellendi; yalnız dokümantasyon için ikinci deployment başlatılmadı.

@@ -47,3 +47,15 @@ Doğrulama:
 - API production bundle ve Vite frontend production build başarılı. Vite'ın mevcut sourcemap/chunk-size uyarıları devam eder; build hatası değildir.
 - Gerçek bileşen ve mevcut admin CSS ile loopback üzerinde açıkça sentetik fixture kullanılarak masaüstü,390px ve320px tarayıcı görünümü kontrol edildi. LG webOS filtresi yalnız doğru fixture kaydını gösterdi; her iki mobil genişlikte yatay sayfa taşması yoktu.320px'de parçalanan dağılım etiketleri için380px altı tek sütuna geçirildi. Canlı müşteri verisi/oturumu fixture'a taşınmadı, dış API erişimi yoktu; geçici tarayıcı boyutu geri alındı.
 - Canlı deploy veya gerçek native cihaz ölçümü yapılmadı. Mevcut bağlı tarayıcıda canlı sayaç endpoint'ini açma denemesi `ERR_BLOCKED_BY_CLIENT` ile engellendi; bu yüzden canlı sayı/ülke/cihaz doğrulaması iddia edilmez. Tarayıcı güvenlik/gizlilik ayarları değiştirilmedi.
+
+## Yayın sonrası doğrulama — 23 Eylül 2026
+
+Yukarıdaki son madde yayın öncesi durumu kaydeder. Kullanıcının deploy onayıyla `2ed71a411ae2a1b5706eaed63aef5a6620f9b4eb`, GitHub Desktop'taki mevcut `evolutionphil` hesabıyla `main` dalına gönderildi; uzak HEAD eşleşmesi doğrulandı. İlgisiz GSC raporu commit'e alınmadı.
+
+- Railway web deployment `a9751b8f` ve API deployment `d196ac6b` aynı commit için **Active / Deployment successful**. Stream servisi mevcut GitHub otomasyonuyla da build aldı ve Online kaldı. Ek restart yapılmadı; PostgreSQL veya stream ayarlarına dokunulmadı.
+- `radiohub_schema_migrations` tablosunda `0038_qualified_visitor_dimensions.sql` uygulanmış: `2026-09-23 07:13:56`. Önceki0037/collection başlangıcı korunmuş.
+- Yetkili canlı dashboard'da aktif, bugün ve son7gün detayları açıldı. Haftalık sayfalama1→2 çalıştı; LG webOS filtresi mevcut veride dürüst boş sonuç gösterdi. Yeni gerçek isteklerde HK/US ülke, web kanal/platform ve desktop cihaz sınıfı görülürken eski kayıtlar unknown kaldı. Maskeleme ve ölçüm başlangıç açıklamaları görünür. Yeni iOS/Android/TV uygulama sürümü veya fiziksel cihaz testi yapılmadı.
+- Son tek geçişli kontroller: `/en`200 HTML; API `/readyz`200 ready:true; `/api/health`200 PostgreSQL connected; bir kayıt istenen katalog200 JSON+pagination. Yetkisiz ziyaretçi detay endpoint'i401 JSON, private/no-store, ziyaretçi satırı yok.
+- Önceki tarayıcı engeli yeni sayfa yüklemesinde tekrarlanmadı; gizlilik veya güvenlik ayarları değiştirilmedi.
+
+Bu yayın sonrası not yerel doğrulama kaydıdır; yalnızca notu yayımlamak için ikinci build/restart tetiklenmedi.

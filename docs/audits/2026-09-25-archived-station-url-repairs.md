@@ -100,6 +100,29 @@ rollback; manually edited or drifted records are skipped rather than overwritten
   release. Native private-state, identity-peer, incoming-redirect and merged-alias
   checks found no competing ownership; no bulk translation job was running.
 
+## Follow-up live verification
+
+- Commit `568faf13d2e51f608000db4ef227d91f364b33c0` was pushed through GitHub
+  Desktop; `HEAD` equals `origin/main`. Railway details confirm that exact commit
+  Active in web deployment `99463963-d92f-4b9f-9f96-d21ee0c0d8d4` and API
+  deployment `2b4f2d99-5bcc-46eb-acd1-254bff486e31`. API build healthcheck passed.
+- Read-only production SQL confirms `radio-ora-news.no_index=false`; the retained
+  `radio-ora-news-tirana-96-7-fm` record remains noindex and redirects to
+  `radio-ora-news`. Both have the private `0043` recovery receipt. Nothing was
+  deleted, merged or retranslated.
+- `2026-09-25-ora-news-live.json`: 42 canonical/duplicate/legacy-alias paths
+  across all 14 supported languages finish at HTTP 200, with no noindex,
+  request errors or canonical mismatches.
+- Automatic sitemap publication completed around 20:56 UTC. Native manifests
+  include the recovered ID in chunk 1 for every language. All 14 public chunk-1
+  XML responses were fetched: HTTP 200, correct localized canonical included,
+  duplicate Ora News paths absent. No additional manual rebuild was necessary.
+- Both `/healthz` endpoints and the English homepage responded HTTP 200.
+  Existing GSC validations remain started; no redundant validation/restart was
+  requested. Unrelated unpublished blog work remains untouched and unpushed.
+- Workflow used: `seo-audit` for technical/indexability evidence and
+  `computer-use` for the authorized GitHub Desktop publication.
+
 Correctly retired URLs must not be redirected to unrelated content merely to
 clear a report. Technical indexability is testable; Google's indexing selection
 is not guaranteed by a successful URL fetch or validation request.
