@@ -939,6 +939,25 @@ function getStoredPreferredLanguage(): string | null {
   }
 }
 
+// Localized paths are decoded by reverseTranslateUrl. English skips translation,
+// but still needs the same one-pass decoding for exact Unicode station identities.
+function decodeEnglishPath(pathname: string): string {
+  return pathname.split('/').map(segment => {
+    try {
+      const decoded = decodeURIComponent(segment);
+      // cleanPath is still a path string, not an array of identity components.
+      // Never let decoding introduce delimiters, controls or dot-navigation.
+      if (/[\\/?#\u0000-\u001f\u007f-\u009f]/.test(decoded) || decoded === '.' || decoded === '..') {
+        return segment;
+      }
+      return decoded;
+    } catch {
+      // Keep malformed escapes intact so they cannot throw or become another slug.
+      return segment;
+    }
+  }).join('/');
+}
+
 export function getLanguageFromPath(pathname: string): { language: string; cleanPath: string } {
   const pathSegments = pathname.split('/').filter(Boolean);
   const firstSegment = pathSegments[0];
@@ -958,7 +977,7 @@ export function getLanguageFromPath(pathname: string): { language: string; clean
       const pathWithoutLang = '/' + pathSegments.slice(1).join('/');
       const englishPath = normalizedFirstSegment !== 'en' 
         ? reverseTranslateUrl(pathWithoutLang, normalizedFirstSegment)
-        : pathWithoutLang;
+        : decodeEnglishPath(pathWithoutLang);
       
       return {
         language: normalizedFirstSegment,
@@ -1048,7 +1067,7 @@ export function getLanguageFromPath(pathname: string): { language: string; clean
       // Example: /tr/sizin-icin → /recommendations
       const englishPath = language.code !== 'en' 
         ? reverseTranslateUrl(pathWithoutLang, language.code)
-        : pathWithoutLang;
+        : decodeEnglishPath(pathWithoutLang);
       
       return {
         language: language.code,

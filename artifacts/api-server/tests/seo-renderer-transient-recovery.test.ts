@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { beforeEach, mock, test } from 'node:test';
-import { ACTIVE_SITEMAP_LANGUAGES, generateLanguageUrls, truncateAtWordBoundary } from '@workspace/seo-shared/seo-config';
+import { ACTIVE_SITEMAP_LANGUAGES, generateLanguageUrls, getLanguageFromPath, truncateAtWordBoundary } from '@workspace/seo-shared/seo-config';
 import { getIndexableLanguagesForStation, isStationIndexableInLanguage } from '../src/seo/junk-station-rules';
 import { URL_TRANSLATIONS } from '@workspace/seo-shared/url-translations';
 import { getStationStreamUnavailableNotice } from '@workspace/seo-shared/station-page-copy';
@@ -64,6 +64,95 @@ beforeEach(() => {
   stationOverrides = {}; qualifiedLanguages = ['en']; customMetadata = null;
   mergedAlias = null;
   exactLookupFixtures = null;
+});
+
+for (const language of ACTIVE_SITEMAP_LANGUAGES) {
+  test(`${language}: raw and encoded Unicode station slugs resolve the same exact identity`, async () => {
+    qualifiedLanguages = [...ACTIVE_SITEMAP_LANGUAGES];
+    const detail = URL_TRANSLATIONS[language]?.station || 'station';
+    for (const slug of ['şeker-fm', 'радио-волна', '音乐之声']) {
+      const identity = { ...station, _id: `unicode-${slug}`, slug, noIndex: false,
+        descriptions: Object.fromEntries(qualifiedLanguages.map(lang => [lang,
+          { full: `Original station information for ${lang}`, meta: `Station summary ${lang}` }])) };
+      exactLookupFixtures = new Map([[`slug:${slug}`, identity]]);
+      for (const path of [`/${language}/${detail}/${slug}`, `/${language}/${encodeURIComponent(detail)}/${encodeURIComponent(slug)}`]) {
+        pageCache.clear(); stationReads = 0;
+        assert.equal(getLanguageFromPath(path).cleanPath.replace(/^\/stations\//, '/station/'), `/station/${slug}`, path);
+        const result = await renderer.renderStaticPage(path, 'https://themegaradio.com');
+        assert.equal(result.pageData?.station?._id, identity._id, path);
+        assert.equal(result.pageData?.notFound, false, path);
+        assert.equal(result.pageData?.stationIsJunk, false, path);
+        assert.equal(result.pageData?.stationDbError, undefined, path);
+        assert.equal(result.pageData?.redirectTo, undefined, path);
+        assert.equal(result.seoTags.noIndex, undefined, path);
+        assert.equal(stationReads, 1, 'an exact Unicode owner needs no alias fallback');
+      }
+    }
+  });
+
+  test(`${language}: malformed and double-encoded station escapes do not throw or match another owner`, async (t) => {
+    t.mock.method(console, 'warn', () => {});
+    const detail = URL_TRANSLATIONS[language]?.station || 'station';
+    exactLookupFixtures = new Map([['slug:şeker-fm', { ...station, slug: 'şeker-fm', noIndex: false }]]);
+    for (const [slug, decodedSlug] of [
+      ['bad%', 'bad%'],
+      ['%ZZ-fm', '%ZZ-fm'],
+      ['%E0%A4%A-fm', '%E0%A4%A-fm'],
+      ['%25C5%259Feker-fm', '%C5%9Feker-fm'],
+    ]) {
+      const path = `/${language}/${encodeURIComponent(detail)}/${slug}`;
+      pageCache.clear();
+      assert.equal(getLanguageFromPath(path).cleanPath.replace(/^\/stations\//, '/station/'), `/station/${decodedSlug}`);
+      const result = await renderer.renderStaticPage(path, 'https://themegaradio.com');
+      assert.equal(result.pageData?.notFound, true, path);
+      assert.equal(result.pageData?.stationDbError, undefined, path);
+      assert.equal(result.pageData?.redirectTo, undefined, path);
+      assert.equal(result.pageData?.station?._id, null, path);
+    }
+  });
+}
+
+test('English Unicode decoding never turns reserved or control escapes into another station identity', async () => {
+  for (const [encodedSlug, unsafeDecodedSlug] of [
+    ['radio%2Fone', 'radio/one'],
+    ['radio%2fone', 'radio/one'],
+    ['%C5%9Feker%2Ffm', 'şeker/fm'],
+    ['radio%5Cone', 'radio\\one'],
+    ['radio%3Fone', 'radio?one'],
+    ['radio%23one', 'radio#one'],
+    ['radio%00one', 'radio\u0000one'],
+    ['radio%09one', 'radio\tone'],
+    ['radio%0Aone', 'radio\none'],
+    ['radio%0Done', 'radio\rone'],
+    ['radio%1Fone', 'radio\u001fone'],
+    ['radio%7Fone', 'radio\u007fone'],
+    ['radio%C2%85one', 'radio\u0085one'],
+    ['%2e', '.'],
+    ['%2E%2e', '..'],
+  ]) {
+    const path = `/en/station/${encodedSlug}`;
+    exactLookupFixtures = new Map([[`slug:${unsafeDecodedSlug}`, { ...station, slug: unsafeDecodedSlug }]]);
+    pageCache.clear();
+    assert.equal(getLanguageFromPath(path).cleanPath, `/station/${encodedSlug}`, path);
+    const result = await renderer.renderStaticPage(path, 'https://themegaradio.com');
+    assert.equal(result.pageData?.notFound, true, path);
+    assert.equal(result.pageData?.station?._id, null, path);
+    assert.equal(result.pageData?.redirectTo, undefined, path);
+    assert.equal(result.pageData?.stationDbError, undefined, path);
+  }
+});
+
+test('English Unicode decoding cannot introduce a station route boundary', async () => {
+  exactLookupFixtures = new Map([[`slug:${station.slug}`, station]]);
+  for (const route of ['station%2Frecovery-fm', 'station%5Crecovery-fm', '%73tation%2Frecovery-fm']) {
+    const path = `/en/${route}`;
+    pageCache.clear(); stationReads = 0;
+    assert.equal(getLanguageFromPath(path).cleanPath, `/${route}`, path);
+    const result = await renderer.renderStaticPage(path, 'https://themegaradio.com');
+    assert.equal(result.pageData?.station?._id, undefined, path);
+    assert.equal(result.pageData?.redirectTo, undefined, path);
+    assert.equal(stationReads, 0, path);
+  }
 });
 
 for (const language of ACTIVE_SITEMAP_LANGUAGES) {
@@ -243,14 +332,17 @@ for (const language of ACTIVE_SITEMAP_LANGUAGES) {
       urlResolved: 'http:quincy.torontocast.com:2380/stream',
       redirectToSlug: 'radio-eurodance-classic-pure-and-addictive',
     };
-    exactLookupFixtures = new Map([['slug:radio-eurodance-classic', source]]);
+    exactLookupFixtures = new Map([
+      ['slug:radio-eurodance-classic', source],
+      [`slug:${source.redirectToSlug}`, { ...station, slug: source.redirectToSlug, noIndex: false }],
+    ]);
     const detail = URL_TRANSLATIONS[language]?.station || 'station';
     const result = await renderer.renderStaticPage(`/${language}/${detail}/${source.slug}`, 'https://themegaradio.com');
     assert.equal(decodeURI(result.pageData?.redirectTo || ''), `/${language}/${detail}/${source.redirectToSlug}`);
     assert.equal(result.pageData?.station, undefined);
     assert.equal(result.pageData?.stationIsJunk, undefined);
     assert.equal(source.noIndex, true, 'the duplicate stays excluded in storage');
-    assert.equal(stationReads, 1, 'the recorded canonical redirect needs no discovery scan');
+    assert.equal(stationReads, 2, 'the source and its exact final target are checked without a discovery scan');
   });
 }
 
@@ -416,6 +508,10 @@ test('unknown legacy offline noindex keeps rich localized200 data without reinde
     assert.equal(page.seoTags.noIndex, true);
   }
   pageCache.clear(); stationOverrides = { lastCheckOk: false, redirectToSlug: 'original-fm' };
+  exactLookupFixtures = new Map([
+    ['slug:recovery-fm', { ...station, ...stationOverrides, noIndex }],
+    ['slug:original-fm', { ...station, slug: 'original-fm', noIndex: false }],
+  ]);
   const duplicate = await renderer.renderStaticPage(url, 'https://themegaradio.com');
   assert.match(duplicate.pageData.redirectTo, /original-fm$/);
 });

@@ -1,0 +1,888 @@
+{
+  "checkedAt": "2026-09-25T18:49:42.269Z",
+  "sourceHash": 3521457917,
+  "concurrency": 2,
+  "summary": {
+    "count": 41,
+    "status": {
+      "200": 41
+    },
+    "noindex": 0,
+    "errors": 0
+  },
+  "rows": [
+    {
+      "url": "https://themegaradio.com/ar/station/hifi-radio",
+      "final": "https://themegaradio.com/ar/mahta/hifi-radio",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ar/station/hifi-radio",
+          "status": 301,
+          "location": "/ar/mahta/hifi-radio"
+        },
+        {
+          "url": "https://themegaradio.com/ar/mahta/hifi-radio",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/ar/mahta/hifi-radio"
+    },
+    {
+      "url": "https://themegaradio.com/ye/station/hifi-radio",
+      "final": "https://themegaradio.com/ar/mahta/hifi-radio",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ye/station/hifi-radio",
+          "status": 301,
+          "location": "/ar/station/hifi-radio"
+        },
+        {
+          "url": "https://themegaradio.com/ar/station/hifi-radio",
+          "status": 301,
+          "location": "/ar/mahta/hifi-radio"
+        },
+        {
+          "url": "https://themegaradio.com/ar/mahta/hifi-radio",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/ar/mahta/hifi-radio"
+    },
+    {
+      "url": "https://themegaradio.com/ar/mahta/hifi-radio",
+      "final": "https://themegaradio.com/ar/mahta/hifi-radio",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ar/mahta/hifi-radio",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/ar/mahta/hifi-radio"
+    },
+    {
+      "url": "https://themegaradio.com/de/sender/chill-fm-gr",
+      "final": "https://themegaradio.com/de/sender/chill-fm-gr",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/de/sender/chill-fm-gr",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/de/sender/chill-fm-gr"
+    },
+    {
+      "url": "https://themegaradio.com/zh/station/fresh-fm-radio-london",
+      "final": "https://themegaradio.com/zh/%E7%94%B5%E5%8F%B0/fresh-fm-radio-london",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/zh/station/fresh-fm-radio-london",
+          "status": 301,
+          "location": "/zh/%E7%94%B5%E5%8F%B0/fresh-fm-radio-london"
+        },
+        {
+          "url": "https://themegaradio.com/zh/%E7%94%B5%E5%8F%B0/fresh-fm-radio-london",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/zh/%E7%94%B5%E5%8F%B0/fresh-fm-radio-london"
+    },
+    {
+      "url": "https://themegaradio.com/en/genres",
+      "final": "https://themegaradio.com/en/genres",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/en/genres",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/en/genres"
+    },
+    {
+      "url": "https://themegaradio.com/de/sender/orf-hitradio-o3-hq",
+      "final": "https://themegaradio.com/de/sender/orf-hitradio-o3-hq",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/de/sender/orf-hitradio-o3-hq",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/de/sender/orf-hitradio-o3-hq"
+    },
+    {
+      "url": "https://themegaradio.com/de/sender/kronehit",
+      "final": "https://themegaradio.com/de/sender/kronehit",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/de/sender/kronehit",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/de/sender/kronehit"
+    },
+    {
+      "url": "https://themegaradio.com/tr/istasyon/kral-fm",
+      "final": "https://themegaradio.com/tr/istasyon/kral-fm",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/tr/istasyon/kral-fm",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/tr/istasyon/kral-fm"
+    },
+    {
+      "url": "https://themegaradio.com/de",
+      "final": "https://themegaradio.com/de",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/de",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/de"
+    },
+    {
+      "url": "https://themegaradio.com/tr",
+      "final": "https://themegaradio.com/tr",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/tr",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/tr"
+    },
+    {
+      "url": "https://themegaradio.com/it",
+      "final": "https://themegaradio.com/it",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/it",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/it"
+    },
+    {
+      "url": "https://themegaradio.com/af/station/krxo-hd3-exitos-965-oklahoma-city-ok",
+      "final": "https://themegaradio.com/en/station/krxo-hd3-exitos-96-5-oklahoma-city-ok",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/af/station/krxo-hd3-exitos-965-oklahoma-city-ok",
+          "status": 301,
+          "location": "/en/station/krxo-hd3-exitos-96-5-oklahoma-city-ok"
+        },
+        {
+          "url": "https://themegaradio.com/en/station/krxo-hd3-exitos-96-5-oklahoma-city-ok",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/en/station/krxo-hd3-exitos-96-5-oklahoma-city-ok"
+    },
+    {
+      "url": "https://themegaradio.com/am/station/red-fm-calgary-1067-fm",
+      "final": "https://themegaradio.com/en/station/red-fm-calgary-106-7-fm",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/am/station/red-fm-calgary-1067-fm",
+          "status": 301,
+          "location": "/en/station/red-fm-calgary-106-7-fm"
+        },
+        {
+          "url": "https://themegaradio.com/en/station/red-fm-calgary-106-7-fm",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/en/station/red-fm-calgary-106-7-fm"
+    },
+    {
+      "url": "https://themegaradio.com/af/station/fsj-radio-xrn-australia",
+      "final": "https://themegaradio.com/en/station/fsj-radio-xrn-australia",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/af/station/fsj-radio-xrn-australia",
+          "status": 301,
+          "location": "/en/station/fsj-radio-xrn-australia"
+        },
+        {
+          "url": "https://themegaradio.com/en/station/fsj-radio-xrn-australia",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/en/station/fsj-radio-xrn-australia"
+    },
+    {
+      "url": "https://themegaradio.com/am/station/radio-jih-cimbalka",
+      "final": "https://themegaradio.com/en/station/radio-jih-cimbalka",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/am/station/radio-jih-cimbalka",
+          "status": 301,
+          "location": "/en/station/radio-jih-cimbalka"
+        },
+        {
+          "url": "https://themegaradio.com/en/station/radio-jih-cimbalka",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/en/station/radio-jih-cimbalka"
+    },
+    {
+      "url": "https://themegaradio.com/ar/mahta/sunset-chillout-lounge",
+      "final": "https://themegaradio.com/ar/mahta/sunset-chillout-lounge",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ar/mahta/sunset-chillout-lounge",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/ar/mahta/sunset-chillout-lounge"
+    },
+    {
+      "url": "https://themegaradio.com/ar/station/sunset-chillout-lounge",
+      "final": "https://themegaradio.com/ar/mahta/sunset-chillout-lounge",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ar/station/sunset-chillout-lounge",
+          "status": 301,
+          "location": "/ar/mahta/sunset-chillout-lounge"
+        },
+        {
+          "url": "https://themegaradio.com/ar/mahta/sunset-chillout-lounge",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/ar/mahta/sunset-chillout-lounge"
+    },
+    {
+      "url": "https://themegaradio.com/am/station/radio-chrzescijanin-dzieci",
+      "final": "https://themegaradio.com/en/station/radio-chrzescijanin-dzieci",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/am/station/radio-chrzescijanin-dzieci",
+          "status": 301,
+          "location": "/en/station/radio-chrzescijanin-dzieci"
+        },
+        {
+          "url": "https://themegaradio.com/en/station/radio-chrzescijanin-dzieci",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/en/station/radio-chrzescijanin-dzieci"
+    },
+    {
+      "url": "https://themegaradio.com/en/station/radio-chrzescijanin-dzieci",
+      "final": "https://themegaradio.com/en/station/radio-chrzescijanin-dzieci",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/en/station/radio-chrzescijanin-dzieci",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/en/station/radio-chrzescijanin-dzieci"
+    },
+    {
+      "url": "https://themegaradio.com/am/ጣቢያ/radio-chrzescijanin-dzieci",
+      "final": "https://themegaradio.com/en/station/radio-chrzescijanin-dzieci",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/am/ጣቢያ/radio-chrzescijanin-dzieci",
+          "status": 301,
+          "location": "/en/station/radio-chrzescijanin-dzieci"
+        },
+        {
+          "url": "https://themegaradio.com/en/station/radio-chrzescijanin-dzieci",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/en/station/radio-chrzescijanin-dzieci"
+    },
+    {
+      "url": "https://themegaradio.com/af/station/mad-107",
+      "final": "https://themegaradio.com/en/station/mad-107",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/af/station/mad-107",
+          "status": 301,
+          "location": "/en/station/mad-107"
+        },
+        {
+          "url": "https://themegaradio.com/en/station/mad-107",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/en/station/mad-107"
+    },
+    {
+      "url": "https://themegaradio.com/af/station/err-klassikaraadio",
+      "final": "https://themegaradio.com/en/station/err-klassikaraadio",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/af/station/err-klassikaraadio",
+          "status": 301,
+          "location": "/en/station/err-klassikaraadio"
+        },
+        {
+          "url": "https://themegaradio.com/en/station/err-klassikaraadio",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/en/station/err-klassikaraadio"
+    },
+    {
+      "url": "https://themegaradio.com/ar/station/radio-record-lo-fi",
+      "final": "https://themegaradio.com/ar/mahta/radio-record-lo-fi",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ar/station/radio-record-lo-fi",
+          "status": 301,
+          "location": "/ar/mahta/radio-record-lo-fi"
+        },
+        {
+          "url": "https://themegaradio.com/ar/mahta/radio-record-lo-fi",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/ar/mahta/radio-record-lo-fi"
+    },
+    {
+      "url": "https://themegaradio.com/am/station/remember-radio",
+      "final": "https://themegaradio.com/en/station/remember-radio",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/am/station/remember-radio",
+          "status": 301,
+          "location": "/en/station/remember-radio"
+        },
+        {
+          "url": "https://themegaradio.com/en/station/remember-radio",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/en/station/remember-radio"
+    },
+    {
+      "url": "https://themegaradio.com/af/stasie/onda-rossa",
+      "final": "https://themegaradio.com/en/station/onda-rossa",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/af/stasie/onda-rossa",
+          "status": 301,
+          "location": "/en/station/onda-rossa"
+        },
+        {
+          "url": "https://themegaradio.com/en/station/onda-rossa",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/en/station/onda-rossa"
+    },
+    {
+      "url": "https://themegaradio.com/en/station/onda-rossa",
+      "final": "https://themegaradio.com/en/station/onda-rossa",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/en/station/onda-rossa",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/en/station/onda-rossa"
+    },
+    {
+      "url": "https://themegaradio.com/af/station/radio-onda-rossa-1",
+      "final": "https://themegaradio.com/en/station/onda-rossa",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/af/station/radio-onda-rossa-1",
+          "status": 301,
+          "location": "/en/station/onda-rossa"
+        },
+        {
+          "url": "https://themegaradio.com/en/station/onda-rossa",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/en/station/onda-rossa"
+    },
+    {
+      "url": "https://themegaradio.com/af/station/ro-radiournl-sport",
+      "final": "https://themegaradio.com/en/station/cro-radiozurnal-sport",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/af/station/ro-radiournl-sport",
+          "status": 301,
+          "location": "/en/station/cro-radiozurnal-sport"
+        },
+        {
+          "url": "https://themegaradio.com/en/station/cro-radiozurnal-sport",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/en/station/cro-radiozurnal-sport"
+    },
+    {
+      "url": "https://themegaradio.com/af/stasie/cro-radiozurnal-sport",
+      "final": "https://themegaradio.com/en/station/cro-radiozurnal-sport",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/af/stasie/cro-radiozurnal-sport",
+          "status": 301,
+          "location": "/en/station/cro-radiozurnal-sport"
+        },
+        {
+          "url": "https://themegaradio.com/en/station/cro-radiozurnal-sport",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/en/station/cro-radiozurnal-sport"
+    },
+    {
+      "url": "https://themegaradio.com/en/station/cro-radiozurnal-sport",
+      "final": "https://themegaradio.com/en/station/cro-radiozurnal-sport",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/en/station/cro-radiozurnal-sport",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/en/station/cro-radiozurnal-sport"
+    },
+    {
+      "url": "https://themegaradio.com/af/stasie/naxi-kids-serbia",
+      "final": "https://themegaradio.com/en/station/naxi-kids-serbia",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/af/stasie/naxi-kids-serbia",
+          "status": 301,
+          "location": "/en/station/naxi-kids-serbia"
+        },
+        {
+          "url": "https://themegaradio.com/en/station/naxi-kids-serbia",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/en/station/naxi-kids-serbia"
+    },
+    {
+      "url": "https://themegaradio.com/af/station/naxi-kids-serbia",
+      "final": "https://themegaradio.com/en/station/naxi-kids-serbia",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/af/station/naxi-kids-serbia",
+          "status": 301,
+          "location": "/en/station/naxi-kids-serbia"
+        },
+        {
+          "url": "https://themegaradio.com/en/station/naxi-kids-serbia",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/en/station/naxi-kids-serbia"
+    },
+    {
+      "url": "https://themegaradio.com/en/station/naxi-kids-serbia",
+      "final": "https://themegaradio.com/en/station/naxi-kids-serbia",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/en/station/naxi-kids-serbia",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/en/station/naxi-kids-serbia"
+    },
+    {
+      "url": "https://themegaradio.com/am/station/chbz-wild-1047-cranbrook-bc",
+      "final": "https://themegaradio.com/en/station/chbz-wild-104-7-cranbrook-bc",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/am/station/chbz-wild-1047-cranbrook-bc",
+          "status": 301,
+          "location": "/en/station/chbz-wild-104-7-cranbrook-bc"
+        },
+        {
+          "url": "https://themegaradio.com/en/station/chbz-wild-104-7-cranbrook-bc",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/en/station/chbz-wild-104-7-cranbrook-bc"
+    },
+    {
+      "url": "https://themegaradio.com/am/station/oldskool-uk",
+      "final": "https://themegaradio.com/en/station/oldskool-uk",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/am/station/oldskool-uk",
+          "status": 301,
+          "location": "/en/station/oldskool-uk"
+        },
+        {
+          "url": "https://themegaradio.com/en/station/oldskool-uk",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/en/station/oldskool-uk"
+    },
+    {
+      "url": "https://themegaradio.com/en/station/oldskool-uk",
+      "final": "https://themegaradio.com/en/station/oldskool-uk",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/en/station/oldskool-uk",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/en/station/oldskool-uk"
+    },
+    {
+      "url": "https://themegaradio.com/am/ጣቢያ/oldskool-uk",
+      "final": "https://themegaradio.com/en/station/oldskool-uk",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/am/ጣቢያ/oldskool-uk",
+          "status": 301,
+          "location": "/en/station/oldskool-uk"
+        },
+        {
+          "url": "https://themegaradio.com/en/station/oldskool-uk",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/en/station/oldskool-uk"
+    },
+    {
+      "url": "https://themegaradio.com/am/station/phoenix-radio-1208",
+      "final": "https://themegaradio.com/en/station/phoenix-radio-1208",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/am/station/phoenix-radio-1208",
+          "status": 301,
+          "location": "/en/station/phoenix-radio-1208"
+        },
+        {
+          "url": "https://themegaradio.com/en/station/phoenix-radio-1208",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/en/station/phoenix-radio-1208"
+    },
+    {
+      "url": "https://themegaradio.com/ar/station/fm-30",
+      "final": "https://themegaradio.com/ar/mahta/striy-fm",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ar/station/fm-30",
+          "status": 301,
+          "location": "/ar/mahta/striy-fm"
+        },
+        {
+          "url": "https://themegaradio.com/ar/mahta/striy-fm",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/ar/mahta/striy-fm"
+    },
+    {
+      "url": "https://themegaradio.com/ja/station/dark-synth-radio",
+      "final": "https://themegaradio.com/ja/%E3%82%B9%E3%83%86%E3%83%BC%E3%82%B7%E3%83%A7%E3%83%B3/dark-synth-radio",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ja/station/dark-synth-radio",
+          "status": 301,
+          "location": "/ja/%E3%82%B9%E3%83%86%E3%83%BC%E3%82%B7%E3%83%A7%E3%83%B3/dark-synth-radio"
+        },
+        {
+          "url": "https://themegaradio.com/ja/%E3%82%B9%E3%83%86%E3%83%BC%E3%82%B7%E3%83%A7%E3%83%B3/dark-synth-radio",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/ja/%E3%82%B9%E3%83%86%E3%83%BC%E3%82%B7%E3%83%A7%E3%83%B3/dark-synth-radio"
+    }
+  ]
+}

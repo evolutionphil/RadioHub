@@ -562,22 +562,30 @@ export class SeoRenderer {
             stationData = await withSignal(pgSeoCatalog().findById(stationSlug), signal);
           }
 
-          // Frequency-format duplicate canonicalization (2026-06-18): if the
-          // resolved record is flagged as a near-duplicate of a canonical
-          // sibling (set by /api/admin/stations/dedup-frequency), 301 to the
-          // canonical localized URL instead of serving a competing 200. This
-          // collapses pairs like "classical-95-9-wcri" / "classical-959-wcri"
-          // onto a single indexable URL. Guard against self-redirect loops.
-          if (
-            stationData &&
-            (stationData as any).redirectToSlug &&
-            (stationData as any).redirectToSlug !== stationData.slug
-          ) {
-            const canonicalSlug = (stationData as any).redirectToSlug as string;
-            const englishCanonical = cleanPath.replace(
-              `/${stationSlug}`,
-              `/${canonicalSlug}`,
-            );
+          // Retained duplicates may redirect only to one verified final record.
+          // Match the alias gate above: never consolidate signals onto missing,
+          // excluded, junk or chained destinations. Lookup errors deliberately
+          // reach the outer transient-error handler (uncached 503), not this 410.
+          if (stationData && stationData.redirectToSlug) {
+            const canonicalSlug = stationData.redirectToSlug;
+            const { isJunkStation, isNumericOnlySlug } = await import('./seo/junk-station-rules');
+            const target = typeof canonicalSlug === 'string'
+              && canonicalSlug !== stationData.slug && canonicalSlug !== stationSlug
+              ? await withSignal(pgSeoCatalog().findOne({ slug: canonicalSlug }), signal)
+              : null;
+            if (!target || target.slug !== canonicalSlug || target.noIndex !== false
+                || target.redirectToSlug || isNumericOnlySlug(target.slug) || isJunkStation(target)) {
+              return {
+                language,
+                cleanPath,
+                seoTags: { robots: 'noindex, follow', noIndex: true } as any,
+                translations: {},
+                pageData: { stationIsJunk: true, pageType: 'station' } as any,
+              };
+            }
+            // Do not replace a substring: slugs such as "station" or "sta"
+            // also occur in the route prefix and would produce the wrong URL.
+            const englishCanonical = `/station/${canonicalSlug}`;
             const canonicalPath = buildLocalizedUrl(
               englishCanonical,
               actualLanguage,
