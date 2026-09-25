@@ -32,8 +32,13 @@ test('only individually reviewed historical spellings are eligible', () => {
   assert.equal(verifiedLegacyStationAlias('flashbassfm-1'), 'flashbass-fm-1');
   assert.equal(verifiedLegacyStationAlias('radio-onda-rossa-1'), 'onda-rossa');
   assert.equal(verifiedLegacyStationAlias('kiis-1065-sydney-1065-fm-mp3-1'), 'kiis-106-5');
+  assert.equal(verifiedLegacyStationAlias('france-bleu-besanon'), 'france-bleu-besancon');
+  assert.equal(verifiedLegacyStationAlias('radio-russia'), 'radio-rossii');
+  assert.equal(verifiedLegacyStationAlias('1fm-movie-soundtrack'), 'movie-soundtracks-hits-radio-1-fm');
+  assert.equal(verifiedLegacyStationAlias('1fm-movie-soundtrack-hits'), 'movie-soundtracks-hits-radio-1-fm');
   for (const slug of ['kpissfm-1', 'kpiss-fm-2', 'randomfm-1', '-2173', '__proto__', 'constructor',
-    'radio-onda-rossa-3', 'kiis-1065-sydney-1065-fm-mp3-2']) {
+    'radio-onda-rossa-3', 'kiis-1065-sydney-1065-fm-mp3-2',
+    'france-bleu-besanon-1', 'radio-russia-1', '1fm-movie-soundtrack-1', '1fm-movie-soundtrack-hits-1']) {
     assert.equal(verifiedLegacyStationAlias(slug), null, slug);
   }
 });
@@ -41,6 +46,10 @@ test('only individually reviewed historical spellings are eligible', () => {
 for (const [legacy, canonical, id] of [
   ['radio-onda-rossa-1', 'onda-rossa', '68a8c482bd66579311ab2f5b'],
   ['kiis-1065-sydney-1065-fm-mp3-1', 'kiis-106-5', '68a8c478bd66579311ab1477'],
+  ['france-bleu-besanon', 'france-bleu-besancon', '6a07916dbef34beb9148c147'],
+  ['radio-russia', 'radio-rossii', '68a8c4a8bd66579311ab8be1'],
+  ['1fm-movie-soundtrack', 'movie-soundtracks-hits-radio-1-fm', '68a8c47fbd66579311ab27d0'],
+  ['1fm-movie-soundtrack-hits', 'movie-soundtracks-hits-radio-1-fm', '68a8c47fbd66579311ab27d0'],
 ]) {
   const target = { id, slug: canonical, name: 'Verified Radio', no_index: false,
     url: 'https://stream.example.invalid/live', slug_aliases: [] };

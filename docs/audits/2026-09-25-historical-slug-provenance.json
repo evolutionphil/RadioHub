@@ -1,0 +1,131 @@
+{
+  "checkedAt": "2026-09-25T20:25:38.600Z",
+  "scope": "Historical slug derivation from the exact archived names supplied by the parent audit; archive UUID/stream bindings are documented separately.",
+  "verification": {
+    "baseCasesPassed": 12,
+    "collisionCasesPassed": 8,
+    "currentNormalizerImported": false,
+    "method": "Read immutable source with git show, extract only the pure historical function body and execute it with empty/occupied in-memory slug sets."
+  },
+  "historicalServerGenerators": [
+    {
+      "commit": "91a6a4e62a52c8fe991f336e772c1b246df8b3fd",
+      "date": "2026-02-25",
+      "path": "server/routes.ts",
+      "generatorLine": 1917,
+      "algorithm": "const generateOptimizedUniqueSlug = (name: string): string => {\n            const baseSlug = name\n              .toLowerCase()\n              .replace(/[^\\w\\s-]/g, '') // Remove special characters except spaces and hyphens\n              .replace(/\\s+/g, '-') // Replace spaces with hyphens\n              .replace(/-+/g, '-') // Replace multiple hyphens with single hyphen\n              .trim()\n              .replace(/^-+|-+$/g, ''); // Remove leading/trailing hyphens\n            \n            let uniqueSlug = baseSlug;\n            let counter = 1;\n            \n            // Fast in-memory uniqueness check instead of database lookups\n            while (usedSlugs.has(uniqueSlug)) {\n              uniqueSlug = `${baseSlug}-${counter}`;\n              counter++;\n            }\n            \n            usedSlugs.add(uniqueSlug); // Reserve this slug\n            return uniqueSlug;\n          };",
+      "stationCallLine": 1970,
+      "stationCall": "const newSlug = generateOptimizedUniqueSlug(station.name);",
+      "results": [
+        {
+          "name": "France Bleu Besançon ",
+          "expected": "france-bleu-besanon",
+          "actual": "france-bleu-besanon",
+          "matches": true,
+          "whenBaseAlreadyOccupied": "france-bleu-besanon-1"
+        },
+        {
+          "name": "Радио России (Radio Russia)",
+          "expected": "radio-russia",
+          "actual": "radio-russia",
+          "matches": true,
+          "whenBaseAlreadyOccupied": "radio-russia-1"
+        },
+        {
+          "name": "1.FM - Movie Soundtrack",
+          "expected": "1fm-movie-soundtrack",
+          "actual": "1fm-movie-soundtrack",
+          "matches": true,
+          "whenBaseAlreadyOccupied": "1fm-movie-soundtrack-1"
+        },
+        {
+          "name": "1.fm Movie Soundtrack Hits",
+          "expected": "1fm-movie-soundtrack-hits",
+          "actual": "1fm-movie-soundtrack-hits",
+          "matches": true,
+          "whenBaseAlreadyOccupied": "1fm-movie-soundtrack-hits-1"
+        }
+      ]
+    },
+    {
+      "commit": "d2157c08b1db98592cb741361f00a4f56ca0a51f",
+      "date": "2026-04-22T15:36:13Z",
+      "path": "server/routes/slug-routes.ts",
+      "generatorLine": 181,
+      "algorithm": "const generateOptimizedUniqueSlug = (name: string): string => {\n            const baseSlug = name\n              .toLowerCase()\n              .replace(/[^\\w\\s-]/g, '') // Remove special characters except spaces and hyphens\n              .replace(/\\s+/g, '-') // Replace spaces with hyphens\n              .replace(/-+/g, '-') // Replace multiple hyphens with single hyphen\n              .trim()\n              .replace(/^-+|-+$/g, ''); // Remove leading/trailing hyphens\n            \n            let uniqueSlug = baseSlug;\n            let counter = 1;\n            \n            // Fast in-memory uniqueness check instead of database lookups\n            while (usedSlugs.has(uniqueSlug)) {\n              uniqueSlug = `${baseSlug}-${counter}`;\n              counter++;\n            }\n            \n            usedSlugs.add(uniqueSlug); // Reserve this slug\n            return uniqueSlug;\n          };",
+      "stationCallLine": 236,
+      "stationCall": "const newSlug = generateOptimizedUniqueSlug(station.name);",
+      "results": [
+        {
+          "name": "France Bleu Besançon ",
+          "expected": "france-bleu-besanon",
+          "actual": "france-bleu-besanon",
+          "matches": true,
+          "whenBaseAlreadyOccupied": "france-bleu-besanon-1"
+        },
+        {
+          "name": "Радио России (Radio Russia)",
+          "expected": "radio-russia",
+          "actual": "radio-russia",
+          "matches": true,
+          "whenBaseAlreadyOccupied": "radio-russia-1"
+        },
+        {
+          "name": "1.FM - Movie Soundtrack",
+          "expected": "1fm-movie-soundtrack",
+          "actual": "1fm-movie-soundtrack",
+          "matches": true,
+          "whenBaseAlreadyOccupied": "1fm-movie-soundtrack-1"
+        },
+        {
+          "name": "1.fm Movie Soundtrack Hits",
+          "expected": "1fm-movie-soundtrack-hits",
+          "actual": "1fm-movie-soundtrack-hits",
+          "matches": true,
+          "whenBaseAlreadyOccupied": "1fm-movie-soundtrack-hits-1"
+        }
+      ]
+    }
+  ],
+  "historicalClientFallback": {
+    "commit": "91a6a4e62a52c8fe991f336e772c1b246df8b3fd",
+    "path": "client/src/utils/slugs.ts",
+    "generatorLine": 4,
+    "algorithm": "export function generateSlug(stationName: string): string {\n  return stationName\n    .toLowerCase()\n    .replace(/[^\\w\\s-]/g, '') // Remove special characters except spaces and hyphens\n    .replace(/\\s+/g, '-') // Replace spaces with hyphens\n    .replace(/-+/g, '-') // Replace multiple hyphens with single hyphen\n    .trim()\n    .replace(/^-+|-+$/g, ''); // Remove leading/trailing hyphens\n}",
+    "results": [
+      {
+        "name": "France Bleu Besançon ",
+        "expected": "france-bleu-besanon",
+        "actual": "france-bleu-besanon",
+        "matches": true
+      },
+      {
+        "name": "Радио России (Radio Russia)",
+        "expected": "radio-russia",
+        "actual": "radio-russia",
+        "matches": true
+      },
+      {
+        "name": "1.FM - Movie Soundtrack",
+        "expected": "1fm-movie-soundtrack",
+        "actual": "1fm-movie-soundtrack",
+        "matches": true
+      },
+      {
+        "name": "1.fm Movie Soundtrack Hits",
+        "expected": "1fm-movie-soundtrack-hits",
+        "actual": "1fm-movie-soundtrack-hits",
+        "matches": true
+      }
+    ]
+  },
+  "replacementCommit": "4fd2b2740969762df8c38ba86f58971ae0b2889b",
+  "replacementDate": "2026-04-22",
+  "replacementDescription": "This commit explicitly replaced the old ASCII-stripping expressions in the bulk/admin/public generators with slugifyStationName and introduced transliteration.",
+  "limitations": [
+    "This proves deterministic base slug derivation for the supplied archived names, not which database row won collision allocation.",
+    "The historical server generator appends a numeric suffix when the unsuffixed slug is already used. Archive UUID/stream and current target identity evidence must independently establish ownership; name similarity alone is insufficient.",
+    "The separate pre-April-22 station-public-routes.ts inline helper lacked edge-hyphen stripping and differed from this demonstrated bulk generator and frontend link fallback.",
+    "This verification did not query or change any database or production system. Archive records and live target eligibility were not independently rechecked in this bounded historical-code subtask."
+  ]
+}

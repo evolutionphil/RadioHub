@@ -193,6 +193,10 @@ test('a current exact alias takes precedence over a verified historical spelling
 for (const [legacy, canonical, id] of [
   ['radio-onda-rossa-1', 'onda-rossa', '68a8c482bd66579311ab2f5b'],
   ['kiis-1065-sydney-1065-fm-mp3-1', 'kiis-106-5', '68a8c478bd66579311ab1477'],
+  ['france-bleu-besanon', 'france-bleu-besancon', '6a07916dbef34beb9148c147'],
+  ['radio-russia', 'radio-rossii', '68a8c4a8bd66579311ab8be1'],
+  ['1fm-movie-soundtrack', 'movie-soundtracks-hits-radio-1-fm', '68a8c47fbd66579311ab27d0'],
+  ['1fm-movie-soundtrack-hits', 'movie-soundtracks-hits-radio-1-fm', '68a8c47fbd66579311ab27d0'],
 ]) {
   const target = { ...station, _id: id, slug: canonical, noIndex: false,
     descriptions: Object.fromEntries(ACTIVE_SITEMAP_LANGUAGES.map(lang => [lang, { full: `Full ${lang}`, meta: `Meta ${lang}` }])) };

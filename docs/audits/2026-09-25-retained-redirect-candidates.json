@@ -1,0 +1,503 @@
+{
+  "checkedAt": "2026-09-25T20:19:48.145Z",
+  "scope": "Three retained excluded identities from the exact 679-URL GSC audit. Current public catalogue searches, exact public detail reads and target HTML checks only.",
+  "sourceAudit": "2026-09-25-gsc-404-live.json",
+  "maxConcurrency": 2,
+  "timeoutMs": 20000,
+  "totalAffectedGscUrls": 25,
+  "pairs": [
+    {
+      "source": {
+        "apiUrl": "https://themegaradio.com/api/station/energy-fm-non-stop-mixes-1",
+        "checkedAt": "2026-09-25T20:19:46.656Z",
+        "id": "68a8c46dbd66579311aaf9f0",
+        "stationuuid": "c79d806d-59d9-4d5d-9dfe-f815071d956b",
+        "name": "Energy FM - Non-Stop Mixes",
+        "slug": "energy-fm-non-stop-mixes-1",
+        "country": "The United Kingdom Of Great Britain And Northern Ireland",
+        "countryCode": "GB",
+        "homepage": "https://www.energyfm.co.uk/",
+        "url": "https://radio.streemlion.com:2365/stream",
+        "urlResolved": "https://radio.streemlion.com:2365/stream",
+        "slugAliases": [],
+        "noIndex": true,
+        "redirectToSlug": null,
+        "manualEditFields": {},
+        "automaticNoIndex": null,
+        "fullMetaDescriptionLocales": [
+          "ar",
+          "de",
+          "en",
+          "es",
+          "fr",
+          "he",
+          "hi",
+          "it",
+          "ja",
+          "ko",
+          "pt",
+          "ru",
+          "tr",
+          "zh"
+        ],
+        "supportsAll14DescriptionLocales": true
+      },
+      "target": {
+        "apiUrl": "https://themegaradio.com/api/station/energy-fm-non-stop-mixes",
+        "checkedAt": "2026-09-25T20:19:46.335Z",
+        "id": "68a8c46dbd66579311aaf9ef",
+        "stationuuid": "29aea530-4321-42f2-846c-d98b34fe478b",
+        "name": "Energy FM - Non Stop Mixes",
+        "slug": "energy-fm-non-stop-mixes",
+        "country": "The United Kingdom Of Great Britain And Northern Ireland",
+        "countryCode": "GB",
+        "homepage": "https://www.energyfm.co.uk/",
+        "url": "https://radio.streemlion.com:2365/stream",
+        "urlResolved": "https://radio.streemlion.com:2365/stream",
+        "slugAliases": [],
+        "noIndex": false,
+        "redirectToSlug": null,
+        "manualEditFields": {},
+        "automaticNoIndex": null,
+        "fullMetaDescriptionLocales": [
+          "ar",
+          "de",
+          "en",
+          "es",
+          "fr",
+          "he",
+          "hi",
+          "it",
+          "ja",
+          "ko",
+          "pt",
+          "ru",
+          "tr",
+          "zh"
+        ],
+        "supportsAll14DescriptionLocales": true
+      },
+      "gscAffectedUrls": 13,
+      "evidence": "Both records name Energy FM Non Stop Mixes in GB and retain the identical station stream URL/resolved URL and official energyfm.co.uk homepage. Hyphen punctuation in the name is the only observed naming distinction; no equivalence is inferred from the slug suffix alone.",
+      "checks": {
+        "sameUrl": true,
+        "sameResolvedUrl": true,
+        "sameHomepage": true,
+        "sameCountry": true,
+        "sourceExcluded": true,
+        "sourceHasNoRedirect": true,
+        "targetNotExcluded": true,
+        "targetHasNoRedirect": true,
+        "targetAll14FullMeta": true,
+        "targetEnglishIndexable": true,
+        "targetEnglishSelfCanonical": true
+      },
+      "targetHtml": {
+        "url": "https://themegaradio.com/en/station/energy-fm-non-stop-mixes",
+        "checkedAt": "2026-09-25T20:19:47.418Z",
+        "status": 200,
+        "location": null,
+        "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+        "robots": [
+          "index, follow"
+        ],
+        "canonical": "https://themegaradio.com/en/station/energy-fm-non-stop-mixes",
+        "alternates": [
+          {
+            "language": "en",
+            "url": "https://themegaradio.com/en/station/energy-fm-non-stop-mixes"
+          },
+          {
+            "language": "tr-TR",
+            "url": "https://themegaradio.com/tr/istasyon/energy-fm-non-stop-mixes"
+          },
+          {
+            "language": "es",
+            "url": "https://themegaradio.com/es/estacion/energy-fm-non-stop-mixes"
+          },
+          {
+            "language": "fr",
+            "url": "https://themegaradio.com/fr/station/energy-fm-non-stop-mixes"
+          },
+          {
+            "language": "de",
+            "url": "https://themegaradio.com/de/sender/energy-fm-non-stop-mixes"
+          },
+          {
+            "language": "ar",
+            "url": "https://themegaradio.com/ar/mahta/energy-fm-non-stop-mixes"
+          },
+          {
+            "language": "it-IT",
+            "url": "https://themegaradio.com/it/stazione/energy-fm-non-stop-mixes"
+          },
+          {
+            "language": "pt",
+            "url": "https://themegaradio.com/pt/estacao/energy-fm-non-stop-mixes"
+          },
+          {
+            "language": "ru-RU",
+            "url": "https://themegaradio.com/ru/stantsiya/energy-fm-non-stop-mixes"
+          },
+          {
+            "language": "zh-Hans",
+            "url": "https://themegaradio.com/zh/电台/energy-fm-non-stop-mixes"
+          },
+          {
+            "language": "ja-JP",
+            "url": "https://themegaradio.com/ja/ステーション/energy-fm-non-stop-mixes"
+          },
+          {
+            "language": "ko-KR",
+            "url": "https://themegaradio.com/ko/스테이션/energy-fm-non-stop-mixes"
+          },
+          {
+            "language": "hi-IN",
+            "url": "https://themegaradio.com/hi/station/energy-fm-non-stop-mixes"
+          },
+          {
+            "language": "he-IL",
+            "url": "https://themegaradio.com/he/tachana/energy-fm-non-stop-mixes"
+          },
+          {
+            "language": "x-default",
+            "url": "https://themegaradio.com/en/station/energy-fm-non-stop-mixes"
+          }
+        ],
+        "indexable": true
+      },
+      "decision": "Verified exact pair; eligible for a guarded source-ID/UUID to target-ID/UUID redirect repair. No mutation performed by this audit."
+    },
+    {
+      "source": {
+        "apiUrl": "https://themegaradio.com/api/station/k-kountry-95-1",
+        "checkedAt": "2026-09-25T20:19:46.850Z",
+        "id": "68a8c477bd66579311ab1214",
+        "stationuuid": "45460a0a-3b47-4080-99c0-aeb06f9002de",
+        "name": "K-Kountry 95",
+        "slug": "k-kountry-95-1",
+        "country": "The United States Of America",
+        "countryCode": "US",
+        "homepage": "https://www.ecommnewsnetwork.com/",
+        "url": "https://crystalout.surfernetwork.com:8001/KAMS_MP3",
+        "urlResolved": "https://crystalout.surfernetwork.com:8001/KAMS_MP3",
+        "slugAliases": [],
+        "noIndex": true,
+        "redirectToSlug": null,
+        "manualEditFields": {},
+        "automaticNoIndex": null,
+        "fullMetaDescriptionLocales": [
+          "ar",
+          "de",
+          "en",
+          "es",
+          "fr",
+          "he",
+          "hi",
+          "it",
+          "ja",
+          "ko",
+          "pt",
+          "ru",
+          "tr",
+          "zh"
+        ],
+        "supportsAll14DescriptionLocales": true
+      },
+      "target": {
+        "apiUrl": "https://themegaradio.com/api/station/k-kountry-95",
+        "checkedAt": "2026-09-25T20:19:46.850Z",
+        "id": "68a8c477bd66579311ab120d",
+        "stationuuid": "e469cbfd-0a54-42e4-b9d3-7da5c41a7738",
+        "name": "K Kountry 95",
+        "slug": "k-kountry-95",
+        "country": "The United States Of America",
+        "countryCode": "US",
+        "homepage": "https://radio-locator.com/cgi-bin/url?id=KAMS-FM",
+        "url": "https://crystalout.surfernetwork.com:8001/KAMS_MP3",
+        "urlResolved": "https://crystalout.surfernetwork.com:8001/KAMS_MP3",
+        "slugAliases": [],
+        "noIndex": false,
+        "redirectToSlug": null,
+        "manualEditFields": {},
+        "automaticNoIndex": null,
+        "fullMetaDescriptionLocales": [
+          "ar",
+          "de",
+          "en",
+          "es",
+          "fr",
+          "he",
+          "hi",
+          "it",
+          "ja",
+          "ko",
+          "pt",
+          "ru",
+          "tr",
+          "zh"
+        ],
+        "supportsAll14DescriptionLocales": true
+      },
+      "gscAffectedUrls": 7,
+      "evidence": "Both records name K Kountry 95 in the US and retain the identical KAMS_MP3 station stream URL/resolved URL. The source uses ecommnewsnetwork.com and the target uses the Radio-Locator KAMS-FM URL, so homepage equality is not claimed. Matching station-specific stream, brand and country establish this pair; the slug suffix is not used as evidence.",
+      "checks": {
+        "sameUrl": true,
+        "sameResolvedUrl": true,
+        "sameHomepage": false,
+        "sameCountry": true,
+        "sourceExcluded": true,
+        "sourceHasNoRedirect": true,
+        "targetNotExcluded": true,
+        "targetHasNoRedirect": true,
+        "targetAll14FullMeta": true,
+        "targetEnglishIndexable": true,
+        "targetEnglishSelfCanonical": true
+      },
+      "targetHtml": {
+        "url": "https://themegaradio.com/en/station/k-kountry-95",
+        "checkedAt": "2026-09-25T20:19:47.886Z",
+        "status": 200,
+        "location": null,
+        "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+        "robots": [
+          "index, follow"
+        ],
+        "canonical": "https://themegaradio.com/en/station/k-kountry-95",
+        "alternates": [
+          {
+            "language": "en",
+            "url": "https://themegaradio.com/en/station/k-kountry-95"
+          },
+          {
+            "language": "tr-TR",
+            "url": "https://themegaradio.com/tr/istasyon/k-kountry-95"
+          },
+          {
+            "language": "es",
+            "url": "https://themegaradio.com/es/estacion/k-kountry-95"
+          },
+          {
+            "language": "fr",
+            "url": "https://themegaradio.com/fr/station/k-kountry-95"
+          },
+          {
+            "language": "de",
+            "url": "https://themegaradio.com/de/sender/k-kountry-95"
+          },
+          {
+            "language": "ar",
+            "url": "https://themegaradio.com/ar/mahta/k-kountry-95"
+          },
+          {
+            "language": "it-IT",
+            "url": "https://themegaradio.com/it/stazione/k-kountry-95"
+          },
+          {
+            "language": "pt",
+            "url": "https://themegaradio.com/pt/estacao/k-kountry-95"
+          },
+          {
+            "language": "ru-RU",
+            "url": "https://themegaradio.com/ru/stantsiya/k-kountry-95"
+          },
+          {
+            "language": "zh-Hans",
+            "url": "https://themegaradio.com/zh/电台/k-kountry-95"
+          },
+          {
+            "language": "ja-JP",
+            "url": "https://themegaradio.com/ja/ステーション/k-kountry-95"
+          },
+          {
+            "language": "ko-KR",
+            "url": "https://themegaradio.com/ko/스테이션/k-kountry-95"
+          },
+          {
+            "language": "hi-IN",
+            "url": "https://themegaradio.com/hi/station/k-kountry-95"
+          },
+          {
+            "language": "he-IL",
+            "url": "https://themegaradio.com/he/tachana/k-kountry-95"
+          },
+          {
+            "language": "x-default",
+            "url": "https://themegaradio.com/en/station/k-kountry-95"
+          }
+        ],
+        "indexable": true
+      },
+      "decision": "Verified exact pair; eligible for a guarded source-ID/UUID to target-ID/UUID redirect repair. No mutation performed by this audit."
+    },
+    {
+      "source": {
+        "apiUrl": "https://themegaradio.com/api/station/classic-radio-nsw-mp3",
+        "checkedAt": "2026-09-25T20:19:47.071Z",
+        "id": "68a8c468bd66579311aaedf0",
+        "stationuuid": "88baabe8-7c90-4d51-9212-3d803ce423b1",
+        "name": "Classic Radio NSW (MP3)",
+        "slug": "classic-radio-nsw-mp3",
+        "country": "Australia",
+        "countryCode": "AU",
+        "homepage": "http://www.classicradionsw.com.au/",
+        "url": "http://stream.zeno.fm/gtevhb0m5f0uv",
+        "urlResolved": "http://stream.zeno.fm/gtevhb0m5f0uv",
+        "slugAliases": [],
+        "noIndex": true,
+        "redirectToSlug": null,
+        "manualEditFields": {},
+        "automaticNoIndex": null,
+        "fullMetaDescriptionLocales": [
+          "ar",
+          "de",
+          "en",
+          "es",
+          "fr",
+          "he",
+          "hi",
+          "it",
+          "ja",
+          "ko",
+          "pt",
+          "ru",
+          "tr",
+          "zh"
+        ],
+        "supportsAll14DescriptionLocales": true
+      },
+      "target": {
+        "apiUrl": "https://themegaradio.com/api/station/classic-radio-nsw",
+        "checkedAt": "2026-09-25T20:19:47.049Z",
+        "id": "68a8c468bd66579311aaeded",
+        "stationuuid": "41cc28ae-4139-4f5f-bdc7-4d331c0b0bb3",
+        "name": "Classic Radio NSW",
+        "slug": "classic-radio-nsw",
+        "country": "Australia",
+        "countryCode": "AU",
+        "homepage": "http://www.classicradionsw.com.au/",
+        "url": "http://stream.zeno.fm/gtevhb0m5f0uv",
+        "urlResolved": "http://stream.zeno.fm/gtevhb0m5f0uv",
+        "slugAliases": [],
+        "noIndex": false,
+        "redirectToSlug": null,
+        "manualEditFields": {},
+        "automaticNoIndex": null,
+        "fullMetaDescriptionLocales": [
+          "ar",
+          "de",
+          "en",
+          "es",
+          "fr",
+          "he",
+          "hi",
+          "it",
+          "ja",
+          "ko",
+          "pt",
+          "ru",
+          "tr",
+          "zh"
+        ],
+        "supportsAll14DescriptionLocales": true
+      },
+      "gscAffectedUrls": 5,
+      "evidence": "Both records identify Classic Radio NSW in Australia and retain the identical Zeno station stream URL/resolved URL and classicradionsw.com.au homepage. The source name merely adds MP3. The separately returned Classic Radio NSW 1900s to 1950s channel uses another stream and is explicitly not the target.",
+      "checks": {
+        "sameUrl": true,
+        "sameResolvedUrl": true,
+        "sameHomepage": true,
+        "sameCountry": true,
+        "sourceExcluded": true,
+        "sourceHasNoRedirect": true,
+        "targetNotExcluded": true,
+        "targetHasNoRedirect": true,
+        "targetAll14FullMeta": true,
+        "targetEnglishIndexable": true,
+        "targetEnglishSelfCanonical": true
+      },
+      "targetHtml": {
+        "url": "https://themegaradio.com/en/station/classic-radio-nsw",
+        "checkedAt": "2026-09-25T20:19:48.145Z",
+        "status": 200,
+        "location": null,
+        "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+        "robots": [
+          "index, follow"
+        ],
+        "canonical": "https://themegaradio.com/en/station/classic-radio-nsw",
+        "alternates": [
+          {
+            "language": "en",
+            "url": "https://themegaradio.com/en/station/classic-radio-nsw"
+          },
+          {
+            "language": "tr-TR",
+            "url": "https://themegaradio.com/tr/istasyon/classic-radio-nsw"
+          },
+          {
+            "language": "es",
+            "url": "https://themegaradio.com/es/estacion/classic-radio-nsw"
+          },
+          {
+            "language": "fr",
+            "url": "https://themegaradio.com/fr/station/classic-radio-nsw"
+          },
+          {
+            "language": "de",
+            "url": "https://themegaradio.com/de/sender/classic-radio-nsw"
+          },
+          {
+            "language": "ar",
+            "url": "https://themegaradio.com/ar/mahta/classic-radio-nsw"
+          },
+          {
+            "language": "it-IT",
+            "url": "https://themegaradio.com/it/stazione/classic-radio-nsw"
+          },
+          {
+            "language": "pt",
+            "url": "https://themegaradio.com/pt/estacao/classic-radio-nsw"
+          },
+          {
+            "language": "ru-RU",
+            "url": "https://themegaradio.com/ru/stantsiya/classic-radio-nsw"
+          },
+          {
+            "language": "zh-Hans",
+            "url": "https://themegaradio.com/zh/电台/classic-radio-nsw"
+          },
+          {
+            "language": "ja-JP",
+            "url": "https://themegaradio.com/ja/ステーション/classic-radio-nsw"
+          },
+          {
+            "language": "ko-KR",
+            "url": "https://themegaradio.com/ko/스테이션/classic-radio-nsw"
+          },
+          {
+            "language": "hi-IN",
+            "url": "https://themegaradio.com/hi/station/classic-radio-nsw"
+          },
+          {
+            "language": "he-IL",
+            "url": "https://themegaradio.com/he/tachana/classic-radio-nsw"
+          },
+          {
+            "language": "x-default",
+            "url": "https://themegaradio.com/en/station/classic-radio-nsw"
+          }
+        ],
+        "indexable": true
+      },
+      "decision": "Verified exact pair; eligible for a guarded source-ID/UUID to target-ID/UUID redirect repair. No mutation performed by this audit."
+    }
+  ],
+  "limitations": [
+    "Catalogue search matches words with OR and is discovery only; every chosen candidate was re-read through its exact station API.",
+    "Source and target station UUIDs differ; equivalent station identity is supported by exact matching station-specific streams, country and brand, plus matching homepages where stated.",
+    "Stored description completeness and advertised alternates are not an editorial fact-check; only English target HTML was fetched in this bounded check.",
+    "Indexable destinations supply consolidation signals, not a guarantee that Google will index them.",
+    "No station stream was played, no aliases guessed or modified, and no database or production mutation occurred."
+  ]
+}
