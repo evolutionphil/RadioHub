@@ -1,0 +1,512 @@
+{
+  "title": "Radio Ora News raw/native content pin correction after safe 0042 skip",
+  "status": "Prepared and locally verified for review; no production changes by this task",
+  "rootPrivatePreflight": {
+    "provenance": "Root's read-only authenticated Railway SQL UI observations, reported in this task; not inferred from the public mapper.",
+    "observations": {
+      "exactNativeIdentitiesAndAliasesMatch": true,
+      "bothNativeNoIndex": true,
+      "bothNativeRedirects": null,
+      "bothNativeManualEditFields": {},
+      "bothPrivateJournals": "SQL NULL",
+      "bothSourceNoIndex": true,
+      "bothSourceManualEditFields": {},
+      "bothSourceIsManuallyEdited": false,
+      "bothSourceAutomaticNoIndexKeyPresent": false,
+      "conflictingArchivedOwnershipOrExclusionKeys": [],
+      "thirdIdentityPeers": 0,
+      "incomingRedirectConflicts": 0,
+      "mergedAliasOwnershipConflicts": 0,
+      "canonicalNativeCombinedContentHashMatchesOriginalReview": true,
+      "duplicateNativeFullMetaFieldsComparedTo0043": 28,
+      "duplicateAll28NativeFieldHashesMatch0043": true,
+      "duplicateOldPublicCombinedHash": "f81c92a54e96ace1bbf2edc8d39e0c424c4e7ddb785ece7cb274c734b43ae45a",
+      "duplicateNativeCombinedHash": "e0bdaa92165dbc64888fb6c3ab2af9b73f0add62442aeb7f12856d7966e96248"
+    },
+    "limitation": "These observations are point-in-time preflight evidence; 0043 repeats all guards under table/row locks before updating."
+  },
+  "validation": {
+    "checkedAt": "2026-09-25T20:51:23.336Z",
+    "result": {
+      "newTests": 8,
+      "existing0042Tests": 12,
+      "totalPassed": 20,
+      "failed": 0,
+      "skipped": 0
+    },
+    "engine": "Actual local PGlite PostgreSQL SQL/PLpgSQL, no production connection",
+    "workdir": "artifacts/api-server",
+    "command": "node node_modules/tsx/dist/cli.mjs --test --test-timeout=90000 tests/ora-news-native-content-recovery-migration.test.ts tests/ora-news-canonical-recovery-migration.test.ts",
+    "environment": {
+      "RADIOHUB_PGLITE_ENTRY": "C:/Users/mumiix/AppData/Local/Temp/radiohub-historical-redirect-tests-900b7269d7e94151ae32e8cba381b7a4/node_modules/@electric-sql/pglite/dist/index.js"
+    },
+    "coverage": [
+      "All58 raw fields normalize through the actual production stripPlaceholders implementation to prior reviewed content",
+      "Four independently returned native SQL hashes match raw-list evidence; canonical raw pins unchanged",
+      "SQL guard/atomicity/receipt body byte-equivalent to0042 after replacing only reviewed literal and evidence/receipt identifiers",
+      "0042 safe skip reproduced on raw fixture;0043 succeeds without content normalization or rewrite",
+      "All15 transformed raw field variants reject normalized or edited text",
+      "Manual/provenance/private-journal/identity/merged-alias/incoming/hidden-peer protection and atomic rollback retain effect",
+      "Both records, raw content, health, aliases, user references and private receipts preserved; reruns are idempotent"
+    ]
+  },
+  "checkedAt": "2026-09-25T20:47:48.218Z",
+  "predecessor": {
+    "migration": "0042_verified_ora_news_canonical_recovery.sql",
+    "unchanged": true,
+    "observedOutcome": "Root reported safely skipped; canonical unchanged, duplicate unchanged, private journals empty.",
+    "rootConfirmedNativeHashes": {
+      "duplicateArFull": "89807396e4457a258c3141d0c70d41a2d2f9f19b3e9205f3a2f0a1c186deb7b5",
+      "duplicateDeFull": "4f7a92f957ddf9befe48011c56848aeb566162b21629595d14b8cb0c409b5fd9",
+      "duplicateEnFull": "4b9350583b0580577ee0fda2678afe9ceb1669e1bdd306b465ffcdf902c7de19",
+      "duplicateEnMeta": "68fef507a7a110b769a2db13bbd969f3e866e346bf34503da29ac1ccacc8d961"
+    }
+  },
+  "diagnosis": {
+    "publicDetailRoute": "/api/station/:identifier calls stripPlaceholders before responding",
+    "rawListRoute": "/api/stations?search=Radio%20Ora%20News&country=Albania&limit=2 returns native descriptions from fromPostgres without stripPlaceholders",
+    "normalization": "The duplicate retains paragraph breaks in all14 full fields; English full also starts with a bracket and English meta is bracketed. All15 differing raw fields normalize exactly to the previously reviewed public detail values.",
+    "hebrewMeta": "Hebrew meta equals the English public text in raw storage already; no locale fallback was found. This migration does not rewrite or claim to translate it.",
+    "correctiveScope": "Exact raw full/meta hashes replace transformed public-response hashes; no relaxation, normalization in SQL, content rewrite, general policy change or removal of ownership/graph guards."
+  },
+  "normalizationCheck": {
+    "implementation": "artifacts/api-server/src/routes/shared-utils.ts:stripPlaceholders",
+    "comparedFields": 58,
+    "allMatch": true,
+    "rawDifferentFields": [
+      {
+        "role": "duplicate",
+        "locale": "ar",
+        "field": "full",
+        "rawLength": 1018,
+        "publicLength": 1014,
+        "rawSha256": "89807396e4457a258c3141d0c70d41a2d2f9f19b3e9205f3a2f0a1c186deb7b5",
+        "publicSha256": "6577749110570818ce144cf2ced3d0edaccc88a00e53b32fe0cb825050057b2f"
+      },
+      {
+        "role": "duplicate",
+        "locale": "de",
+        "field": "full",
+        "rawLength": 1501,
+        "publicLength": 1497,
+        "rawSha256": "4f7a92f957ddf9befe48011c56848aeb566162b21629595d14b8cb0c409b5fd9",
+        "publicSha256": "030ac615cd143c53d61a8a57aed7a92c9c4e0db370198f012c5eef0354426f69"
+      },
+      {
+        "role": "duplicate",
+        "locale": "en",
+        "field": "full",
+        "rawLength": 1234,
+        "publicLength": 1229,
+        "rawSha256": "4b9350583b0580577ee0fda2678afe9ceb1669e1bdd306b465ffcdf902c7de19",
+        "publicSha256": "597fcc3412dbe21997325940302fa5cee0521455ed33670261bc0d0a3a5cb981"
+      },
+      {
+        "role": "duplicate",
+        "locale": "en",
+        "field": "meta",
+        "rawLength": 144,
+        "publicLength": 142,
+        "rawSha256": "68fef507a7a110b769a2db13bbd969f3e866e346bf34503da29ac1ccacc8d961",
+        "publicSha256": "6cf3d137fefa072e49899773b0ac406037f8979aed899f5ae6e2bd9beaa8fa7e"
+      },
+      {
+        "role": "duplicate",
+        "locale": "es",
+        "field": "full",
+        "rawLength": 1367,
+        "publicLength": 1363,
+        "rawSha256": "c44fdd0e82e5d19db1badcf1d1c1f955b96ca26eefb78ba037fff9f2ade5c4d5",
+        "publicSha256": "cf3b79a2d1e26e49b791a0883ce41eb55740aae7a5762b1961538a0520958858"
+      },
+      {
+        "role": "duplicate",
+        "locale": "fr",
+        "field": "full",
+        "rawLength": 1349,
+        "publicLength": 1345,
+        "rawSha256": "4cc0ce0e3397df21d9f91ee9aaa0d6cfda20fda055abbdb53ebf0bf5070ec095",
+        "publicSha256": "682a12fc30f74469eca70931d98396ab063cb8737f5ef12d5f6c269045b07b1d"
+      },
+      {
+        "role": "duplicate",
+        "locale": "he",
+        "field": "full",
+        "rawLength": 962,
+        "publicLength": 958,
+        "rawSha256": "ea29358c174bc6a42704bf36c8cca93c0e993839b1e4c486c6a8c98cd41bb665",
+        "publicSha256": "8029ae30090c9b318ec94b4e34563b34cb5820084e6bb39ae0127ccfbbc1fb84"
+      },
+      {
+        "role": "duplicate",
+        "locale": "hi",
+        "field": "full",
+        "rawLength": 1325,
+        "publicLength": 1321,
+        "rawSha256": "b243507406a45dcb3a6447dac527d1ea4674dea4aebf8fa16b676e0b858116db",
+        "publicSha256": "fcdc0c3d7e8ad73c522a8b5c63a926f96ace3cf97ed930356424c29c1c73ef88"
+      },
+      {
+        "role": "duplicate",
+        "locale": "it",
+        "field": "full",
+        "rawLength": 1366,
+        "publicLength": 1362,
+        "rawSha256": "0af94f4274c3d64fd684c3e7a89324dbf78e874ad59ce208f83193db5e8d7928",
+        "publicSha256": "253abdf73bc152b4296a667cca62226ced3a14914fc618e8c05aaabbf033ada6"
+      },
+      {
+        "role": "duplicate",
+        "locale": "ja",
+        "field": "full",
+        "rawLength": 582,
+        "publicLength": 578,
+        "rawSha256": "d1d13189f4eb0b6ba19e278500bf3f3630dc4688b784951e21163771455ece53",
+        "publicSha256": "72095e8fe918415e912e381a6f12efd9d8d2986ee0109ea806029d774c85398c"
+      },
+      {
+        "role": "duplicate",
+        "locale": "ko",
+        "field": "full",
+        "rawLength": 656,
+        "publicLength": 652,
+        "rawSha256": "5e554cddc808621dab3e3a8b5fc13e23495931d9a29b7144f29879b42445175b",
+        "publicSha256": "2e25f5469a47d8d36dbd4b9572355f24a5f2360c8c2ec10b390bafab836a2e3a"
+      },
+      {
+        "role": "duplicate",
+        "locale": "pt",
+        "field": "full",
+        "rawLength": 1319,
+        "publicLength": 1315,
+        "rawSha256": "79fb953ec3ed74b4f19093bbad40b10395751d540e98820fa3d15274f3b0e4e2",
+        "publicSha256": "e88de3f94fe14c464d246fd74fc0ae1fc470ad7989f1c7ed6c1d2de082e729f8"
+      },
+      {
+        "role": "duplicate",
+        "locale": "ru",
+        "field": "full",
+        "rawLength": 1301,
+        "publicLength": 1297,
+        "rawSha256": "1fe47355370a200bfd17d9fa5c0af6549244265bbdaf0b2562177f62ba8b0d49",
+        "publicSha256": "86f0872bb88b38b5f2b22f89d2c937dd3241ca67c51459b8ecb1d725ad2f7a7d"
+      },
+      {
+        "role": "duplicate",
+        "locale": "tr",
+        "field": "full",
+        "rawLength": 1325,
+        "publicLength": 1321,
+        "rawSha256": "1f2bab37aaf8652dd6dc2bde7d26a66de5f54cb0debb76afac1b9a90147a3595",
+        "publicSha256": "9873327b519a10caf227e88d03eb6892f38a627eb26480a424b4d1cd8b11df39"
+      },
+      {
+        "role": "duplicate",
+        "locale": "zh",
+        "field": "full",
+        "rawLength": 429,
+        "publicLength": 425,
+        "rawSha256": "5153176b4581cb8c7d6ad7c72f1a36fd91bdf93bf944c6c5a2411ab5a3f2ecb0",
+        "publicSha256": "76955c127680686e3b47869f14808ab77010ac0ce9f4d0236166bc7dfcccf086"
+      }
+    ]
+  },
+  "limitations": [
+    "Raw-list hashes were independently cross-checked against the root's native SQL hashes for four changed fields; all58 fields normalize exactly through the existing production stripPlaceholders implementation.",
+    "Private flags, native journals, merged aliases, hidden peers and incoming redirects remain fail-closed migration-time checks; public data alone cannot establish apply eligibility.",
+    "Canonical and duplicate health remain failed/unverified; no current playback success is inferred.",
+    "Both rows, IDs/UUIDs, aliases, all raw description text and favorites/history/ratings are preserved; recovery receipts remain private.",
+    "PGlite checks SQL/atomicity, not native multi-connection lock contention.",
+    "A deployment or migration-runner success is not evidence that the guarded row updates happened; verify private receipts and native flags afterward."
+  ],
+  "records": [
+    {
+      "role": "duplicate",
+      "endpoint": "https://themegaradio.com/api/stations?search=Radio%20Ora%20News&country=Albania&limit=2",
+      "identity": {
+        "id": "68a8c490bd66579311ab4fb6",
+        "station_uuid": "d8d3a887-761e-4a7d-81d8-00d2fcda1b8a",
+        "name": "Radio Ora News - Tirana 96.7 FM",
+        "slug": "radio-ora-news-tirana-96-7-fm",
+        "slug_aliases": [
+          "radio-ora-news-tirana-967-fm"
+        ],
+        "country": "Albania",
+        "country_code": "AL",
+        "url": "https://radio.oranews.tv:8443/stream",
+        "url_resolved": "https://radio.oranews.tv:8443/stream",
+        "homepage": "https://www.oranews.tv/"
+      },
+      "observed": {
+        "noIndex": true,
+        "redirectToSlug": null,
+        "manualEditFields": {},
+        "lastCheckOk": false,
+        "availabilityStatus": "unverified"
+      },
+      "contentSha256": {
+        "ar": {
+          "full": "89807396e4457a258c3141d0c70d41a2d2f9f19b3e9205f3a2f0a1c186deb7b5",
+          "meta": "2771775d6a0deed37611d6fa2047eaa017d91fe98da347596a06c7ee6b3aae37"
+        },
+        "de": {
+          "full": "4f7a92f957ddf9befe48011c56848aeb566162b21629595d14b8cb0c409b5fd9",
+          "meta": "bdf76cf9c8307ec2387274e32f65c602cb31f261670983bb26024bbc0b3b2ca9"
+        },
+        "en": {
+          "full": "4b9350583b0580577ee0fda2678afe9ceb1669e1bdd306b465ffcdf902c7de19",
+          "meta": "68fef507a7a110b769a2db13bbd969f3e866e346bf34503da29ac1ccacc8d961"
+        },
+        "es": {
+          "full": "c44fdd0e82e5d19db1badcf1d1c1f955b96ca26eefb78ba037fff9f2ade5c4d5",
+          "meta": "6c2e6d04856e5c3ddaa7cbcdc609830d99972f5ab862e69cde609effd6149496"
+        },
+        "fr": {
+          "full": "4cc0ce0e3397df21d9f91ee9aaa0d6cfda20fda055abbdb53ebf0bf5070ec095",
+          "meta": "f59582317cfdb026cd7f329e9b2ef583e5e9e063ab389e958d452eac96e4f56b"
+        },
+        "he": {
+          "full": "ea29358c174bc6a42704bf36c8cca93c0e993839b1e4c486c6a8c98cd41bb665",
+          "meta": "6cf3d137fefa072e49899773b0ac406037f8979aed899f5ae6e2bd9beaa8fa7e"
+        },
+        "hi": {
+          "full": "b243507406a45dcb3a6447dac527d1ea4674dea4aebf8fa16b676e0b858116db",
+          "meta": "56175db7bba8528928af4058d44c61f04759c261771c26a3bda37a9fcd5d93d5"
+        },
+        "it": {
+          "full": "0af94f4274c3d64fd684c3e7a89324dbf78e874ad59ce208f83193db5e8d7928",
+          "meta": "75965df906a340c973a14651da585bd2e9a95e85bda8ddd8d3c331f278dedc02"
+        },
+        "ja": {
+          "full": "d1d13189f4eb0b6ba19e278500bf3f3630dc4688b784951e21163771455ece53",
+          "meta": "d63fa86889a07c7c29caa99293b4f8943d203c3712ca24af9d322b327368ece7"
+        },
+        "ko": {
+          "full": "5e554cddc808621dab3e3a8b5fc13e23495931d9a29b7144f29879b42445175b",
+          "meta": "616d388620544dd242113c96124d0f710eaa28f7c60d6577fdac9dbf29a6b35b"
+        },
+        "pt": {
+          "full": "79fb953ec3ed74b4f19093bbad40b10395751d540e98820fa3d15274f3b0e4e2",
+          "meta": "431c8c9ffd807a27faa8e8cbe7796fa280184a20dd6b48b6dc19b7c4001a1375"
+        },
+        "ru": {
+          "full": "1fe47355370a200bfd17d9fa5c0af6549244265bbdaf0b2562177f62ba8b0d49",
+          "meta": "ec0bd7fa2540cd241a22fbc3e2d57b1541d73e6c4b335f3c1456303b87f89ca7"
+        },
+        "tr": {
+          "full": "1f2bab37aaf8652dd6dc2bde7d26a66de5f54cb0debb76afac1b9a90147a3595",
+          "meta": "271de1e8be3604ede3a54749f48a5f76d4def15f485fe53073ccbf2f55d2a819"
+        },
+        "zh": {
+          "full": "5153176b4581cb8c7d6ad7c72f1a36fd91bdf93bf944c6c5a2411ab5a3f2ecb0",
+          "meta": "4a675650d0574bc63ea477b01a444e327b1386b9aef52a76859eb77fa6b468fb"
+        }
+      },
+      "descriptions": {
+        "ar": {
+          "full": "Radio Ora News - Tirana 96.7 FM هي محطة إذاعية رائدة في ألبانيا، مكرسة لتقديم أحدث الأخبار، وبرامج حوارية مثيرة، ومجموعة متنوعة من المحتوى العام. تبث في قلب تيرانا، وتعتبر هذه المحطة مصدراً حيوياً للمعلومات والترفيه لمستمعيها. مع التركيز على البرمجة العامة، تقدم Radio Ora News مزيجاً من الأحداث الجارية، والنقاشات الثقافية، والأحداث المحلية، مما يضمن لك البقاء على اطلاع بما يهمك في مجتمعك.\n\nيمكن للمستمعين توقع مجموعة غنية من البرامج التي لا تغطي الأخبار فحسب، بل تتناول أيضاً مواضيع نمط الحياة، والصحة، والتعليم، مما يجعلها وجهة مفضلة لأي شخص يسعى لفهم شامل للعالم من حوله. سواء كنت في طريقك للعمل، أو في العمل، أو تسترخي في المنزل، توفر Radio Ora News - Tirana 96.7 FM الخلفية المثالية مع محتواها الجذاب ومقدميها الديناميكيين.\n\nانضم إلى مجتمع متزايد من المستمعين الذين يعتمدون على Radio Ora News للتعليقات العميقة والتحديثات في الوقت المناسب. عِش نبض عاصمة ألبانيا واكتشف لماذا تعتبر هذه المحطة خياراً محبوباً بين السكان المحليين. استمع الآن إلى مزيج متنوع من البرامج التي تعكس الثقافة النابضة بالحياة وروح تيرانا.",
+          "meta": "ابقَ على اطلاع مع Radio Ora News - Tirana 96.7 FM، مصدرك للأخبار العامة، والحوار الجذاب، والثقافة المحلية."
+        },
+        "de": {
+          "full": "Radio Ora News - Tirana 96.7 FM ist ein führender Radiosender in Albanien, der sich der Bereitstellung der neuesten Nachrichten, fesselnder Talkshows und einer breiten Palette allgemeiner Inhalte widmet. Mitten im Herzen von Tirana sendet dieser Sender und dient als wichtige Informations- und Unterhaltungsquelle für seine Hörer. Mit einem Fokus auf allgemeine Programmgestaltung bietet Radio Ora News eine Mischung aus aktuellen Ereignissen, kulturellen Diskussionen und lokalen Geschehnissen, um sicherzustellen, dass Sie über das, was in Ihrer Gemeinschaft am wichtigsten ist, informiert bleiben.\n\nDie Hörer können ein reichhaltiges Programmangebot erwarten, das nicht nur Nachrichten abdeckt, sondern auch in Lifestyle-Themen, Gesundheit und Bildung eintaucht, was es zu einem beliebten Ziel für alle macht, die ein umfassendes Verständnis der Welt um sie herum suchen. Egal, ob Sie pendeln, bei der Arbeit sind oder sich zu Hause entspannen, Radio Ora News - Tirana 96.7 FM bietet den perfekten Hintergrundsoundtrack mit seinen fesselnden Inhalten und dynamischen Moderatoren.\n\nSchließen Sie sich einer wachsenden Gemeinschaft von Hörern an, die auf Radio Ora News für aufschlussreiche Kommentare und zeitnahe Updates angewiesen sind. Erleben Sie den Puls der Hauptstadt Albaniens und entdecken Sie, warum dieser Sender eine beliebte Wahl unter den Einheimischen ist. Schalten Sie ein für eine vielfältige Mischung aus Programmen, die die lebendige Kultur und den Geist von Tirana widerspiegeln.",
+          "meta": "Bleiben Sie informiert mit Radio Ora News - Tirana 96.7 FM, Ihrer Quelle für allgemeine Nachrichten, fesselnden Gesprächen und lokaler Kultur. Schalten Sie jetzt auf Mega Radio ein!"
+        },
+        "en": {
+          "full": "[Radio Ora News - Tirana 96.7 FM is a leading radio station in Albania, dedicated to bringing you the latest news, engaging talk shows, and a wide variety of general content. Broadcasting in the heart of Tirana, this station serves as a vital source of information and entertainment for its listeners. With a focus on general programming, Radio Ora News offers a mix of current events, cultural discussions, and local happenings, ensuring that you stay informed about what matters most in your community.\n\nListeners can expect a rich lineup of programs that not only cover news but also delve into lifestyle topics, health, and education, making it a go-to destination for anyone seeking a comprehensive understanding of the world around them. Whether you're commuting, at work, or relaxing at home, Radio Ora News - Tirana 96.7 FM provides the perfect background soundtrack with its engaging content and dynamic hosts.\n\nJoin a growing community of listeners who rely on Radio Ora News for insightful commentary and timely updates. Experience the pulse of Albania's capital and discover why this station is a beloved choice among locals. Tune in for a diverse mix of programming that reflects the vibrant culture and spirit of Tirana.",
+          "meta": "[Stay informed with Radio Ora News - Tirana 96.7 FM, your source for general news, engaging talk, and local culture. Tune in now on Mega Radio!]"
+        },
+        "es": {
+          "full": "Radio Ora News - Tirana 96.7 FM es una estación de radio líder en Albania, dedicada a traerte las últimas noticias, programas de conversación atractivos y una amplia variedad de contenido general. Transmitiendo en el corazón de Tirana, esta estación sirve como una fuente vital de información y entretenimiento para sus oyentes. Con un enfoque en la programación general, Radio Ora News ofrece una mezcla de eventos actuales, discusiones culturales y sucesos locales, asegurando que te mantengas informado sobre lo que más importa en tu comunidad.\n\nLos oyentes pueden esperar una rica programación que no solo cubre noticias, sino que también profundiza en temas de estilo de vida, salud y educación, convirtiéndola en un destino ideal para cualquiera que busque una comprensión integral del mundo que lo rodea. Ya sea que estés en camino, en el trabajo o relajándote en casa, Radio Ora News - Tirana 96.7 FM proporciona la banda sonora de fondo perfecta con su contenido atractivo y dinámicos presentadores.\n\nÚnete a una comunidad creciente de oyentes que confían en Radio Ora News para comentarios perspicaces y actualizaciones oportunas. Experimenta el pulso de la capital de Albania y descubre por qué esta estación es una elección querida entre los locales. ¡Sintoniza para una mezcla diversa de programación que refleja la vibrante cultura y espíritu de Tirana.",
+          "meta": "Mantente informado con Radio Ora News - Tirana 96.7 FM, tu fuente de noticias generales, conversación atractiva y cultura local. ¡Sintoniza ahora en Mega Radio!"
+        },
+        "fr": {
+          "full": "Radio Ora News - Tirana 96.7 FM est une station de radio leader en Albanie, dédiée à vous apporter les dernières nouvelles, des talk-shows engageants et une grande variété de contenus généraux. Émettant au cœur de Tirana, cette station sert de source vitale d'information et de divertissement pour ses auditeurs. Avec un accent sur la programmation générale, Radio Ora News propose un mélange d'actualités, de discussions culturelles et d'événements locaux, garantissant que vous restiez informé sur ce qui compte le plus dans votre communauté.\n\nLes auditeurs peuvent s'attendre à une riche programmation qui couvre non seulement les nouvelles mais aussi des sujets de style de vie, de santé et d'éducation, en faisant une destination incontournable pour quiconque cherchant à comprendre de manière complète le monde qui l'entoure. Que vous soyez en déplacement, au travail ou en train de vous détendre chez vous, Radio Ora News - Tirana 96.7 FM fournit la bande sonore de fond parfaite avec son contenu engageant et ses animateurs dynamiques.\n\nRejoignez une communauté croissante d'auditeurs qui comptent sur Radio Ora News pour des commentaires perspicaces et des mises à jour opportunes. Découvrez le pouls de la capitale albanaise et découvrez pourquoi cette station est un choix apprécié parmi les habitants. Écoutez maintenant sur Mega Radio !",
+          "meta": "Restez informé avec Radio Ora News - Tirana 96.7 FM, votre source pour les nouvelles générales, des discussions engageantes et la culture locale. Écoutez maintenant sur Mega Radio !"
+        },
+        "he": {
+          "full": "Radio Ora News - Tirana 96.7 FM היא תחנת רדיו מובילה באלבניה, המוקדשת להביא לכם את החדשות האחרונות, תוכניות שיחה מרתקות ומגוון רחב של תוכן כללי. שידור בלב טירנה, תחנה זו משמשת כמקור חיוני למידע ובידור עבור המאזינים שלה. עם דגש על תכנות כללי, Radio Ora News מציעה תמהיל של אירועים עכשוויים, דיונים תרבותיים ואירועים מקומיים, ומבטיחה שתישארו מעודכנים לגבי מה שחשוב ביותר בקהילה שלכם.\n\nהמאזינים יכולים לצפות לרשימה עשירה של תוכניות שאינן מכסות רק חדשות אלא גם עוסקות בנושאי אורח חיים, בריאות וחינוך, מה שהופך אותה ליעד מועדף עבור כל מי שמחפש הבנה מקיפה של העולם סביבם. בין אם אתם בדרכים, בעבודה או נרגעים בבית, Radio Ora News - Tirana 96.7 FM מספקת את הפסקול המושלם עם תוכן מרתק ומנחים דינמיים.\n\nהצטרפו לקהילה הולכת וגדלה של מאזינים התלויים ב- Radio Ora News עבור פרשנות מעמיקה ועדכונים בזמן. חוו את הדופק של בירת אלבניה וגלו מדוע תחנה זו היא בחירה אהובה בקרב המקומיים. הקשיבו עכשיו לתמהיל מגוון של תכנות שמשקף את התרבות החיה ורוח טירנה. הקשיבו עכשיו ב- Mega Radio!",
+          "meta": "Stay informed with Radio Ora News - Tirana 96.7 FM, your source for general news, engaging talk, and local culture. Tune in now on Mega Radio!"
+        },
+        "hi": {
+          "full": "Radio Ora News - Tirana 96.7 FM एक प्रमुख रेडियो स्टेशन है जो अल्बानिया में नवीनतम समाचार, रोचक टॉक शो और सामान्य सामग्री की एक विस्तृत विविधता लाने के लिए समर्पित है। तिराना के दिल में प्रसारण करते हुए, यह स्टेशन अपने श्रोताओं के लिए जानकारी और मनोरंजन का एक महत्वपूर्ण स्रोत है। सामान्य कार्यक्रमों पर ध्यान केंद्रित करते हुए, Radio Ora News वर्तमान घटनाओं, सांस्कृतिक चर्चाओं और स्थानीय गतिविधियों का मिश्रण प्रदान करता है, यह सुनिश्चित करते हुए कि आप अपने समुदाय में सबसे महत्वपूर्ण बातों के बारे में सूचित रहें।\n\nश्रोताओं को कार्यक्रमों की एक समृद्ध श्रृंखला की उम्मीद कर सकते हैं जो न केवल समाचारों को कवर करते हैं बल्कि जीवनशैली के विषयों, स्वास्थ्य और शिक्षा में भी गहराई से जाते हैं, जिससे यह किसी भी व्यक्ति के लिए एक व्यापक समझ प्राप्त करने का एक प्रमुख गंतव्य बन जाता है। चाहे आप यात्रा कर रहे हों, काम पर हों, या घर पर आराम कर रहे हों, Radio Ora News - Tirana 96.7 FM अपने रोचक सामग्री और गतिशील होस्ट के साथ एक आदर्श पृष्ठभूमि साउंडट्रैक प्रदान करता है।\n\nउन श्रोताओं के बढ़ते समुदाय में शामिल हों जो insightful टिप्पणी और समय पर अपडेट के लिए Radio Ora News पर निर्भर करते हैं। अल्बानिया की राजधानी की धड़कन का अनुभव करें और जानें कि यह स्टेशन स्थानीय लोगों के बीच क्यों एक प्रिय विकल्प है। तिराना की जीवंत संस्कृति और आत्मा को दर्शाने वाले कार्यक्रमों के विविध मिश्रण के लिए ट्यून करें। अभी सुनें Mega Radio पर!",
+          "meta": "Radio Ora News - Tirana 96.7 FM: Radio Ora News - Tirana 96.7 FM के साथ सूचित रहें, सामान्य समाचार, रोचक बातचीत और स्थानीय संस्कृति का स्रोत। अभी Mega Radio पर ट्यून करें!"
+        },
+        "it": {
+          "full": "Radio Ora News - Tirana 96.7 FM è una delle principali stazioni radio in Albania, dedicata a portarti le ultime notizie, programmi di discussione coinvolgenti e una vasta gamma di contenuti generali. Trasmettendo nel cuore di Tirana, questa stazione funge da fonte vitale di informazioni e intrattenimento per i suoi ascoltatori. Con un focus sulla programmazione generale, Radio Ora News offre un mix di eventi attuali, discussioni culturali e avvenimenti locali, assicurando che tu rimanga informato su ciò che conta di più nella tua comunità.\n\nGli ascoltatori possono aspettarsi una ricca selezione di programmi che non solo coprono le notizie, ma approfondiscono anche argomenti di stile di vita, salute ed educazione, rendendola una meta ideale per chi cerca una comprensione completa del mondo che li circonda. Che tu stia pendolando, lavorando o rilassandoti a casa, Radio Ora News - Tirana 96.7 FM fornisce la colonna sonora perfetta con i suoi contenuti coinvolgenti e i suoi conduttori dinamici.\n\nUnisciti a una comunità in crescita di ascoltatori che si affidano a Radio Ora News per commenti perspicaci e aggiornamenti tempestivi. Scopri il battito della capitale dell'Albania e scopri perché questa stazione è una scelta amata tra i locali. Sintonizzati per un mix diversificato di programmazione che riflette la cultura vibrante e lo spirito di Tirana.",
+          "meta": "Rimani informato con Radio Ora News - Tirana 96.7 FM, la tua fonte per notizie generali, talk coinvolgenti e cultura locale. Sintonizzati ora su Mega Radio!"
+        },
+        "ja": {
+          "full": "Radio Ora News - Tirana 96.7 FMは、アルバニアの主要なラジオ局で、最新のニュース、魅力的なトークショー、さまざまな一般コンテンツを提供することに専念しています。ティラナの中心部で放送されており、この局はリスナーにとって重要な情報とエンターテインメントの源となっています。一般的なプログラミングに焦点を当て、Radio Ora Newsは時事問題、文化的な議論、地域の出来事をミックスして提供し、コミュニティで最も重要なことについて情報を得られるようにしています。\n\nリスナーは、ニュースをカバーするだけでなく、ライフスタイル、健康、教育に関するトピックにも深く掘り下げる豊富なプログラムラインアップを期待できます。通勤中、仕事中、または自宅でリラックスしているときでも、Radio Ora News - Tirana 96.7 FMは魅力的なコンテンツとダイナミックなホストで完璧なバックグラウンドサウンドトラックを提供します。\n\n洞察に満ちたコメントやタイムリーな更新を求めるリスナーの成長するコミュニティに参加してください。アルバニアの首都の脈動を体験し、この局が地元の人々に愛される理由を発見してください。ティラナの活気ある文化と精神を反映した多様なプログラミングをお楽しみください。今すぐMega Radioで聴いてください！",
+          "meta": "Radio Ora News - Tirana 96.7 FM: Radio Ora News - Tirana 96.7 FMで最新のニュース、魅力的なトーク、地域文化をお楽しみください。今すぐMega Radioで聴いてください！"
+        },
+        "ko": {
+          "full": "Radio Ora News - Tirana 96.7 FM은 알바니아의 선도적인 라디오 방송국으로, 최신 뉴스, 흥미로운 토크쇼 및 다양한 일반 콘텐츠를 제공합니다. 티라나의 중심부에서 방송되는 이 방송국은 청취자들에게 중요한 정보와 오락의 원천으로 기능합니다. 일반 프로그램에 중점을 두고, Radio Ora News는 시사, 문화 토론 및 지역 소식을 혼합하여 제공하여, 여러분이 지역 사회에서 가장 중요한 사항에 대해 정보를 얻을 수 있도록 합니다.\n\n청취자들은 뉴스뿐만 아니라 라이프스타일 주제, 건강 및 교육에 대해 깊이 있는 프로그램을 기대할 수 있으며, 이는 주변 세계에 대한 포괄적인 이해를 원하는 모든 이들에게 필수적인 목적지가 됩니다. 출퇴근 중이든, 직장에서든, 집에서 편안히 쉬고 있든, Radio Ora News - Tirana 96.7 FM은 흥미로운 콘텐츠와 역동적인 진행자들과 함께 완벽한 배경 사운드트랙을 제공합니다.\n\n통찰력 있는 논평과 시의적절한 업데이트를 위해 Radio Ora News에 의존하는 성장하는 청취자 커뮤니티에 참여하세요. 알바니아의 수도의 맥박을 경험하고, 이 방송국이 지역 주민들 사이에서 사랑받는 이유를 알아보세요. 티라나의 활기찬 문화와 정신을 반영하는 다양한 프로그램을 위해 지금 Mega Radio에서 청취하세요!",
+          "meta": "Radio Ora News - Tirana 96.7 FM: Radio Ora News - Tirana 96.7 FM과 함께 최신 뉴스, 흥미로운 토크 및 지역 문화를 확인하세요. 지금 Mega Radio에서 청취하세요!"
+        },
+        "pt": {
+          "full": "Radio Ora News - Tirana 96.7 FM é uma estação de rádio líder na Albânia, dedicada a trazer as últimas notícias, programas de entrevistas envolventes e uma ampla variedade de conteúdo geral. Transmitindo no coração de Tirana, esta estação serve como uma fonte vital de informação e entretenimento para seus ouvintes. Com um foco em programação geral, Radio Ora News oferece uma mistura de eventos atuais, discussões culturais e acontecimentos locais, garantindo que você fique informado sobre o que mais importa em sua comunidade.\n\nOs ouvintes podem esperar uma rica programação que não apenas cobre notícias, mas também se aprofunda em tópicos de estilo de vida, saúde e educação, tornando-se um destino ideal para quem busca uma compreensão abrangente do mundo ao seu redor. Seja durante o trajeto, no trabalho ou relaxando em casa, Radio Ora News - Tirana 96.7 FM fornece a trilha sonora de fundo perfeita com seu conteúdo envolvente e apresentadores dinâmicos.\n\nJunte-se a uma comunidade crescente de ouvintes que confiam na Radio Ora News para comentários perspicazes e atualizações oportunas. Experimente o pulso da capital da Albânia e descubra por que esta estação é uma escolha querida entre os locais. Sintonize para uma mistura diversificada de programação que reflete a vibrante cultura e espírito de Tirana.",
+          "meta": "Fique informado com Radio Ora News - Tirana 96.7 FM, sua fonte de notícias gerais, conversas envolventes e cultura local. Sintonize agora na Mega Radio!"
+        },
+        "ru": {
+          "full": "Radio Ora News - Tirana 96.7 FM является ведущей радиостанцией в Албании, посвященной предоставлению последних новостей, увлекательных ток-шоу и разнообразного общего контента. Ведущая вещание в сердце Тираны, эта станция служит жизненно важным источником информации и развлечений для своих слушателей. С акцентом на общую программу, Radio Ora News предлагает смесь текущих событий, культурных обсуждений и местных новостей, обеспечивая, чтобы вы были в курсе того, что имеет наибольшее значение в вашем сообществе.\n\nСлушатели могут ожидать богатый набор программ, которые не только охватывают новости, но и углубляются в темы образа жизни, здоровья и образования, что делает ее идеальным местом для всех, кто ищет всестороннее понимание окружающего мира. Независимо от того, находитесь ли вы в пути, на работе или отдыхаете дома, Radio Ora News - Tirana 96.7 FM предоставляет идеальный фоновый саундтрек с его увлекательным контентом и динамичными ведущими.\n\nПрисоединяйтесь к растущему сообществу слушателей, которые полагаются на Radio Ora News для проницательных комментариев и своевременных обновлений. Ощутите пульс столицы Албании и узнайте, почему эта станция является любимым выбором среди местных жителей. Настройтесь на разнообразную программу, которая отражает яркую культуру и дух Тираны.",
+          "meta": "Оставайтесь в курсе с Radio Ora News - Tirana 96.7 FM, вашим источником общих новостей, увлекательных разговоров и местной культуры. Настройтесь сейчас на Mega Radio!"
+        },
+        "tr": {
+          "full": "Radio Ora News - Tirana 96.7 FM, Arnavutluk'ta en önde gelen radyo istasyonlarından biridir ve size en son haberleri, ilgi çekici tartışma programlarını ve geniş bir genel içerik yelpazesini sunmaya adanmıştır. Tiran'ın kalbinde yayın yapan bu istasyon, dinleyicileri için hayati bir bilgi ve eğlence kaynağı olarak hizmet vermektedir. Genel programlamaya odaklanan Radio Ora News, güncel olaylar, kültürel tartışmalar ve yerel gelişmelerin bir karışımını sunarak, topluluğunuzda en önemli olanlar hakkında bilgi sahibi olmanızı sağlar.\n\nDinleyiciler, sadece haberleri değil, aynı zamanda yaşam tarzı konuları, sağlık ve eğitim gibi konulara da derinlemesine dalan zengin bir program akışı bekleyebilirler. Bu, çevrelerindeki dünyayı kapsamlı bir şekilde anlamak isteyen herkes için gidilecek bir yer haline getirir. İster işe giderken, ister işte, ister evde dinlenirken, Radio Ora News - Tirana 96.7 FM, ilgi çekici içeriği ve dinamik sunucularıyla mükemmel bir arka plan müziği sağlar.\n\nRadio Ora News'ten içgörülü yorumlar ve zamanında güncellemeler için güvenen büyüyen bir dinleyici topluluğuna katılın. Arnavutluk'un başkentinin nabzını deneyimleyin ve bu istasyonun yerel halk arasında neden sevilen bir tercih olduğunu keşfedin. Tiran'ın canlı kültürünü ve ruhunu yansıtan çeşitli programlamalar için şimdi dinleyin!",
+          "meta": "Radio Ora News - Tirana 96.7 FM ile güncel kalın, genel haberler, ilgi çekici sohbetler ve yerel kültür için kaynağınız."
+        },
+        "zh": {
+          "full": "Radio Ora News - Tirana 96.7 FM 是阿尔巴尼亚领先的广播电台，致力于为您带来最新的新闻、引人入胜的谈话节目和各种一般内容。该电台位于地拉那的心脏地带，为听众提供重要的信息和娱乐来源。Radio Ora News 专注于一般节目，提供时事、文化讨论和当地新闻的混合，确保您了解社区中最重要的事情。\n\n听众可以期待丰富的节目阵容，不仅涵盖新闻，还深入探讨生活方式、健康和教育，使其成为任何寻求全面了解周围世界的人的首选目的地。无论您是在通勤、工作还是在家放松，Radio Ora News - Tirana 96.7 FM 都为您提供完美的背景音乐，伴随其引人入胜的内容和充满活力的主持人。\n\n加入一个日益壮大的听众社区，他们依赖 Radio Ora News 提供深刻的评论和及时的更新。体验阿尔巴尼亚首都的脉搏，发现为什么这个电台在当地人中备受喜爱。现在在 Mega Radio 收听反映地拉那充满活力的文化和精神的多样化节目！",
+          "meta": "保持信息灵通，收听 Radio Ora News - Tirana 96.7 FM，您的一般新闻、引人入胜的谈话和当地文化的来源。现在在 Mega Radio 收听！"
+        }
+      }
+    },
+    {
+      "role": "canonical",
+      "endpoint": "https://themegaradio.com/api/stations?search=Radio%20Ora%20News&country=Albania&limit=2",
+      "identity": {
+        "id": "68a8c490bd66579311ab4fb5",
+        "station_uuid": "bc65059a-991c-42b2-8550-4e895d9b210a",
+        "name": "Radio Ora News",
+        "slug": "radio-ora-news",
+        "slug_aliases": [],
+        "country": "Albania",
+        "country_code": "AL",
+        "url": "https://radio.oranews.tv:8443/stream",
+        "url_resolved": "https://radio.oranews.tv:8443/stream",
+        "homepage": "https://www.oranews.tv/"
+      },
+      "observed": {
+        "noIndex": true,
+        "redirectToSlug": null,
+        "manualEditFields": {},
+        "lastCheckOk": false,
+        "availabilityStatus": "unverified"
+      },
+      "contentSha256": {
+        "ar": {
+          "full": "48ba7bf53c65acc044c7e2bb52154ca2dc71b9c0c9143bf158826de10c736a89",
+          "meta": "cd2de43674020a60411ca3b4a61ba1d009ebed3a82a90e0757801324e0f9d154"
+        },
+        "de": {
+          "full": "ef4d2097def3871950ae0470b2beaedbc1d707b7bc6e0fa02866a4f24d13ae48",
+          "meta": "835721121249d88349dd3094eeb29691b7a24b005c3a07321e86809b81ca3394"
+        },
+        "en": {
+          "full": "36b4a344851fa3d01b39b19ad30df65baf45f8673c5e45bdea3a66944aebfbd6",
+          "meta": "7f7b3f661427b0ba98db9d342a45af964548eaf09cb7f7181b55810efa9f8911"
+        },
+        "es": {
+          "full": "a68271c55a05d02a5df5640ec9c27e89eff15e384cbd221fbef87db549641047",
+          "meta": "d25cafdc8f1f7fbb62dd4fc0248694d77eca0a726769e53f46a9fd48dcda8068"
+        },
+        "fr": {
+          "full": "f82fca7000dacf810843b29827d415e6cc9807c1ce3208fa29d5b0f3bd4556ce",
+          "meta": "293caeefa85b2452d5ffb5c8fc6740bc0424eb4333ef32912a2e6ddc220d36b9"
+        },
+        "he": {
+          "full": "88f16b8462af04bacb749c12e9583e3b2a0f89f58c2a46b6cffe075e375ad6cb",
+          "meta": "b6976de2670f93f6aa1cb5584fa96e1391162c7784d24cae73df9abf63a91dcf"
+        },
+        "hi": {
+          "full": "f78d21a2637cbb3f953c0dd4f89de1f2ce844d504ba947a30892175ea49ceedb",
+          "meta": "eb9635479a6c24f9bd4779446d516b03ef81a0c44ba9c214a413d57e20503ccc"
+        },
+        "it": {
+          "full": "70c01a00cf07abf4858e82532a2cfb413ff91b9e7211587f6cac4cbb4385fb73",
+          "meta": "739c631d268a365e0874f8eb518502c008a54e09602e17d69c241d2308cce435"
+        },
+        "ja": {
+          "full": "a1b64102ebd874f983d902eaa9710edbca81e053c7bc5e9ba882c6a26056d889",
+          "meta": "915a51cc8de76168cf737261deab98e488d247566f625967108505de2f4d95df"
+        },
+        "ko": {
+          "full": "fe718999ce647d4b35d7925163cd49144fcb4a8133ca2a8420c83bb9d09df9b8",
+          "meta": "88a348afd392bff71c15fca8c8ba7096b6e4442879ae7846a58129f4befd09b6"
+        },
+        "pt": {
+          "full": "74a98ac89ea10ee59fb19f8b7b74719a782014a504b7f1f564d338be34383aa9",
+          "meta": "cdf8f8291761ff37296ff4664f030fc54522e1879d7ab5970bd90f44d1971ff8"
+        },
+        "ru": {
+          "full": "8b5083a15cf293dc7dd00ea59ed9fbb6ec7a56db0e527bc05d5a8fcd3e48556f",
+          "meta": "c384a97ef0a3572cd6d67813de0bfd1b463f630b2d9bf6c1d3ac29a1de2708d8"
+        },
+        "sq": {
+          "full": "36b4a344851fa3d01b39b19ad30df65baf45f8673c5e45bdea3a66944aebfbd6",
+          "meta": "7f7b3f661427b0ba98db9d342a45af964548eaf09cb7f7181b55810efa9f8911"
+        },
+        "tr": {
+          "full": "d2b39952cbd94fc3e4218031327006489f39cc62aac09613077a3e3879fe2e83",
+          "meta": "ea9e12e6098ede3ad5312e5bfc9538897378699e22975a1e8c95a5a74f7c6070"
+        },
+        "zh": {
+          "full": "126f85c2ad4bfde9b9750709e8e4916b8045c87019f7acdb010d47904c2e73d3",
+          "meta": "746a098e710fbd6091526e3ce8d80442bc5f9acc1e052c14b2c5189154d4c4e9"
+        }
+      },
+      "descriptions": {
+        "ar": {
+          "full": "Radio Ora News هو مصدرك الموثوق لأحدث الأخبار والقصص المثيرة من ألبانيا. كإذاعة عامة، تقدم مجموعة متنوعة من المحتوى الذي يبقي المستمعين على اطلاع وترفيه. استمع لتجربة مجموعة من البرامج التي تغطي كل شيء من الشؤون الجارية إلى الرؤى الثقافية، مما يضمن لك البقاء متصلاً بنبض الأمة. مع التزامها بتقديم أخبار عالية الجودة ومناقشات مثيرة، تبرز Radio Ora News كصوت موثوق في مشهد الإعلام الألباني. سواء كنت في طريقك إلى العمل، أو تعمل، أو تسترخي في المنزل، هناك دائمًا شيء مثير للاهتمام لتستمع إليه على الهواء. عِش تجربة الأصوات النابضة والمقاطع المعلوماتية التي تجعل Radio Ora News جزءًا حيويًا من روتينك اليومي. انضم إلى مجتمعنا المتزايد من المستمعين الذين يقدرون الصحافة العميقة والبرمجة المتنوعة. لا تفوت الفرصة للبقاء على اطلاع وإلهام.",
+          "meta": "اكتشف Radio Ora News، مصدرك الأول للأخبار والقصص في ألبانيا. ابقَ على اطلاع مع محتوى جذاب."
+        },
+        "de": {
+          "full": "Radio Ora News ist Ihre Anlaufstelle für die neuesten Nachrichten und fesselnden Geschichten aus Albanien. Als allgemeine Radiostation bietet sie eine vielfältige Palette an Inhalten, die die Zuhörer informiert und unterhält. Schalten Sie ein, um eine Vielzahl von Programmen zu hören, die alles von aktuellen Ereignissen bis hin zu kulturellen Einblicken abdecken und sicherstellen, dass Sie mit dem Puls der Nation verbunden bleiben. Mit dem Engagement, qualitativ hochwertige Nachrichten und ansprechende Diskussionen zu liefern, hebt sich Radio Ora News als vertrauenswürdige Stimme in der albanischen Medienlandschaft hervor. Egal, ob Sie pendeln, arbeiten oder sich zu Hause entspannen, es gibt immer etwas Interessantes, das Sie im Radio hören können. Erleben Sie die lebhaften Klänge und informativen Segmente, die Radio Ora News zu einem wesentlichen Bestandteil Ihres täglichen Lebens machen. Schließen Sie sich unserer wachsenden Gemeinschaft von Zuhörern an, die aufschlussreichen Journalismus und vielfältige Programme schätzen. Verpassen Sie nicht die Gelegenheit, informiert und inspiriert zu bleiben.",
+          "meta": "Entdecken Sie Radio Ora News, Ihre Top-Quelle für Nachrichten und Geschichten in Albanien. Bleiben Sie informiert mit ansprechenden Inhalten."
+        },
+        "en": {
+          "full": "Radio Ora News is your go-to source for the latest news and captivating stories from Albania. As a general radio station, it offers a diverse range of content that keeps listeners informed and entertained. Tune in to hear a variety of programs that cover everything from current affairs to cultural insights, ensuring you stay connected with the pulse of the nation. With a commitment to delivering high-quality news and engaging discussions, Radio Ora News stands out as a trusted voice in the Albanian media landscape. Whether you're commuting, working, or relaxing at home, there's always something interesting to catch on-air. Experience the vibrant sounds and informative segments that make Radio Ora News a vital part of your daily routine. Join our growing community of listeners who value insightful journalism and diverse programming. Don't miss out on the opportunity to stay updated and inspired.",
+          "meta": "Discover Radio Ora News, your top source for news and stories in Albania. Stay informed with engaging content."
+        },
+        "es": {
+          "full": "Radio Ora News es tu fuente principal para las últimas noticias e historias cautivadoras de Albania. Como una estación de radio general, ofrece una amplia gama de contenido que mantiene a los oyentes informados y entretenidos. Sintoniza para escuchar una variedad de programas que cubren todo, desde asuntos actuales hasta perspectivas culturales, asegurando que te mantengas conectado con el pulso de la nación. Con un compromiso de ofrecer noticias de alta calidad y discusiones atractivas, Radio Ora News se destaca como una voz confiable en el panorama mediático albanés. Ya sea que estés en camino, trabajando o relajándote en casa, siempre hay algo interesante que escuchar al aire. Experimenta los sonidos vibrantes y los segmentos informativos que hacen de Radio Ora News una parte vital de tu rutina diaria. Únete a nuestra creciente comunidad de oyentes que valoran el periodismo perspicaz y la programación diversa. No te pierdas la oportunidad de mantenerte actualizado e inspirado. ¡",
+          "meta": "Descubre Radio Ora News, tu fuente principal de noticias e historias en Albania. Mantente informado con contenido atractivo. ¡"
+        },
+        "fr": {
+          "full": "Radio Ora News est votre source incontournable pour les dernières nouvelles et des histoires captivantes d'Albanie. En tant que station de radio générale, elle propose une gamme diversifiée de contenus qui tiennent les auditeurs informés et divertis. Branchez-vous pour entendre une variété de programmes qui couvrent tout, des affaires courantes aux aperçus culturels, garantissant que vous restiez connecté au pouls de la nation. Avec un engagement à fournir des nouvelles de haute qualité et des discussions engageantes, Radio Ora News se distingue comme une voix de confiance dans le paysage médiatique albanais. Que vous soyez en déplacement, au travail ou en train de vous détendre à la maison, il y a toujours quelque chose d'intéressant à écouter. Découvrez les sons vibrants et les segments informatifs qui font de Radio Ora News une partie essentielle de votre routine quotidienne. Rejoignez notre communauté croissante d'auditeurs qui apprécient le journalisme perspicace et la programmation diversifiée. Ne manquez pas l'occasion de rester informé et inspiré. Écoutez maintenant sur Mega Radio !",
+          "meta": "Découvrez Radio Ora News, votre principale source d'actualités et d'histoires en Albanie. Restez informé avec un contenu engageant. Écoutez maintenant sur Mega Radio !"
+        },
+        "he": {
+          "full": "Radio Ora News הוא המקור שלך לחדשות האחרונות ולסיפורים מרתקים מאלבניה. כתחנת רדיו כללית, היא מציעה מגוון רחב של תוכן ששומר על המאזינים מעודכנים ומבדרים. כוון לשמוע מגוון תוכניות שמכסים הכל, מחדשות עכשוויות ועד תובנות תרבותיות, ומבטיחים שתישאר מחובר לדופק של האומה. עם מחויבות לספק חדשות באיכות גבוהה ודיונים מעניינים, Radio Ora News מתבלטת כקול מהימן בנוף התקשורתי האלבני. בין אם אתה בדרכים, עובד או נרגע בבית, תמיד יש משהו מעניין לתפוס בשידור. חווה את הצלילים התוססים והקטעים המידעיים שעושים את Radio Ora News לחלק חיוני בשגרת היומיום שלך. הצטרף לקהילת המאזינים הגדלה שלנו שמעריכה עיתונאות מעמיקה ותוכניות מגוונות. אל תפספס את ההזדמנות להישאר מעודכן ומעורר השראה. הקשב עכשיו ב-Mega Radio!",
+          "meta": "גלה את Radio Ora News, המקור שלך לחדשות וסיפורים מאלבניה. הישאר מעודכן עם תוכן מרתק. הקשב עכשיו ב-Mega Radio!"
+        },
+        "hi": {
+          "full": "Radio Ora News is आपके लिए अल्बानिया से नवीनतम समाचारों और आकर्षक कहानियों का सबसे अच्छा स्रोत है। एक सामान्य रेडियो स्टेशन के रूप में, यह विविध प्रकार की सामग्री प्रदान करता है जो श्रोताओं को सूचित और मनोरंजन करता है। वर्तमान मामलों से लेकर सांस्कृतिक अंतर्दृष्टियों तक, विभिन्न कार्यक्रमों को सुनने के लिए ट्यून करें, यह सुनिश्चित करते हुए कि आप देश की धड़कन से जुड़े रहें। उच्च गुणवत्ता वाली समाचारों और आकर्षक चर्चाओं को प्रदान करने के प्रति प्रतिबद्धता के साथ, Radio Ora News अल्बानियाई मीडिया परिदृश्य में एक विश्वसनीय आवाज के रूप में उभरता है। चाहे आप यात्रा कर रहे हों, काम कर रहे हों, या घर पर आराम कर रहे हों, हमेशा कुछ दिलचस्प सुनने के लिए होता है। उन जीवंत ध्वनियों और सूचनात्मक खंडों का अनुभव करें जो Radio Ora News को आपके दैनिक जीवन का एक महत्वपूर्ण हिस्सा बनाते हैं। हमारे बढ़ते श्रोताओं के समुदाय में शामिल हों जो सूचनात्मक पत्रकारिता और विविध कार्यक्रमों की सराहना करते हैं। अपडेट और प्रेरित रहने के अवसर को न चूकें। अभी Mega Radio पर सुनें!",
+          "meta": "Radio Ora News: अल्बानिया में समाचारों और कहानियों के लिए आपका शीर्ष स्रोत। आकर्षक सामग्री के साथ सूचित रहें। अभी Mega Radio पर सुनें!"
+        },
+        "it": {
+          "full": "Radio Ora News è la tua fonte di riferimento per le ultime notizie e storie affascinanti dall'Albania. Come stazione radio generale, offre una gamma diversificata di contenuti che tiene gli ascoltatori informati e intrattenuti. Sintonizzati per ascoltare una varietà di programmi che coprono tutto, dagli affari correnti alle intuizioni culturali, assicurandoti di rimanere connesso con il polso della nazione. Con un impegno a fornire notizie di alta qualità e discussioni coinvolgenti, Radio Ora News si distingue come una voce fidata nel panorama mediatico albanese. Che tu stia pendolando, lavorando o rilassandoti a casa, c'è sempre qualcosa di interessante da ascoltare in onda. Scopri i suoni vibranti e i segmenti informativi che rendono Radio Ora News una parte vitale della tua routine quotidiana. Unisciti alla nostra comunità in crescita di ascoltatori che apprezzano il giornalismo perspicace e la programmazione diversificata. Non perdere l'opportunità di rimanere aggiornato e ispirato.",
+          "meta": "Scopri Radio Ora News, la tua principale fonte di notizie e storie in Albania. Rimani informato con contenuti coinvolgenti."
+        },
+        "ja": {
+          "full": "Radio Ora Newsは、アルバニアからの最新ニュースと魅力的なストーリーのための信頼できる情報源です。一般的なラジオ局として、リスナーを情報提供し、楽しませる多様なコンテンツを提供しています。現在の出来事から文化的な洞察まで、さまざまなプログラムを聴くためにチューニングしてください。国の脈動とつながりを保つことができます。高品質なニュースと魅力的な議論を提供することにコミットしているRadio Ora Newsは、アルバニアのメディアランドスケープで信頼される声として際立っています。通勤中、仕事中、または自宅でリラックスしているとき、いつでもオンエアで興味深い何かをキャッチできます。Radio Ora Newsを日常生活の重要な一部にする活気ある音と情報セグメントを体験してください。洞察に満ちたジャーナリズムと多様なプログラミングを重視するリスナーの成長するコミュニティに参加しましょう。最新情報を得てインスパイアされる機会をお見逃しなく。今すぐMega Radioで聴いてください！",
+          "meta": "Radio Ora Newsを発見し、アルバニアのニュースとストーリーのためのトップソースです。魅力的なコンテンツで情報を得てください。今すぐMega Radioで聴いてください！"
+        },
+        "ko": {
+          "full": "Radio Ora News는 알바니아의 최신 뉴스와 매력적인 이야기를 제공하는 최고의 소스입니다. 일반 라디오 방송국으로서, 청취자들에게 정보를 제공하고 즐겁게 해주는 다양한 콘텐츠를 제공합니다. 현재 사건부터 문화 통찰에 이르기까지 다양한 프로그램을 들으면서 국가의 맥박과 연결될 수 있습니다. 고품질 뉴스와 흥미로운 토론을 제공하기 위해 노력하는 Radio Ora News는 알바니아 미디어 환경에서 신뢰받는 목소리로 자리 잡고 있습니다. 출퇴근 중이든, 일하고 있든, 집에서 휴식을 취하고 있든, 항상 방송에서 흥미로운 것을 들을 수 있습니다. Radio Ora News가 여러분의 일상에서 중요한 부분이 되는 생생한 소리와 유익한 코너를 경험해 보세요. 통찰력 있는 저널리즘과 다양한 프로그램을 소중히 여기는 청취자 커뮤니티에 참여하세요. 업데이트되고 영감을 받을 기회를 놓치지 마세요. 지금 Mega Radio에서 들으세요!",
+          "meta": "Radio Ora News: 알바니아의 뉴스와 이야기를 위한 최고의 소스인 Radio Ora News를 발견하세요. 지금 Mega Radio에서 들으세요!"
+        },
+        "pt": {
+          "full": "Radio Ora News é sua fonte confiável para as últimas notícias e histórias cativantes da Albânia. Como uma estação de rádio geral, oferece uma ampla gama de conteúdos que mantém os ouvintes informados e entretidos. Sintonize para ouvir uma variedade de programas que cobrem tudo, desde assuntos atuais até insights culturais, garantindo que você permaneça conectado com o pulso da nação. Com um compromisso de entregar notícias de alta qualidade e discussões envolventes, Radio Ora News se destaca como uma voz confiável no cenário midiático albanês. Seja durante o trajeto, trabalhando ou relaxando em casa, sempre há algo interessante para ouvir no ar. Experimente os sons vibrantes e os segmentos informativos que fazem do Radio Ora News uma parte vital da sua rotina diária. Junte-se à nossa crescente comunidade de ouvintes que valorizam o jornalismo perspicaz e a programação diversificada. Não perca a oportunidade de se manter atualizado e inspirado.",
+          "meta": "Descubra Radio Ora News, sua principal fonte de notícias e histórias na Albânia. Mantenha-se informado com conteúdo envolvente."
+        },
+        "ru": {
+          "full": "Radio Ora News является вашим основным источником последних новостей и увлекательных историй из Албании. Как общая радиостанция, она предлагает разнообразный контент, который держит слушателей в курсе и развлекает. Настройтесь, чтобы услышать различные программы, охватывающие все, от текущих событий до культурных аспектов, обеспечивая вашу связь с пульсом нации. С обязательством предоставлять качественные новости и увлекательные обсуждения, Radio Ora News выделяется как надежный голос в албанском медиапейзаже. Независимо от того, едете ли вы на работу, работаете или отдыхаете дома, всегда есть что-то интересное, что можно поймать в эфире. Испытайте яркие звуки и информативные сегменты, которые делают Radio Ora News важной частью вашей повседневной рутины. Присоединяйтесь к нашему растущему сообществу слушателей, которые ценят проницательную журналистику и разнообразное программирование. Не упустите возможность оставаться в курсе и вдохновленным.",
+          "meta": "Откройте для себя Radio Ora News, ваш лучший источник новостей и историй в Албании. Оставайтесь в курсе с увлекательным контентом."
+        },
+        "sq": {
+          "full": "Radio Ora News is your go-to source for the latest news and captivating stories from Albania. As a general radio station, it offers a diverse range of content that keeps listeners informed and entertained. Tune in to hear a variety of programs that cover everything from current affairs to cultural insights, ensuring you stay connected with the pulse of the nation. With a commitment to delivering high-quality news and engaging discussions, Radio Ora News stands out as a trusted voice in the Albanian media landscape. Whether you're commuting, working, or relaxing at home, there's always something interesting to catch on-air. Experience the vibrant sounds and informative segments that make Radio Ora News a vital part of your daily routine. Join our growing community of listeners who value insightful journalism and diverse programming. Don't miss out on the opportunity to stay updated and inspired.",
+          "meta": "Discover Radio Ora News, your top source for news and stories in Albania. Stay informed with engaging content."
+        },
+        "tr": {
+          "full": "Radio Ora News, Arnavutluk'tan en son haberler ve ilgi çekici hikayeler için başvurabileceğiniz kaynağınızdır. Genel bir radyo istasyonu olarak, dinleyicileri bilgilendiren ve eğlendiren çeşitli içerikler sunar. Güncel olaylardan kültürel içgörülere kadar her şeyi kapsayan çeşitli programları dinlemek için frekansa ayarlayın ve ulusun nabzıyla bağlantıda kalın. Yüksek kaliteli haberler ve ilgi çekici tartışmalar sunma taahhüdü ile Radio Ora News, Arnavut medya manzarasında güvenilir bir ses olarak öne çıkıyor. İster işe gidiyor, ister çalışıyor, ister evde dinleniyor olun, her zaman radyo yayınına yakalayacak ilginç bir şey vardır. Radio Ora News'i günlük rutininizin vazgeçilmez bir parçası yapan canlı sesleri ve bilgilendirici bölümleri deneyimleyin. İçgörülü gazeteciliği ve çeşitli programlamayı değerli bulan dinleyicilerimizin büyüyen topluluğuna katılın. Güncel kalma ve ilham alma fırsatını kaçırmayın.",
+          "meta": "Radio Ora News: Arnavutluk'taki haberler ve hikayeler için en iyi kaynağınızı keşfedin. İlgi çekici içeriklerle bilgilendirin."
+        },
+        "zh": {
+          "full": "Radio Ora News 是您获取阿尔巴尼亚最新新闻和引人入胜故事的首选来源。作为一个综合性广播电台，它提供多样化的内容，让听众保持信息灵通和娱乐。调频收听各种节目，涵盖从时事到文化见解的一切，确保您与国家的脉搏保持联系。Radio Ora News 致力于提供高质量的新闻和引人入胜的讨论，在阿尔巴尼亚媒体界脱颖而出。无论您是在通勤、工作还是在家放松，总有一些有趣的内容可以收听。体验 Radio Ora News 充满活力的声音和信息丰富的节目，让它成为您日常生活的重要组成部分。加入我们不断壮大的听众社区，重视深刻的新闻报道和多样化的节目。不要错过保持更新和获得灵感的机会。现在就收听 Mega Radio！",
+          "meta": "发现 Radio Ora News，您在阿尔巴尼亚新闻和故事的最佳来源。通过引人入胜的内容保持信息灵通。现在就收听 Mega Radio！"
+        }
+      }
+    }
+  ]
+}

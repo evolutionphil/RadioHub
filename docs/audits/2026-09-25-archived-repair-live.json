@@ -1,0 +1,3321 @@
+{
+  "checkedAt": "2026-09-25T20:37:01.471Z",
+  "sourceHash": 3139628651,
+  "concurrency": 2,
+  "summary": {
+    "count": 132,
+    "status": {
+      "200": 132
+    },
+    "noindex": 0,
+    "errors": 0
+  },
+  "rows": [
+    {
+      "url": "https://themegaradio.com/en/station/france-bleu-besanon",
+      "final": "https://themegaradio.com/en/station/france-bleu-besancon",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/en/station/france-bleu-besanon",
+          "status": 301,
+          "location": "/en/station/france-bleu-besancon"
+        },
+        {
+          "url": "https://themegaradio.com/en/station/france-bleu-besancon",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/en/station/france-bleu-besancon"
+    },
+    {
+      "url": "https://themegaradio.com/en/station/radio-russia",
+      "final": "https://themegaradio.com/en/station/radio-rossii",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/en/station/radio-russia",
+          "status": 301,
+          "location": "/en/station/radio-rossii"
+        },
+        {
+          "url": "https://themegaradio.com/en/station/radio-rossii",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/en/station/radio-rossii"
+    },
+    {
+      "url": "https://themegaradio.com/en/station/1fm-movie-soundtrack",
+      "final": "https://themegaradio.com/en/station/movie-soundtracks-hits-radio-1-fm",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/en/station/1fm-movie-soundtrack",
+          "status": 301,
+          "location": "/en/station/movie-soundtracks-hits-radio-1-fm"
+        },
+        {
+          "url": "https://themegaradio.com/en/station/movie-soundtracks-hits-radio-1-fm",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/en/station/movie-soundtracks-hits-radio-1-fm"
+    },
+    {
+      "url": "https://themegaradio.com/en/station/1fm-movie-soundtrack-hits",
+      "final": "https://themegaradio.com/en/station/movie-soundtracks-hits-radio-1-fm",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/en/station/1fm-movie-soundtrack-hits",
+          "status": 301,
+          "location": "/en/station/movie-soundtracks-hits-radio-1-fm"
+        },
+        {
+          "url": "https://themegaradio.com/en/station/movie-soundtracks-hits-radio-1-fm",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/en/station/movie-soundtracks-hits-radio-1-fm"
+    },
+    {
+      "url": "https://themegaradio.com/en/station/energy-fm-non-stop-mixes-1",
+      "final": "https://themegaradio.com/en/station/energy-fm-non-stop-mixes",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/en/station/energy-fm-non-stop-mixes-1",
+          "status": 301,
+          "location": "/en/station/energy-fm-non-stop-mixes"
+        },
+        {
+          "url": "https://themegaradio.com/en/station/energy-fm-non-stop-mixes",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/en/station/energy-fm-non-stop-mixes"
+    },
+    {
+      "url": "https://themegaradio.com/en/station/k-kountry-95-1",
+      "final": "https://themegaradio.com/en/station/k-kountry-95",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/en/station/k-kountry-95-1",
+          "status": 301,
+          "location": "/en/station/k-kountry-95"
+        },
+        {
+          "url": "https://themegaradio.com/en/station/k-kountry-95",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/en/station/k-kountry-95"
+    },
+    {
+      "url": "https://themegaradio.com/en/station/classic-radio-nsw-mp3",
+      "final": "https://themegaradio.com/en/station/classic-radio-nsw",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/en/station/classic-radio-nsw-mp3",
+          "status": 301,
+          "location": "/en/station/classic-radio-nsw"
+        },
+        {
+          "url": "https://themegaradio.com/en/station/classic-radio-nsw",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/en/station/classic-radio-nsw"
+    },
+    {
+      "url": "https://themegaradio.com/es/estacion/france-bleu-besanon",
+      "final": "https://themegaradio.com/es/estacion/france-bleu-besancon",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/es/estacion/france-bleu-besanon",
+          "status": 301,
+          "location": "/es/estacion/france-bleu-besancon"
+        },
+        {
+          "url": "https://themegaradio.com/es/estacion/france-bleu-besancon",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/es/estacion/france-bleu-besancon"
+    },
+    {
+      "url": "https://themegaradio.com/es/estacion/radio-russia",
+      "final": "https://themegaradio.com/es/estacion/radio-rossii",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/es/estacion/radio-russia",
+          "status": 301,
+          "location": "/es/estacion/radio-rossii"
+        },
+        {
+          "url": "https://themegaradio.com/es/estacion/radio-rossii",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/es/estacion/radio-rossii"
+    },
+    {
+      "url": "https://themegaradio.com/es/estacion/1fm-movie-soundtrack",
+      "final": "https://themegaradio.com/es/estacion/movie-soundtracks-hits-radio-1-fm",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/es/estacion/1fm-movie-soundtrack",
+          "status": 301,
+          "location": "/es/estacion/movie-soundtracks-hits-radio-1-fm"
+        },
+        {
+          "url": "https://themegaradio.com/es/estacion/movie-soundtracks-hits-radio-1-fm",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/es/estacion/movie-soundtracks-hits-radio-1-fm"
+    },
+    {
+      "url": "https://themegaradio.com/es/estacion/1fm-movie-soundtrack-hits",
+      "final": "https://themegaradio.com/es/estacion/movie-soundtracks-hits-radio-1-fm",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/es/estacion/1fm-movie-soundtrack-hits",
+          "status": 301,
+          "location": "/es/estacion/movie-soundtracks-hits-radio-1-fm"
+        },
+        {
+          "url": "https://themegaradio.com/es/estacion/movie-soundtracks-hits-radio-1-fm",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/es/estacion/movie-soundtracks-hits-radio-1-fm"
+    },
+    {
+      "url": "https://themegaradio.com/es/estacion/energy-fm-non-stop-mixes-1",
+      "final": "https://themegaradio.com/es/estacion/energy-fm-non-stop-mixes",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/es/estacion/energy-fm-non-stop-mixes-1",
+          "status": 301,
+          "location": "/es/estacion/energy-fm-non-stop-mixes"
+        },
+        {
+          "url": "https://themegaradio.com/es/estacion/energy-fm-non-stop-mixes",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/es/estacion/energy-fm-non-stop-mixes"
+    },
+    {
+      "url": "https://themegaradio.com/es/estacion/k-kountry-95-1",
+      "final": "https://themegaradio.com/es/estacion/k-kountry-95",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/es/estacion/k-kountry-95-1",
+          "status": 301,
+          "location": "/es/estacion/k-kountry-95"
+        },
+        {
+          "url": "https://themegaradio.com/es/estacion/k-kountry-95",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/es/estacion/k-kountry-95"
+    },
+    {
+      "url": "https://themegaradio.com/es/estacion/classic-radio-nsw-mp3",
+      "final": "https://themegaradio.com/es/estacion/classic-radio-nsw",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/es/estacion/classic-radio-nsw-mp3",
+          "status": 301,
+          "location": "/es/estacion/classic-radio-nsw"
+        },
+        {
+          "url": "https://themegaradio.com/es/estacion/classic-radio-nsw",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/es/estacion/classic-radio-nsw"
+    },
+    {
+      "url": "https://themegaradio.com/fr/station/france-bleu-besanon",
+      "final": "https://themegaradio.com/fr/station/france-bleu-besancon",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/fr/station/france-bleu-besanon",
+          "status": 301,
+          "location": "/fr/station/france-bleu-besancon"
+        },
+        {
+          "url": "https://themegaradio.com/fr/station/france-bleu-besancon",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/fr/station/france-bleu-besancon"
+    },
+    {
+      "url": "https://themegaradio.com/fr/station/radio-russia",
+      "final": "https://themegaradio.com/fr/station/radio-rossii",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/fr/station/radio-russia",
+          "status": 301,
+          "location": "/fr/station/radio-rossii"
+        },
+        {
+          "url": "https://themegaradio.com/fr/station/radio-rossii",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/fr/station/radio-rossii"
+    },
+    {
+      "url": "https://themegaradio.com/fr/station/1fm-movie-soundtrack",
+      "final": "https://themegaradio.com/fr/station/movie-soundtracks-hits-radio-1-fm",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/fr/station/1fm-movie-soundtrack",
+          "status": 301,
+          "location": "/fr/station/movie-soundtracks-hits-radio-1-fm"
+        },
+        {
+          "url": "https://themegaradio.com/fr/station/movie-soundtracks-hits-radio-1-fm",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/fr/station/movie-soundtracks-hits-radio-1-fm"
+    },
+    {
+      "url": "https://themegaradio.com/fr/station/1fm-movie-soundtrack-hits",
+      "final": "https://themegaradio.com/fr/station/movie-soundtracks-hits-radio-1-fm",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/fr/station/1fm-movie-soundtrack-hits",
+          "status": 301,
+          "location": "/fr/station/movie-soundtracks-hits-radio-1-fm"
+        },
+        {
+          "url": "https://themegaradio.com/fr/station/movie-soundtracks-hits-radio-1-fm",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/fr/station/movie-soundtracks-hits-radio-1-fm"
+    },
+    {
+      "url": "https://themegaradio.com/fr/station/energy-fm-non-stop-mixes-1",
+      "final": "https://themegaradio.com/fr/station/energy-fm-non-stop-mixes",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/fr/station/energy-fm-non-stop-mixes-1",
+          "status": 301,
+          "location": "/fr/station/energy-fm-non-stop-mixes"
+        },
+        {
+          "url": "https://themegaradio.com/fr/station/energy-fm-non-stop-mixes",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/fr/station/energy-fm-non-stop-mixes"
+    },
+    {
+      "url": "https://themegaradio.com/fr/station/k-kountry-95-1",
+      "final": "https://themegaradio.com/fr/station/k-kountry-95",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/fr/station/k-kountry-95-1",
+          "status": 301,
+          "location": "/fr/station/k-kountry-95"
+        },
+        {
+          "url": "https://themegaradio.com/fr/station/k-kountry-95",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/fr/station/k-kountry-95"
+    },
+    {
+      "url": "https://themegaradio.com/fr/station/classic-radio-nsw-mp3",
+      "final": "https://themegaradio.com/fr/station/classic-radio-nsw",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/fr/station/classic-radio-nsw-mp3",
+          "status": 301,
+          "location": "/fr/station/classic-radio-nsw"
+        },
+        {
+          "url": "https://themegaradio.com/fr/station/classic-radio-nsw",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/fr/station/classic-radio-nsw"
+    },
+    {
+      "url": "https://themegaradio.com/de/sender/france-bleu-besanon",
+      "final": "https://themegaradio.com/de/sender/france-bleu-besancon",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/de/sender/france-bleu-besanon",
+          "status": 301,
+          "location": "/de/sender/france-bleu-besancon"
+        },
+        {
+          "url": "https://themegaradio.com/de/sender/france-bleu-besancon",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/de/sender/france-bleu-besancon"
+    },
+    {
+      "url": "https://themegaradio.com/de/sender/radio-russia",
+      "final": "https://themegaradio.com/de/sender/radio-rossii",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/de/sender/radio-russia",
+          "status": 301,
+          "location": "/de/sender/radio-rossii"
+        },
+        {
+          "url": "https://themegaradio.com/de/sender/radio-rossii",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/de/sender/radio-rossii"
+    },
+    {
+      "url": "https://themegaradio.com/de/sender/1fm-movie-soundtrack",
+      "final": "https://themegaradio.com/de/sender/movie-soundtracks-hits-radio-1-fm",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/de/sender/1fm-movie-soundtrack",
+          "status": 301,
+          "location": "/de/sender/movie-soundtracks-hits-radio-1-fm"
+        },
+        {
+          "url": "https://themegaradio.com/de/sender/movie-soundtracks-hits-radio-1-fm",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/de/sender/movie-soundtracks-hits-radio-1-fm"
+    },
+    {
+      "url": "https://themegaradio.com/de/sender/1fm-movie-soundtrack-hits",
+      "final": "https://themegaradio.com/de/sender/movie-soundtracks-hits-radio-1-fm",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/de/sender/1fm-movie-soundtrack-hits",
+          "status": 301,
+          "location": "/de/sender/movie-soundtracks-hits-radio-1-fm"
+        },
+        {
+          "url": "https://themegaradio.com/de/sender/movie-soundtracks-hits-radio-1-fm",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/de/sender/movie-soundtracks-hits-radio-1-fm"
+    },
+    {
+      "url": "https://themegaradio.com/de/sender/energy-fm-non-stop-mixes-1",
+      "final": "https://themegaradio.com/de/sender/energy-fm-non-stop-mixes",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/de/sender/energy-fm-non-stop-mixes-1",
+          "status": 301,
+          "location": "/de/sender/energy-fm-non-stop-mixes"
+        },
+        {
+          "url": "https://themegaradio.com/de/sender/energy-fm-non-stop-mixes",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/de/sender/energy-fm-non-stop-mixes"
+    },
+    {
+      "url": "https://themegaradio.com/de/sender/k-kountry-95-1",
+      "final": "https://themegaradio.com/de/sender/k-kountry-95",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/de/sender/k-kountry-95-1",
+          "status": 301,
+          "location": "/de/sender/k-kountry-95"
+        },
+        {
+          "url": "https://themegaradio.com/de/sender/k-kountry-95",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/de/sender/k-kountry-95"
+    },
+    {
+      "url": "https://themegaradio.com/de/sender/classic-radio-nsw-mp3",
+      "final": "https://themegaradio.com/de/sender/classic-radio-nsw",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/de/sender/classic-radio-nsw-mp3",
+          "status": 301,
+          "location": "/de/sender/classic-radio-nsw"
+        },
+        {
+          "url": "https://themegaradio.com/de/sender/classic-radio-nsw",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/de/sender/classic-radio-nsw"
+    },
+    {
+      "url": "https://themegaradio.com/pt/estacao/france-bleu-besanon",
+      "final": "https://themegaradio.com/pt/estacao/france-bleu-besancon",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/pt/estacao/france-bleu-besanon",
+          "status": 301,
+          "location": "/pt/estacao/france-bleu-besancon"
+        },
+        {
+          "url": "https://themegaradio.com/pt/estacao/france-bleu-besancon",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/pt/estacao/france-bleu-besancon"
+    },
+    {
+      "url": "https://themegaradio.com/pt/estacao/radio-russia",
+      "final": "https://themegaradio.com/pt/estacao/radio-rossii",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/pt/estacao/radio-russia",
+          "status": 301,
+          "location": "/pt/estacao/radio-rossii"
+        },
+        {
+          "url": "https://themegaradio.com/pt/estacao/radio-rossii",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/pt/estacao/radio-rossii"
+    },
+    {
+      "url": "https://themegaradio.com/pt/estacao/1fm-movie-soundtrack",
+      "final": "https://themegaradio.com/pt/estacao/movie-soundtracks-hits-radio-1-fm",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/pt/estacao/1fm-movie-soundtrack",
+          "status": 301,
+          "location": "/pt/estacao/movie-soundtracks-hits-radio-1-fm"
+        },
+        {
+          "url": "https://themegaradio.com/pt/estacao/movie-soundtracks-hits-radio-1-fm",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/pt/estacao/movie-soundtracks-hits-radio-1-fm"
+    },
+    {
+      "url": "https://themegaradio.com/pt/estacao/1fm-movie-soundtrack-hits",
+      "final": "https://themegaradio.com/pt/estacao/movie-soundtracks-hits-radio-1-fm",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/pt/estacao/1fm-movie-soundtrack-hits",
+          "status": 301,
+          "location": "/pt/estacao/movie-soundtracks-hits-radio-1-fm"
+        },
+        {
+          "url": "https://themegaradio.com/pt/estacao/movie-soundtracks-hits-radio-1-fm",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/pt/estacao/movie-soundtracks-hits-radio-1-fm"
+    },
+    {
+      "url": "https://themegaradio.com/pt/estacao/energy-fm-non-stop-mixes-1",
+      "final": "https://themegaradio.com/pt/estacao/energy-fm-non-stop-mixes",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/pt/estacao/energy-fm-non-stop-mixes-1",
+          "status": 301,
+          "location": "/pt/estacao/energy-fm-non-stop-mixes"
+        },
+        {
+          "url": "https://themegaradio.com/pt/estacao/energy-fm-non-stop-mixes",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/pt/estacao/energy-fm-non-stop-mixes"
+    },
+    {
+      "url": "https://themegaradio.com/pt/estacao/k-kountry-95-1",
+      "final": "https://themegaradio.com/pt/estacao/k-kountry-95",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/pt/estacao/k-kountry-95-1",
+          "status": 301,
+          "location": "/pt/estacao/k-kountry-95"
+        },
+        {
+          "url": "https://themegaradio.com/pt/estacao/k-kountry-95",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/pt/estacao/k-kountry-95"
+    },
+    {
+      "url": "https://themegaradio.com/pt/estacao/classic-radio-nsw-mp3",
+      "final": "https://themegaradio.com/pt/estacao/classic-radio-nsw",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/pt/estacao/classic-radio-nsw-mp3",
+          "status": 301,
+          "location": "/pt/estacao/classic-radio-nsw"
+        },
+        {
+          "url": "https://themegaradio.com/pt/estacao/classic-radio-nsw",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/pt/estacao/classic-radio-nsw"
+    },
+    {
+      "url": "https://themegaradio.com/it/stazione/france-bleu-besanon",
+      "final": "https://themegaradio.com/it/stazione/france-bleu-besancon",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/it/stazione/france-bleu-besanon",
+          "status": 301,
+          "location": "/it/stazione/france-bleu-besancon"
+        },
+        {
+          "url": "https://themegaradio.com/it/stazione/france-bleu-besancon",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/it/stazione/france-bleu-besancon"
+    },
+    {
+      "url": "https://themegaradio.com/it/stazione/radio-russia",
+      "final": "https://themegaradio.com/it/stazione/radio-rossii",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/it/stazione/radio-russia",
+          "status": 301,
+          "location": "/it/stazione/radio-rossii"
+        },
+        {
+          "url": "https://themegaradio.com/it/stazione/radio-rossii",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/it/stazione/radio-rossii"
+    },
+    {
+      "url": "https://themegaradio.com/it/stazione/1fm-movie-soundtrack",
+      "final": "https://themegaradio.com/it/stazione/movie-soundtracks-hits-radio-1-fm",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/it/stazione/1fm-movie-soundtrack",
+          "status": 301,
+          "location": "/it/stazione/movie-soundtracks-hits-radio-1-fm"
+        },
+        {
+          "url": "https://themegaradio.com/it/stazione/movie-soundtracks-hits-radio-1-fm",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/it/stazione/movie-soundtracks-hits-radio-1-fm"
+    },
+    {
+      "url": "https://themegaradio.com/it/stazione/1fm-movie-soundtrack-hits",
+      "final": "https://themegaradio.com/it/stazione/movie-soundtracks-hits-radio-1-fm",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/it/stazione/1fm-movie-soundtrack-hits",
+          "status": 301,
+          "location": "/it/stazione/movie-soundtracks-hits-radio-1-fm"
+        },
+        {
+          "url": "https://themegaradio.com/it/stazione/movie-soundtracks-hits-radio-1-fm",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/it/stazione/movie-soundtracks-hits-radio-1-fm"
+    },
+    {
+      "url": "https://themegaradio.com/it/stazione/energy-fm-non-stop-mixes-1",
+      "final": "https://themegaradio.com/it/stazione/energy-fm-non-stop-mixes",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/it/stazione/energy-fm-non-stop-mixes-1",
+          "status": 301,
+          "location": "/it/stazione/energy-fm-non-stop-mixes"
+        },
+        {
+          "url": "https://themegaradio.com/it/stazione/energy-fm-non-stop-mixes",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/it/stazione/energy-fm-non-stop-mixes"
+    },
+    {
+      "url": "https://themegaradio.com/it/stazione/k-kountry-95-1",
+      "final": "https://themegaradio.com/it/stazione/k-kountry-95",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/it/stazione/k-kountry-95-1",
+          "status": 301,
+          "location": "/it/stazione/k-kountry-95"
+        },
+        {
+          "url": "https://themegaradio.com/it/stazione/k-kountry-95",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/it/stazione/k-kountry-95"
+    },
+    {
+      "url": "https://themegaradio.com/it/stazione/classic-radio-nsw-mp3",
+      "final": "https://themegaradio.com/it/stazione/classic-radio-nsw",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/it/stazione/classic-radio-nsw-mp3",
+          "status": 301,
+          "location": "/it/stazione/classic-radio-nsw"
+        },
+        {
+          "url": "https://themegaradio.com/it/stazione/classic-radio-nsw",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/it/stazione/classic-radio-nsw"
+    },
+    {
+      "url": "https://themegaradio.com/ru/stantsiya/france-bleu-besanon",
+      "final": "https://themegaradio.com/ru/stantsiya/france-bleu-besancon",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ru/stantsiya/france-bleu-besanon",
+          "status": 301,
+          "location": "/ru/stantsiya/france-bleu-besancon"
+        },
+        {
+          "url": "https://themegaradio.com/ru/stantsiya/france-bleu-besancon",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/ru/stantsiya/france-bleu-besancon"
+    },
+    {
+      "url": "https://themegaradio.com/ru/stantsiya/radio-russia",
+      "final": "https://themegaradio.com/ru/stantsiya/radio-rossii",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ru/stantsiya/radio-russia",
+          "status": 301,
+          "location": "/ru/stantsiya/radio-rossii"
+        },
+        {
+          "url": "https://themegaradio.com/ru/stantsiya/radio-rossii",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/ru/stantsiya/radio-rossii"
+    },
+    {
+      "url": "https://themegaradio.com/ru/stantsiya/1fm-movie-soundtrack",
+      "final": "https://themegaradio.com/ru/stantsiya/movie-soundtracks-hits-radio-1-fm",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ru/stantsiya/1fm-movie-soundtrack",
+          "status": 301,
+          "location": "/ru/stantsiya/movie-soundtracks-hits-radio-1-fm"
+        },
+        {
+          "url": "https://themegaradio.com/ru/stantsiya/movie-soundtracks-hits-radio-1-fm",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/ru/stantsiya/movie-soundtracks-hits-radio-1-fm"
+    },
+    {
+      "url": "https://themegaradio.com/ru/stantsiya/1fm-movie-soundtrack-hits",
+      "final": "https://themegaradio.com/ru/stantsiya/movie-soundtracks-hits-radio-1-fm",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ru/stantsiya/1fm-movie-soundtrack-hits",
+          "status": 301,
+          "location": "/ru/stantsiya/movie-soundtracks-hits-radio-1-fm"
+        },
+        {
+          "url": "https://themegaradio.com/ru/stantsiya/movie-soundtracks-hits-radio-1-fm",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/ru/stantsiya/movie-soundtracks-hits-radio-1-fm"
+    },
+    {
+      "url": "https://themegaradio.com/ru/stantsiya/energy-fm-non-stop-mixes-1",
+      "final": "https://themegaradio.com/ru/stantsiya/energy-fm-non-stop-mixes",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ru/stantsiya/energy-fm-non-stop-mixes-1",
+          "status": 301,
+          "location": "/ru/stantsiya/energy-fm-non-stop-mixes"
+        },
+        {
+          "url": "https://themegaradio.com/ru/stantsiya/energy-fm-non-stop-mixes",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/ru/stantsiya/energy-fm-non-stop-mixes"
+    },
+    {
+      "url": "https://themegaradio.com/ru/stantsiya/k-kountry-95-1",
+      "final": "https://themegaradio.com/ru/stantsiya/k-kountry-95",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ru/stantsiya/k-kountry-95-1",
+          "status": 301,
+          "location": "/ru/stantsiya/k-kountry-95"
+        },
+        {
+          "url": "https://themegaradio.com/ru/stantsiya/k-kountry-95",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/ru/stantsiya/k-kountry-95"
+    },
+    {
+      "url": "https://themegaradio.com/ru/stantsiya/classic-radio-nsw-mp3",
+      "final": "https://themegaradio.com/ru/stantsiya/classic-radio-nsw",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ru/stantsiya/classic-radio-nsw-mp3",
+          "status": 301,
+          "location": "/ru/stantsiya/classic-radio-nsw"
+        },
+        {
+          "url": "https://themegaradio.com/ru/stantsiya/classic-radio-nsw",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/ru/stantsiya/classic-radio-nsw"
+    },
+    {
+      "url": "https://themegaradio.com/ar/mahta/france-bleu-besanon",
+      "final": "https://themegaradio.com/ar/mahta/france-bleu-besancon",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ar/mahta/france-bleu-besanon",
+          "status": 301,
+          "location": "/ar/mahta/france-bleu-besancon"
+        },
+        {
+          "url": "https://themegaradio.com/ar/mahta/france-bleu-besancon",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/ar/mahta/france-bleu-besancon"
+    },
+    {
+      "url": "https://themegaradio.com/ar/mahta/radio-russia",
+      "final": "https://themegaradio.com/ar/mahta/radio-rossii",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ar/mahta/radio-russia",
+          "status": 301,
+          "location": "/ar/mahta/radio-rossii"
+        },
+        {
+          "url": "https://themegaradio.com/ar/mahta/radio-rossii",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/ar/mahta/radio-rossii"
+    },
+    {
+      "url": "https://themegaradio.com/ar/mahta/1fm-movie-soundtrack",
+      "final": "https://themegaradio.com/ar/mahta/movie-soundtracks-hits-radio-1-fm",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ar/mahta/1fm-movie-soundtrack",
+          "status": 301,
+          "location": "/ar/mahta/movie-soundtracks-hits-radio-1-fm"
+        },
+        {
+          "url": "https://themegaradio.com/ar/mahta/movie-soundtracks-hits-radio-1-fm",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/ar/mahta/movie-soundtracks-hits-radio-1-fm"
+    },
+    {
+      "url": "https://themegaradio.com/ar/mahta/1fm-movie-soundtrack-hits",
+      "final": "https://themegaradio.com/ar/mahta/movie-soundtracks-hits-radio-1-fm",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ar/mahta/1fm-movie-soundtrack-hits",
+          "status": 301,
+          "location": "/ar/mahta/movie-soundtracks-hits-radio-1-fm"
+        },
+        {
+          "url": "https://themegaradio.com/ar/mahta/movie-soundtracks-hits-radio-1-fm",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/ar/mahta/movie-soundtracks-hits-radio-1-fm"
+    },
+    {
+      "url": "https://themegaradio.com/ar/mahta/energy-fm-non-stop-mixes-1",
+      "final": "https://themegaradio.com/ar/mahta/energy-fm-non-stop-mixes",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ar/mahta/energy-fm-non-stop-mixes-1",
+          "status": 301,
+          "location": "/ar/mahta/energy-fm-non-stop-mixes"
+        },
+        {
+          "url": "https://themegaradio.com/ar/mahta/energy-fm-non-stop-mixes",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/ar/mahta/energy-fm-non-stop-mixes"
+    },
+    {
+      "url": "https://themegaradio.com/ar/mahta/k-kountry-95-1",
+      "final": "https://themegaradio.com/ar/mahta/k-kountry-95",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ar/mahta/k-kountry-95-1",
+          "status": 301,
+          "location": "/ar/mahta/k-kountry-95"
+        },
+        {
+          "url": "https://themegaradio.com/ar/mahta/k-kountry-95",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/ar/mahta/k-kountry-95"
+    },
+    {
+      "url": "https://themegaradio.com/ar/mahta/classic-radio-nsw-mp3",
+      "final": "https://themegaradio.com/ar/mahta/classic-radio-nsw",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ar/mahta/classic-radio-nsw-mp3",
+          "status": 301,
+          "location": "/ar/mahta/classic-radio-nsw"
+        },
+        {
+          "url": "https://themegaradio.com/ar/mahta/classic-radio-nsw",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/ar/mahta/classic-radio-nsw"
+    },
+    {
+      "url": "https://themegaradio.com/zh/电台/france-bleu-besanon",
+      "final": "https://themegaradio.com/zh/%E7%94%B5%E5%8F%B0/france-bleu-besancon",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/zh/电台/france-bleu-besanon",
+          "status": 301,
+          "location": "/zh/%E7%94%B5%E5%8F%B0/france-bleu-besancon"
+        },
+        {
+          "url": "https://themegaradio.com/zh/%E7%94%B5%E5%8F%B0/france-bleu-besancon",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/zh/%E7%94%B5%E5%8F%B0/france-bleu-besancon"
+    },
+    {
+      "url": "https://themegaradio.com/zh/电台/radio-russia",
+      "final": "https://themegaradio.com/zh/%E7%94%B5%E5%8F%B0/radio-rossii",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/zh/电台/radio-russia",
+          "status": 301,
+          "location": "/zh/%E7%94%B5%E5%8F%B0/radio-rossii"
+        },
+        {
+          "url": "https://themegaradio.com/zh/%E7%94%B5%E5%8F%B0/radio-rossii",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/zh/%E7%94%B5%E5%8F%B0/radio-rossii"
+    },
+    {
+      "url": "https://themegaradio.com/zh/电台/1fm-movie-soundtrack",
+      "final": "https://themegaradio.com/zh/%E7%94%B5%E5%8F%B0/movie-soundtracks-hits-radio-1-fm",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/zh/电台/1fm-movie-soundtrack",
+          "status": 301,
+          "location": "/zh/%E7%94%B5%E5%8F%B0/movie-soundtracks-hits-radio-1-fm"
+        },
+        {
+          "url": "https://themegaradio.com/zh/%E7%94%B5%E5%8F%B0/movie-soundtracks-hits-radio-1-fm",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/zh/%E7%94%B5%E5%8F%B0/movie-soundtracks-hits-radio-1-fm"
+    },
+    {
+      "url": "https://themegaradio.com/zh/电台/1fm-movie-soundtrack-hits",
+      "final": "https://themegaradio.com/zh/%E7%94%B5%E5%8F%B0/movie-soundtracks-hits-radio-1-fm",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/zh/电台/1fm-movie-soundtrack-hits",
+          "status": 301,
+          "location": "/zh/%E7%94%B5%E5%8F%B0/movie-soundtracks-hits-radio-1-fm"
+        },
+        {
+          "url": "https://themegaradio.com/zh/%E7%94%B5%E5%8F%B0/movie-soundtracks-hits-radio-1-fm",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/zh/%E7%94%B5%E5%8F%B0/movie-soundtracks-hits-radio-1-fm"
+    },
+    {
+      "url": "https://themegaradio.com/zh/电台/energy-fm-non-stop-mixes-1",
+      "final": "https://themegaradio.com/zh/%E7%94%B5%E5%8F%B0/energy-fm-non-stop-mixes",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/zh/电台/energy-fm-non-stop-mixes-1",
+          "status": 301,
+          "location": "/zh/%E7%94%B5%E5%8F%B0/energy-fm-non-stop-mixes"
+        },
+        {
+          "url": "https://themegaradio.com/zh/%E7%94%B5%E5%8F%B0/energy-fm-non-stop-mixes",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/zh/%E7%94%B5%E5%8F%B0/energy-fm-non-stop-mixes"
+    },
+    {
+      "url": "https://themegaradio.com/zh/电台/k-kountry-95-1",
+      "final": "https://themegaradio.com/zh/%E7%94%B5%E5%8F%B0/k-kountry-95",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/zh/电台/k-kountry-95-1",
+          "status": 301,
+          "location": "/zh/%E7%94%B5%E5%8F%B0/k-kountry-95"
+        },
+        {
+          "url": "https://themegaradio.com/zh/%E7%94%B5%E5%8F%B0/k-kountry-95",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/zh/%E7%94%B5%E5%8F%B0/k-kountry-95"
+    },
+    {
+      "url": "https://themegaradio.com/zh/电台/classic-radio-nsw-mp3",
+      "final": "https://themegaradio.com/zh/%E7%94%B5%E5%8F%B0/classic-radio-nsw",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/zh/电台/classic-radio-nsw-mp3",
+          "status": 301,
+          "location": "/zh/%E7%94%B5%E5%8F%B0/classic-radio-nsw"
+        },
+        {
+          "url": "https://themegaradio.com/zh/%E7%94%B5%E5%8F%B0/classic-radio-nsw",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/zh/%E7%94%B5%E5%8F%B0/classic-radio-nsw"
+    },
+    {
+      "url": "https://themegaradio.com/tr/istasyon/france-bleu-besanon",
+      "final": "https://themegaradio.com/tr/istasyon/france-bleu-besancon",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/tr/istasyon/france-bleu-besanon",
+          "status": 301,
+          "location": "/tr/istasyon/france-bleu-besancon"
+        },
+        {
+          "url": "https://themegaradio.com/tr/istasyon/france-bleu-besancon",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/tr/istasyon/france-bleu-besancon"
+    },
+    {
+      "url": "https://themegaradio.com/tr/istasyon/radio-russia",
+      "final": "https://themegaradio.com/tr/istasyon/radio-rossii",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/tr/istasyon/radio-russia",
+          "status": 301,
+          "location": "/tr/istasyon/radio-rossii"
+        },
+        {
+          "url": "https://themegaradio.com/tr/istasyon/radio-rossii",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/tr/istasyon/radio-rossii"
+    },
+    {
+      "url": "https://themegaradio.com/tr/istasyon/1fm-movie-soundtrack",
+      "final": "https://themegaradio.com/tr/istasyon/movie-soundtracks-hits-radio-1-fm",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/tr/istasyon/1fm-movie-soundtrack",
+          "status": 301,
+          "location": "/tr/istasyon/movie-soundtracks-hits-radio-1-fm"
+        },
+        {
+          "url": "https://themegaradio.com/tr/istasyon/movie-soundtracks-hits-radio-1-fm",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/tr/istasyon/movie-soundtracks-hits-radio-1-fm"
+    },
+    {
+      "url": "https://themegaradio.com/tr/istasyon/1fm-movie-soundtrack-hits",
+      "final": "https://themegaradio.com/tr/istasyon/movie-soundtracks-hits-radio-1-fm",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/tr/istasyon/1fm-movie-soundtrack-hits",
+          "status": 301,
+          "location": "/tr/istasyon/movie-soundtracks-hits-radio-1-fm"
+        },
+        {
+          "url": "https://themegaradio.com/tr/istasyon/movie-soundtracks-hits-radio-1-fm",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/tr/istasyon/movie-soundtracks-hits-radio-1-fm"
+    },
+    {
+      "url": "https://themegaradio.com/tr/istasyon/energy-fm-non-stop-mixes-1",
+      "final": "https://themegaradio.com/tr/istasyon/energy-fm-non-stop-mixes",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/tr/istasyon/energy-fm-non-stop-mixes-1",
+          "status": 301,
+          "location": "/tr/istasyon/energy-fm-non-stop-mixes"
+        },
+        {
+          "url": "https://themegaradio.com/tr/istasyon/energy-fm-non-stop-mixes",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/tr/istasyon/energy-fm-non-stop-mixes"
+    },
+    {
+      "url": "https://themegaradio.com/tr/istasyon/k-kountry-95-1",
+      "final": "https://themegaradio.com/tr/istasyon/k-kountry-95",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/tr/istasyon/k-kountry-95-1",
+          "status": 301,
+          "location": "/tr/istasyon/k-kountry-95"
+        },
+        {
+          "url": "https://themegaradio.com/tr/istasyon/k-kountry-95",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/tr/istasyon/k-kountry-95"
+    },
+    {
+      "url": "https://themegaradio.com/tr/istasyon/classic-radio-nsw-mp3",
+      "final": "https://themegaradio.com/tr/istasyon/classic-radio-nsw",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/tr/istasyon/classic-radio-nsw-mp3",
+          "status": 301,
+          "location": "/tr/istasyon/classic-radio-nsw"
+        },
+        {
+          "url": "https://themegaradio.com/tr/istasyon/classic-radio-nsw",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/tr/istasyon/classic-radio-nsw"
+    },
+    {
+      "url": "https://themegaradio.com/ja/ステーション/france-bleu-besanon",
+      "final": "https://themegaradio.com/ja/%E3%82%B9%E3%83%86%E3%83%BC%E3%82%B7%E3%83%A7%E3%83%B3/france-bleu-besancon",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ja/ステーション/france-bleu-besanon",
+          "status": 301,
+          "location": "/ja/%E3%82%B9%E3%83%86%E3%83%BC%E3%82%B7%E3%83%A7%E3%83%B3/france-bleu-besancon"
+        },
+        {
+          "url": "https://themegaradio.com/ja/%E3%82%B9%E3%83%86%E3%83%BC%E3%82%B7%E3%83%A7%E3%83%B3/france-bleu-besancon",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/ja/%E3%82%B9%E3%83%86%E3%83%BC%E3%82%B7%E3%83%A7%E3%83%B3/france-bleu-besancon"
+    },
+    {
+      "url": "https://themegaradio.com/ja/ステーション/radio-russia",
+      "final": "https://themegaradio.com/ja/%E3%82%B9%E3%83%86%E3%83%BC%E3%82%B7%E3%83%A7%E3%83%B3/radio-rossii",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ja/ステーション/radio-russia",
+          "status": 301,
+          "location": "/ja/%E3%82%B9%E3%83%86%E3%83%BC%E3%82%B7%E3%83%A7%E3%83%B3/radio-rossii"
+        },
+        {
+          "url": "https://themegaradio.com/ja/%E3%82%B9%E3%83%86%E3%83%BC%E3%82%B7%E3%83%A7%E3%83%B3/radio-rossii",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/ja/%E3%82%B9%E3%83%86%E3%83%BC%E3%82%B7%E3%83%A7%E3%83%B3/radio-rossii"
+    },
+    {
+      "url": "https://themegaradio.com/ja/ステーション/1fm-movie-soundtrack",
+      "final": "https://themegaradio.com/ja/%E3%82%B9%E3%83%86%E3%83%BC%E3%82%B7%E3%83%A7%E3%83%B3/movie-soundtracks-hits-radio-1-fm",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ja/ステーション/1fm-movie-soundtrack",
+          "status": 301,
+          "location": "/ja/%E3%82%B9%E3%83%86%E3%83%BC%E3%82%B7%E3%83%A7%E3%83%B3/movie-soundtracks-hits-radio-1-fm"
+        },
+        {
+          "url": "https://themegaradio.com/ja/%E3%82%B9%E3%83%86%E3%83%BC%E3%82%B7%E3%83%A7%E3%83%B3/movie-soundtracks-hits-radio-1-fm",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/ja/%E3%82%B9%E3%83%86%E3%83%BC%E3%82%B7%E3%83%A7%E3%83%B3/movie-soundtracks-hits-radio-1-fm"
+    },
+    {
+      "url": "https://themegaradio.com/ja/ステーション/1fm-movie-soundtrack-hits",
+      "final": "https://themegaradio.com/ja/%E3%82%B9%E3%83%86%E3%83%BC%E3%82%B7%E3%83%A7%E3%83%B3/movie-soundtracks-hits-radio-1-fm",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ja/ステーション/1fm-movie-soundtrack-hits",
+          "status": 301,
+          "location": "/ja/%E3%82%B9%E3%83%86%E3%83%BC%E3%82%B7%E3%83%A7%E3%83%B3/movie-soundtracks-hits-radio-1-fm"
+        },
+        {
+          "url": "https://themegaradio.com/ja/%E3%82%B9%E3%83%86%E3%83%BC%E3%82%B7%E3%83%A7%E3%83%B3/movie-soundtracks-hits-radio-1-fm",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/ja/%E3%82%B9%E3%83%86%E3%83%BC%E3%82%B7%E3%83%A7%E3%83%B3/movie-soundtracks-hits-radio-1-fm"
+    },
+    {
+      "url": "https://themegaradio.com/ja/ステーション/energy-fm-non-stop-mixes-1",
+      "final": "https://themegaradio.com/ja/%E3%82%B9%E3%83%86%E3%83%BC%E3%82%B7%E3%83%A7%E3%83%B3/energy-fm-non-stop-mixes",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ja/ステーション/energy-fm-non-stop-mixes-1",
+          "status": 301,
+          "location": "/ja/%E3%82%B9%E3%83%86%E3%83%BC%E3%82%B7%E3%83%A7%E3%83%B3/energy-fm-non-stop-mixes"
+        },
+        {
+          "url": "https://themegaradio.com/ja/%E3%82%B9%E3%83%86%E3%83%BC%E3%82%B7%E3%83%A7%E3%83%B3/energy-fm-non-stop-mixes",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/ja/%E3%82%B9%E3%83%86%E3%83%BC%E3%82%B7%E3%83%A7%E3%83%B3/energy-fm-non-stop-mixes"
+    },
+    {
+      "url": "https://themegaradio.com/ja/ステーション/k-kountry-95-1",
+      "final": "https://themegaradio.com/ja/%E3%82%B9%E3%83%86%E3%83%BC%E3%82%B7%E3%83%A7%E3%83%B3/k-kountry-95",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ja/ステーション/k-kountry-95-1",
+          "status": 301,
+          "location": "/ja/%E3%82%B9%E3%83%86%E3%83%BC%E3%82%B7%E3%83%A7%E3%83%B3/k-kountry-95"
+        },
+        {
+          "url": "https://themegaradio.com/ja/%E3%82%B9%E3%83%86%E3%83%BC%E3%82%B7%E3%83%A7%E3%83%B3/k-kountry-95",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/ja/%E3%82%B9%E3%83%86%E3%83%BC%E3%82%B7%E3%83%A7%E3%83%B3/k-kountry-95"
+    },
+    {
+      "url": "https://themegaradio.com/ja/ステーション/classic-radio-nsw-mp3",
+      "final": "https://themegaradio.com/ja/%E3%82%B9%E3%83%86%E3%83%BC%E3%82%B7%E3%83%A7%E3%83%B3/classic-radio-nsw",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ja/ステーション/classic-radio-nsw-mp3",
+          "status": 301,
+          "location": "/ja/%E3%82%B9%E3%83%86%E3%83%BC%E3%82%B7%E3%83%A7%E3%83%B3/classic-radio-nsw"
+        },
+        {
+          "url": "https://themegaradio.com/ja/%E3%82%B9%E3%83%86%E3%83%BC%E3%82%B7%E3%83%A7%E3%83%B3/classic-radio-nsw",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/ja/%E3%82%B9%E3%83%86%E3%83%BC%E3%82%B7%E3%83%A7%E3%83%B3/classic-radio-nsw"
+    },
+    {
+      "url": "https://themegaradio.com/ko/스테이션/france-bleu-besanon",
+      "final": "https://themegaradio.com/ko/%EC%8A%A4%ED%85%8C%EC%9D%B4%EC%85%98/france-bleu-besancon",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ko/스테이션/france-bleu-besanon",
+          "status": 301,
+          "location": "/ko/%EC%8A%A4%ED%85%8C%EC%9D%B4%EC%85%98/france-bleu-besancon"
+        },
+        {
+          "url": "https://themegaradio.com/ko/%EC%8A%A4%ED%85%8C%EC%9D%B4%EC%85%98/france-bleu-besancon",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/ko/%EC%8A%A4%ED%85%8C%EC%9D%B4%EC%85%98/france-bleu-besancon"
+    },
+    {
+      "url": "https://themegaradio.com/ko/스테이션/radio-russia",
+      "final": "https://themegaradio.com/ko/%EC%8A%A4%ED%85%8C%EC%9D%B4%EC%85%98/radio-rossii",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ko/스테이션/radio-russia",
+          "status": 301,
+          "location": "/ko/%EC%8A%A4%ED%85%8C%EC%9D%B4%EC%85%98/radio-rossii"
+        },
+        {
+          "url": "https://themegaradio.com/ko/%EC%8A%A4%ED%85%8C%EC%9D%B4%EC%85%98/radio-rossii",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/ko/%EC%8A%A4%ED%85%8C%EC%9D%B4%EC%85%98/radio-rossii"
+    },
+    {
+      "url": "https://themegaradio.com/ko/스테이션/1fm-movie-soundtrack",
+      "final": "https://themegaradio.com/ko/%EC%8A%A4%ED%85%8C%EC%9D%B4%EC%85%98/movie-soundtracks-hits-radio-1-fm",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ko/스테이션/1fm-movie-soundtrack",
+          "status": 301,
+          "location": "/ko/%EC%8A%A4%ED%85%8C%EC%9D%B4%EC%85%98/movie-soundtracks-hits-radio-1-fm"
+        },
+        {
+          "url": "https://themegaradio.com/ko/%EC%8A%A4%ED%85%8C%EC%9D%B4%EC%85%98/movie-soundtracks-hits-radio-1-fm",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/ko/%EC%8A%A4%ED%85%8C%EC%9D%B4%EC%85%98/movie-soundtracks-hits-radio-1-fm"
+    },
+    {
+      "url": "https://themegaradio.com/ko/스테이션/1fm-movie-soundtrack-hits",
+      "final": "https://themegaradio.com/ko/%EC%8A%A4%ED%85%8C%EC%9D%B4%EC%85%98/movie-soundtracks-hits-radio-1-fm",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ko/스테이션/1fm-movie-soundtrack-hits",
+          "status": 301,
+          "location": "/ko/%EC%8A%A4%ED%85%8C%EC%9D%B4%EC%85%98/movie-soundtracks-hits-radio-1-fm"
+        },
+        {
+          "url": "https://themegaradio.com/ko/%EC%8A%A4%ED%85%8C%EC%9D%B4%EC%85%98/movie-soundtracks-hits-radio-1-fm",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/ko/%EC%8A%A4%ED%85%8C%EC%9D%B4%EC%85%98/movie-soundtracks-hits-radio-1-fm"
+    },
+    {
+      "url": "https://themegaradio.com/ko/스테이션/energy-fm-non-stop-mixes-1",
+      "final": "https://themegaradio.com/ko/%EC%8A%A4%ED%85%8C%EC%9D%B4%EC%85%98/energy-fm-non-stop-mixes",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ko/스테이션/energy-fm-non-stop-mixes-1",
+          "status": 301,
+          "location": "/ko/%EC%8A%A4%ED%85%8C%EC%9D%B4%EC%85%98/energy-fm-non-stop-mixes"
+        },
+        {
+          "url": "https://themegaradio.com/ko/%EC%8A%A4%ED%85%8C%EC%9D%B4%EC%85%98/energy-fm-non-stop-mixes",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/ko/%EC%8A%A4%ED%85%8C%EC%9D%B4%EC%85%98/energy-fm-non-stop-mixes"
+    },
+    {
+      "url": "https://themegaradio.com/ko/스테이션/k-kountry-95-1",
+      "final": "https://themegaradio.com/ko/%EC%8A%A4%ED%85%8C%EC%9D%B4%EC%85%98/k-kountry-95",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ko/스테이션/k-kountry-95-1",
+          "status": 301,
+          "location": "/ko/%EC%8A%A4%ED%85%8C%EC%9D%B4%EC%85%98/k-kountry-95"
+        },
+        {
+          "url": "https://themegaradio.com/ko/%EC%8A%A4%ED%85%8C%EC%9D%B4%EC%85%98/k-kountry-95",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/ko/%EC%8A%A4%ED%85%8C%EC%9D%B4%EC%85%98/k-kountry-95"
+    },
+    {
+      "url": "https://themegaradio.com/ko/스테이션/classic-radio-nsw-mp3",
+      "final": "https://themegaradio.com/ko/%EC%8A%A4%ED%85%8C%EC%9D%B4%EC%85%98/classic-radio-nsw",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ko/스테이션/classic-radio-nsw-mp3",
+          "status": 301,
+          "location": "/ko/%EC%8A%A4%ED%85%8C%EC%9D%B4%EC%85%98/classic-radio-nsw"
+        },
+        {
+          "url": "https://themegaradio.com/ko/%EC%8A%A4%ED%85%8C%EC%9D%B4%EC%85%98/classic-radio-nsw",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/ko/%EC%8A%A4%ED%85%8C%EC%9D%B4%EC%85%98/classic-radio-nsw"
+    },
+    {
+      "url": "https://themegaradio.com/hi/station/france-bleu-besanon",
+      "final": "https://themegaradio.com/hi/station/france-bleu-besancon",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/hi/station/france-bleu-besanon",
+          "status": 301,
+          "location": "/hi/station/france-bleu-besancon"
+        },
+        {
+          "url": "https://themegaradio.com/hi/station/france-bleu-besancon",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/hi/station/france-bleu-besancon"
+    },
+    {
+      "url": "https://themegaradio.com/hi/station/radio-russia",
+      "final": "https://themegaradio.com/hi/station/radio-rossii",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/hi/station/radio-russia",
+          "status": 301,
+          "location": "/hi/station/radio-rossii"
+        },
+        {
+          "url": "https://themegaradio.com/hi/station/radio-rossii",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/hi/station/radio-rossii"
+    },
+    {
+      "url": "https://themegaradio.com/hi/station/1fm-movie-soundtrack",
+      "final": "https://themegaradio.com/hi/station/movie-soundtracks-hits-radio-1-fm",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/hi/station/1fm-movie-soundtrack",
+          "status": 301,
+          "location": "/hi/station/movie-soundtracks-hits-radio-1-fm"
+        },
+        {
+          "url": "https://themegaradio.com/hi/station/movie-soundtracks-hits-radio-1-fm",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/hi/station/movie-soundtracks-hits-radio-1-fm"
+    },
+    {
+      "url": "https://themegaradio.com/hi/station/1fm-movie-soundtrack-hits",
+      "final": "https://themegaradio.com/hi/station/movie-soundtracks-hits-radio-1-fm",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/hi/station/1fm-movie-soundtrack-hits",
+          "status": 301,
+          "location": "/hi/station/movie-soundtracks-hits-radio-1-fm"
+        },
+        {
+          "url": "https://themegaradio.com/hi/station/movie-soundtracks-hits-radio-1-fm",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/hi/station/movie-soundtracks-hits-radio-1-fm"
+    },
+    {
+      "url": "https://themegaradio.com/hi/station/energy-fm-non-stop-mixes-1",
+      "final": "https://themegaradio.com/hi/station/energy-fm-non-stop-mixes",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/hi/station/energy-fm-non-stop-mixes-1",
+          "status": 301,
+          "location": "/hi/station/energy-fm-non-stop-mixes"
+        },
+        {
+          "url": "https://themegaradio.com/hi/station/energy-fm-non-stop-mixes",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/hi/station/energy-fm-non-stop-mixes"
+    },
+    {
+      "url": "https://themegaradio.com/hi/station/k-kountry-95-1",
+      "final": "https://themegaradio.com/hi/station/k-kountry-95",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/hi/station/k-kountry-95-1",
+          "status": 301,
+          "location": "/hi/station/k-kountry-95"
+        },
+        {
+          "url": "https://themegaradio.com/hi/station/k-kountry-95",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/hi/station/k-kountry-95"
+    },
+    {
+      "url": "https://themegaradio.com/hi/station/classic-radio-nsw-mp3",
+      "final": "https://themegaradio.com/hi/station/classic-radio-nsw",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/hi/station/classic-radio-nsw-mp3",
+          "status": 301,
+          "location": "/hi/station/classic-radio-nsw"
+        },
+        {
+          "url": "https://themegaradio.com/hi/station/classic-radio-nsw",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/hi/station/classic-radio-nsw"
+    },
+    {
+      "url": "https://themegaradio.com/he/tachana/france-bleu-besanon",
+      "final": "https://themegaradio.com/he/tachana/france-bleu-besancon",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/he/tachana/france-bleu-besanon",
+          "status": 301,
+          "location": "/he/tachana/france-bleu-besancon"
+        },
+        {
+          "url": "https://themegaradio.com/he/tachana/france-bleu-besancon",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/he/tachana/france-bleu-besancon"
+    },
+    {
+      "url": "https://themegaradio.com/he/tachana/radio-russia",
+      "final": "https://themegaradio.com/he/tachana/radio-rossii",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/he/tachana/radio-russia",
+          "status": 301,
+          "location": "/he/tachana/radio-rossii"
+        },
+        {
+          "url": "https://themegaradio.com/he/tachana/radio-rossii",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/he/tachana/radio-rossii"
+    },
+    {
+      "url": "https://themegaradio.com/he/tachana/1fm-movie-soundtrack",
+      "final": "https://themegaradio.com/he/tachana/movie-soundtracks-hits-radio-1-fm",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/he/tachana/1fm-movie-soundtrack",
+          "status": 301,
+          "location": "/he/tachana/movie-soundtracks-hits-radio-1-fm"
+        },
+        {
+          "url": "https://themegaradio.com/he/tachana/movie-soundtracks-hits-radio-1-fm",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/he/tachana/movie-soundtracks-hits-radio-1-fm"
+    },
+    {
+      "url": "https://themegaradio.com/he/tachana/1fm-movie-soundtrack-hits",
+      "final": "https://themegaradio.com/he/tachana/movie-soundtracks-hits-radio-1-fm",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/he/tachana/1fm-movie-soundtrack-hits",
+          "status": 301,
+          "location": "/he/tachana/movie-soundtracks-hits-radio-1-fm"
+        },
+        {
+          "url": "https://themegaradio.com/he/tachana/movie-soundtracks-hits-radio-1-fm",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/he/tachana/movie-soundtracks-hits-radio-1-fm"
+    },
+    {
+      "url": "https://themegaradio.com/he/tachana/energy-fm-non-stop-mixes-1",
+      "final": "https://themegaradio.com/he/tachana/energy-fm-non-stop-mixes",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/he/tachana/energy-fm-non-stop-mixes-1",
+          "status": 301,
+          "location": "/he/tachana/energy-fm-non-stop-mixes"
+        },
+        {
+          "url": "https://themegaradio.com/he/tachana/energy-fm-non-stop-mixes",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/he/tachana/energy-fm-non-stop-mixes"
+    },
+    {
+      "url": "https://themegaradio.com/he/tachana/k-kountry-95-1",
+      "final": "https://themegaradio.com/he/tachana/k-kountry-95",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/he/tachana/k-kountry-95-1",
+          "status": 301,
+          "location": "/he/tachana/k-kountry-95"
+        },
+        {
+          "url": "https://themegaradio.com/he/tachana/k-kountry-95",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/he/tachana/k-kountry-95"
+    },
+    {
+      "url": "https://themegaradio.com/he/tachana/classic-radio-nsw-mp3",
+      "final": "https://themegaradio.com/he/tachana/classic-radio-nsw",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/he/tachana/classic-radio-nsw-mp3",
+          "status": 301,
+          "location": "/he/tachana/classic-radio-nsw"
+        },
+        {
+          "url": "https://themegaradio.com/he/tachana/classic-radio-nsw",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/he/tachana/classic-radio-nsw"
+    },
+    {
+      "url": "https://themegaradio.com/ar/station/france-bleu-besanon",
+      "final": "https://themegaradio.com/ar/mahta/france-bleu-besancon",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ar/station/france-bleu-besanon",
+          "status": 301,
+          "location": "/ar/mahta/france-bleu-besancon"
+        },
+        {
+          "url": "https://themegaradio.com/ar/mahta/france-bleu-besancon",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/ar/mahta/france-bleu-besancon"
+    },
+    {
+      "url": "https://themegaradio.com/af/station/fm-aac-1",
+      "final": "https://themegaradio.com/en/station/vesti-fm-vesti-fm",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/af/station/fm-aac-1",
+          "status": 301,
+          "location": "/af/stasie/fm-aac-1"
+        },
+        {
+          "url": "https://themegaradio.com/af/stasie/fm-aac-1",
+          "status": 301,
+          "location": "/en/station/fm-aac-1"
+        },
+        {
+          "url": "https://themegaradio.com/en/station/fm-aac-1",
+          "status": 301,
+          "location": "/en/station/vesti-fm-vesti-fm"
+        },
+        {
+          "url": "https://themegaradio.com/en/station/vesti-fm-vesti-fm",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/en/station/vesti-fm-vesti-fm"
+    },
+    {
+      "url": "https://themegaradio.com/af/station/radio-russia",
+      "final": "https://themegaradio.com/en/station/radio-rossii",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/af/station/radio-russia",
+          "status": 301,
+          "location": "/en/station/radio-rossii"
+        },
+        {
+          "url": "https://themegaradio.com/en/station/radio-rossii",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/en/station/radio-rossii"
+    },
+    {
+      "url": "https://themegaradio.com/af/station/naxi-radio-rock-1",
+      "final": "https://themegaradio.com/en/station/naxi-rock-radio",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/af/station/naxi-radio-rock-1",
+          "status": 301,
+          "location": "/af/stasie/naxi-radio-rock-1"
+        },
+        {
+          "url": "https://themegaradio.com/af/stasie/naxi-radio-rock-1",
+          "status": 301,
+          "location": "/en/station/naxi-radio-rock-1"
+        },
+        {
+          "url": "https://themegaradio.com/en/station/naxi-radio-rock-1",
+          "status": 301,
+          "location": "/en/station/naxi-rock-radio"
+        },
+        {
+          "url": "https://themegaradio.com/en/station/naxi-rock-radio",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/en/station/naxi-rock-radio"
+    },
+    {
+      "url": "https://themegaradio.com/am/station/1fm-movie-soundtrack",
+      "final": "https://themegaradio.com/en/station/movie-soundtracks-hits-radio-1-fm",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/am/station/1fm-movie-soundtrack",
+          "status": 301,
+          "location": "/en/station/movie-soundtracks-hits-radio-1-fm"
+        },
+        {
+          "url": "https://themegaradio.com/en/station/movie-soundtracks-hits-radio-1-fm",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/en/station/movie-soundtracks-hits-radio-1-fm"
+    },
+    {
+      "url": "https://themegaradio.com/zh/station/dr-p4-kbenhavn-mp3",
+      "final": "https://themegaradio.com/zh/%E7%94%B5%E5%8F%B0/dr-p4-kobenhavn",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/zh/station/dr-p4-kbenhavn-mp3",
+          "status": 301,
+          "location": "/zh/%E7%94%B5%E5%8F%B0/dr-p4-kbenhavn-mp3"
+        },
+        {
+          "url": "https://themegaradio.com/zh/%E7%94%B5%E5%8F%B0/dr-p4-kbenhavn-mp3",
+          "status": 301,
+          "location": "/zh/%E7%94%B5%E5%8F%B0/dr-p4-kobenhavn"
+        },
+        {
+          "url": "https://themegaradio.com/zh/%E7%94%B5%E5%8F%B0/dr-p4-kobenhavn",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/zh/%E7%94%B5%E5%8F%B0/dr-p4-kobenhavn"
+    },
+    {
+      "url": "https://themegaradio.com/am/station/w-radio-885-villahermosa-885-fm-xhkv-fm-grupo-radio-can-villahermosa-tabasco-1",
+      "final": "https://themegaradio.com/en/station/w-radio-88-5-villahermosa-88-5-fm-xhkv-fm-grupo-radio-canon-villahermosa-tabasco",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/am/station/w-radio-885-villahermosa-885-fm-xhkv-fm-grupo-radio-can-villahermosa-tabasco-1",
+          "status": 301,
+          "location": "/am/%E1%8C%A3%E1%89%A2%E1%8B%AB/w-radio-885-villahermosa-885-fm-xhkv-fm-grupo-radio-can-villahermosa-tabasco-1"
+        },
+        {
+          "url": "https://themegaradio.com/am/%E1%8C%A3%E1%89%A2%E1%8B%AB/w-radio-885-villahermosa-885-fm-xhkv-fm-grupo-radio-can-villahermosa-tabasco-1",
+          "status": 301,
+          "location": "/en/station/w-radio-885-villahermosa-885-fm-xhkv-fm-grupo-radio-can-villahermosa-tabasco-1"
+        },
+        {
+          "url": "https://themegaradio.com/en/station/w-radio-885-villahermosa-885-fm-xhkv-fm-grupo-radio-can-villahermosa-tabasco-1",
+          "status": 301,
+          "location": "/en/station/w-radio-88-5-villahermosa-88-5-fm-xhkv-fm-grupo-radio-canon-villahermosa-tabasco"
+        },
+        {
+          "url": "https://themegaradio.com/en/station/w-radio-88-5-villahermosa-88-5-fm-xhkv-fm-grupo-radio-canon-villahermosa-tabasco",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/en/station/w-radio-88-5-villahermosa-88-5-fm-xhkv-fm-grupo-radio-canon-villahermosa-tabasco"
+    },
+    {
+      "url": "https://themegaradio.com/ar/station/radio-russia",
+      "final": "https://themegaradio.com/ar/mahta/radio-rossii",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ar/station/radio-russia",
+          "status": 301,
+          "location": "/ar/mahta/radio-rossii"
+        },
+        {
+          "url": "https://themegaradio.com/ar/mahta/radio-rossii",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/ar/mahta/radio-rossii"
+    },
+    {
+      "url": "https://themegaradio.com/br/station/k-kountry-95-1",
+      "final": "https://themegaradio.com/pt/estacao/k-kountry-95",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/br/station/k-kountry-95-1",
+          "status": 301,
+          "location": "/pt/station/k-kountry-95-1"
+        },
+        {
+          "url": "https://themegaradio.com/pt/station/k-kountry-95-1",
+          "status": 301,
+          "location": "/pt/estacao/k-kountry-95-1"
+        },
+        {
+          "url": "https://themegaradio.com/pt/estacao/k-kountry-95-1",
+          "status": 301,
+          "location": "/pt/estacao/k-kountry-95"
+        },
+        {
+          "url": "https://themegaradio.com/pt/estacao/k-kountry-95",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/pt/estacao/k-kountry-95"
+    },
+    {
+      "url": "https://themegaradio.com/bd/station/k-kountry-95-1",
+      "final": "https://themegaradio.com/en/station/k-kountry-95",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/bd/station/k-kountry-95-1",
+          "status": 301,
+          "location": "/en/station/k-kountry-95-1"
+        },
+        {
+          "url": "https://themegaradio.com/en/station/k-kountry-95-1",
+          "status": 301,
+          "location": "/en/station/k-kountry-95"
+        },
+        {
+          "url": "https://themegaradio.com/en/station/k-kountry-95",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/en/station/k-kountry-95"
+    },
+    {
+      "url": "https://themegaradio.com/fi/station/k-kountry-95-1",
+      "final": "https://themegaradio.com/en/station/k-kountry-95",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/fi/station/k-kountry-95-1",
+          "status": 301,
+          "location": "/fi/asema/k-kountry-95-1"
+        },
+        {
+          "url": "https://themegaradio.com/fi/asema/k-kountry-95-1",
+          "status": 301,
+          "location": "/en/station/k-kountry-95-1"
+        },
+        {
+          "url": "https://themegaradio.com/en/station/k-kountry-95-1",
+          "status": 301,
+          "location": "/en/station/k-kountry-95"
+        },
+        {
+          "url": "https://themegaradio.com/en/station/k-kountry-95",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/en/station/k-kountry-95"
+    },
+    {
+      "url": "https://themegaradio.com/ae/station/k-kountry-95-1",
+      "final": "https://themegaradio.com/ar/mahta/k-kountry-95",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ae/station/k-kountry-95-1",
+          "status": 301,
+          "location": "/ar/station/k-kountry-95-1"
+        },
+        {
+          "url": "https://themegaradio.com/ar/station/k-kountry-95-1",
+          "status": 301,
+          "location": "/ar/mahta/k-kountry-95-1"
+        },
+        {
+          "url": "https://themegaradio.com/ar/mahta/k-kountry-95-1",
+          "status": 301,
+          "location": "/ar/mahta/k-kountry-95"
+        },
+        {
+          "url": "https://themegaradio.com/ar/mahta/k-kountry-95",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/ar/mahta/k-kountry-95"
+    },
+    {
+      "url": "https://themegaradio.com/ma/station/k-kountry-95-1",
+      "final": "https://themegaradio.com/ar/mahta/k-kountry-95",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ma/station/k-kountry-95-1",
+          "status": 301,
+          "location": "/ar/station/k-kountry-95-1"
+        },
+        {
+          "url": "https://themegaradio.com/ar/station/k-kountry-95-1",
+          "status": 301,
+          "location": "/ar/mahta/k-kountry-95-1"
+        },
+        {
+          "url": "https://themegaradio.com/ar/mahta/k-kountry-95-1",
+          "status": 301,
+          "location": "/ar/mahta/k-kountry-95"
+        },
+        {
+          "url": "https://themegaradio.com/ar/mahta/k-kountry-95",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/ar/mahta/k-kountry-95"
+    },
+    {
+      "url": "https://themegaradio.com/es/station/k-kountry-95-1",
+      "final": "https://themegaradio.com/es/estacion/k-kountry-95",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/es/station/k-kountry-95-1",
+          "status": 301,
+          "location": "/es/estacion/k-kountry-95-1"
+        },
+        {
+          "url": "https://themegaradio.com/es/estacion/k-kountry-95-1",
+          "status": 301,
+          "location": "/es/estacion/k-kountry-95"
+        },
+        {
+          "url": "https://themegaradio.com/es/estacion/k-kountry-95",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/es/estacion/k-kountry-95"
+    },
+    {
+      "url": "https://themegaradio.com/cn/station/k-kountry-95-1",
+      "final": "https://themegaradio.com/zh/%E7%94%B5%E5%8F%B0/k-kountry-95",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/cn/station/k-kountry-95-1",
+          "status": 301,
+          "location": "/zh/station/k-kountry-95-1"
+        },
+        {
+          "url": "https://themegaradio.com/zh/station/k-kountry-95-1",
+          "status": 301,
+          "location": "/zh/%E7%94%B5%E5%8F%B0/k-kountry-95-1"
+        },
+        {
+          "url": "https://themegaradio.com/zh/%E7%94%B5%E5%8F%B0/k-kountry-95-1",
+          "status": 301,
+          "location": "/zh/%E7%94%B5%E5%8F%B0/k-kountry-95"
+        },
+        {
+          "url": "https://themegaradio.com/zh/%E7%94%B5%E5%8F%B0/k-kountry-95",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/zh/%E7%94%B5%E5%8F%B0/k-kountry-95"
+    },
+    {
+      "url": "https://themegaradio.com/cn/station/energy-fm-non-stop-mixes-1",
+      "final": "https://themegaradio.com/zh/%E7%94%B5%E5%8F%B0/energy-fm-non-stop-mixes",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/cn/station/energy-fm-non-stop-mixes-1",
+          "status": 301,
+          "location": "/zh/station/energy-fm-non-stop-mixes-1"
+        },
+        {
+          "url": "https://themegaradio.com/zh/station/energy-fm-non-stop-mixes-1",
+          "status": 301,
+          "location": "/zh/%E7%94%B5%E5%8F%B0/energy-fm-non-stop-mixes-1"
+        },
+        {
+          "url": "https://themegaradio.com/zh/%E7%94%B5%E5%8F%B0/energy-fm-non-stop-mixes-1",
+          "status": 301,
+          "location": "/zh/%E7%94%B5%E5%8F%B0/energy-fm-non-stop-mixes"
+        },
+        {
+          "url": "https://themegaradio.com/zh/%E7%94%B5%E5%8F%B0/energy-fm-non-stop-mixes",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/zh/%E7%94%B5%E5%8F%B0/energy-fm-non-stop-mixes"
+    },
+    {
+      "url": "https://themegaradio.com/kr/station/energy-fm-non-stop-mixes-1",
+      "final": "https://themegaradio.com/ko/%EC%8A%A4%ED%85%8C%EC%9D%B4%EC%85%98/energy-fm-non-stop-mixes",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/kr/station/energy-fm-non-stop-mixes-1",
+          "status": 301,
+          "location": "/ko/station/energy-fm-non-stop-mixes-1"
+        },
+        {
+          "url": "https://themegaradio.com/ko/station/energy-fm-non-stop-mixes-1",
+          "status": 301,
+          "location": "/ko/%EC%8A%A4%ED%85%8C%EC%9D%B4%EC%85%98/energy-fm-non-stop-mixes-1"
+        },
+        {
+          "url": "https://themegaradio.com/ko/%EC%8A%A4%ED%85%8C%EC%9D%B4%EC%85%98/energy-fm-non-stop-mixes-1",
+          "status": 301,
+          "location": "/ko/%EC%8A%A4%ED%85%8C%EC%9D%B4%EC%85%98/energy-fm-non-stop-mixes"
+        },
+        {
+          "url": "https://themegaradio.com/ko/%EC%8A%A4%ED%85%8C%EC%9D%B4%EC%85%98/energy-fm-non-stop-mixes",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/ko/%EC%8A%A4%ED%85%8C%EC%9D%B4%EC%85%98/energy-fm-non-stop-mixes"
+    },
+    {
+      "url": "https://themegaradio.com/ee/station/energy-fm-non-stop-mixes-1",
+      "final": "https://themegaradio.com/en/station/energy-fm-non-stop-mixes",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ee/station/energy-fm-non-stop-mixes-1",
+          "status": 301,
+          "location": "/en/station/energy-fm-non-stop-mixes-1"
+        },
+        {
+          "url": "https://themegaradio.com/en/station/energy-fm-non-stop-mixes-1",
+          "status": 301,
+          "location": "/en/station/energy-fm-non-stop-mixes"
+        },
+        {
+          "url": "https://themegaradio.com/en/station/energy-fm-non-stop-mixes",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/en/station/energy-fm-non-stop-mixes"
+    },
+    {
+      "url": "https://themegaradio.com/fi/station/energy-fm-non-stop-mixes-1",
+      "final": "https://themegaradio.com/en/station/energy-fm-non-stop-mixes",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/fi/station/energy-fm-non-stop-mixes-1",
+          "status": 301,
+          "location": "/fi/asema/energy-fm-non-stop-mixes-1"
+        },
+        {
+          "url": "https://themegaradio.com/fi/asema/energy-fm-non-stop-mixes-1",
+          "status": 301,
+          "location": "/en/station/energy-fm-non-stop-mixes-1"
+        },
+        {
+          "url": "https://themegaradio.com/en/station/energy-fm-non-stop-mixes-1",
+          "status": 301,
+          "location": "/en/station/energy-fm-non-stop-mixes"
+        },
+        {
+          "url": "https://themegaradio.com/en/station/energy-fm-non-stop-mixes",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/en/station/energy-fm-non-stop-mixes"
+    },
+    {
+      "url": "https://themegaradio.com/gr/station/energy-fm-non-stop-mixes-1",
+      "final": "https://themegaradio.com/en/station/energy-fm-non-stop-mixes",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/gr/station/energy-fm-non-stop-mixes-1",
+          "status": 301,
+          "location": "/el/station/energy-fm-non-stop-mixes-1"
+        },
+        {
+          "url": "https://themegaradio.com/el/station/energy-fm-non-stop-mixes-1",
+          "status": 301,
+          "location": "/el/%CF%83%CF%84%CE%B1%CE%B8%CE%BC%CE%BF%CF%82/energy-fm-non-stop-mixes-1"
+        },
+        {
+          "url": "https://themegaradio.com/el/%CF%83%CF%84%CE%B1%CE%B8%CE%BC%CE%BF%CF%82/energy-fm-non-stop-mixes-1",
+          "status": 301,
+          "location": "/en/station/energy-fm-non-stop-mixes-1"
+        },
+        {
+          "url": "https://themegaradio.com/en/station/energy-fm-non-stop-mixes-1",
+          "status": 301,
+          "location": "/en/station/energy-fm-non-stop-mixes"
+        },
+        {
+          "url": "https://themegaradio.com/en/station/energy-fm-non-stop-mixes",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/en/station/energy-fm-non-stop-mixes"
+    },
+    {
+      "url": "https://themegaradio.com/ke/station/energy-fm-non-stop-mixes-1",
+      "final": "https://themegaradio.com/en/station/energy-fm-non-stop-mixes",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ke/station/energy-fm-non-stop-mixes-1",
+          "status": 301,
+          "location": "/en/station/energy-fm-non-stop-mixes-1"
+        },
+        {
+          "url": "https://themegaradio.com/en/station/energy-fm-non-stop-mixes-1",
+          "status": 301,
+          "location": "/en/station/energy-fm-non-stop-mixes"
+        },
+        {
+          "url": "https://themegaradio.com/en/station/energy-fm-non-stop-mixes",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/en/station/energy-fm-non-stop-mixes"
+    },
+    {
+      "url": "https://themegaradio.com/ph/station/energy-fm-non-stop-mixes-1",
+      "final": "https://themegaradio.com/en/station/energy-fm-non-stop-mixes",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ph/station/energy-fm-non-stop-mixes-1",
+          "status": 301,
+          "location": "/en/station/energy-fm-non-stop-mixes-1"
+        },
+        {
+          "url": "https://themegaradio.com/en/station/energy-fm-non-stop-mixes-1",
+          "status": 301,
+          "location": "/en/station/energy-fm-non-stop-mixes"
+        },
+        {
+          "url": "https://themegaradio.com/en/station/energy-fm-non-stop-mixes",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/en/station/energy-fm-non-stop-mixes"
+    },
+    {
+      "url": "https://themegaradio.com/rs/station/energy-fm-non-stop-mixes-1",
+      "final": "https://themegaradio.com/en/station/energy-fm-non-stop-mixes",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/rs/station/energy-fm-non-stop-mixes-1",
+          "status": 301,
+          "location": "/sr/station/energy-fm-non-stop-mixes-1"
+        },
+        {
+          "url": "https://themegaradio.com/sr/station/energy-fm-non-stop-mixes-1",
+          "status": 301,
+          "location": "/sr/stanica/energy-fm-non-stop-mixes-1"
+        },
+        {
+          "url": "https://themegaradio.com/sr/stanica/energy-fm-non-stop-mixes-1",
+          "status": 301,
+          "location": "/en/station/energy-fm-non-stop-mixes-1"
+        },
+        {
+          "url": "https://themegaradio.com/en/station/energy-fm-non-stop-mixes-1",
+          "status": 301,
+          "location": "/en/station/energy-fm-non-stop-mixes"
+        },
+        {
+          "url": "https://themegaradio.com/en/station/energy-fm-non-stop-mixes",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/en/station/energy-fm-non-stop-mixes"
+    },
+    {
+      "url": "https://themegaradio.com/vn/station/energy-fm-non-stop-mixes-1",
+      "final": "https://themegaradio.com/en/station/energy-fm-non-stop-mixes",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/vn/station/energy-fm-non-stop-mixes-1",
+          "status": 301,
+          "location": "/en/station/energy-fm-non-stop-mixes-1"
+        },
+        {
+          "url": "https://themegaradio.com/en/station/energy-fm-non-stop-mixes-1",
+          "status": 301,
+          "location": "/en/station/energy-fm-non-stop-mixes"
+        },
+        {
+          "url": "https://themegaradio.com/en/station/energy-fm-non-stop-mixes",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/en/station/energy-fm-non-stop-mixes"
+    },
+    {
+      "url": "https://themegaradio.com/dz/station/energy-fm-non-stop-mixes-1",
+      "final": "https://themegaradio.com/ar/mahta/energy-fm-non-stop-mixes",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/dz/station/energy-fm-non-stop-mixes-1",
+          "status": 301,
+          "location": "/ar/station/energy-fm-non-stop-mixes-1"
+        },
+        {
+          "url": "https://themegaradio.com/ar/station/energy-fm-non-stop-mixes-1",
+          "status": 301,
+          "location": "/ar/mahta/energy-fm-non-stop-mixes-1"
+        },
+        {
+          "url": "https://themegaradio.com/ar/mahta/energy-fm-non-stop-mixes-1",
+          "status": 301,
+          "location": "/ar/mahta/energy-fm-non-stop-mixes"
+        },
+        {
+          "url": "https://themegaradio.com/ar/mahta/energy-fm-non-stop-mixes",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/ar/mahta/energy-fm-non-stop-mixes"
+    },
+    {
+      "url": "https://themegaradio.com/iq/station/energy-fm-non-stop-mixes-1",
+      "final": "https://themegaradio.com/ar/mahta/energy-fm-non-stop-mixes",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/iq/station/energy-fm-non-stop-mixes-1",
+          "status": 301,
+          "location": "/ar/station/energy-fm-non-stop-mixes-1"
+        },
+        {
+          "url": "https://themegaradio.com/ar/station/energy-fm-non-stop-mixes-1",
+          "status": 301,
+          "location": "/ar/mahta/energy-fm-non-stop-mixes-1"
+        },
+        {
+          "url": "https://themegaradio.com/ar/mahta/energy-fm-non-stop-mixes-1",
+          "status": 301,
+          "location": "/ar/mahta/energy-fm-non-stop-mixes"
+        },
+        {
+          "url": "https://themegaradio.com/ar/mahta/energy-fm-non-stop-mixes",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/ar/mahta/energy-fm-non-stop-mixes"
+    },
+    {
+      "url": "https://themegaradio.com/ma/station/energy-fm-non-stop-mixes-1",
+      "final": "https://themegaradio.com/ar/mahta/energy-fm-non-stop-mixes",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/ma/station/energy-fm-non-stop-mixes-1",
+          "status": 301,
+          "location": "/ar/station/energy-fm-non-stop-mixes-1"
+        },
+        {
+          "url": "https://themegaradio.com/ar/station/energy-fm-non-stop-mixes-1",
+          "status": 301,
+          "location": "/ar/mahta/energy-fm-non-stop-mixes-1"
+        },
+        {
+          "url": "https://themegaradio.com/ar/mahta/energy-fm-non-stop-mixes-1",
+          "status": 301,
+          "location": "/ar/mahta/energy-fm-non-stop-mixes"
+        },
+        {
+          "url": "https://themegaradio.com/ar/mahta/energy-fm-non-stop-mixes",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/ar/mahta/energy-fm-non-stop-mixes"
+    },
+    {
+      "url": "https://themegaradio.com/tn/station/energy-fm-non-stop-mixes-1",
+      "final": "https://themegaradio.com/ar/mahta/energy-fm-non-stop-mixes",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/tn/station/energy-fm-non-stop-mixes-1",
+          "status": 301,
+          "location": "/ar/station/energy-fm-non-stop-mixes-1"
+        },
+        {
+          "url": "https://themegaradio.com/ar/station/energy-fm-non-stop-mixes-1",
+          "status": 301,
+          "location": "/ar/mahta/energy-fm-non-stop-mixes-1"
+        },
+        {
+          "url": "https://themegaradio.com/ar/mahta/energy-fm-non-stop-mixes-1",
+          "status": 301,
+          "location": "/ar/mahta/energy-fm-non-stop-mixes"
+        },
+        {
+          "url": "https://themegaradio.com/ar/mahta/energy-fm-non-stop-mixes",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/ar/mahta/energy-fm-non-stop-mixes"
+    },
+    {
+      "url": "https://themegaradio.com/id/station/classic-radio-nsw-mp3",
+      "final": "https://themegaradio.com/en/station/classic-radio-nsw",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/id/station/classic-radio-nsw-mp3",
+          "status": 301,
+          "location": "/id/stasiun/classic-radio-nsw-mp3"
+        },
+        {
+          "url": "https://themegaradio.com/id/stasiun/classic-radio-nsw-mp3",
+          "status": 301,
+          "location": "/en/station/classic-radio-nsw-mp3"
+        },
+        {
+          "url": "https://themegaradio.com/en/station/classic-radio-nsw-mp3",
+          "status": 301,
+          "location": "/en/station/classic-radio-nsw"
+        },
+        {
+          "url": "https://themegaradio.com/en/station/classic-radio-nsw",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/en/station/classic-radio-nsw"
+    },
+    {
+      "url": "https://themegaradio.com/gr/station/classic-radio-nsw-mp3",
+      "final": "https://themegaradio.com/en/station/classic-radio-nsw",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/gr/station/classic-radio-nsw-mp3",
+          "status": 301,
+          "location": "/el/station/classic-radio-nsw-mp3"
+        },
+        {
+          "url": "https://themegaradio.com/el/station/classic-radio-nsw-mp3",
+          "status": 301,
+          "location": "/el/%CF%83%CF%84%CE%B1%CE%B8%CE%BC%CE%BF%CF%82/classic-radio-nsw-mp3"
+        },
+        {
+          "url": "https://themegaradio.com/el/%CF%83%CF%84%CE%B1%CE%B8%CE%BC%CE%BF%CF%82/classic-radio-nsw-mp3",
+          "status": 301,
+          "location": "/en/station/classic-radio-nsw-mp3"
+        },
+        {
+          "url": "https://themegaradio.com/en/station/classic-radio-nsw-mp3",
+          "status": 301,
+          "location": "/en/station/classic-radio-nsw"
+        },
+        {
+          "url": "https://themegaradio.com/en/station/classic-radio-nsw",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/en/station/classic-radio-nsw"
+    },
+    {
+      "url": "https://themegaradio.com/dz/station/classic-radio-nsw-mp3",
+      "final": "https://themegaradio.com/ar/mahta/classic-radio-nsw",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/dz/station/classic-radio-nsw-mp3",
+          "status": 301,
+          "location": "/ar/station/classic-radio-nsw-mp3"
+        },
+        {
+          "url": "https://themegaradio.com/ar/station/classic-radio-nsw-mp3",
+          "status": 301,
+          "location": "/ar/mahta/classic-radio-nsw-mp3"
+        },
+        {
+          "url": "https://themegaradio.com/ar/mahta/classic-radio-nsw-mp3",
+          "status": 301,
+          "location": "/ar/mahta/classic-radio-nsw"
+        },
+        {
+          "url": "https://themegaradio.com/ar/mahta/classic-radio-nsw",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/ar/mahta/classic-radio-nsw"
+    },
+    {
+      "url": "https://themegaradio.com/kw/station/classic-radio-nsw-mp3",
+      "final": "https://themegaradio.com/ar/mahta/classic-radio-nsw",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/kw/station/classic-radio-nsw-mp3",
+          "status": 301,
+          "location": "/ar/station/classic-radio-nsw-mp3"
+        },
+        {
+          "url": "https://themegaradio.com/ar/station/classic-radio-nsw-mp3",
+          "status": 301,
+          "location": "/ar/mahta/classic-radio-nsw-mp3"
+        },
+        {
+          "url": "https://themegaradio.com/ar/mahta/classic-radio-nsw-mp3",
+          "status": 301,
+          "location": "/ar/mahta/classic-radio-nsw"
+        },
+        {
+          "url": "https://themegaradio.com/ar/mahta/classic-radio-nsw",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/ar/mahta/classic-radio-nsw"
+    },
+    {
+      "url": "https://themegaradio.com/sy/station/classic-radio-nsw-mp3",
+      "final": "https://themegaradio.com/ar/mahta/classic-radio-nsw",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/sy/station/classic-radio-nsw-mp3",
+          "status": 301,
+          "location": "/ar/station/classic-radio-nsw-mp3"
+        },
+        {
+          "url": "https://themegaradio.com/ar/station/classic-radio-nsw-mp3",
+          "status": 301,
+          "location": "/ar/mahta/classic-radio-nsw-mp3"
+        },
+        {
+          "url": "https://themegaradio.com/ar/mahta/classic-radio-nsw-mp3",
+          "status": 301,
+          "location": "/ar/mahta/classic-radio-nsw"
+        },
+        {
+          "url": "https://themegaradio.com/ar/mahta/classic-radio-nsw",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/ar/mahta/classic-radio-nsw"
+    },
+    {
+      "url": "https://themegaradio.com/am/station/1fm-movie-soundtrack-hits",
+      "final": "https://themegaradio.com/en/station/movie-soundtracks-hits-radio-1-fm",
+      "status": 200,
+      "chain": [
+        {
+          "url": "https://themegaradio.com/am/station/1fm-movie-soundtrack-hits",
+          "status": 301,
+          "location": "/en/station/movie-soundtracks-hits-radio-1-fm"
+        },
+        {
+          "url": "https://themegaradio.com/en/station/movie-soundtracks-hits-radio-1-fm",
+          "status": 200,
+          "location": null
+        }
+      ],
+      "robots": [
+        "index, follow"
+      ],
+      "xRobotsTag": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+      "noindex": false,
+      "canonical": "https://themegaradio.com/en/station/movie-soundtracks-hits-radio-1-fm"
+    }
+  ]
+}

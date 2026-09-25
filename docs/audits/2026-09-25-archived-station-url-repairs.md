@@ -67,7 +67,38 @@ rollback; manually edited or drifted records are skipped rather than overwritten
   another 12 real PGlite tests. It intentionally skips if private production
   metadata conflicts; deployment alone is not proof that this recovery applied.
 - API TypeScript checking and both API/web production server builds passed.
-- Production verification and GSC validation outcomes will be recorded after release.
+- Production verification and GSC validation outcomes are recorded below.
+
+## Production release and GSC validation
+
+- Pushed scoped commit `5598c9a6b911bc09515f2ba8a85b1b71147d0bbe` to `main`
+  through the existing GitHub Desktop account. Unrelated unpublished blog changes
+  were excluded. Both Railway application deployments are Active on that commit:
+  web `f450e640-2579-4a10-a944-ff452c2bd81e`, API
+  `a9886952-b340-4baa-8435-59a4477b1d69`. No extra restarts were performed.
+- All three `0041` retained-record redirects applied. The live regression sweep
+  (`2026-09-25-archived-repair-live.json`) contains 132 URLs: all finish at an
+  indexable HTTP 200 page, with zero request errors. It includes the seven failed
+  GSC 404-validation examples and the seven repaired aliases across 14 languages.
+- The separate 41 failed "Crawled — currently not indexed" examples also finish
+  at HTTP 200 without noindex or request errors. Results are in
+  `2026-09-25-repaired-crawled-recheck.json`.
+- Restarted both failed validations in Search Console. Each visibly reports
+  "Doğrulama Başladı", start date 25.09.2026, zero failed validation instances
+  at submission time. This is **started**, not a passed validation or an indexing
+  guarantee. Category totals are historical and include other pending examples;
+  this does not claim all 679 historical 404 URLs should become indexable pages.
+- `0042` safely skipped the Ora News pair. Read-only native PostgreSQL inspection
+  found a content-pin mismatch caused by the public detail API's normalization:
+  the duplicate's stored paragraph breaks/brackets differ from the returned
+  presentation text. Canonical content matches exactly. Neither row was changed
+  by that skipped migration. Follow-up `0043` pins the actual stored text without
+  modifying it or relaxing any ownership/graph guard. All 58 fields normalize to
+  the previously reviewed display text; 15 raw fields differ. Native SQL hashes
+  matched the independent raw-list response. The original migration is immutable.
+  Both migration suites passed 20 PGlite tests (zero skipped) before this follow-up
+  release. Native private-state, identity-peer, incoming-redirect and merged-alias
+  checks found no competing ownership; no bulk translation job was running.
 
 Correctly retired URLs must not be redirected to unrelated content merely to
 clear a report. Technical indexability is testable; Google's indexing selection
