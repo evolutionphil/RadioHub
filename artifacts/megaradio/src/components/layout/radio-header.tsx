@@ -15,6 +15,8 @@ import { PublicProfileAvatar } from "@/components/ui/public-profile-avatar";
 // 🚀 LAZY: modal only loads on first open
 const AddYourStationModal = lazy(() => import("@/components/modals/AddYourStationModal"));
 const MobileNavigation = lazy(() => import('./mobile-navigation'));
+const QuickSearchDialog = lazy(() => import('./quick-search-dialog'));
+import { getQuickSearchCopy } from '@/lib/quick-search-copy';
 import { useTranslation } from "@/hooks/useTranslation";
 import { getProfileNavCopy } from '@/lib/profile-nav-copy';
 import { logoutAccount } from '@/lib/logout';
@@ -23,7 +25,7 @@ import { useSeoRouting } from "@/hooks/useSeoRouting";
 import { URL_TRANSLATIONS } from "@workspace/seo-shared/url-translations";
 import { getImageUrl, getUserDisplayName } from "@/lib/utils";
 import { getStationUrl } from "@/utils/slugs";
-import { getStationLogoUrl } from "@/components/ui/station-logo";
+import { StationLogo } from "@/components/ui/station-logo";
 import { HighlightMatch } from "@/components/HighlightMatch";
 import { getCountryCodeFromApiName, getLanguageForCountry } from "@workspace/seo-shared/seo-config";
 import {
@@ -56,6 +58,7 @@ export default function RadioHeader({
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const searchReturnFocusRef = useRef<HTMLElement | null>(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const mobileMenuTriggerRef = useRef<HTMLButtonElement>(null);
   const [internalAddStationOpen, setInternalAddStationOpen] = useState(false);
@@ -65,6 +68,7 @@ export default function RadioHeader({
   
   const { t, setLanguage, localeTranslations } = useTranslation();
   const { getLocalizedUrl, cleanPath, navigateTranslated, currentLanguage } = useSeoRouting();
+  const quickSearchCopy = getQuickSearchCopy(currentLanguage);
   const profileNavCopy = getProfileNavCopy(currentLanguage);
   const englishProfileNav = getProfileNavCopy('en');
   const profileNavLabel = (key: string, name: keyof typeof profileNavCopy) => {
@@ -88,6 +92,40 @@ export default function RadioHeader({
   const [countrySearchQuery, setCountrySearchQuery] = useState("");
   const [filteredStations, setFilteredStations] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [searchError, setSearchError] = useState(false);
+
+  const closeSearch = useCallback(() => {
+    setIsSearchOpen(false);
+    setSearchQuery('');
+    setDebouncedSearchQuery('');
+  }, []);
+  const openSearch = useCallback((event?: React.MouseEvent<HTMLButtonElement>) => {
+    if (!showSearch) return;
+    searchReturnFocusRef.current = event?.currentTarget ||
+      (document.activeElement instanceof HTMLElement ? document.activeElement : null);
+    setIsMobileMenuOpen(false);
+    setIsCountryDropdownOpen(false);
+    setIsNotificationDropdownOpen(false);
+    setIsMobileProfileMenuOpen(false);
+    setIsSearchOpen(true);
+  }, [showSearch]);
+
+  useEffect(() => {
+    if (!showSearch) return;
+    const onShortcut = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.isComposing || event.keyCode === 229 || event.repeat || event.altKey) return;
+      const command = (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k';
+      const slash = event.key === '/' && !event.ctrlKey && !event.metaKey;
+      if (!command && !slash) return;
+      const editable = 'input,textarea,select,[contenteditable]:not([contenteditable="false"]),[role="textbox"],[role="combobox"]';
+      if (event.composedPath().some(target => target instanceof Element && !!target.closest(editable))) return;
+      if (document.querySelector('[role="dialog"], [role="alertdialog"], [aria-modal="true"]')) return;
+      event.preventDefault();
+      openSearch();
+    };
+    window.addEventListener('keydown', onShortcut);
+    return () => window.removeEventListener('keydown', onShortcut);
+  }, [showSearch, openSearch]);
   
   // Touch handling for mobile scroll
   const [touchStartY, setTouchStartY] = useState<number>(0);
@@ -202,7 +240,7 @@ export default function RadioHeader({
     []
   );
 
-  const { playStation } = useGlobalPlayer();
+  const { playStation, currentStation, isPlaying } = useGlobalPlayer();
   const { user, isAuthenticated, isLoading: authLoading } = useAuth();
   const { isPremium } = usePremiumStatus();
   const notificationQueryClient = useQueryClient();
@@ -398,19 +436,19 @@ export default function RadioHeader({
 
 
   // Genre search results for the header dropdown (mirrors /search)
-  const { data: genresSearchData, isFetching: isGenresFetching } = useQuery<{
+  const { data: genresSearchData, isFetching: isGenresFetching, isError: genreSearchError } = useQuery<{
     genres?: Array<{ slug: string; name: string; stationCount?: number }>;
     data?: Array<{ slug: string; name: string; stationCount?: number }>;
   }>({
     queryKey: ['/api/genres', { search: debouncedSearchQuery, limit: 5 }],
-    enabled: debouncedSearchQuery.trim().length >= 2,
-    queryFn: async () => {
+    enabled: isSearchOpen && debouncedSearchQuery.trim().length >= 2,
+    queryFn: async ({ signal }) => {
       const params = new URLSearchParams({
         search: debouncedSearchQuery.trim(),
         limit: '5',
         page: '1',
       });
-      const res = await fetch(`/api/genres?${params}`);
+      const res = await fetch(`/api/genres?${params}`, { signal });
       if (!res.ok) throw new Error('Genre search failed');
       return res.json();
     },
@@ -418,10 +456,11 @@ export default function RadioHeader({
   });
 
   // Rich country list (small, cached) — filtered client-side just like /search
-  const { data: richCountries = [], isFetching: isCountriesFetching } = useQuery<Array<{ name: string; stationCount?: number }>>({
+  const { data: richCountries = [], isFetching: isCountriesFetching, isError: countrySearchError } = useQuery<Array<{ name: string; stationCount?: number }>>({
     queryKey: ['/api/countries', 'rich'],
-    queryFn: async () => {
-      const res = await fetch(`/api/countries?format=rich`);
+    enabled: isSearchOpen,
+    queryFn: async ({ signal }) => {
+      const res = await fetch(`/api/countries?format=rich`, { signal });
       if (!res.ok) throw new Error('Country list failed');
       return res.json();
     },
@@ -458,14 +497,16 @@ export default function RadioHeader({
   useEffect(() => {
     const searchTerm = debouncedSearchQuery.trim();
 
-    if (!searchTerm || searchTerm.length < 2) {
+    if (!isSearchOpen || searchTerm.length < 2) {
       setFilteredStations([]);
       setIsSearching(false);
+      setSearchError(false);
       return;
     }
 
     const controller = new AbortController();
     setIsSearching(true);
+    setSearchError(false);
 
     const params = new URLSearchParams({ search: searchTerm, limit: '20' });
     fetchStationCardList(params, { signal: controller.signal })
@@ -474,18 +515,21 @@ export default function RadioHeader({
         return res.json();
       })
       .then(data => {
-        setFilteredStations(data.stations ?? []);
+        if (!controller.signal.aborted) setFilteredStations(data.stations ?? data.data ?? []);
       })
       .catch(err => {
         // AbortError is expected when the effect re-runs — not a real error.
-        if (err.name !== 'AbortError') setFilteredStations([]);
+        if (!controller.signal.aborted && err.name !== 'AbortError') {
+          setFilteredStations([]);
+          setSearchError(true);
+        }
       })
       .finally(() => {
-        setIsSearching(false);
+        if (!controller.signal.aborted) setIsSearching(false);
       });
 
     return () => controller.abort();
-  }, [debouncedSearchQuery]);
+  }, [debouncedSearchQuery, isSearchOpen]);
 
   // Close search and other modals when mobile menu opens
   useEffect(() => {
@@ -518,7 +562,7 @@ export default function RadioHeader({
       items.push({
         kind: 'genre',
         id: `genre-${g.slug}`,
-        href: `${langPrefix}/genres/${encodeURIComponent(g.slug)}`,
+        href: getLocalizedUrl(`/genres/${encodeURIComponent(g.slug)}`),
       });
     }
     for (const c of matchingCountries) {
@@ -616,18 +660,13 @@ export default function RadioHeader({
       if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
       e.preventDefault();
       e.stopPropagation();
-      if (searchQuery !== '') {
-        setSearchQuery('');
-        setActiveSearchIndex(-1);
-      } else {
-        setIsSearchOpen(false);
-      }
+      closeSearch();
       return;
     }
     // Don't navigate or activate when the dropdown isn't showing results.
     // Without this, a short window exists where the user can press Enter on
     // stale results after backspacing the query below the 2-char threshold.
-    if (searchQuery.trim().length < 2 || flatSearchItems.length === 0) {
+    if (e.nativeEvent.isComposing || searchLoading || searchQuery.trim().length < 2 || flatSearchItems.length === 0) {
       if (e.key === 'Enter') e.preventDefault();
       return;
     }
@@ -678,7 +717,7 @@ export default function RadioHeader({
 
   const activeSearchId =
     activeSearchIndex >= 0 ? flatSearchItems[activeSearchIndex]?.id ?? null : null;
-  const searchFocusRingClass = 'ring-2 ring-[#FF4199] ring-offset-2 ring-offset-[#1D1D1D]';
+  const searchFocusRingClass = '';
 
   // ---------- Country picker keyboard navigation ----------
   const countryItems = useMemo(() => {
@@ -906,7 +945,7 @@ export default function RadioHeader({
                 <div className="xl:hidden flex items-center" style={{ height: '45px', gap: '12px' }}>
                   {/* 1. Search Icon - Mobile only */}
                   <button
-                    onClick={() => setIsSearchOpen(true)}
+                    onClick={openSearch}
                     className="flex items-center justify-center flex-shrink-0"
                     style={{ width: '24px', height: '24px' }}
                     aria-label={t('general_search', 'Search')}
@@ -993,7 +1032,7 @@ export default function RadioHeader({
                 <>
                   {/* Search Icon - Mobile only */}
                   <button
-                    onClick={() => setIsSearchOpen(true)}
+                    onClick={openSearch}
                     className="xl:hidden flex items-center justify-center flex-shrink-0"
                     style={{ width: '24px', height: '24px' }}
                     aria-label={t('general_search', 'Search')}
@@ -1121,7 +1160,7 @@ export default function RadioHeader({
                   
                   {/* 3. Search Button - desktop only (xl+) - Figma: 38x38px, #1D1D1D, rounded-[5px] */}
                   <button
-                    onClick={() => setIsSearchOpen(true)}
+                    onClick={openSearch}
                     className="hidden xl:flex items-center justify-center gap-2 h-[38px] px-2 rounded-[5px] bg-[#1D1D1D] hover:bg-[#2A2A2A] transition-colors"
                     aria-label={`${t('general_search', 'Search')}: ${isMac ? '⌘K' : 'Ctrl K'}`}
                     title={isMac ? '⌘K' : 'Ctrl+K'}
@@ -1208,7 +1247,7 @@ export default function RadioHeader({
                   
                   {/* Search Button - desktop only (xl+) - Figma: 38x38px */}
                   <button
-                    onClick={() => setIsSearchOpen(true)}
+                    onClick={openSearch}
                     className="hidden xl:flex items-center justify-center gap-2 h-[38px] px-2 rounded-[5px] bg-[#1D1D1D] hover:bg-[#2A2A2A] transition-colors"
                     aria-label={`${t('general_search', 'Search')}: ${isMac ? '⌘K' : 'Ctrl K'}`}
                     title={isMac ? '⌘K' : 'Ctrl+K'}
@@ -1253,31 +1292,20 @@ export default function RadioHeader({
         </Suspense>
       )}
 
-      {/* Search Popup Modal - EXACT from original */}
-      {isSearchOpen && showSearch && !isMobileMenuOpen && createPortal(
-        <div data-search-element className="fixed inset-0 flex items-start justify-center pt-24 bg-black/80 backdrop-blur-sm" style={{ zIndex: 9999 }}>
-          <div className="w-full max-w-2xl mx-4">
-            <div data-search-element className="bg-[#1D1D1D] border border-[#2F2F2F] rounded-2xl p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-xl font-bold text-white">{t('general_search_title', 'Search')}</h3>
-                <button
-                  onClick={() => {
-                    setIsSearchOpen(false);
-                    setSearchQuery("");
-                  }}
-                  className="text-gray-400 hover:text-white p-3 -m-3 rounded-md min-h-[48px] min-w-[48px] flex items-center justify-center"
-                  aria-label="Close search"
-                >
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
-              
-              <div className="relative">
+      {/* One interaction-gated surface for header buttons and Ctrl/Cmd+K. */}
+      {isSearchOpen && showSearch && !isMobileMenuOpen && (
+        <Suspense fallback={null}>
+          <QuickSearchDialog title={quickSearchCopy.title} hint={quickSearchCopy.hint}
+            closeLabel={quickSearchCopy.close} onClose={closeSearch} inputRef={searchInputRef}
+            returnFocusRef={searchReturnFocusRef} stationName={currentStation?.name} playing={isPlaying}>
+              <div className="quick-search-input-wrap">
                 <input
                   ref={searchInputRef}
+                  data-testid="input-quick-search"
                   type="text"
+                  autoComplete="off"
+                  spellCheck={false}
+                  aria-label={quickSearchCopy.title}
                   placeholder={t('search_placeholder', 'Search stations, genres, countries…')}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
@@ -1285,14 +1313,13 @@ export default function RadioHeader({
                   onFocus={(e) => e.stopPropagation()}
                   onKeyDown={handleSearchKeyDown}
                   role="combobox"
-                  aria-expanded={searchQuery.length >= 2 && hasAnyResults}
+                  aria-expanded={searchQuery.trim().length >= 2 && !searchLoading && hasAnyResults}
                   aria-controls="header-search-results"
-                  aria-activedescendant={activeSearchId ?? undefined}
+                  aria-activedescendant={!searchLoading ? activeSearchId ?? undefined : undefined}
                   aria-autocomplete="list"
-                  className="w-full h-12 bg-[#0E0E0E] border border-[#2F2F2F] rounded-xl pl-4 pr-12 text-white placeholder-gray-400 focus:border-[#FF4199] focus:outline-none"
-                  autoFocus
+                  className="quick-search-input"
                 />
-                <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                <div className="absolute end-4 top-1/2 transform -translate-y-1/2 pointer-events-none" aria-hidden="true">
                   <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                   </svg>
@@ -1300,14 +1327,16 @@ export default function RadioHeader({
               </div>
 
               {/* Search Results */}
-              {searchQuery && searchQuery.length >= 2 && (
+              {searchQuery.trim().length >= 2 && (
                 <div
-                  className="mt-4 max-h-96 overflow-y-auto"
+                  className="quick-search-results"
                   id="header-search-results"
                   role="listbox"
+                  aria-label={quickSearchCopy.title}
+                  aria-busy={searchLoading}
                 >
                   {searchLoading ? (
-                    <div className="flex items-center justify-center py-8">
+                    <div className="flex items-center justify-center py-10" role="status">
                       <div className="animate-spin rounded-full h-6 w-6 border-2 border-gray-300 border-t-transparent"></div>
                       <span className="ml-2 text-gray-300">{t('general_searching', 'Searching...')}</span>
                     </div>
@@ -1325,7 +1354,7 @@ export default function RadioHeader({
                             return (
                             <Link
                               key={id}
-                              href={`${langPrefix}/genres/${encodeURIComponent(g.slug)}`}
+                              href={getLocalizedUrl(`/genres/${encodeURIComponent(g.slug)}`)}
                               ref={setSearchItemRef(id)}
                               id={id}
                               role="option"
@@ -1430,22 +1459,13 @@ export default function RadioHeader({
                             setLocation(stationUrl);
                           }}
                         >
-                          <img
-                            src={getStationLogoUrl(station, 48)}
-                            alt={station.name}
-                            width={40}
-                            height={40}
-                            className="w-10 h-10 rounded-lg object-cover mr-3 flex-shrink-0"
-                            onError={(e) => {
-                              (e.target as HTMLImageElement).src = '/images/no-image.webp';
-                            }}
-                          />
-                          <div className="flex-1">
-                            <div className="text-white font-medium">
+                          <StationLogo station={station} size="md" className="rounded-xl me-3 flex-shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <div className="text-white font-medium truncate">
                               <HighlightMatch text={station.name} query={debouncedSearchQuery} />
                             </div>
-                            <div className="text-gray-400 text-sm">
-                              <HighlightMatch text={station.country} query={debouncedSearchQuery} />
+                            <div className="text-gray-400 text-sm truncate">
+                              <HighlightMatch text={getLocalizedCountryDisplayName(station.country || '', currentLanguage)} query={debouncedSearchQuery} />
                             </div>
                           </div>
                           
@@ -1465,32 +1485,39 @@ export default function RadioHeader({
                       )}
                     </div>
                   ) : (
-                    <div className="text-center py-8 text-gray-400">
-                      {t('search_no_results', 'No stations, genres or countries match your search.')}
+                    <div className="text-center py-10 text-gray-400" role="status">
+                      {searchError || genreSearchError || countrySearchError
+                        ? t('general_error_loading', 'Could not load results. Please try again.')
+                        : t('search_no_results', 'No stations, genres or countries match your search.')}
                     </div>
                   )}
                 </div>
               )}
 
-              {/* Keyboard shortcut hints - hidden on small/touch screens */}
-              <div className="hidden sm:flex [@media(pointer:coarse)]:!hidden items-center justify-end gap-3 mt-4 pt-3 border-t border-[#2F2F2F] text-[11px] text-gray-400">
+              {searchQuery.trim().length < 2 && (
+                <div className="quick-search-empty">
+                  <div className="quick-search-empty-icon" aria-hidden="true"><Music size={25} strokeWidth={1.3} /></div>
+                  <p>{t('search_min_chars_hint', 'Type at least 2 characters to start searching.')}</p>
+                </div>
+              )}
+
+              <div className="quick-search-hints">
+                <span className="inline-flex items-center gap-1.5 me-auto" aria-hidden="true"><kbd>↑</kbd><kbd>↓</kbd></span>
                 <span className="inline-flex items-center gap-1.5">
                   <kbd className="font-ubuntu inline-flex items-center px-1.5 py-0.5 font-semibold text-gray-300 bg-[#0E0E0E] border border-[#FF4199]/40 rounded">
                     {t('search_kbd_enter', 'Enter')}
                   </kbd>
-                  <span>{t('search_kbd_enter_hint', 'to select')}</span>
+                  <span>{quickSearchCopy.selectHint}</span>
                 </span>
                 <span className="inline-flex items-center gap-1.5">
                   <kbd className="font-ubuntu inline-flex items-center px-1.5 py-0.5 font-semibold text-gray-300 bg-[#0E0E0E] border border-[#FF4199]/40 rounded">
                     {t('search_kbd_esc', 'Esc')}
                   </kbd>
-                  <span>{t('search_kbd_esc_hint', 'to close')}</span>
+                  <span>{quickSearchCopy.dismissHint}</span>
                 </span>
               </div>
-            </div>
-          </div>
-        </div>,
-        document.body
+          </QuickSearchDialog>
+        </Suspense>
       )}
 
       {/* Country Dropdown - Portal rendered for authenticated users (mobile + desktop) */}

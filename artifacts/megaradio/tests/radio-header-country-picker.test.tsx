@@ -335,7 +335,7 @@ describe.each(VARIANTS)(
         const user = userEvent.setup();
         button.focus();
         await user.keyboard('{Enter}');
-        expect(screen.getByRole('combobox')).toBeVisible();
+        expect(await screen.findByRole('combobox', {}, { timeout: 3000 })).toBeVisible();
       },
     );
 
@@ -358,7 +358,7 @@ describe.each(VARIANTS)(
       const user = userEvent.setup();
       renderHeader('Austria');
       await user.click(screen.getByTestId(variantAuth.isAuthenticated ? 'button-search-mobile' : 'button-search-mobile-guest'));
-      await user.type(screen.getByRole('combobox'), 'Österreich');
+      await user.type(await screen.findByRole('combobox', {}, { timeout: 3000 }), 'Österreich');
       const country = await screen.findByTestId('header-search-country-austria');
       expect(country).toHaveTextContent('Österreich');
       expect(country.getAttribute('href')).toMatch(/^\/de\/[^/]+\/europe\/austria$/);
