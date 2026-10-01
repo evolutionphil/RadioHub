@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Homepage hero — locale layout checks</title>
+  </head>
+  <body>
+    <main id="root"></main>
+    <script type="module">
+      import React from 'react';
+      import { createRoot } from 'react-dom/client';
+      import { HOME_HERO_COPY } from '@workspace/seo-shared/home-hero-copy';
+      import HomeHeroCopy from '../../src/components/HomeHeroCopy';
+      import '../../src/index.css';
+
+      // Local Vite-only fixture. No API requests and not a production entry.
+      createRoot(document.getElementById('root')).render(
+        Object.keys(HOME_HERO_COPY).map(language => React.createElement(
+          'section', { key: language, lang: language, 'data-locale': language, className: 'hero-container' },
+          React.createElement(HomeHeroCopy, { language }),
+        )),
+      );
+    </script>
+  </body>
+</html>

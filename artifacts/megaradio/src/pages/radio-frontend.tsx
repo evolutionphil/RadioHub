@@ -8,6 +8,7 @@ import { Link } from "wouter";
 import StationCard from "@/components/ui/station-card";
 import CatalogStationItems from '@/components/ads/CatalogStationItems';
 import HomeHeroPicture from '@/components/HomeHeroPicture';
+import HomeHeroCopy from '@/components/HomeHeroCopy';
 import StationCardSkeleton from "@/components/ui/station-card-skeleton";
 import GenreCardSkeleton from "@/components/ui/genre-card-skeleton";
 import VirtualizedStationList from "@/components/ui/virtualized-station-list";
@@ -914,13 +915,7 @@ export default function RadioFrontend({
           />
           
           
-          <div className="mb-3 sm:mb-4 space-y-0.5 text-center md:space-y-1 relative z-20 w-full max-w-[600px] sm:max-w-[720px] md:max-w-[680px] lg:max-w-[1000px] mx-auto px-4 sm:px-6 md:px-8">
-            {/* LCP OPTIMIZATION: Show hero text immediately with fallbacks, don't wait for translations */}
-            {/* Figma specs: 100% line-height, Ubuntu font, centered */}
-            <p className="text-[16px] sm:text-[18px] md:text-[18px] lg:text-[20px] font-medium leading-none">{t('hero_over_100_countries', 'Over 100 countries')}</p>
-            <h1 className="text-[24px] sm:text-[32px] md:text-[34px] lg:text-[44px] font-bold leading-none break-words">{t('hero_worlds_best_radio', 'The world\'s best radio applications')}</h1>
-            <h2 className="text-[16px] sm:text-[18px] md:text-[18px] lg:text-[20px] font-medium leading-none">{t('hero_listen_everywhere', 'Listen everywhere anytime free')}</h2>
-          </div>
+          <HomeHeroCopy language={language} />
 
           {/* Search Box - EXACT from original megaradio design */}
           <div className={`w-full sm:w-[85%] md:w-[80%] lg:w-[80%] max-w-[600px] relative overflow-visible px-4 sm:px-0 ${searchQuery && searchQuery.length >= 2 ? 'z-[999999]' : 'z-10'}`}>

@@ -26,6 +26,7 @@
     "./legal-content-html": "./src/legal-content-html.ts",
     "./static-page-seo-templates": "./src/static-page-seo-templates.ts",
     "./home-seo-templates": "./src/home-seo-templates.ts",
+    "./home-hero-copy": "./src/home-hero-copy.ts",
     "./directory-index-seo": "./src/directory-index-seo.ts",
     "./community-page-seo-templates": "./src/community-page-seo-templates.ts",
     "./url-translations": "./src/url-translations.ts",

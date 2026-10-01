@@ -50,6 +50,7 @@ import { buildLegalSeo } from '@workspace/seo-shared/legal-seo-templates';
 import { buildStaticPageSeo } from '@workspace/seo-shared/static-page-seo-templates';
 import { renderStaticInformationBody } from './seo/static-information-body';
 import { buildHomeSeo } from '@workspace/seo-shared/home-seo-templates';
+import { getHomeHeroCopy } from '@workspace/seo-shared/home-hero-copy';
 import { buildCommunityPageSeo } from '@workspace/seo-shared/community-page-seo-templates';
 import { getLocalizedCountryName, getLocalizedRegionName } from '@workspace/seo-shared/country-name-translations';
 import {
@@ -2173,13 +2174,9 @@ export class SeoRenderer {
 
     switch (pageType) {
       case 'home':
-        // H1 = bare localized hero phrase. DB key wins; else the per-language
-        // home template `hero` (Item 2 re-audit 2026-06-20) so the <h1> is
-        // localized for all 14 langs instead of falling back to the English
-        // FALLBACK_TEXTS value. The <title> carries a " | Mega Radio" brand
-        // suffix, so the two strings always differ.
-        return translations['hero_worlds_best_radio']?.trim()
-          || buildHomeSeo(language, translations).hero;
+        // Keep visible brand copy identical to the app, independent of legacy
+        // hero translations. Metadata continues to use buildHomeSeo.
+        return getHomeHeroCopy(language).headline;
       
       case 'station':
         if (stationData) {
@@ -2306,7 +2303,8 @@ export class SeoRenderer {
     let content = '';
     
     switch (pageType) {
-      case 'home':
+      case 'home': {
+        const heroCopy = getHomeHeroCopy(language);
         // LCP fix (PageSpeed 2026-07-03): the SSR body is what paints first
         // (React later repaints over it — see replit.md, body is replaced not
         // hydrated). Without the hero image here, the page's largest paint
@@ -2327,9 +2325,11 @@ export class SeoRenderer {
                 <img src="/images/hero-bg-430w.webp" alt="" class="absolute inset-0 w-full h-full object-cover pointer-events-none z-0" aria-hidden="true" fetchpriority="high" decoding="async" width="1920" height="600">
               </picture>
               <div class="hero-section text-center relative z-10">
-                <p class="text-md font-medium">${this.escapeHtml(getLocalizedText('hero_over_100_countries', '60,000+ radio stations from 120+ countries'))}</p>
-                <h1 class="text-xl font-bold sm:text-3xl lg:text-[44px]">${this.escapeHtml(h1Text)}</h1>
-                <h2 class="text-lg sm:text-2xl">${this.escapeHtml(getLocalizedText('hero_listen_everywhere', 'Listen everywhere, anytime, for free'))}</h2>
+                <div class="home-hero-copy" dir="${heroCopy.direction}">
+                  <p class="home-hero-eyebrow">${this.escapeHtml(heroCopy.eyebrow)}</p>
+                  <h1 class="home-hero-title">${this.escapeHtml(h1Text)}</h1>
+                  <p class="home-hero-tagline">${this.escapeHtml(heroCopy.tagline)}</p>
+                </div>
               </div>
             </div>
 
@@ -2461,6 +2461,7 @@ export class SeoRenderer {
           </main>
         `;
         break;
+      }
       
       case 'station':
         content = `
