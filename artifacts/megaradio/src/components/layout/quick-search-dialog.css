@@ -16,7 +16,7 @@
   outline: none; animation: quick-search-appear 180ms cubic-bezier(.2,.8,.2,1);
 }
 .quick-search-heading { display: flex; align-items: center; gap: 14px; padding: 24px 24px 19px; flex-shrink: 0; }
-.quick-search-mark { display: grid; place-items: center; width: 44px; height: 44px; flex-shrink: 0; border-radius: 15px; color: #ff73b4; background: rgb(255 65 153 / 12%); border: 1px solid rgb(255 112 181 / 15%); }
+.quick-search-mark { display: grid; place-items: center; width: 28px; height: 36px; flex-shrink: 0; color: #ff73b4; }
 .quick-search-title { font-size: 18px; font-weight: 600; line-height: 1.35; letter-spacing: -.02em; }
 .quick-search-description { color: #b9b7c0; font-size: 13px; margin-top: 4px; line-height: 1.5; }
 .quick-search-close { display: grid; place-items: center; flex-shrink: 0; width: 40px; height: 40px; border-radius: 50%; color: #cbc8d1; background: rgb(255 255 255 / 6%); transition: background 120ms; }
@@ -47,7 +47,7 @@
 @media (max-width: 600px) {
   .quick-search-panel { top: max(16px, env(safe-area-inset-top)); width: calc(100% - 20px); max-height: calc(100dvh - 32px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); border-radius: 25px; }
   .quick-search-heading { padding: 20px 18px 16px; gap: 10px; }
-  .quick-search-mark { width: 38px; height: 38px; border-radius: 13px; }
+  .quick-search-mark { width: 26px; height: 32px; }
   .quick-search-input-wrap { margin: 0 18px; }
   .quick-search-panel input.quick-search-input { height: 56px; font-size: 16px; }
   .quick-search-description { font-size: 12px; }
