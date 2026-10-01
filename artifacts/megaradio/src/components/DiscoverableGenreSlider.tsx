@@ -3,6 +3,7 @@ import { Swiper, SwiperSlide } from 'swiper/react';
 import { Pagination, Mousewheel } from 'swiper/modules';
 import { useSeoRouting } from '@/hooks/useSeoRouting';
 import { useTranslation } from '@/hooks/useTranslation';
+import DiscoverableGenreImage, { getGenreImageSources } from './DiscoverableGenreImage';
 import 'swiper/css';
 import 'swiper/css/pagination';
 
@@ -108,7 +109,9 @@ export default function DiscoverableGenreSlider({ genres }: DiscoverableGenreSli
           }}
           className="w-full"
         >
-          {genres.map((genre, index) => (
+          {genres.map((genre, index) => {
+            const imageSources = getGenreImageSources(genre);
+            return (
             <SwiperSlide key={genre._id || index}>
               <Link
                 to={getLocalizedUrl(`/genres/${genre.slug || genre._id}`)}
@@ -121,19 +124,7 @@ export default function DiscoverableGenreSlider({ genres }: DiscoverableGenreSli
                     backgroundImage: getGenreGradient(index),
                   }}
                 />
-                {genre.discoverableImage && (
-                  <img
-                    key={genre.discoverableImage}
-                    src={genre.discoverableImage}
-                    alt=""
-                    aria-hidden="true"
-                    loading="lazy"
-                    decoding="async"
-                    draggable={false}
-                    className="absolute inset-0 h-full w-full rounded-xl object-cover"
-                    onError={(event) => { event.currentTarget.style.display = 'none'; }}
-                  />
-                )}
+                <DiscoverableGenreImage key={JSON.stringify(imageSources)} sources={imageSources} />
                 
                 {/* Text content - right half, left aligned inside */}
                 <div 
@@ -148,7 +139,8 @@ export default function DiscoverableGenreSlider({ genres }: DiscoverableGenreSli
                 </div>
               </Link>
             </SwiperSlide>
-          ))}
+            );
+          })}
         </Swiper>
       </div>
 

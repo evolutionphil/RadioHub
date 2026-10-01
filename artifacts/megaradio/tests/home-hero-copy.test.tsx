@@ -17,9 +17,11 @@ describe('localized homepage hero', () => {
 
   it('preserves the exact approved German and Turkish headlines when language changes', () => {
     const { rerender } = render(<HomeHeroCopy language="de" />);
-    expect(screen.getByRole('heading')).toHaveTextContent('Dein Radio. Dein Moment.');
+    expect(screen.getByRole('heading')).toHaveTextContent('Radio live hören');
     rerender(<HomeHeroCopy language="tr" />);
-    expect(screen.getByRole('heading')).toHaveTextContent('Radyo, seninle güzel.');
-    expect(screen.queryByText('Dein Radio. Dein Moment.')).not.toBeInTheDocument();
+    expect(screen.getByRole('heading')).toHaveTextContent('Canlı radyo dinle');
+    expect(screen.getByText('Dünyanın sesi burada')).toBeVisible();
+    expect(screen.getByText('Ücretsiz. Her an. Her yerde.')).toBeVisible();
+    expect(screen.queryByText('Radio live hören')).not.toBeInTheDocument();
   });
 });

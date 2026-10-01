@@ -47,15 +47,15 @@ test('every public locale has complete brand copy and a localized radio headline
 
 test('approved German and Turkish hero wording stays exact', () => {
   assert.deepEqual(getHomeHeroCopy('de'), {
-    eyebrow: 'Die Welt hat deinen Sound.',
-    headline: 'Dein Radio. Dein Moment.',
-    tagline: 'Live. Kostenlos. Überall.',
+    eyebrow: 'Sender aus aller Welt',
+    headline: 'Radio live hören',
+    tagline: 'Kostenlos. Jederzeit. Überall.',
     direction: 'ltr',
   });
   assert.deepEqual(getHomeHeroCopy('tr'), {
-    eyebrow: 'Dünyanın sesi, senin seçimin.',
-    headline: 'Radyo, seninle güzel.',
-    tagline: 'Canlı. Ücretsiz. Her yerde.',
+    eyebrow: 'Dünyanın sesi burada',
+    headline: 'Canlı radyo dinle',
+    tagline: 'Ücretsiz. Her an. Her yerde.',
     direction: 'ltr',
   });
 });
