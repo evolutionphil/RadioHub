@@ -1,4 +1,3 @@
-import { useEffect, useRef } from 'react';
 import { Link } from 'wouter';
 import { Swiper, SwiperSlide } from 'swiper/react';
 import { Pagination, Mousewheel } from 'swiper/modules';
@@ -115,15 +114,26 @@ export default function DiscoverableGenreSlider({ genres }: DiscoverableGenreSli
                 to={getLocalizedUrl(`/genres/${genre.slug || genre._id}`)}
                 className="relative flex aspect-[16/7] sm:aspect-[16/8] md:aspect-[593/214] lg:aspect-[593/214] items-center rounded-xl overflow-hidden group"
               >
-                {/* Background image - contained within card */}
+                {/* Keep a visible background when an uploaded image is unavailable. */}
                 <div
                   className="absolute inset-0 rounded-xl"
                   style={{
-                    backgroundImage: genre.discoverableImage ? `url(${genre.discoverableImage})` : getGenreGradient(index),
-                    backgroundSize: 'cover',
-                    backgroundPosition: 'center'
-                  } as React.CSSProperties}
+                    backgroundImage: getGenreGradient(index),
+                  }}
                 />
+                {genre.discoverableImage && (
+                  <img
+                    key={genre.discoverableImage}
+                    src={genre.discoverableImage}
+                    alt=""
+                    aria-hidden="true"
+                    loading="lazy"
+                    decoding="async"
+                    draggable={false}
+                    className="absolute inset-0 h-full w-full rounded-xl object-cover"
+                    onError={(event) => { event.currentTarget.style.display = 'none'; }}
+                  />
+                )}
                 
                 {/* Text content - right half, left aligned inside */}
                 <div 

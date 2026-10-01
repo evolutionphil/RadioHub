@@ -1008,8 +1008,8 @@ app.use('/api/stream', forwardApiRequest(streamServiceProxy));
          SSR head (served to 100% of traffic) previously shipped no image
          preloads at all, so the logo was discovered late by the preload
          scanner. Preload it with high priority. Matches the asset used by
-         radio-header.tsx (/header-logo-80w.webp, 2.6KB). -->
-    <link rel="preload" as="image" href="/header-logo-80w.webp" fetchpriority="high">
+         HeaderBrand's original high-resolution /logo-icon.webp asset. -->
+    <link rel="preload" as="image" href="/logo-icon.webp" fetchpriority="high">
     <!-- Only preload the small shared Latin subsets, not every alphabet.
          Unicode-range selects the other unchanged glyphs when required.
          The 600 and 700 faces have identical metrics and share one source. -->

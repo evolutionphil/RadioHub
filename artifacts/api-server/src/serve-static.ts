@@ -60,9 +60,10 @@ export function serveStatic(app: Express, distPath = path.resolve(import.meta.di
     res.redirect(301, '/favicon.png');
   });
 
-  // A removed build chunk is not an SPA navigation. Never return/cache HTML
-  // under its immutable JS/CSS URL, which could poison that URL for a year.
-  app.use('/assets', (_req, res) => {
+  // Missing build chunks and genre uploads are files, not SPA navigations.
+  // A 200 HTML shell at an image URL silently breaks the carousel and can
+  // poison an edge/browser cache. Existing files were served above.
+  app.use(['/assets', '/uploads/genres'], (_req, res) => {
     res.removeHeader('Expires');
     res.status(404).set({
       'Cache-Control': 'no-store',

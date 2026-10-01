@@ -26,6 +26,7 @@ import { URL_TRANSLATIONS } from "@workspace/seo-shared/url-translations";
 import { getImageUrl, getUserDisplayName } from "@/lib/utils";
 import { getStationUrl } from "@/utils/slugs";
 import { StationLogo } from "@/components/ui/station-logo";
+import { HeaderBrand } from './header-brand';
 import { HighlightMatch } from "@/components/HighlightMatch";
 import { getCountryCodeFromApiName, getLanguageForCountry } from "@workspace/seo-shared/seo-config";
 import {
@@ -901,29 +902,7 @@ export default function RadioHeader({
                 )}
               </button>
 
-              {/* Logo - Figma specs: icon 50x50px, text 100.85x23.15px, left 61px (11px gap) */}
-              <Link href={getLocalizedUrl("/")} aria-label="MegaRadio" className="not-active flex flex-shrink-0 items-center">
-                <div className="relative flex-shrink-0">
-                  <img
-                    className="w-8 h-8 md:w-10 md:h-10 lg:w-[50px] lg:h-[50px] object-contain flex-shrink-0 rounded-[6px] relative z-10"
-                    src="/header-logo-80w.webp"
-                    width="50"
-                    height="50"
-                    loading="eager"
-                    decoding="async"
-                    alt=""
-                    title="MegaRadio"
-                  />
-                  {/* Pink glow effect - bottom right - HIDDEN on mobile/tablet, visible from xl+ */}
-                  <div 
-                    className="hidden xl:block absolute -bottom-3 -right-3 w-16 h-16 rounded-full blur-lg pointer-events-none"
-                    style={{ background: 'radial-gradient(circle, #FF4199 0%, #FF4199 30%, transparent 70%)', opacity: 0.85 }}
-                  />
-                </div>
-                <div className="ml-2 xl:ml-[11px] hidden text-white xl:flex items-center whitespace-nowrap font-ubuntu" style={{ width: '100.85px', height: '23.15px' }}>
-                  <span className="font-bold leading-none" style={{ fontSize: '20.38px', lineHeight: '100%' }}>mega</span><span className="font-normal leading-none" style={{ fontSize: '20.38px', lineHeight: '100%' }}>radio</span>
-                </div>
-              </Link>
+              <HeaderBrand href={getLocalizedUrl("/")} />
             </div>
 
             {/* Desktop Navigation + Right Controls - all right-aligned together (visible xl+) */}

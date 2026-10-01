@@ -72,7 +72,7 @@ export const preloadImage = (src: string): Promise<void> => {
 export const preloadCriticalImages = async () => {
   if (typeof window === 'undefined') return;
 
-  const criticalImages = ['/header-logo-80w.webp'];
+  const criticalImages = ['/logo-icon.webp'];
   // Only home renders the hero. Match its <picture> / HTML preload breakpoint
   // so desktop visitors do not also download the unused mobile image.
   if (getLanguageFromPath(window.location.pathname).cleanPath === '/') {

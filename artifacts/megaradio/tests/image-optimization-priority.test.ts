@@ -61,25 +61,25 @@ describe('image loading priority', () => {
 describe('critical image fallback preloads', () => {
   it('loads only the desktop hero on desktop home without HTML hints', async () => {
     await preloadCriticalImages();
-    expect(requested).toEqual(['/header-logo-80w.webp', '/images/hero-bg.webp']);
+    expect(requested).toEqual(['/logo-icon.webp', '/images/hero-bg.webp']);
   });
 
   it('loads only the mobile hero on a localized mobile home', async () => {
     window.history.replaceState({}, '', '/tr');
     vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: false })));
     await preloadCriticalImages();
-    expect(requested).toEqual(['/header-logo-80w.webp', '/images/hero-bg-430w.webp']);
+    expect(requested).toEqual(['/logo-icon.webp', '/images/hero-bg-430w.webp']);
   });
 
   it.each(['/station/example', '/tr/istasyon/example', '/admin/dashboard', '/genres'])('does not preload a hero on %s', async pathname => {
     window.history.replaceState({}, '', pathname);
     await preloadCriticalImages();
-    expect(requested).toEqual(['/header-logo-80w.webp']);
+    expect(requested).toEqual(['/logo-icon.webp']);
   });
 
   it('does not duplicate matching HTML preloads', async () => {
     document.head.innerHTML = `
-      <link rel="preload" as="image" href="/header-logo-80w.webp">
+      <link rel="preload" as="image" href="/logo-icon.webp">
       <link rel="preload" as="image" href="/images/hero-bg.webp" media="(min-width: 768px)">
       <link rel="preload" as="image" href="/images/hero-bg-430w.webp" media="(max-width: 767px)">
     `;
