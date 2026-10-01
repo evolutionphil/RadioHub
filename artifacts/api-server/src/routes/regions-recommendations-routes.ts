@@ -699,8 +699,10 @@ export function registerRegionsRecommendationsRoutes(app: Express, deps: any) {
       logger.error(
         `❌ /api/regions failed: code=${error?.code || "unknown"} msg=${error?.message || error}`,
       );
-      res.set("Cache-Control", "no-store");
-      res.json({ success: true, data: [] });
+      res.status(503).set({ "Cache-Control": "no-store", "Retry-After": "30" }).json({
+        success: false,
+        error: "Region data is temporarily unavailable",
+      });
     }
   });
 
@@ -712,7 +714,9 @@ export function registerRegionsRecommendationsRoutes(app: Express, deps: any) {
   app.get("/api/regions/:regionSlug", async (req, res) => {
     const { regionSlug } = req.params;
     try {
-      const region = (WORLD_REGIONS as any)[regionSlug];
+      const region = Object.prototype.hasOwnProperty.call(WORLD_REGIONS, regionSlug)
+        ? (WORLD_REGIONS as any)[regionSlug]
+        : undefined;
       if (!region) {
         return void res.status(404).json({
           success: false,
@@ -773,10 +777,9 @@ export function registerRegionsRecommendationsRoutes(app: Express, deps: any) {
       logger.error(
         `❌ /api/regions/:slug failed: code=${error?.code || "unknown"} msg=${error?.message || error}`,
       );
-      res.set("Cache-Control", "no-store");
-      res.json({
-        success: true,
-        data: { region: { name: "", slug: regionSlug }, countries: [] },
+      res.status(503).set({ "Cache-Control": "no-store", "Retry-After": "30" }).json({
+        success: false,
+        error: "Country data is temporarily unavailable",
       });
     }
   });
@@ -786,7 +789,9 @@ export function registerRegionsRecommendationsRoutes(app: Express, deps: any) {
     const { regionSlug, countrySlug } = req.params;
     const cacheKey = `regions:country:${regionSlug}:${countrySlug}`;
     try {
-      const region = (WORLD_REGIONS as any)[regionSlug];
+      const region = Object.prototype.hasOwnProperty.call(WORLD_REGIONS, regionSlug)
+        ? (WORLD_REGIONS as any)[regionSlug]
+        : undefined;
 
       if (!region) {
         return void res.status(404).json({
@@ -875,16 +880,22 @@ export function registerRegionsRecommendationsRoutes(app: Express, deps: any) {
         stale = await CacheManager.get(cacheKey);
       } catch {}
       res.set("Cache-Control", "no-store");
-      res.json(
-        stale ?? {
-          success: true,
-          data: {
-            region: { name: "", slug: regionSlug },
-            country: { name: "", slug: countrySlug },
-            cities: [],
-          },
-        },
-      );
+      // A last-known-good response is useful during an outage, but an empty
+      // synthetic/error payload or another location's cache must not hide it.
+      const validStale = stale?.success === true &&
+        stale.data?.region?.slug === regionSlug &&
+        typeof stale.data.region.name === "string" && stale.data.region.name.trim() &&
+        stale.data?.country?.slug === countrySlug &&
+        typeof stale.data.country.name === "string" && stale.data.country.name.trim() &&
+        Array.isArray(stale.data?.cities) && stale.data.cities.every((city: any) =>
+          city && typeof city.name === "string" && city.name.trim() &&
+          typeof city.slug === "string" && city.slug.trim() &&
+          typeof city.stationCount === "number" && Number.isFinite(city.stationCount) && city.stationCount >= 0);
+      if (validStale) return void res.json(stale);
+      res.status(503).set("Retry-After", "30").json({
+        success: false,
+        error: "City data is temporarily unavailable",
+      });
     }
   });
 
@@ -898,16 +909,24 @@ export function registerRegionsRecommendationsRoutes(app: Express, deps: any) {
   app.get(
     "/api/regions/:regionSlug/:countrySlug{/:citySlug}/stations",
     async (req, res) => {
+      const { regionSlug, countrySlug, citySlug } = req.params;
+      const limit = Math.max(
+        1,
+        Math.min(500, parseInt(String(req.query.limit), 10) || 50),
+      );
+      const offset = Math.max(
+        0,
+        Math.min(1000000, parseInt(String(req.query.offset), 10) || 0),
+      );
+      const search = typeof req.query.search === "string"
+        ? Array.from(req.query.search.trim()).slice(0, 200).join("")
+        : "";
+      const region = Object.prototype.hasOwnProperty.call(WORLD_REGIONS, regionSlug)
+        ? (WORLD_REGIONS as any)[regionSlug]
+        : undefined;
+      let countryName: string | undefined;
+      let cityName: string | null | undefined = null;
       try {
-        const { regionSlug, countrySlug, citySlug } = req.params;
-        const limit = Math.max(
-          1,
-          Math.min(500, parseInt(String(req.query.limit), 10) || 50),
-        );
-        const offset = Math.max(
-          0,
-          Math.min(1000000, parseInt(String(req.query.offset), 10) || 0),
-        );
         const sortBy = [
           "votes",
           "name",
@@ -919,7 +938,6 @@ export function registerRegionsRecommendationsRoutes(app: Express, deps: any) {
           : "votes";
         const order = req.query.order === "asc" ? "asc" : "desc";
 
-        const region = (WORLD_REGIONS as any)[regionSlug];
         if (!region) {
           return void res.status(404).json({
             success: false,
@@ -927,7 +945,7 @@ export function registerRegionsRecommendationsRoutes(app: Express, deps: any) {
           });
         }
 
-        const countryName = region.countries.find(
+        countryName = region.countries.find(
           (country: string) =>
             country
               .toLowerCase()
@@ -956,7 +974,6 @@ export function registerRegionsRecommendationsRoutes(app: Express, deps: any) {
           $or: countryOrConditions,
         };
 
-        let cityName = null;
         if (citySlug) {
           if (citySlug === "all") {
             logger.log(
@@ -1018,18 +1035,30 @@ export function registerRegionsRecommendationsRoutes(app: Express, deps: any) {
           }
         }
 
+        // Search the full location catalogue, not just the first loaded page.
+        // Treat punctuation as literal text and retain the country/city scope.
+        if (search) {
+          const searchPattern = search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+          stationFilter.$and = [
+            ...(stationFilter.$and || []),
+            { $or: ["name", "tags", "genre"].map((field) => ({
+              [field]: { $regex: searchPattern, $options: "i" },
+            })) },
+          ];
+        }
+
         // INCIDENT 2026-05-16 v12 — add explicit maxTimeMS (8s) on both
         // queries. Previously these had no per-query budget and inherited
         // the socketTimeoutMS(45s) ceiling, meaning ONE slow regex
         // countDocuments could pin a connection for 45s. 8s is plenty
         // for an indexed find + count and lets the pool recycle fast.
-        const stationsCacheKey = `regions:stations:${regionSlug}:${countrySlug}:${citySlug || "none"}:${sortBy}:${order}:${limit}:${offset}`;
+        const stationsCacheKey = `regions:stations:v2:${regionSlug}:${countrySlug}:${citySlug || "none"}:${sortBy}:${order}:${limit}:${offset}:${encodeURIComponent(search)}`;
         const payload = await CacheManager.getOrSetSingleFlight(
           stationsCacheKey,
           async () => {
             const [stations, total] = await Promise.all([
               pgCatalog().find(stationFilter, {
-                sort: { [sortBy]: order === "desc" ? -1 : 1 },
+                sort: { [sortBy]: order === "desc" ? -1 : 1, _id: 1 },
                 offset,
                 limit,
               }),
@@ -1038,7 +1067,12 @@ export function registerRegionsRecommendationsRoutes(app: Express, deps: any) {
             return {
               success: true,
               data: {
+                region: { name: region.name, slug: regionSlug },
+                country: { name: countryName, slug: countrySlug },
+                ...(citySlug ? { city: { name: citySlug === "all" ? "ALL" : cityName, slug: citySlug } } : {}),
+                pagination: { total, limit, offset, hasMore: offset + stations.length < total },
                 stations,
+                // Keep the flat fields consumed by existing API clients.
                 total,
                 limit: Number(limit),
                 offset: Number(offset),
@@ -1056,16 +1090,10 @@ export function registerRegionsRecommendationsRoutes(app: Express, deps: any) {
           `❌ /api/regions/:slug/:country/:city/stations failed: code=${error?.code || "unknown"} msg=${error?.message || error}`,
         );
         res.set("Cache-Control", "no-store");
-        res.json({
-          success: true,
-          data: {
-            stations: [],
-            total: 0,
-            limit: Number(req.query.limit || 50),
-            offset: Number(req.query.offset || 0),
-            countryName: "",
-            cityName: null,
-          },
+        res.set("Retry-After", "30");
+        res.status(503).json({
+          success: false,
+          error: "Station data is temporarily unavailable",
         });
       }
     },

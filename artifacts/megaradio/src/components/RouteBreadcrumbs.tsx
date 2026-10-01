@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useMemo, useState, type ReactNode
 import { Link, useLocation } from 'wouter';
 import { getLanguageFromPath } from '@workspace/seo-shared/seo-config';
 import { URL_TRANSLATIONS } from '@workspace/seo-shared/url-translations';
+import { buildRegionBreadcrumbItems } from '@workspace/seo-shared/region-breadcrumbs';
 import { useTranslation } from '@/hooks/useTranslation';
 
 /**
@@ -107,6 +108,13 @@ function computeItems(params: {
 
   const lang = language || 'en';
   const langTranslations = (URL_TRANSLATIONS[lang] || {}) as Record<string, string>;
+  const regionItems = buildRegionBreadcrumbItems({
+    language: lang, cleanPath, lastItemName,
+    getLocalizedText: (key, fallback) => key === 'nav_home' || key === 'nav_regions'
+      ? t(key, fallback)
+      : localeTranslations?.[key]?.trim() || fallback,
+  });
+  if (regionItems) return regionItems;
 
   const items: BreadcrumbItem[] = [
     { name: t('nav_home', 'Home'), path: `/${lang}` },

@@ -4,6 +4,7 @@ import { ACTIVE_SITEMAP_LANGUAGES, generateLanguageUrls, getLanguageFromPath, tr
 import { getIndexableLanguagesForStation, isStationIndexableInLanguage } from '../src/seo/junk-station-rules';
 import { URL_TRANSLATIONS } from '@workspace/seo-shared/url-translations';
 import { getStationStreamUnavailableNotice } from '@workspace/seo-shared/station-page-copy';
+import { getLocalizedCountryName, getLocalizedRegionName } from '@workspace/seo-shared/country-name-translations';
 
 const pageCache = new Map<string, any>();
 let databaseFails = false;
@@ -45,6 +46,30 @@ mock.module('../src/seo/qualified-languages', { namedExports: { getCachedQualifi
 const { SeoRenderer } = await import('../src/seo-renderer');
 const renderer = new SeoRenderer();
 for (const language of ACTIVE_SITEMAP_LANGUAGES) {
+  test(`${language}: region breadcrumbs share valid location paths for visible HTML and structured data`, () => {
+    const routes = URL_TRANSLATIONS[language] || {};
+    const root = `/${language}/${routes.regions || 'regions'}`;
+    const stationSegment = routes.stations || 'stations';
+    const overrides = new Map(Object.entries(routes).map(([key, value]) => [`${language}:${key}`, value]));
+    const label = (key: string, fallback: string) => ({ nav_regions: 'Radio by Country', nav_stations: 'All Stations' }[key] || fallback);
+    for (const mapping of [overrides, undefined]) {
+      const cityItems = (renderer as any).computeBreadcrumbItems(language,
+        '/regions/europe/germany/berlin/stations', mapping, undefined, label);
+      assert.deepEqual(cityItems, [
+        { name: 'Home', path: `/${language}` },
+        { name: 'Radio by Country', path: root },
+        { name: getLocalizedRegionName('Europe', language), path: `${root}/europe` },
+        { name: getLocalizedCountryName('Germany', language), path: `${root}/europe/germany` },
+        { name: 'Berlin', path: `${root}/europe/germany/berlin/${stationSegment}` },
+      ]);
+      const countryItems = (renderer as any).computeBreadcrumbItems(language,
+        '/regions/europe/germany/stations', mapping, undefined, label);
+      assert.deepEqual(countryItems.map((item: any) => item.path), [
+        `/${language}`, root, `${root}/europe`, `${root}/europe/germany/${stationSegment}`,
+      ]);
+    }
+  });
+
   test(`${language}: station collection breadcrumb uses the real plural directory with and without cached overrides`, () => {
     const expected = URL_TRANSLATIONS[language]?.stations || 'stations';
     const overrides = new Map(Object.entries(URL_TRANSLATIONS[language] || {}).map(([key, value]) => [`${language}:${key}`, value]));

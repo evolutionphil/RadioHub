@@ -20,6 +20,8 @@
     "./seo-config": "./src/seo-config.ts",
     "./genre-seo-templates": "./src/genre-seo-templates.ts",
     "./region-seo-templates": "./src/region-seo-templates.ts",
+    "./region-breadcrumbs": "./src/region-breadcrumbs.ts",
+    "./region-name-translations": "./src/region-name-translations.ts",
     "./search-seo-templates": "./src/search-seo-templates.ts",
     "./legal-seo-templates": "./src/legal-seo-templates.ts",
     "./legal-content": "./src/legal-content-index.ts",

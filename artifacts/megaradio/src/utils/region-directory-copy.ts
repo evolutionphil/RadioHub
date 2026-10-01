@@ -1,0 +1,125 @@
+const en = {
+  title: 'Explore the world', subtitle: 'Find your next favourite station, one place at a time.',
+  search: 'Search', sort: 'Sort by', popular: 'Most stations', alphabetical: 'Name (A–Z)',
+  countries: 'Countries', cities: 'Cities', stations: 'Stations', loading: 'Loading…',
+  error: 'We couldn’t load this page. Please try again.', retry: 'Try again',
+  empty: 'No results found. Try another search.', viewAll: 'All stations', loadMore: 'Show more stations', back: 'Back',
+  noCities: 'No cities are listed yet. You can still explore all stations in this country.',
+};
+type DirectoryCopy = typeof en;
+export const REGION_DIRECTORY_COPY: Record<string, DirectoryCopy> = {
+  en,
+  de: {
+    title: 'Entdecke die Welt', subtitle: 'Finde deinen nächsten Lieblingssender – Ort für Ort.',
+    search: 'Suchen', sort: 'Sortieren nach', popular: 'Meiste Sender', alphabetical: 'Name (A–Z)',
+    countries: 'Länder', cities: 'Städte', stations: 'Sender', loading: 'Wird geladen…',
+    error: 'Diese Seite konnte nicht geladen werden. Bitte versuche es erneut.', retry: 'Erneut versuchen',
+    empty: 'Keine Ergebnisse. Versuche einen anderen Suchbegriff.', viewAll: 'Alle Sender', loadMore: 'Mehr Sender anzeigen', back: 'Zurück',
+    noCities: 'Noch keine Städte aufgeführt. Du kannst trotzdem alle Sender dieses Landes entdecken.',
+  },
+  tr: {
+    title: 'Dünyayı keşfet', subtitle: 'Bir sonraki favori radyonu şehir şehir keşfet.',
+    search: 'Ara', sort: 'Sıralama', popular: 'En çok radyo', alphabetical: 'İsim (A–Z)',
+    countries: 'Ülkeler', cities: 'Şehirler', stations: 'Radyolar', loading: 'Yükleniyor…',
+    error: 'Bu sayfa yüklenemedi. Lütfen tekrar dene.', retry: 'Tekrar dene',
+    empty: 'Sonuç bulunamadı. Başka bir arama yapmayı dene.', viewAll: 'Tüm radyolar', loadMore: 'Daha fazla radyo göster', back: 'Geri',
+    noCities: 'Henüz şehir listelenmiyor. Bu ülkedeki tüm radyoları yine de keşfedebilirsin.',
+  },
+  es: {
+    title: 'Explora el mundo', subtitle: 'Encuentra tu próxima emisora favorita, lugar a lugar.',
+    search: 'Buscar', sort: 'Ordenar por', popular: 'Más emisoras', alphabetical: 'Nombre (A–Z)',
+    countries: 'Países', cities: 'Ciudades', stations: 'Emisoras', loading: 'Cargando…',
+    error: 'No pudimos cargar esta página. Inténtalo de nuevo.', retry: 'Reintentar',
+    empty: 'Sin resultados. Prueba otra búsqueda.', viewAll: 'Todas las emisoras', loadMore: 'Mostrar más emisoras', back: 'Volver',
+    noCities: 'Todavía no hay ciudades. Puedes explorar todas las emisoras de este país.',
+  },
+  fr: {
+    title: 'Explorez le monde', subtitle: 'Trouvez votre prochaine station préférée, destination par destination.',
+    search: 'Rechercher', sort: 'Trier par', popular: 'Plus de stations', alphabetical: 'Nom (A–Z)',
+    countries: 'Pays', cities: 'Villes', stations: 'Stations', loading: 'Chargement…',
+    error: 'Impossible de charger cette page. Veuillez réessayer.', retry: 'Réessayer',
+    empty: 'Aucun résultat. Essayez une autre recherche.', viewAll: 'Toutes les stations', loadMore: 'Afficher plus de stations', back: 'Retour',
+    noCities: 'Aucune ville répertoriée pour le moment. Découvrez toutes les stations de ce pays.',
+  },
+  pt: {
+    title: 'Explore o mundo', subtitle: 'Encontre a sua próxima estação favorita, lugar a lugar.',
+    search: 'Pesquisar', sort: 'Ordenar por', popular: 'Mais estações', alphabetical: 'Nome (A–Z)',
+    countries: 'Países', cities: 'Cidades', stations: 'Estações', loading: 'A carregar…',
+    error: 'Não foi possível carregar esta página. Tente novamente.', retry: 'Tentar novamente',
+    empty: 'Nenhum resultado. Tente outra pesquisa.', viewAll: 'Todas as estações', loadMore: 'Mostrar mais estações', back: 'Voltar',
+    noCities: 'Ainda não há cidades listadas. Pode explorar todas as estações deste país.',
+  },
+  it: {
+    title: 'Esplora il mondo', subtitle: 'Trova la tua prossima stazione preferita, un luogo alla volta.',
+    search: 'Cerca', sort: 'Ordina per', popular: 'Più stazioni', alphabetical: 'Nome (A–Z)',
+    countries: 'Paesi', cities: 'Città', stations: 'Stazioni', loading: 'Caricamento…',
+    error: 'Impossibile caricare questa pagina. Riprova.', retry: 'Riprova',
+    empty: 'Nessun risultato. Prova un’altra ricerca.', viewAll: 'Tutte le stazioni', loadMore: 'Mostra altre stazioni', back: 'Indietro',
+    noCities: 'Non sono ancora elencate città. Puoi esplorare tutte le stazioni di questo paese.',
+  },
+  ru: {
+    title: 'Откройте мир', subtitle: 'Найдите новую любимую станцию в любом уголке мира.',
+    search: 'Поиск', sort: 'Сортировка', popular: 'Больше станций', alphabetical: 'По названию',
+    countries: 'Страны', cities: 'Города', stations: 'Станции', loading: 'Загрузка…',
+    error: 'Не удалось загрузить страницу. Попробуйте ещё раз.', retry: 'Повторить',
+    empty: 'Ничего не найдено. Измените поисковый запрос.', viewAll: 'Все станции', loadMore: 'Показать ещё станции', back: 'Назад',
+    noCities: 'Города пока не указаны. Вы можете просмотреть все станции этой страны.',
+  },
+  ar: {
+    title: 'اكتشف العالم', subtitle: 'اعثر على محطتك المفضلة القادمة، مكانًا تلو الآخر.',
+    search: 'بحث', sort: 'ترتيب حسب', popular: 'الأكثر محطات', alphabetical: 'الاسم',
+    countries: 'الدول', cities: 'المدن', stations: 'المحطات', loading: 'جارٍ التحميل…',
+    error: 'تعذّر تحميل هذه الصفحة. يُرجى المحاولة مجددًا.', retry: 'إعادة المحاولة',
+    empty: 'لا توجد نتائج. جرّب بحثًا آخر.', viewAll: 'جميع المحطات', loadMore: 'عرض المزيد من المحطات', back: 'رجوع',
+    noCities: 'لا توجد مدن مدرجة بعد. يمكنك استكشاف جميع محطات هذا البلد.',
+  },
+  zh: {
+    title: '探索世界', subtitle: '走遍各地，发现你下一座喜爱的电台。',
+    search: '搜索', sort: '排序方式', popular: '电台最多', alphabetical: '按名称',
+    countries: '国家', cities: '城市', stations: '电台', loading: '加载中…',
+    error: '无法加载此页面，请重试。', retry: '重试',
+    empty: '未找到结果，请尝试其他搜索。', viewAll: '所有电台', loadMore: '显示更多电台', back: '返回',
+    noCities: '暂未列出城市，你仍可探索这个国家的所有电台。',
+  },
+  ja: {
+    title: '世界を探そう', subtitle: 'さまざまな場所で、次のお気に入りの放送局を見つけよう。',
+    search: '検索', sort: '並び替え', popular: '放送局が多い順', alphabetical: '名前順',
+    countries: '国', cities: '都市', stations: '放送局', loading: '読み込み中…',
+    error: 'ページを読み込めませんでした。もう一度お試しください。', retry: '再試行',
+    empty: '結果がありません。別のキーワードで検索してください。', viewAll: 'すべての放送局', loadMore: '放送局をもっと表示', back: '戻る',
+    noCities: '都市はまだ登録されていません。この国のすべての放送局を探せます。',
+  },
+  ko: {
+    title: '세계를 둘러보세요', subtitle: '곳곳에서 새로운 즐겨찾기 방송국을 발견하세요.',
+    search: '검색', sort: '정렬 기준', popular: '방송국 많은 순', alphabetical: '이름순',
+    countries: '국가', cities: '도시', stations: '방송국', loading: '불러오는 중…',
+    error: '페이지를 불러올 수 없습니다. 다시 시도해 주세요.', retry: '다시 시도',
+    empty: '결과가 없습니다. 다른 검색어를 입력해 보세요.', viewAll: '모든 방송국', loadMore: '방송국 더 보기', back: '뒤로',
+    noCities: '아직 등록된 도시가 없습니다. 이 국가의 모든 방송국을 둘러볼 수 있습니다.',
+  },
+  hi: {
+    title: 'दुनिया की सैर करें', subtitle: 'जगह-जगह अपना अगला पसंदीदा रेडियो स्टेशन खोजें।',
+    search: 'खोजें', sort: 'क्रम', popular: 'सबसे ज़्यादा स्टेशन', alphabetical: 'नाम के अनुसार',
+    countries: 'देश', cities: 'शहर', stations: 'स्टेशन', loading: 'लोड हो रहा है…',
+    error: 'यह पेज लोड नहीं हो सका। कृपया फिर से कोशिश करें।', retry: 'फिर कोशिश करें',
+    empty: 'कोई परिणाम नहीं मिला। कुछ और खोजें।', viewAll: 'सभी स्टेशन', loadMore: 'और स्टेशन दिखाएँ', back: 'वापस',
+    noCities: 'अभी कोई शहर सूचीबद्ध नहीं है। आप इस देश के सभी स्टेशन देख सकते हैं।',
+  },
+  he: {
+    title: 'גלו את העולם', subtitle: 'מצאו את התחנה האהובה הבאה שלכם, מקום אחר מקום.',
+    search: 'חיפוש', sort: 'מיון לפי', popular: 'הכי הרבה תחנות', alphabetical: 'לפי שם',
+    countries: 'מדינות', cities: 'ערים', stations: 'תחנות', loading: 'בטעינה…',
+    error: 'לא ניתן לטעון את העמוד. נסו שוב.', retry: 'ניסיון נוסף',
+    empty: 'לא נמצאו תוצאות. נסו חיפוש אחר.', viewAll: 'כל התחנות', loadMore: 'הצגת תחנות נוספות', back: 'חזרה',
+    noCities: 'עדיין לא מופיעות ערים. אפשר לגלות את כל התחנות במדינה זו.',
+  },
+};
+const MOST_POPULAR: Record<string, string> = {
+  en: 'Most popular', de: 'Beliebteste', tr: 'En popüler', es: 'Más populares', fr: 'Les plus populaires',
+  pt: 'Mais populares', it: 'Più popolari', ru: 'Популярные', ar: 'الأكثر شعبية', zh: '最受欢迎',
+  ja: '人気順', ko: '인기순', hi: 'सबसे लोकप्रिय', he: 'הכי פופולריות',
+};
+export function getRegionDirectoryCopy(language: string) {
+  const copy = REGION_DIRECTORY_COPY[language] || en;
+  return { ...copy, viewAllStations: copy.viewAll, mostPopular: MOST_POPULAR[language] || MOST_POPULAR.en };
+}

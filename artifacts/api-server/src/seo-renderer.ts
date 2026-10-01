@@ -1,5 +1,6 @@
 import { generateSeoTags, getLanguageFromPath, DEFAULT_LANGUAGE, generateLanguageUrls, COUNTRY_TO_LANGUAGE, SEO_LANGUAGES, generateLocalizedStationTitle, truncateAtWordBoundary, normalizeSeoTitle, LOCALIZED_LOGO_WORD, LOCALIZED_FLAG_WORD } from '@workspace/seo-shared/seo-config';
 import { buildDirectoryIndexSeo } from '@workspace/seo-shared/directory-index-seo';
+import { buildRegionBreadcrumbItems } from '@workspace/seo-shared/region-breadcrumbs';
 import { getStationImageAlt } from '@workspace/seo-shared/station-image-alt';
 import { getStationBroadcastLanguages, getSchemaCountry, generateOrganizationSchema, generateWebSiteSchema, generateDeveloperOrganizationSchema } from '@workspace/seo-shared/structured-data';
 import { getStationPageCopy, getStationRelatedHeading, getStationStreamUnavailableNotice } from '@workspace/seo-shared/station-page-copy';
@@ -2073,6 +2074,10 @@ export class SeoRenderer {
     getLocalizedText: (key: string, fallback: string) => string,
   ): Array<{ name: string; path: string }> {
     if (!cleanPath || cleanPath === '/' || cleanPath === '') return [];
+    const regionItems = buildRegionBreadcrumbItems({
+      language, cleanPath, getLocalizedText, urlTranslations,
+    });
+    if (regionItems) return regionItems;
 
     const items: Array<{ name: string; path: string }> = [
       { name: getLocalizedText('nav_home', 'Home'), path: `/${language}` },
