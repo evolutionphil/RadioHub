@@ -1,4 +1,5 @@
 import type { Express, Request, Response } from "express";
+import { mobileAppLinkPaths } from '../seo/mobile-app-links';
 import crypto from 'crypto';
 import { buildBlogSitemap } from '../seo/blog-sitemap';
 import { BLOG_UPDATED } from '@workspace/seo-shared/blog-manifest';
@@ -419,14 +420,7 @@ export async function registerSeoSitemapRoutes(app: Express, deps: any, options?
         details: [
           {
             appID: "M6T85HP76P.com.visiongo.megaradio",
-            paths: [
-              "/station/*",
-              "/*/station/*",
-              "/genre/*",
-              "/*/genre/*",
-              "/user/*",
-              "/*/user/*"
-            ]
+            paths: mobileAppLinkPaths()
           }
         ]
       }
